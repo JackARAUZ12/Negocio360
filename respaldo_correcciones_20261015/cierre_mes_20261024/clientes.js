@@ -1,0 +1,1957 @@
+/* ============================================================
+   CLIENTES.JS — NEGOCIO360
+   CRM básico. Integrado completamente con Ventas.
+   Reutiliza tabla clientes creada/usada por ventas.js.
+   RLS + Supabase Auth.
+   ============================================================ */
+
+'use strict';
+
+/* ============================================================
+   SUPABASE — mismas credenciales que ventas.js
+   ============================================================ */
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ============================================================
+   ESTADO GLOBAL
+   ============================================================ */
+const CS = {
+  userId:        null,
+  userEmail:     null,
+  empresaConfig: {},
+  moneda:        'C$',
+
+  // Lista principal
+  clientes:      [],
+  clientesTotal: 0,
+  page:          1,
+  perPage:       20,
+  filtro:        'todos',
+  busqueda:      '',
+
+  // Cliente activo (perfil / edición)
+  clienteActivo: null,
+  ventasCliente: [],
+
+  // Venta activa para detalle desde perfil
+  ventaDetalleActiva: null,
+
+  // KPIs cacheados
+  kpi: {},
+};
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+// Mismo dato que ya usa auditoria-guard.js (sessionStorage) -- para
+// saber que perfil de personal hizo cada venta, sin depender de la
+// bitacora (que solo dura 24 horas).
+function obtenerNombrePerfilActivo() {
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    const perfil = raw ? JSON.parse(raw) : null;
+    return perfil?.nombre || 'Admin';
+  } catch (_) { return 'Admin'; }
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function sym() { return monedaParaMostrar(CS.moneda); }
+
+function fmt(n) {
+  const v = parseFloat(n || 0);
+  return `${sym()} ${convertirParaMostrar(v, CS.moneda).toLocaleString('es-NI', { minimumFractionDigits:2, maximumFractionDigits:2 })}`;
+}
+
+function fmtShort(n) {
+  const v = parseFloat(n || 0), s = sym();
+  if (v >= 1_000_000) return `${s}${(v/1_000_000).toFixed(1)}M`;
+  if (v >= 1_000)     return `${s}${(v/1_000).toFixed(1)}k`;
+  return `${s}${v.toLocaleString('es-NI', { minimumFractionDigits:0 })}`;
+}
+
+function fmtFecha(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso + (iso.includes('T') ? '' : 'T12:00:00'));
+  return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
+}
+
+// FIX CRÍTICO DE ZONA HORARIA: toISOString() da la fecha en UTC; en
+// Nicaragua (UTC-6) eso adelanta el "día" a las 6 PM hora local, lo
+// que desalineaba las fechas de próximo pago de clientes recurrentes.
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function todayISO() {
+  return ymd(new Date());
+}
+// Convierte "YYYY-MM-DD" a un Date LOCAL a medianoche (sin el bug de huso
+// horario de `new Date(iso)`, que la interpreta en UTC).
+function parseISOLocal(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function diasDesde(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + 'T12:00:00');
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+
+function startOfMonthISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+}
+
+/* ============================================================
+   PAGOS RECURRENTES — helpers de fecha
+   (misma lógica duplicada en ventas.js a propósito, igual que
+   el resto de helpers de este archivo)
+   ============================================================ */
+function clampDia(anio, mes /*0-based*/, dia) {
+  const ultimoDiaMes = new Date(anio, mes + 1, 0).getDate();
+  return Math.min(Math.max(1, dia || 1), ultimoDiaMes);
+}
+
+/**
+ * Calcula la PRIMERA próxima fecha de pago (al crear/editar un cliente recurrente).
+ * Por defecto cuenta desde HOY, pero si se indica `fechaInicioISO` (cliente que ya
+ * tenías antes de registrarlo), cuenta desde esa fecha en su lugar.
+ */
+function calcularPrimeraFechaProxima(frecuencia, diaPago, personalizado, fechaInicioISO) {
+  const hoy = fechaInicioISO ? parseISOLocal(fechaInicioISO) : new Date();
+  const anio = hoy.getFullYear(), mes = hoy.getMonth();
+
+  if (frecuencia === 'semanal') {
+    const objetivo = Number(diaPago ?? 1); // 0=domingo..6=sábado
+    const d = new Date(hoy);
+    let delta = (objetivo - d.getDay() + 7) % 7;
+    if (delta === 0) delta = 7; // si hoy es el día, la próxima es en 7 días
+    d.setDate(d.getDate() + delta);
+    return ymd(d);
+  }
+
+  if (frecuencia === 'quincenal') {
+    const d = new Date(hoy);
+    d.setDate(d.getDate() + 15);
+    return ymd(d);
+  }
+
+  if (frecuencia === 'anual') {
+    const dia = clampDia(anio + 1, mes, diaPago);
+    const d = new Date(anio + 1, mes, dia);
+    return ymd(d);
+  }
+
+  if (frecuencia === 'personalizado' && personalizado) {
+    const unidad = personalizado.unidad;
+    const intervalo = Math.max(1, parseInt(personalizado.intervalo) || 1);
+
+    if (unidad === 'semana') {
+      // "Cada N lunes": la primera fecha ya debe estar a N semanas de
+      // distancia (ej. con N=4 y hoy es cualquier día, cae en el 4° sábado
+      // contando desde hoy) — NO en el próximo sábado sin más.
+      const objetivo = Number(diaPago ?? 1);
+      const d = new Date(hoy);
+      let delta = (objetivo - d.getDay() + 7) % 7;
+      if (delta === 0) delta = 7; // si hoy es el día, cuenta desde la próxima ocurrencia
+      delta += 7 * (intervalo - 1);
+      d.setDate(d.getDate() + delta);
+      return ymd(d);
+    }
+
+    // unidad === 'mes' — "cada N meses": toma la ocurrencia más próxima
+    // (este mes si el día no ha pasado, si no el que sigue) y desde ahí
+    // suma los (N-1) meses restantes del ciclo, para que la primera fecha
+    // ya quede a N meses de distancia cuando corresponda.
+    const diaObjetivoEsteMes = clampDia(anio, mes, diaPago);
+    let base = new Date(anio, mes, diaObjetivoEsteMes);
+    if (base <= hoy) {
+      const mesSig = mes + 1;
+      const anioSig = anio + Math.floor(mesSig / 12);
+      const mesSigNorm = mesSig % 12;
+      base = new Date(anioSig, mesSigNorm, clampDia(anioSig, mesSigNorm, diaPago));
+    }
+    if (intervalo > 1) {
+      const mesFinal = base.getMonth() + (intervalo - 1);
+      const anioFinal = base.getFullYear() + Math.floor(mesFinal / 12);
+      const mesFinalNorm = ((mesFinal % 12) + 12) % 12;
+      base = new Date(anioFinal, mesFinalNorm, clampDia(anioFinal, mesFinalNorm, diaPago));
+    }
+    return ymd(base);
+  }
+
+  // mensual (default)
+  const diaObjetivo = clampDia(anio, mes, diaPago);
+  let d = new Date(anio, mes, diaObjetivo);
+  if (d <= hoy) d = new Date(anio, mes + 1, clampDia(anio, mes + 1, diaPago));
+  return ymd(d);
+}
+
+/* ============================================================
+   TIPO DE CLIENTE — mostrar/ocultar bloque recurrente
+   ============================================================ */
+function toggleTipoClienteUI() {
+  const tipo = document.getElementById('fc-tipo-cliente')?.value;
+  const bloque = document.getElementById('bloque-cliente-recurrente');
+  if (bloque) bloque.style.display = (tipo === 'recurrente') ? '' : 'none';
+  toggleYaPagoActualVisibility();
+}
+
+/**
+ * El checkbox "El cliente ya pagó el periodo actual" solo aplica cuando se
+ * está por definir un ciclo NUEVO (cliente nuevo, o que se está convirtiendo
+ * de aleatorio a recurrente). Si ya tenía un ciclo activo, se oculta porque
+ * no debe alterarse desde aquí (eso se maneja desde Ventas → Crear pago).
+ */
+function toggleYaPagoActualVisibility() {
+  const tipoEl = document.getElementById('fc-tipo-cliente');
+  const wrap = document.getElementById('wrap-ya-pago-actual');
+  if (!wrap || !tipoEl) return;
+  const esRecurrente = tipoEl.value === 'recurrente';
+  const cicloYaActivo = !!(CS.clienteActivo && CS.clienteActivo.tipo_cliente === 'recurrente' && CS.clienteActivo.fecha_proxima_pago);
+  wrap.style.display = (esRecurrente && !cicloYaActivo) ? '' : 'none';
+}
+
+function toggleYaPagoActualHint() {
+  const checked = document.getElementById('fc-ya-pago-actual')?.checked;
+  const hint = document.getElementById('ya-pago-actual-hint');
+  if (hint) {
+    hint.textContent = checked
+      ? 'Se asume que el periodo actual ya está cubierto. La próxima fecha de cobro será el siguiente ciclo.'
+      : 'Si NO ha pagado todavía, el pago quedará pendiente desde HOY y aparecerá de una vez en Ventas → Clientes con pago recurrente.';
+  }
+
+  // "¿Qué hacemos con ese dinero?" solo aplica si se marcó "Ya pagó".
+  const wrapDestino = document.getElementById('wrap-ya-pago-destino');
+  if (wrapDestino) {
+    wrapDestino.style.display = checked ? '' : 'none';
+    if (checked) {
+      // Por defecto siempre vuelve a "Agregar a Caja" (la opción más común:
+      // un cliente nuevo pagando en el momento), el usuario cambia si hace falta.
+      const radioCaja = document.querySelector('input[name="fc-ya-pago-destino"][value="caja"]');
+      if (radioCaja) radioCaja.checked = true;
+    }
+  }
+  toggleYaPagoDestino();
+}
+
+// Controla el bloque de IVA según si el dinero se va a agregar a Caja
+// ahora mismo (sí aplica, porque se registra como venta real) o si ya
+// estaba agregado de antes (no aplica, no se crea ninguna venta nueva).
+function toggleYaPagoDestino() {
+  const checked = document.getElementById('fc-ya-pago-actual')?.checked;
+  const destino = document.querySelector('input[name="fc-ya-pago-destino"]:checked')?.value || 'caja';
+  const wrapIva = document.getElementById('wrap-ya-pago-iva');
+  if (!wrapIva) return;
+
+  const mostrarIva = checked && destino === 'caja';
+  wrapIva.style.display = mostrarIva ? '' : 'none';
+
+  if (mostrarIva) {
+    // Prellenar con la configuración de impuestos del negocio (misma lógica
+    // de siempre), pero el usuario puede cambiarla para este pago puntual.
+    const ivaActivoEl = document.getElementById('fc-ya-pago-iva-activo');
+    const ivaPctEl    = document.getElementById('fc-ya-pago-iva-pct');
+    if (ivaActivoEl && ivaPctEl) {
+      ivaActivoEl.checked = !!CS.empresaConfig?.maneja_iva;
+      ivaPctEl.value = CS.empresaConfig?.porcentaje_iva ?? 15;
+      ivaPctEl.disabled = !ivaActivoEl.checked;
+    }
+  }
+}
+
+function toggleYaPagoIvaInput() {
+  const activo = document.getElementById('fc-ya-pago-iva-activo')?.checked || false;
+  const pctEl  = document.getElementById('fc-ya-pago-iva-pct');
+  if (pctEl) pctEl.disabled = !activo;
+}
+
+function toggleFrecuenciaUI() {
+  const freq = document.getElementById('fc-frecuencia-pago')?.value;
+  const wrapMes    = document.getElementById('wrap-dia-mes');
+  const wrapSemana = document.getElementById('wrap-dia-semana');
+  const wrapPersonalizado = document.getElementById('wrap-personalizado');
+  if (!wrapMes || !wrapSemana) return;
+
+  if (freq === 'personalizado') {
+    wrapPersonalizado.style.display = '';
+    const unidad = document.getElementById('fc-personalizado-unidad')?.value || 'semana';
+    const lbl  = document.getElementById('lbl-personalizado-intervalo');
+    const hint = document.getElementById('hint-personalizado');
+    if (unidad === 'semana') {
+      wrapMes.style.display = 'none';
+      wrapSemana.style.display = '';
+      if (lbl)  lbl.textContent  = 'Repetir cada (n° de semanas)';
+      if (hint) hint.textContent = 'Ej: con "4" y "Lunes", cobra cada 4 semanas ese día (cada 4 lunes).';
+    } else {
+      wrapMes.style.display = '';
+      wrapSemana.style.display = 'none';
+      if (lbl)  lbl.textContent  = 'Repetir cada (n° de meses)';
+      if (hint) hint.textContent = 'Ej: con "3", cobra cada 3 meses el día del mes indicado (trimestral). Con "6", semestral.';
+    }
+    return;
+  }
+
+  wrapPersonalizado.style.display = 'none';
+  if (freq === 'semanal') {
+    wrapMes.style.display = 'none';
+    wrapSemana.style.display = '';
+  } else {
+    wrapMes.style.display = '';
+    wrapSemana.style.display = 'none';
+  }
+}
+
+/* ============================================================
+   CALCULAR ESTADO CLIENTE (automático)
+   ============================================================ */
+function calcularEstado(cliente) {
+  const { num_compras, ultima_compra } = cliente;
+  const n   = Number(num_compras || 0);
+  const dias = diasDesde(ultima_compra);
+
+  if (n === 0)      return 'nuevo';
+  if (n >= 5)       return 'frecuente';
+  if (dias !== null && dias > 60) return 'inactivo';
+  return 'activo';
+}
+
+function estadoBadgeHtml(estado) {
+  const map = {
+    activo:    { cls:'badge-activo',    label:'Activo'    },
+    inactivo:  { cls:'badge-inactivo',  label:'Inactivo'  },
+    frecuente: { cls:'badge-frecuente', label:'Frecuente' },
+    nuevo:     { cls:'badge-nuevo',     label:'Nuevo'     },
+  };
+  const e = map[estado] || map.activo;
+  return `<span class="cli-estado-badge ${e.cls}">${e.label}</span>`;
+}
+
+function iniciales(nombre) {
+  if (!nombre) return '?';
+  const partes = nombre.trim().split(' ');
+  if (partes.length >= 2) return (partes[0][0] + partes[1][0]).toUpperCase();
+  return partes[0].slice(0,2).toUpperCase();
+}
+
+function colorAvatar(nombre) {
+  const colores = ['#5a5af4','#22c55e','#f97316','#8b5cf6','#06b6d4','#ec4899','#f59e0b','#10b981'];
+  let hash = 0;
+  for (let i = 0; i < (nombre||'').length; i++) hash = nombre.charCodeAt(i) + ((hash<<5)-hash);
+  return colores[Math.abs(hash) % colores.length];
+}
+
+/* ============================================================
+   TEMA
+   ============================================================ */
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('n360_theme', t);
+  const sun  = document.getElementById('icon-sun');
+  const moon = document.getElementById('icon-moon');
+  if (sun)  sun.style.display  = t === 'dark'  ? 'block' : 'none';
+  if (moon) moon.style.display = t === 'light' ? 'block' : 'none';
+}
+function toggleTheme() {
+  const c = document.documentElement.getAttribute('data-theme');
+  applyTheme(c === 'dark' ? 'light' : 'dark');
+}
+
+/* ============================================================
+   SIDEBAR
+   FIX: antes toggleSidebar() solo alternaba el modo "colapsado"
+   (ícono-solo) de escritorio. En pantallas móviles (≤768px) el
+   sidebar queda oculto por CSS (transform:translateX(-100%)) y
+   nada lo mostraba nunca — el menú era inaccesible en celular.
+   Ahora se detecta el viewport: en móvil abre/cierra un drawer
+   con overlay; en escritorio conserva el comportamiento
+   original de colapsar/expandir.
+   ============================================================ */
+let sidebarCollapsed = false;
+const MOBILE_BREAKPOINT = 768;
+
+function isMobileView() { return window.innerWidth <= MOBILE_BREAKPOINT; }
+
+function toggleSidebar() {
+  if (isMobileView()) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (!sidebar) return;
+    const isOpen = sidebar.classList.toggle('mobile-open');
+    if (overlay) overlay.classList.toggle('active', isOpen);
+  } else {
+    sidebarCollapsed = !sidebarCollapsed;
+    document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
+    document.getElementById('main').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+  }
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.remove('active');
+}
+
+window.addEventListener('resize', () => {
+  if (!isMobileView()) closeMobileSidebar();
+});
+
+function navigate(url) {
+  closeMobileSidebar();
+  window.location.href = url;
+}
+
+/* ============================================================
+   MODALES
+   ============================================================ */
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.add('modal-open'); document.body.style.overflow = 'hidden'; }
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.remove('modal-open'); document.body.style.overflow = ''; }
+}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+let toastTimer = null;
+function showToast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `toast toast-${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3800);
+}
+
+/* ============================================================
+   ADMIN ACCESS
+   ============================================================ */
+async function checkAdminAccess(email) {
+  try {
+    const { data } = await sb.from('administradores').select('email,activo')
+      .eq('email', email).eq('activo', true).maybeSingle();
+    if (data) {
+      const el = document.getElementById('nav-admin');
+      if (el) el.style.display = 'flex';
+    }
+  } catch { /* silencioso */ }
+}
+
+/* ============================================================
+   EMPRESA CONFIG
+   FIX: el nombre del negocio se guarda en personalizacion.html
+   dentro de configuracion_empresa.nombre_comercial. Aquí se
+   buscaba primero "nombre_negocio" (campo que no existe en esa
+   tabla), por lo que casi siempre caía al valor genérico por
+   defecto. Ahora se prioriza nombre_comercial.
+   ============================================================ */
+async function loadEmpresaConfig(userId) {
+  try {
+    const { data } = await sb.from('configuracion_empresa').select('*')
+      .eq('auth_user_id', userId).maybeSingle();
+    if (data) {
+      CS.empresaConfig = data;
+      CS.moneda = data.moneda || 'C$';
+      const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
+      const lt = document.getElementById('sidebar-logo-text');
+      if (lt) lt.textContent = bizName;
+      if (data.color_principal || data.color_primario) {
+        const col = data.color_principal || data.color_primario;
+        document.documentElement.style.setProperty('--accent', col);
+        document.documentElement.style.setProperty('--accent-soft', col + '22');
+        document.documentElement.style.setProperty('--border-focus', col);
+      }
+      if (data.logo_principal_url || data.logo_url) {
+        const li = document.querySelector('.logo-icon');
+        if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+      }
+    }
+  } catch(e) { console.warn('loadEmpresaConfig:', e); }
+}
+
+async function loadUserProfile(userId) {
+  try {
+    const { data } = await sb.from('usuarios').select('*')
+      .eq('auth_user_id', userId).maybeSingle();
+    return data;
+  } catch { return null; }
+}
+
+function renderUserInfo(user, email) {
+  if (!user) return;
+  const nombre   = user.nombre   || email?.split('@')[0] || 'Usuario';
+  const apellido = user.apellido || '';
+  // FIX: priorizar nombre_comercial de configuracion_empresa (el campo real
+  // guardado por personalizacion.html) en vez de "Mi negocio" fijo.
+  const biz      = CS.empresaConfig?.nombre_comercial || CS.empresaConfig?.nombre_negocio || user.nombre_negocio || 'Mi negocio';
+  const plan     = user.plan || 'Gratuito';
+  const initials = ((nombre[0]||'') + (apellido[0]||'')).toUpperCase();
+
+  document.getElementById('header-name').textContent   = `${nombre} ${apellido}`.trim();
+  document.getElementById('header-biz').textContent    = biz;
+  document.getElementById('header-avatar').textContent = initials || nombre[0]?.toUpperCase() || 'U';
+  document.getElementById('plan-text').textContent     = plan.charAt(0).toUpperCase() + plan.slice(1);
+}
+
+/* ============================================================
+   KPIs
+   ============================================================ */
+async function loadKPIs() {
+  try {
+    // Intentar función SQL primero (más eficiente)
+    const { data: kpiData, error } = await sb.rpc('get_clientes_kpi', { p_user_id: CS.userId });
+
+    if (!error && kpiData) {
+      CS.kpi = kpiData;
+      renderKPIs(kpiData);
+      return;
+    }
+
+    // Fallback: calcular directamente desde clientes
+    const { data: clientes } = await sb.from('clientes')
+      .select('id,nombre,total_compras,num_compras,ultima_compra,estado,created_at')
+      .eq('auth_user_id', CS.userId).eq('activo', true);
+
+    const mesStart = startOfMonthISO();
+    const ahora    = new Date();
+    const hace30   = ymd(new Date(ahora - 30*86400000));
+
+    const total    = clientes?.length || 0;
+    const activos  = (clientes||[]).filter(c => c.ultima_compra && c.ultima_compra >= hace30).length;
+    const nuevosMes= (clientes||[]).filter(c => c.created_at?.slice(0,10) >= mesStart).length;
+
+    const conCompras = (clientes||[]).filter(c => Number(c.num_compras) > 0);
+    const totalGen   = conCompras.reduce((s,c) => s + Number(c.total_compras||0), 0);
+    const totalComs  = conCompras.reduce((s,c) => s + Number(c.num_compras||0), 0);
+    const ticket     = totalComs > 0 ? totalGen / totalComs : 0;
+
+    let topCliente = '—', topMonto = 0;
+    if (conCompras.length) {
+      const top = conCompras.sort((a,b) => Number(b.total_compras) - Number(a.total_compras))[0];
+      topCliente = top.nombre;
+      topMonto   = Number(top.total_compras);
+    }
+
+    const kpi = { total_clientes: total, activos, nuevos_mes: nuevosMes,
+      top_cliente: topCliente, top_monto: topMonto,
+      total_generado: totalGen, ticket_promedio: ticket };
+
+    CS.kpi = kpi;
+    renderKPIs(kpi);
+
+  } catch(e) { console.warn('loadKPIs:', e); }
+}
+
+function renderKPIs(k) {
+  setKPIEl('kpi-total',       k.total_clientes?.toString() || '0', null);
+  setKPIEl('kpi-activos',     k.activos?.toString() || '0', null);
+  setKPIEl('kpi-nuevos',      k.nuevos_mes?.toString() || '0', null);
+  setKPIEl('kpi-top',         esc(k.top_cliente || '—'), null);
+  setKPIEl('kpi-generado',    fmt(k.total_generado || 0), null);
+  setKPIEl('kpi-ticket',      fmt(k.ticket_promedio || 0), null);
+
+  // Sub-etiquetas
+  const topSub = document.getElementById('kpi-top-sub');
+  if (topSub && k.top_monto) topSub.textContent = `${fmt(k.top_monto)} facturados`;
+}
+
+function setKPIEl(id, val, delta) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+/* ============================================================
+   CARGAR CLIENTES (tabla principal)
+   ============================================================ */
+async function loadClientes() {
+  const tbody = document.getElementById('clientes-tbody');
+  if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="8">Cargando clientes…</td></tr>';
+
+  try {
+    let q = sb.from('clientes')
+      .select('*', { count: 'exact' })
+      .eq('auth_user_id', CS.userId)
+      .eq('activo', true)
+      .order('nombre');
+
+    // Búsqueda
+    const b = CS.busqueda.trim();
+    if (b) {
+      q = q.or(`nombre.ilike.%${b}%,telefono.ilike.%${b}%,correo.ilike.%${b}%,empresa.ilike.%${b}%`);
+    }
+
+    // Filtros de estado
+    switch (CS.filtro) {
+      case 'activos':
+        q = q.eq('estado', 'activo'); break;
+      case 'inactivos':
+        q = q.eq('estado', 'inactivo'); break;
+      case 'frecuentes':
+        q = q.eq('estado', 'frecuente'); break;
+      case 'nuevos':
+        q = q.eq('estado', 'nuevo'); break;
+      case 'con-compras':
+        q = q.gt('num_compras', 0); break;
+      case 'sin-compras':
+        q = q.eq('num_compras', 0); break;
+    }
+
+    const fromR = (CS.page - 1) * CS.perPage;
+    q = q.range(fromR, fromR + CS.perPage - 1);
+
+    const { data, count, error } = await q;
+    if (error) throw error;
+
+    CS.clientes      = data || [];
+    CS.clientesTotal = count || 0;
+
+    renderTablaClientes();
+    renderPaginacion();
+    updateCountLabel();
+
+  } catch(e) {
+    console.error('loadClientes:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="empty-cell">Error al cargar clientes.</td></tr>`;
+  }
+}
+
+function renderTablaClientes() {
+  const tbody = document.getElementById('clientes-tbody');
+  if (!tbody) return;
+
+  if (!CS.clientes.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="8" class="empty-cell">
+        <div class="empty-icon">👥</div>
+        <p>${CS.busqueda ? 'Sin resultados para "' + esc(CS.busqueda) + '"' : 'Sin clientes registrados'}</p>
+        <button class="btn-primary" style="margin-top:12px" onclick="abrirModalNuevoCliente()">+ Nuevo cliente</button>
+      </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = CS.clientes.map(c => {
+    const estadoAuto  = calcularEstado(c);
+    const numCompras  = Number(c.num_compras || 0);
+    const totalGast   = Number(c.total_compras || 0);
+    const ultimaFmt   = fmtFecha(c.ultima_compra);
+    const ticket      = numCompras > 0 ? totalGast / numCompras : 0;
+    const color       = colorAvatar(c.nombre);
+    const ini         = iniciales(c.nombre);
+
+    return `
+    <tr onclick="abrirPerfil('${c.id}')" style="cursor:pointer">
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="cli-avatar-sm" style="background:${color}">${ini}</div>
+          <div>
+            <div style="font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:6px">
+              ${esc(c.nombre)}
+              ${c.tipo_cliente === 'recurrente' ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;background:var(--accent-soft);color:var(--accent)">RECURRENTE</span>` : ''}
+            </div>
+            ${c.empresa ? `<div style="font-size:11.5px;color:var(--text-muted)">${esc(c.empresa)}</div>` : ''}
+          </div>
+        </div>
+      </td>
+      <td style="color:var(--text-secondary);font-size:13px">${c.telefono ? esc(c.telefono) : '—'}</td>
+      <td style="color:var(--text-secondary);font-size:13px">${c.correo ? esc(c.correo) : '—'}</td>
+      <td style="color:var(--text-secondary);font-size:12.5px">${ultimaFmt}</td>
+      <td style="text-align:center">
+        <span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${numCompras}</span>
+      </td>
+      <td style="font-family:var(--font-mono);font-weight:700;color:var(--text-primary)">${fmt(totalGast)}</td>
+      <td>${estadoBadgeHtml(estadoAuto)}</td>
+      <td class="td-actions" onclick="event.stopPropagation()">
+        <button class="btn-icon-sm" title="Ver perfil" onclick="abrirPerfil('${c.id}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <a class="btn-icon-sm" title="Historial del cliente: créditos, pagos y compras" aria-label="Historial del cliente" href="cliente-historial.html?id=${encodeURIComponent(c.id)}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="5"/><rect x="12" y="8" width="3" height="9"/><rect x="17" y="5" width="3" height="12"/></svg>
+        </a>
+        <button class="btn-icon-sm" title="Editar" onclick="abrirEditar('${c.id}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="btn-icon-sm del" title="Eliminar" onclick="confirmarEliminar('${c.id}','${esc(c.nombre)}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPaginacion() {
+  const total = Math.ceil(CS.clientesTotal / CS.perPage);
+  const info  = document.getElementById('pag-info');
+  const prev  = document.getElementById('btn-prev');
+  const next  = document.getElementById('btn-next');
+
+  if (info) {
+    const f = Math.min((CS.page-1)*CS.perPage+1, CS.clientesTotal);
+    const t = Math.min(CS.page*CS.perPage, CS.clientesTotal);
+    info.textContent = CS.clientesTotal > 0 ? `Mostrando ${f}–${t} de ${CS.clientesTotal}` : 'Sin resultados';
+  }
+  if (prev) prev.disabled = CS.page <= 1;
+  if (next) next.disabled = CS.page >= total;
+}
+
+function updateCountLabel() {
+  const el = document.getElementById('clientes-count-label');
+  if (el) el.textContent = `${CS.clientesTotal} cliente${CS.clientesTotal !== 1 ? 's' : ''}`;
+}
+
+function paginaAnterior() { if (CS.page > 1) { CS.page--; loadClientes(); } }
+function paginaSiguiente() {
+  if (CS.page < Math.ceil(CS.clientesTotal / CS.perPage)) { CS.page++; loadClientes(); }
+}
+
+function setFiltro(f) {
+  CS.filtro = f;
+  CS.page   = 1;
+  document.querySelectorAll('.filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.f === f));
+  loadClientes();
+}
+
+let busquedaTimer = null;
+function buscarClientes() {
+  CS.busqueda = document.getElementById('cli-search')?.value || '';
+  CS.page = 1;
+  clearTimeout(busquedaTimer);
+  busquedaTimer = setTimeout(loadClientes, 320);
+}
+
+/* ============================================================
+   MODAL NUEVO / EDITAR CLIENTE
+   ============================================================ */
+function abrirModalNuevoCliente() {
+  CS.clienteActivo = null;
+  document.getElementById('modal-cliente-title').textContent = 'Nuevo Cliente';
+  limpiarFormCliente();
+  openModal('modal-cliente');
+}
+
+function abrirEditar(clienteId) {
+  const c = CS.clientes.find(x => x.id === clienteId);
+  if (!c) return;
+  CS.clienteActivo = c;
+  document.getElementById('modal-cliente-title').textContent = 'Editar Cliente';
+  rellenarFormCliente(c);
+  openModal('modal-cliente');
+}
+
+// ============================================================
+// CONTACTOS ASOCIADOS -- personas de contacto dentro de una misma
+// empresa/cliente. Se guardan como una lista en el campo 'contactos'
+// del cliente, no como registros aparte -- asi no hace falta ninguna
+// tabla nueva ni cambia nada de como funciona el resto del modulo.
+// ============================================================
+let CONTACTOS_CLIENTE = [];
+
+function renderContactosCliente() {
+  const wrap = document.getElementById('fc-contactos-lista');
+  if (!wrap) return;
+  if (!CONTACTOS_CLIENTE.length) {
+    wrap.innerHTML = `<div style="font-size:12px;color:var(--text-muted);font-style:italic">Sin contactos agregados</div>`;
+    return;
+  }
+  wrap.innerHTML = CONTACTOS_CLIENTE.map((c, i) => `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:6px;align-items:center">
+      <input type="text" placeholder="Nombre" value="${escAttr(c.nombre || '')}"
+        oninput="actualizarContactoCliente(${i},'nombre',this.value)"/>
+      <input type="text" placeholder="Cargo" value="${escAttr(c.cargo || '')}"
+        oninput="actualizarContactoCliente(${i},'cargo',this.value)"/>
+      <input type="text" placeholder="Teléfono o correo" value="${escAttr(c.contacto || '')}"
+        oninput="actualizarContactoCliente(${i},'contacto',this.value)"/>
+      <button type="button" class="btn-icon" title="Quitar este contacto"
+        onclick="quitarContactoCliente(${i})" style="color:var(--danger)">✕</button>
+    </div>
+  `).join('');
+}
+
+function agregarContactoCliente() {
+  CONTACTOS_CLIENTE.push({ nombre: '', cargo: '', contacto: '' });
+  renderContactosCliente();
+}
+function actualizarContactoCliente(idx, campo, valor) {
+  if (!CONTACTOS_CLIENTE[idx]) return;
+  CONTACTOS_CLIENTE[idx][campo] = valor;
+}
+function quitarContactoCliente(idx) {
+  CONTACTOS_CLIENTE.splice(idx, 1);
+  renderContactosCliente();
+}
+function escAttr(s) {
+  return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function limpiarFormCliente() {
+  ['fc-nombre','fc-telefono','fc-correo','fc-empresa','fc-direccion','fc-observaciones',
+   'fc-monto-recurrente','fc-dia-mes',
+   'fc-ruc','fc-direccion-factura','fc-fecha-aniversario'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  CONTACTOS_CLIENTE = [];
+  renderContactosCliente();
+  const est = document.getElementById('fc-estado');
+  if (est) est.value = 'activo';
+
+  const tipoEl = document.getElementById('fc-tipo-cliente');
+  if (tipoEl) tipoEl.value = 'aleatorio';
+  const freqEl = document.getElementById('fc-frecuencia-pago');
+  if (freqEl) freqEl.value = 'mensual';
+  const diaSemEl = document.getElementById('fc-dia-semana');
+  if (diaSemEl) diaSemEl.value = '1';
+  const persUnidadEl = document.getElementById('fc-personalizado-unidad');
+  if (persUnidadEl) persUnidadEl.value = 'semana';
+  const persIntervaloEl = document.getElementById('fc-personalizado-intervalo');
+  if (persIntervaloEl) persIntervaloEl.value = '4';
+  const fechaInicioEl = document.getElementById('fc-fecha-inicio-ciclo');
+  if (fechaInicioEl) fechaInicioEl.value = '';
+  const yaPagoEl = document.getElementById('fc-ya-pago-actual');
+  if (yaPagoEl) yaPagoEl.checked = false;
+  toggleYaPagoActualHint();
+  toggleTipoClienteUI();
+  toggleFrecuenciaUI();
+}
+
+function rellenarFormCliente(c) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  set('fc-nombre',       c.nombre);
+  set('fc-telefono',     c.telefono);
+  set('fc-correo',       c.correo);
+  set('fc-empresa',      c.empresa);
+  set('fc-direccion',    c.direccion);
+  set('fc-observaciones',c.observaciones);
+  set('fc-ruc',                c.ruc);
+  set('fc-direccion-factura',  c.direccion_factura);
+  set('fc-fecha-aniversario',  c.fecha_aniversario);
+  CONTACTOS_CLIENTE = Array.isArray(c.contactos) ? [...c.contactos] : [];
+  renderContactosCliente();
+  const est = document.getElementById('fc-estado');
+  if (est) est.value = c.estado || 'activo';
+
+  const tipoEl = document.getElementById('fc-tipo-cliente');
+  if (tipoEl) tipoEl.value = (c.tipo_cliente === 'recurrente') ? 'recurrente' : 'aleatorio';
+
+  const freq = c.frecuencia_pago || 'mensual';
+  const freqEl = document.getElementById('fc-frecuencia-pago');
+  if (freqEl) freqEl.value = freq;
+
+  set('fc-monto-recurrente', c.monto_recurrente);
+
+  if (freq === 'personalizado') {
+    const unidad = c.frecuencia_personalizada_unidad || 'semana';
+    const unidadEl = document.getElementById('fc-personalizado-unidad');
+    if (unidadEl) unidadEl.value = unidad;
+    set('fc-personalizado-intervalo', c.frecuencia_personalizada_intervalo || 4);
+    if (unidad === 'semana') {
+      const diaSemEl = document.getElementById('fc-dia-semana');
+      if (diaSemEl) diaSemEl.value = (c.dia_pago ?? 1).toString();
+    } else {
+      set('fc-dia-mes', c.dia_pago || '');
+    }
+  } else if (freq === 'semanal') {
+    const diaSemEl = document.getElementById('fc-dia-semana');
+    if (diaSemEl) diaSemEl.value = (c.dia_pago ?? 1).toString();
+  } else {
+    set('fc-dia-mes', c.dia_pago || '');
+  }
+
+  const yaPagoEl = document.getElementById('fc-ya-pago-actual');
+  if (yaPagoEl) yaPagoEl.checked = false;
+  const fechaInicioElEdit = document.getElementById('fc-fecha-inicio-ciclo');
+  if (fechaInicioElEdit) fechaInicioElEdit.value = '';
+  toggleYaPagoActualHint();
+  toggleTipoClienteUI();
+  toggleFrecuenciaUI();
+}
+
+async function guardarCliente() {
+  const nombre = document.getElementById('fc-nombre')?.value.trim();
+  if (!nombre) { showToast('El nombre es obligatorio', 'error'); return; }
+
+  const tipoCliente = document.getElementById('fc-tipo-cliente')?.value || 'aleatorio';
+  const esRecurrente = tipoCliente === 'recurrente';
+
+  const payload = {
+    auth_user_id: CS.userId,
+    nombre,
+    telefono:      document.getElementById('fc-telefono')?.value.trim() || null,
+    correo:        document.getElementById('fc-correo')?.value.trim()   || null,
+    empresa:       document.getElementById('fc-empresa')?.value.trim()  || null,
+    direccion:     document.getElementById('fc-direccion')?.value.trim()|| null,
+    observaciones: document.getElementById('fc-observaciones')?.value.trim() || null,
+    ruc:               document.getElementById('fc-ruc')?.value.trim() || null,
+    direccion_factura: document.getElementById('fc-direccion-factura')?.value.trim() || null,
+    fecha_aniversario: document.getElementById('fc-fecha-aniversario')?.value || null,
+    contactos:         (CONTACTOS_CLIENTE || []).filter(c => (c.nombre || '').trim()),
+    estado:        document.getElementById('fc-estado')?.value || 'activo',
+    activo:        true,
+    tipo_cliente:  tipoCliente,
+  };
+
+  // Si se marca "Ya pagó" en un ciclo nuevo, además de anotar la fecha,
+  // este pago debe registrarse como venta real (Caja, Reportes, Impuestos).
+  // Se captura aquí y se ejecuta DESPUÉS de guardar el cliente exitosamente.
+  let datosPagoInicial = null;
+
+  if (esRecurrente) {
+    const freq   = document.getElementById('fc-frecuencia-pago')?.value || 'mensual';
+    const monto  = parseFloat(document.getElementById('fc-monto-recurrente')?.value || 0);
+
+    let personalizadoUnidad = null, personalizadoIntervalo = null;
+    let diaPago;
+    if (freq === 'personalizado') {
+      personalizadoUnidad = document.getElementById('fc-personalizado-unidad')?.value || 'semana';
+      personalizadoIntervalo = parseInt(document.getElementById('fc-personalizado-intervalo')?.value, 10);
+      if (!(personalizadoIntervalo >= 1)) {
+        showToast('Indica cada cuántas semanas o meses se repite (mínimo 1)', 'error');
+        return;
+      }
+      diaPago = (personalizadoUnidad === 'semana')
+        ? parseInt(document.getElementById('fc-dia-semana')?.value ?? '1', 10)
+        : parseInt(document.getElementById('fc-dia-mes')?.value || '1', 10);
+    } else {
+      diaPago = (freq === 'semanal')
+        ? parseInt(document.getElementById('fc-dia-semana')?.value ?? '1', 10)
+        : parseInt(document.getElementById('fc-dia-mes')?.value || '1', 10);
+    }
+
+    payload.frecuencia_pago  = freq;
+    payload.monto_recurrente = monto || 0;
+    payload.dia_pago         = diaPago;
+    payload.frecuencia_personalizada_unidad     = personalizadoUnidad;
+    payload.frecuencia_personalizada_intervalo  = personalizadoIntervalo;
+
+    const personalizado = { unidad: personalizadoUnidad, intervalo: personalizadoIntervalo };
+    const fechaInicioCiclo = document.getElementById('fc-fecha-inicio-ciclo')?.value || null;
+
+    // Solo se define la primera "próxima fecha de pago" si el cliente no
+    // tenía ninguna todavía (cliente nuevo, o recién convertido a recurrente).
+    // Si ya tenía un ciclo activo, NO se pisa para no romper el pago en curso.
+    const yaTeniaFecha = CS.clienteActivo?.fecha_proxima_pago && CS.clienteActivo?.tipo_cliente === 'recurrente';
+    if (!yaTeniaFecha) {
+      const yaPagoPeriodoActual = document.getElementById('fc-ya-pago-actual')?.checked || false;
+      if (yaPagoPeriodoActual) {
+        // Ya pagó este periodo: la próxima fecha de cobro es el siguiente ciclo,
+        // contado desde la fecha de inicio indicada (o desde hoy si no se puso ninguna).
+        payload.fecha_proxima_pago = calcularPrimeraFechaProxima(freq, diaPago, personalizado, fechaInicioCiclo);
+        payload.fecha_ultimo_pago  = fechaInicioCiclo || todayISO();
+
+        // ¿Ese dinero hay que agregarlo a Caja ahora, o ya estaba agregado?
+        // Si ya estaba agregado (cliente existente), NO se crea ninguna
+        // venta nueva — solo se actualizan las fechas de arriba.
+        const destinoDinero = document.querySelector('input[name="fc-ya-pago-destino"]:checked')?.value || 'caja';
+        if (destinoDinero === 'caja' && monto > 0) {
+          const ivaActivo = document.getElementById('fc-ya-pago-iva-activo')?.checked || false;
+          let ivaPct = parseFloat(document.getElementById('fc-ya-pago-iva-pct')?.value);
+          if (isNaN(ivaPct) || ivaPct < 0) ivaPct = 0;
+          if (ivaPct > 100) ivaPct = 100;
+          datosPagoInicial = { monto, ivaActivo, ivaPct: ivaActivo ? ivaPct : 0 };
+        }
+      } else {
+        // No ha pagado todavía: el pago queda pendiente desde la fecha de
+        // inicio indicada (cliente existente) o desde HOY (cliente nuevo),
+        // y aparece de inmediato en Ventas → Clientes con pago recurrente.
+        payload.fecha_proxima_pago = fechaInicioCiclo || todayISO();
+        payload.fecha_ultimo_pago  = null;
+      }
+      payload.saldo_pendiente = 0;
+    }
+  } else {
+    // Cliente aleatorio: limpiar configuración recurrente
+    payload.frecuencia_pago    = null;
+    payload.monto_recurrente   = 0;
+    payload.dia_pago           = null;
+    payload.frecuencia_personalizada_unidad    = null;
+    payload.frecuencia_personalizada_intervalo = null;
+    payload.fecha_proxima_pago = null;
+    payload.saldo_pendiente    = 0;
+  }
+
+  const btn = document.getElementById('btn-guardar-cliente');
+  if (btn) btn.disabled = true;
+
+  try {
+    let clienteId;
+    if (CS.clienteActivo) {
+      // EDITAR
+      clienteId = CS.clienteActivo.id;
+      const { error } = await sb.from('clientes')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', clienteId)
+        .eq('auth_user_id', CS.userId);
+      if (error) throw error;
+      showToast('Cliente actualizado', 'success');
+    } else {
+      // CREAR — verificar duplicado por teléfono o correo
+      if (payload.telefono || payload.correo) {
+        let dupQ = sb.from('clientes').select('id,nombre')
+          .eq('auth_user_id', CS.userId).eq('activo', true);
+        if (payload.telefono) dupQ = dupQ.eq('telefono', payload.telefono);
+        const { data: dup } = await dupQ.maybeSingle();
+        if (dup) {
+          showToast(`Ya existe "${dup.nombre}" con ese teléfono`, 'warning');
+          if (btn) btn.disabled = false;
+          return;
+        }
+      }
+      // Aviso (no bloqueo): ya hay un cliente activo con el mismo nombre.
+      // Evita crear al mismo cliente varias veces por descuido.
+      try {
+        const { data: mismoNombre } = await sb.from('clientes').select('id,nombre')
+          .eq('auth_user_id', CS.userId).eq('activo', true)
+          .ilike('nombre', nombre.replace(/[\\%_]/g, '\\$&')).limit(1);
+        if (mismoNombre && mismoNombre.length &&
+            !confirm(`Ya existe un cliente llamado "${mismoNombre[0].nombre}".\n\n¿Quieres crear otro con el mismo nombre de todos modos?`)) {
+          if (btn) btn.disabled = false;
+          return;
+        }
+      } catch (eNom) { console.warn('Chequeo de nombre repetido:', eNom); }
+      const { data: nuevoCliente, error } = await sb.from('clientes').insert(payload).select('id').single();
+      if (error) throw error;
+      clienteId = nuevoCliente.id;
+      showToast('Cliente creado', 'success');
+    }
+
+    // Registrar el pago inicial ("Ya pagó") como venta real, para que
+    // se refleje en Ventas, Caja, Reportes e Impuestos. Si esto llegara
+    // a fallar, el cliente YA quedó guardado — solo se avisa aparte,
+    // nunca se revierte ni se bloquea el guardado del cliente.
+    if (datosPagoInicial && clienteId) {
+      await registrarPagoInicialRecurrente({
+        clienteId,
+        clienteNombre: nombre,
+        monto: datosPagoInicial.monto,
+        ivaActivo: datosPagoInicial.ivaActivo,
+        ivaPct: datosPagoInicial.ivaPct,
+      });
+    }
+
+    closeModal('modal-cliente');
+    await Promise.allSettled([loadClientes(), loadKPIs()]);
+
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ============================================================
+   REGISTRAR EL PAGO INICIAL ("YA PAGÓ") COMO VENTA REAL
+   Mismo patrón exacto que confirmarPagoRecurrente() en ventas.js:
+   crea venta + detalle + movimiento de caja + movimiento de
+   impuestos (si aplica) + historial de pagos_clientes_recurrentes,
+   y actualiza el contador de compras del cliente.
+   ============================================================ */
+async function registrarPagoInicialRecurrente({ clienteId, clienteNombre, monto, ivaActivo, ivaPct }) {
+  if (!monto || monto <= 0) return;
+  try {
+    ivaActivo = !!ivaActivo;
+    ivaPct    = ivaActivo ? (Number(ivaPct) || 0) : 0;
+    const montoIva  = ivaActivo ? +(monto * (ivaPct / 100)).toFixed(2) : 0;
+    const total     = monto + montoIva;
+
+    let numeroVenta;
+    try {
+      const { data: nv } = await sb.rpc('generar_numero_venta', { p_user_id: CS.userId });
+      numeroVenta = nv || `V-${Date.now()}`;
+    } catch { numeroVenta = `V-${Date.now()}`; }
+
+    const concepto = `Pago recurrente completo — ${clienteNombre} (registrado al guardar cliente)`;
+
+    const ventaPayload = {
+      auth_user_id:       CS.userId,
+      numero_venta:       numeroVenta,
+      cliente_id:         clienteId,
+      cliente_nombre:     clienteNombre,
+      fecha:              todayISO(),
+      subtotal:           monto,
+      descuento:          0,
+      impuesto:           montoIva,
+      total:              total,
+      costo_total:        0,
+      metodo_pago_nombre: 'Efectivo',
+      categoria:          'Pago recurrente',
+      estado:             'completada',
+      observaciones:      'Pago del periodo actual, cobrado antes de registrar/activar al cliente en el sistema.',
+      creado_por_nombre:  obtenerNombrePerfilActivo(),
+    };
+    const ventaPayloadConIva = { ...ventaPayload, iva_activo: ivaActivo, iva_porcentaje: ivaActivo ? ivaPct : 0 };
+
+    let ventaNueva, errVenta;
+    ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayloadConIva).select('id').single());
+    if (errVenta) {
+      ({ data: ventaNueva, error: errVenta } = await sb.from('ventas').insert(ventaPayload).select('id').single());
+    }
+    if (errVenta) throw errVenta;
+    const ventaId = ventaNueva.id;
+
+    await sb.from('venta_detalles').insert({
+      auth_user_id:    CS.userId,
+      venta_id:        ventaId,
+      producto_nombre: concepto,
+      tipo_item:       'servicio',
+      cantidad:        1,
+      precio:          monto,
+      costo:           0,
+      descuento:       0,
+      subtotal:        monto,
+      ganancia:        monto,
+    });
+
+    // Caja — igual que una venta normal: entra el monto neto de IVA
+    try {
+      const { data: ultMov } = await sb.from('movimientos_financieros')
+        .select('saldo_resultante').eq('auth_user_id', CS.userId).eq('estado', 'completado')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const saldoAnt  = ultMov ? Number(ultMov.saldo_resultante) : 0;
+      const montoCaja = total - montoIva;
+      const saldoRes  = saldoAnt + montoCaja;
+      const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
+        auth_user_id:       CS.userId,
+        tipo_flujo:         'INGRESO',
+        tipo_movimiento:    'COBRO',
+        concepto:           `${concepto} (${numeroVenta})`,
+        monto:              montoCaja,
+        saldo_anterior:     saldoAnt,
+        saldo_resultante:   saldoRes,
+        metodo_pago_nombre: 'Efectivo',
+        referencia_tipo:    'venta',
+        referencia_id:      ventaId,
+        fecha:              todayISO(),
+      }).select('id').single();
+      if (movNuevo?.id) await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
+    } catch(eCaja) {
+      console.warn('No se pudo registrar en caja:', eCaja);
+    }
+
+    // Impuestos — aparte, NO se suma a Caja
+    if (montoIva > 0) {
+      try {
+        const { data: ultMov } = await sb.from('movimientos_impuestos')
+          .select('saldo_resultante').eq('auth_user_id', CS.userId)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
+        const saldoRes = saldoAnt + montoIva;
+        await sb.from('movimientos_impuestos').insert({
+          auth_user_id:        CS.userId,
+          tipo_movimiento:     'IVA_VENTA',
+          concepto:            `IVA de venta ${numeroVenta}`,
+          monto:               montoIva,
+          saldo_anterior:      saldoAnt,
+          saldo_resultante:    saldoRes,
+          referencia_venta_id: ventaId,
+          fecha:               todayISO(),
+        });
+      } catch(eImp) {
+        console.warn('No se pudo registrar el IVA:', eImp);
+      }
+    }
+
+    // Contador de compras del cliente (se incrementa, nunca se pisa)
+    try {
+      const { data: clienteActual } = await sb.from('clientes')
+        .select('total_compras,num_compras').eq('id', clienteId).maybeSingle();
+      await sb.from('clientes').update({
+        total_compras: (Number(clienteActual?.total_compras) || 0) + total,
+        num_compras:   (Number(clienteActual?.num_compras)   || 0) + 1,
+      }).eq('id', clienteId).eq('auth_user_id', CS.userId);
+    } catch(eCliente) {
+      console.warn('No se pudo actualizar el contador de compras:', eCliente);
+    }
+
+    // Historial de auditoría del pago (igual que en Ventas → pago recurrente)
+    await sb.from('pagos_clientes_recurrentes').insert({
+      auth_user_id:       CS.userId,
+      cliente_id:         clienteId,
+      venta_id:           ventaId,
+      periodo_fecha:      todayISO(),
+      monto_periodo:      monto,
+      monto_pagado:       monto,
+      saldo_restante:     0,
+      tipo_pago:          'completo',
+      iva_activo:         ivaActivo,
+      iva_porcentaje:     ivaActivo ? ivaPct : 0,
+      iva_monto:          montoIva,
+      metodo_pago_nombre: 'Efectivo',
+      fecha_pago:         todayISO(),
+    });
+
+    showToast(`✅ Pago inicial registrado como venta — ${fmt(total)}`, 'success');
+
+  } catch(e) {
+    console.error('registrarPagoInicialRecurrente:', e);
+    showToast('El cliente se guardó, pero no se pudo registrar el pago inicial como venta: ' + (e.message || ''), 'error');
+  }
+}
+
+/* ============================================================
+   PERFIL COMPLETO DEL CLIENTE
+   ============================================================ */
+async function abrirPerfil(clienteId) {
+  const c = CS.clientes.find(x => x.id === clienteId);
+  if (!c) {
+    // Puede venir de Top Clientes, buscar directamente
+    const { data } = await sb.from('clientes').select('*')
+      .eq('id', clienteId).eq('auth_user_id', CS.userId).maybeSingle();
+    if (!data) return;
+    CS.clienteActivo = data;
+  } else {
+    CS.clienteActivo = c;
+  }
+
+  const cl = CS.clienteActivo;
+  const color = colorAvatar(cl.nombre);
+  const ini   = iniciales(cl.nombre);
+  const estadoAuto = calcularEstado(cl);
+
+  // Header del perfil
+  document.getElementById('perfil-nombre').textContent  = cl.nombre;
+  document.getElementById('perfil-empresa').textContent = cl.empresa || '';
+  document.getElementById('perfil-estado-badge').innerHTML = estadoBadgeHtml(estadoAuto);
+  document.getElementById('perfil-avatar').textContent  = ini;
+  document.getElementById('perfil-avatar').style.background = color;
+  const btnHist = document.getElementById('perfil-btn-historial');
+  if (btnHist) btnHist.href = 'cliente-historial.html?id=' + encodeURIComponent(cl.id);
+
+  // Info general
+  setPerfilField('perfil-telefono', cl.telefono);
+  setPerfilField('perfil-correo',   cl.correo);
+  setPerfilField('perfil-direccion',cl.direccion);
+  setPerfilField('perfil-empresa-val', cl.empresa);
+  setPerfilField('perfil-observaciones', cl.observaciones);
+  setPerfilField('perfil-creado',   fmtFecha(cl.created_at));
+  setPerfilField('perfil-ruc', cl.ruc);
+  setPerfilField('perfil-aniversario', cl.fecha_aniversario ? fmtFecha(cl.fecha_aniversario) : null);
+  setPerfilField('perfil-direccion-factura', cl.direccion_factura);
+  const contactos = Array.isArray(cl.contactos) ? cl.contactos.filter(c => (c.nombre||'').trim()) : [];
+  setPerfilField('perfil-contactos', contactos.length
+    ? contactos.map(c => `${c.nombre}${c.cargo ? ' (' + c.cargo + ')' : ''}${c.contacto ? ' — ' + c.contacto : ''}`).join(' · ')
+    : null);
+
+  // Estadísticas (del campo calculado, actualizar desde ventas siempre)
+  await cargarStatsCliente(cl.id);
+
+  // Puntos del programa de fidelidad (solo si el negocio lo activo)
+  await cargarPuntosCliente(cl.id);
+
+  // Historial de ventas
+  await cargarHistorialVentas(cl.id);
+  await cargarInteraccionesCliente(cl.id);
+
+  openModal('modal-perfil');
+}
+
+// Saldo de puntos en la ficha. Con el programa apagado (el caso de
+// todos los negocios que no lo activaron) no se muestra ni se consulta nada.
+async function cargarPuntosCliente(clienteId) {
+  const card = document.getElementById('perfil-stat-puntos-card');
+  if (!card) return;
+  card.style.display = 'none';
+  if (CS.empresaConfig?.usa_puntos !== true) return;
+  try {
+    const { data } = await sb.from('puntos_saldos').select('saldo')
+      .eq('auth_user_id', CS.userId).eq('cliente_id', clienteId).maybeSingle();
+    document.getElementById('perfil-stat-puntos').textContent = Number(data?.saldo || 0).toLocaleString('es-NI');
+    card.style.display = '';
+  } catch (e) { console.warn('cargarPuntosCliente:', e); }
+}
+
+function setPerfilField(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val || '—';
+}
+
+async function cargarStatsCliente(clienteId) {
+  try {
+    // Calcular SIEMPRE desde ventas reales (datos frescos, sin depender del campo cacheado)
+    const { data: ventas } = await sb.from('ventas')
+      .select('id,total,fecha,estado')
+      .eq('cliente_id', clienteId)
+      .eq('auth_user_id', CS.userId)
+      .eq('estado', 'completada')
+      .order('fecha', { ascending: false });
+
+    const arrV       = ventas || [];
+    const totalGast  = arrV.reduce((s,v) => s + Number(v.total), 0);
+    const numComp    = arrV.length;
+    const ticket     = numComp > 0 ? totalGast / numComp : 0;
+    const ultimaComp = arrV.length ? arrV[0].fecha : null;
+    const primeraComp= arrV.length ? arrV[arrV.length-1].fecha : null;
+
+    setPerfilField('perfil-stat-compras',    numComp.toString());
+    setPerfilField('perfil-stat-total',      fmt(totalGast));
+    setPerfilField('perfil-stat-ticket',     fmt(ticket));
+    setPerfilField('perfil-stat-ultima',     fmtFecha(ultimaComp));
+    setPerfilField('perfil-stat-primera',    fmtFecha(primeraComp));
+    setPerfilField('perfil-stat-num-ventas', numComp.toString());
+
+    // Actualizar campos en BD en segundo plano
+    sb.from('clientes').update({
+      total_compras:  totalGast,
+      num_compras:    numComp,
+      ultima_compra:  ultimaComp,
+      primera_compra: primeraComp,
+    }).eq('id', clienteId).eq('auth_user_id', CS.userId).then(() => {});
+
+  } catch(e) { console.warn('cargarStatsCliente:', e); }
+}
+
+// ============================================================
+// INTERACCIONES (CRM) -- registro de llamadas, visitas, mensajes y
+// reuniones con cada cliente. Es lo que convierte el modulo de un
+// directorio de contactos en un CRM real: queda constancia de CADA
+// contacto con el cliente, no solo de sus compras.
+// ============================================================
+const TIPOS_INTERACCION = {
+  llamada:    { label: 'Llamada',            icono: '📞', color: '#2563eb' },
+  visita:     { label: 'Visita',             icono: '🚗', color: '#7c3aed' },
+  reunion:    { label: 'Reunión',            icono: '🤝', color: '#0891b2' },
+  mensaje:    { label: 'Mensaje / WhatsApp', icono: '💬', color: '#16a34a' },
+  correo:     { label: 'Correo',             icono: '✉️', color: '#64748b' },
+  cotizacion: { label: 'Cotización enviada', icono: '📄', color: '#ca8a04' },
+  reclamo:    { label: 'Reclamo',            icono: '⚠️', color: '#dc2626' },
+  otro:       { label: 'Otro',               icono: '•',  color: '#71717a' },
+};
+
+async function cargarInteraccionesCliente(clienteId) {
+  const wrap = document.getElementById('interacciones-lista');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="font-size:12.5px;color:var(--text-muted);font-style:italic;padding:8px 0">Cargando…</div>`;
+  try {
+    const { data, error } = await sb.from('cliente_interacciones')
+      .select('*')
+      .eq('cliente_id', clienteId)
+      .eq('auth_user_id', CS.userId)
+      .order('fecha', { ascending: false });
+    if (error) throw error;
+    CS.interaccionesCliente = data || [];
+    renderInteraccionesCliente();
+  } catch (e) {
+    console.error('cargarInteraccionesCliente:', e);
+    wrap.innerHTML = `<div style="font-size:12.5px;color:var(--danger);padding:8px 0">No se pudieron cargar las interacciones</div>`;
+  }
+}
+
+function renderInteraccionesCliente() {
+  const wrap = document.getElementById('interacciones-lista');
+  if (!wrap) return;
+  const lista = CS.interaccionesCliente || [];
+  if (!lista.length) {
+    wrap.innerHTML = `<div style="font-size:12.5px;color:var(--text-muted);font-style:italic;padding:10px 0">Sin interacciones registradas todavía. Usa el botón de arriba para registrar la primera.</div>`;
+    return;
+  }
+  wrap.innerHTML = lista.map(i => {
+    const t = TIPOS_INTERACCION[i.tipo] || TIPOS_INTERACCION.otro;
+    return `
+      <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${t.color}22;display:flex;align-items:center;justify-content:center;font-size:13px">${t.icono}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <span style="font-size:12.5px;font-weight:700;color:${t.color}">${t.label}</span>
+            <span style="font-size:11.5px;color:var(--text-muted)">${fmtFechaHora(i.fecha)}</span>
+            ${i.registrado_por ? `<span style="font-size:11px;color:var(--text-muted)">· ${escHtmlCli(i.registrado_por)}</span>` : ''}
+          </div>
+          ${i.titulo ? `<div style="font-size:13px;font-weight:600;margin-top:2px">${escHtmlCli(i.titulo)}</div>` : ''}
+          ${i.descripcion ? `<div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;white-space:pre-wrap">${escHtmlCli(i.descripcion)}</div>` : ''}
+        </div>
+        <button class="btn-icon" title="Eliminar esta interacción" onclick="eliminarInteraccion('${i.id}')" style="flex-shrink:0;color:var(--danger)">✕</button>
+      </div>`;
+  }).join('');
+}
+
+function abrirModalInteraccion() {
+  if (!CS.clienteActivo?.id) { showToast('Abre un cliente primero', 'error'); return; }
+  document.getElementById('fi-tipo').value = 'llamada';
+  // Prellenar con la fecha y hora de ahora mismo, en formato local
+  const ahora = new Date();
+  const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  document.getElementById('fi-fecha').value = local;
+  document.getElementById('fi-titulo').value = '';
+  document.getElementById('fi-descripcion').value = '';
+  document.getElementById('fi-registrado-por').value = '';
+  document.getElementById('fi-error').textContent = '';
+  openModal('modal-interaccion');
+}
+
+async function guardarInteraccion() {
+  const btn = document.getElementById('fi-btn-guardar');
+  const error = document.getElementById('fi-error');
+  error.textContent = '';
+
+  const clienteId = CS.clienteActivo?.id;
+  if (!clienteId) { error.textContent = 'No hay un cliente seleccionado'; return; }
+
+  const fechaValor = document.getElementById('fi-fecha').value;
+  const payload = {
+    auth_user_id: CS.userId,
+    cliente_id: clienteId,
+    tipo: document.getElementById('fi-tipo').value || 'otro',
+    fecha: fechaValor ? new Date(fechaValor).toISOString() : new Date().toISOString(),
+    titulo: document.getElementById('fi-titulo').value.trim() || null,
+    descripcion: document.getElementById('fi-descripcion').value.trim() || null,
+    registrado_por: document.getElementById('fi-registrado-por').value.trim() || null,
+  };
+
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const { error: errIns } = await sb.from('cliente_interacciones').insert(payload);
+    if (errIns) throw errIns;
+    closeModal('modal-interaccion');
+    showToast('Interacción registrada');
+    await cargarInteraccionesCliente(clienteId);
+  } catch (e) {
+    console.error('guardarInteraccion:', e);
+    error.textContent = 'No se pudo guardar: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Guardar';
+  }
+}
+
+async function eliminarInteraccion(id) {
+  if (!confirm('¿Eliminar esta interacción del historial?')) return;
+  try {
+    const { error } = await sb.from('cliente_interacciones')
+      .delete().eq('id', id).eq('auth_user_id', CS.userId);
+    if (error) throw error;
+    showToast('Interacción eliminada');
+    if (CS.clienteActivo?.id) await cargarInteraccionesCliente(CS.clienteActivo.id);
+  } catch (e) {
+    console.error('eliminarInteraccion:', e);
+    showToast('No se pudo eliminar', 'error');
+  }
+}
+
+function fmtFechaHora(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('es-NI', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  } catch (e) { return String(iso); }
+}
+function escHtmlCli(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function cargarHistorialVentas(clienteId) {
+  CS.ventasCliente = [];
+  const tbody = document.getElementById('historial-tbody');
+  if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="5">Cargando historial…</td></tr>';
+
+  try {
+    const { data } = await sb.from('ventas')
+      .select('id,numero_venta,fecha,metodo_pago_nombre,total,estado')
+      .eq('cliente_id', clienteId)
+      .eq('auth_user_id', CS.userId)
+      .order('fecha', { ascending: false })
+      .limit(50);
+
+    CS.ventasCliente = data || [];
+
+    if (!tbody) return;
+
+    if (!CS.ventasCliente.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">
+        <div class="empty-icon">🧾</div>
+        <p>Sin ventas registradas</p>
+      </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = CS.ventasCliente.map(v => {
+      const estadoCls = {
+        completada:'estado-completada', anulada:'estado-anulada', devuelta:'estado-devuelta'
+      }[v.estado] || 'estado-completada';
+      return `
+      <tr style="cursor:pointer" onclick="verDetalleVentaPerfil('${v.id}')">
+        <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:12px">${esc(v.numero_venta)}</span></td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${fmtFecha(v.fecha)}</td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${esc(v.metodo_pago_nombre || '—')}</td>
+        <td style="font-family:var(--font-mono);font-weight:700">${fmt(v.total)}</td>
+        <td><span class="estado-badge ${estadoCls}">${v.estado}</span></td>
+      </tr>`;
+    }).join('');
+
+  } catch(e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Error al cargar historial.</td></tr>`;
+  }
+}
+
+/* ============================================================
+   DETALLE DE VENTA DESDE PERFIL
+   Reutiliza la misma data de ventas. NO duplica.
+   ============================================================ */
+async function verDetalleVentaPerfil(ventaId) {
+  const venta = CS.ventasCliente.find(v => v.id === ventaId);
+  if (!venta) return;
+
+  CS.ventaDetalleActiva = venta;
+
+  document.getElementById('vdet-title').textContent    = `Venta ${venta.numero_venta}`;
+  document.getElementById('vdet-subtitle').textContent = fmtFecha(venta.fecha);
+
+  const body = document.getElementById('vdet-body');
+  body.innerHTML = '<p style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</p>';
+
+  openModal('modal-venta-detalle');
+
+  try {
+    // Cargar detalle completo y detalles de items
+    const [ventaFull, items] = await Promise.all([
+      sb.from('ventas').select('*').eq('id', ventaId).eq('auth_user_id', CS.userId).maybeSingle(),
+      sb.from('venta_detalles').select('*').eq('venta_id', ventaId).eq('auth_user_id', CS.userId),
+    ]);
+
+    const v = ventaFull.data;
+    const its = items.data || [];
+    const estadoCls = {
+      completada:'estado-completada', anulada:'estado-anulada', devuelta:'estado-devuelta'
+    }[v.estado] || 'estado-completada';
+
+    body.innerHTML = `
+      <div class="detalle-grid">
+        <div class="detalle-item">
+          <div class="detalle-label">Número</div>
+          <div class="detalle-value" style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(v.numero_venta)}</div>
+        </div>
+        <div class="detalle-item">
+          <div class="detalle-label">Estado</div>
+          <div class="detalle-value"><span class="estado-badge ${estadoCls}">${v.estado}</span></div>
+        </div>
+        <div class="detalle-item">
+          <div class="detalle-label">Fecha</div>
+          <div class="detalle-value">${fmtFecha(v.fecha)}</div>
+        </div>
+        <div class="detalle-item">
+          <div class="detalle-label">Método de pago</div>
+          <div class="detalle-value">${esc(v.metodo_pago_nombre || '—')}</div>
+        </div>
+        ${v.observaciones ? `
+        <div class="detalle-item full">
+          <div class="detalle-label">Observaciones</div>
+          <div class="detalle-value">${esc(v.observaciones)}</div>
+        </div>` : ''}
+        <div class="detalle-divider"></div>
+        <div class="detalle-item full">
+          <div class="detalle-label">Productos y servicios</div>
+          <div class="table-wrap">
+            <table class="detalle-items-table">
+              <thead>
+                <tr><th>Ítem</th><th>Tipo</th><th>Qty</th><th>Precio</th><th>Desc.</th><th>Subtotal</th></tr>
+              </thead>
+              <tbody>
+                ${its.map(it => `
+                <tr>
+                  <td style="font-weight:500">${esc(it.producto_nombre)}</td>
+                  <td><span class="tipo-item-badge ${it.tipo_item==='producto'?'badge-prod':'badge-serv'}">${it.tipo_item}</span></td>
+                  <td>${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:2})}</td>
+                  <td>${fmt(it.precio)}</td>
+                  <td>${Number(it.descuento)>0 ? fmt(it.descuento) : '—'}</td>
+                  <td style="font-weight:600">${fmt(it.subtotal)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="detalle-divider"></div>
+        <div class="detalle-item">
+          <div class="detalle-label">Subtotal</div>
+          <div class="detalle-value">${fmt(v.subtotal)}</div>
+        </div>
+        <div class="detalle-item">
+          <div class="detalle-label">Descuento</div>
+          <div class="detalle-value">${fmt(v.descuento)}</div>
+        </div>
+        <div class="detalle-item">
+          <div class="detalle-label">TOTAL</div>
+          <div class="detalle-value" style="font-size:20px;font-weight:800;color:var(--accent)">${fmt(v.total)}</div>
+        </div>
+        <div class="detalle-item">
+          <div class="detalle-label">Ganancia</div>
+          <div class="detalle-value" style="color:var(--success);font-weight:700">${fmt(v.ganancia)}</div>
+        </div>
+      </div>`;
+  } catch(e) {
+    body.innerHTML = `<p style="color:var(--danger);padding:20px">Error: ${e.message}</p>`;
+  }
+}
+
+/* ============================================================
+   SECCIÓN TABS (Top, Frecuentes, Inactivos)
+   ============================================================ */
+let tabActiva = 'lista';
+
+function cambiarTab(tab) {
+  tabActiva = tab;
+  document.querySelectorAll('.section-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === tab));
+
+  const paneles = { lista:'panel-lista', top:'panel-top', frecuentes:'panel-frecuentes', inactivos:'panel-inactivos' };
+  Object.entries(paneles).forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = k === tab ? '' : 'none';
+  });
+
+  if (tab === 'top')        loadTopClientes();
+  if (tab === 'frecuentes') loadFrecuentes();
+  if (tab === 'inactivos')  loadInactivos();
+}
+
+/* ---- TOP 10 CLIENTES ---- */
+async function loadTopClientes() {
+  const tbody = document.getElementById('top-tbody');
+  if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="5">Cargando…</td></tr>';
+
+  try {
+    const { data } = await sb.from('clientes')
+      .select('id,nombre,telefono,num_compras,total_compras,ultima_compra')
+      .eq('auth_user_id', CS.userId).eq('activo', true)
+      .gt('num_compras', 0)
+      .order('total_compras', { ascending: false })
+      .limit(10);
+
+    if (!tbody) return;
+
+    if (!data?.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-cell"><p>Sin datos aún. Los clientes aparecerán aquí cuando tengan compras.</p></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = data.map((c, i) => {
+      const color = colorAvatar(c.nombre);
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}`;
+      return `
+      <tr onclick="abrirPerfil('${c.id}')" style="cursor:pointer">
+        <td style="text-align:center;font-size:16px;width:40px">${medal}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="cli-avatar-sm" style="background:${color};font-size:11px">${iniciales(c.nombre)}</div>
+            <span style="font-weight:600">${esc(c.nombre)}</span>
+          </div>
+        </td>
+        <td style="font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:15px">${fmt(c.total_compras)}</td>
+        <td style="text-align:center;font-weight:600">${c.num_compras}</td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${fmtFecha(c.ultima_compra)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Error al cargar.</td></tr>`;
+  }
+}
+
+/* ---- CLIENTES FRECUENTES (5+ compras) ---- */
+async function loadFrecuentes() {
+  const tbody = document.getElementById('frecuentes-tbody');
+  if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="5">Cargando…</td></tr>';
+
+  try {
+    const { data } = await sb.from('clientes')
+      .select('id,nombre,telefono,num_compras,total_compras,ultima_compra')
+      .eq('auth_user_id', CS.userId).eq('activo', true)
+      .gte('num_compras', 5)
+      .order('num_compras', { ascending: false });
+
+    if (!tbody) return;
+
+    if (!data?.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-cell"><p>Ningún cliente con 5+ compras aún.</p></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = data.map(c => `
+      <tr onclick="abrirPerfil('${c.id}')" style="cursor:pointer">
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="cli-avatar-sm" style="background:${colorAvatar(c.nombre)};font-size:11px">${iniciales(c.nombre)}</div>
+            <span style="font-weight:600">${esc(c.nombre)}</span>
+          </div>
+        </td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${c.telefono || '—'}</td>
+        <td style="font-family:var(--font-mono);font-weight:700;text-align:center;color:var(--accent)">${c.num_compras}</td>
+        <td style="font-family:var(--font-mono);font-weight:700">${fmt(c.total_compras)}</td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${fmtFecha(c.ultima_compra)}</td>
+      </tr>`).join('');
+  } catch(e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Error al cargar.</td></tr>`;
+  }
+}
+
+/* ---- CLIENTES INACTIVOS ---- */
+let diasInactividadFiltro = 30;
+
+async function loadInactivos() {
+  const tbody = document.getElementById('inactivos-tbody');
+  if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="5">Cargando…</td></tr>';
+
+  const dias = diasInactividadFiltro;
+  const corte = ymd(new Date(Date.now() - dias * 86400000));
+
+  try {
+    const { data } = await sb.from('clientes')
+      .select('id,nombre,telefono,num_compras,total_compras,ultima_compra')
+      .eq('auth_user_id', CS.userId).eq('activo', true)
+      .gt('num_compras', 0)
+      .lt('ultima_compra', corte)
+      .order('ultima_compra', { ascending: true });
+
+    if (!tbody) return;
+
+    if (!data?.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-cell"><p>¡Todos tus clientes han comprado en los últimos ${dias} días! 🎉</p></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = data.map(c => {
+      const d = diasDesde(c.ultima_compra);
+      return `
+      <tr onclick="abrirPerfil('${c.id}')" style="cursor:pointer">
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="cli-avatar-sm" style="background:${colorAvatar(c.nombre)};font-size:11px">${iniciales(c.nombre)}</div>
+            <span style="font-weight:600">${esc(c.nombre)}</span>
+          </div>
+        </td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${c.telefono || '—'}</td>
+        <td style="text-align:center">
+          <span style="color:var(--danger);font-weight:700;font-family:var(--font-mono)">${d !== null ? d + ' días' : '—'}</span>
+        </td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${fmtFecha(c.ultima_compra)}</td>
+        <td style="font-family:var(--font-mono);font-weight:700">${fmt(c.total_compras)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Error al cargar.</td></tr>`;
+  }
+}
+
+function cambiarDiasInactividad(dias) {
+  diasInactividadFiltro = dias;
+  document.querySelectorAll('.dias-btn').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.dias) === dias));
+  loadInactivos();
+}
+
+/* ============================================================
+   ELIMINAR CLIENTE
+   ============================================================ */
+let clienteEliminarId   = null;
+let clienteEliminarNom  = '';
+
+function confirmarEliminar(id, nombre) {
+  clienteEliminarId  = id;
+  clienteEliminarNom = nombre;
+  document.getElementById('confirm-eliminar-nombre').textContent = nombre;
+  openModal('modal-eliminar');
+}
+
+async function ejecutarEliminar() {
+  if (!clienteEliminarId) return;
+  const btn = document.getElementById('btn-confirmar-eliminar');
+  if (btn) btn.disabled = true;
+
+  try {
+    // Soft delete: marcar como inactivo
+    const { error } = await sb.from('clientes')
+      .update({ activo: false, updated_at: new Date().toISOString() })
+      .eq('id', clienteEliminarId)
+      .eq('auth_user_id', CS.userId);
+
+    if (error) throw error;
+
+    showToast(`Cliente "${clienteEliminarNom}" eliminado`, 'warning');
+    closeModal('modal-eliminar');
+    clienteEliminarId = null;
+    await Promise.allSettled([loadClientes(), loadKPIs()]);
+
+  } catch(e) {
+    showToast('Error al eliminar: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ============================================================
+   SINCRONIZAR STATS DESDE VENTAS
+   Llamada manual o automática para mantener coherencia
+   ============================================================ */
+async function sincronizarStats() {
+  showToast('Sincronizando estadísticas…', 'info');
+  try {
+    const { data } = await sb.rpc('sincronizar_todos_clientes', { p_user_id: CS.userId });
+    showToast(`${data} clientes sincronizados`, 'success');
+    await Promise.allSettled([loadClientes(), loadKPIs()]);
+  } catch(e) {
+    // Sincronización manual como fallback
+    const { data: clientes } = await sb.from('clientes')
+      .select('id').eq('auth_user_id', CS.userId).eq('activo', true);
+
+    for (const c of (clientes || [])) {
+      await cargarStatsCliente(c.id);
+    }
+    showToast('Estadísticas actualizadas', 'success');
+    await Promise.allSettled([loadClientes(), loadKPIs()]);
+  }
+}
+
+/* ============================================================
+   EXPORTS GLOBALES
+   ============================================================ */
+window.toggleTheme          = toggleTheme;
+window.toggleSidebar        = toggleSidebar;
+window.closeMobileSidebar   = closeMobileSidebar;
+window.navigate             = navigate;
+window.openModal            = openModal;
+window.closeModal           = closeModal;
+window.setFiltro            = setFiltro;
+window.buscarClientes       = buscarClientes;
+window.paginaAnterior       = paginaAnterior;
+window.paginaSiguiente      = paginaSiguiente;
+window.abrirModalNuevoCliente = abrirModalNuevoCliente;
+window.abrirEditar          = abrirEditar;
+window.guardarCliente       = guardarCliente;
+window.abrirPerfil          = abrirPerfil;
+window.verDetalleVentaPerfil = verDetalleVentaPerfil;
+window.cambiarTab           = cambiarTab;
+window.cambiarDiasInactividad = cambiarDiasInactividad;
+window.confirmarEliminar    = confirmarEliminar;
+window.ejecutarEliminar     = ejecutarEliminar;
+window.sincronizarStats     = sincronizarStats;
+window.loadClientes         = loadClientes;
+
+/* ============================================================
+   KEYBOARD
+   ============================================================ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    ['modal-cliente','modal-perfil','modal-venta-detalle','modal-eliminar'].forEach(closeModal);
+  }
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+async function initClientes() {
+  applyTheme(localStorage.getItem('n360_theme') || 'light');
+
+  const now = new Date();
+  const fechaEl = document.getElementById('header-fecha');
+  if (fechaEl) fechaEl.textContent = now.toLocaleDateString('es-NI',
+    { day:'numeric', month:'long', year:'numeric' });
+
+  try {
+    const { data:{ user }, error } = await sb.auth.getUser();
+    if (error || !user) { window.location.href = 'login.html'; return; }
+
+    CS.userId    = user.id;
+    CS.userEmail = user.email;
+
+    if (user.email) checkAdminAccess(user.email);
+
+    await loadEmpresaConfig(user.id);
+
+    const profile = await loadUserProfile(user.id);
+    if (profile) renderUserInfo(profile, user.email);
+    else {
+      document.getElementById('header-name').textContent   = user.email?.split('@')[0] || 'Usuario';
+      document.getElementById('header-avatar').textContent = (user.email||'U')[0].toUpperCase();
+    }
+
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+
+    await Promise.allSettled([loadKPIs(), loadClientes()]);
+
+    if (window.Negocio360Tutorial) {
+      const pasosClientes = [
+        { icono: '👥', titulo: 'Bienvenido a Clientes', texto: 'Aquí llevas el registro de todos tus clientes -- su historial de compras, contacto, y cuánto te compran.' },
+        { icono: '➕', titulo: 'Agrega uno nuevo', texto: 'Con "Nuevo cliente" guardas nombre, teléfono y dirección -- luego lo eliges rápido al hacer una venta.' },
+        { icono: '📈', titulo: 'Su historial completo', texto: 'Al abrir un cliente ves todo lo que te ha comprado, cuánto te debe si tiene crédito, y su actividad reciente.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('clientes', pasosClientes);
+      Negocio360Tutorial.agregarBotonAyuda('clientes', pasosClientes);
+    }
+
+    // Escuchar cambios de ventas.js en tiempo real vía localStorage
+    window.addEventListener('storage', e => {
+      if (e.key === 'n360_venta_nueva') {
+        loadKPIs();
+        // Actualizar stats del cliente de esa venta si está en lista
+        try {
+          const d = JSON.parse(e.newValue);
+          if (d?.ventaId) {
+            // Recargar tabla para reflejar actualizaciones de ventas.js
+            loadClientes();
+          }
+        } catch { /* silencioso */ }
+      }
+    });
+
+  } catch(err) {
+    console.error('initClientes:', err);
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+  }
+}
+
+sb.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_OUT') window.location.href = 'login.html';
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  initClientes();
+  if (window.lucide) lucide.createIcons();
+});
+
+
+/* ============================================================
+   MODAL DE MONEDA DE VISUALIZACION -- agregado para que este
+   modulo tambien pueda ver todo en otra moneda (nunca toca los
+   datos reales, solo como se muestran).
+   ============================================================ */
+function abrirModalMonedaVis() {
+  const oficial = CS.moneda || 'NIO';
+  document.getElementById('mv-moneda-oficial').textContent = oficial;
+  document.getElementById('mv-select-moneda').value = monedaVisualizacionActiva() || '';
+  document.getElementById('mv-tasa').value = tasaVisualizacionActiva() || '';
+  document.getElementById('mv-error').textContent = '';
+  onCambiarSelectMonedaVis();
+  document.getElementById('modal-moneda-vis').style.display = 'flex';
+}
+function onCambiarSelectMonedaVis() {
+  const oficial = CS.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  document.getElementById('mv-wrap-tasa').style.display = (elegida && elegida !== oficial) ? '' : 'none';
+}
+function guardarMonedaVis() {
+  const oficial = CS.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  const errEl = document.getElementById('mv-error');
+  errEl.textContent = '';
+  if (!elegida || elegida === oficial) {
+    desactivarMonedaVisualizacion();
+  } else {
+    const tasa = parseFloat(document.getElementById('mv-tasa').value);
+    if (!tasa || tasa <= 0) { errEl.textContent = 'Escribe tu tasa de cambio (cordobas por 1 dolar).'; return; }
+    activarMonedaVisualizacion(elegida, tasa);
+  }
+  location.reload();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const btn = document.getElementById('btn-moneda-vis-texto');
+    if (btn) btn.textContent = monedaParaMostrar(CS.moneda);
+  }, 800);
+});

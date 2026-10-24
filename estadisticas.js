@@ -194,7 +194,7 @@ function rangoPeriodo() {
   const to = todayISO();
   let desde;
   if (EST.periodo === 'mes') {
-    desde = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
+    desde = (window.N360PeriodoMes && N360PeriodoMes.inicioISO()) || `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
   } else if (EST.periodo === 'trimestre') {
     const d = new Date(hoy); d.setMonth(d.getMonth() - 3);
     desde = ymd(d);
@@ -214,6 +214,9 @@ function rangoPeriodoAnterior() {
   // este mes, contra del 1 al mismo número de día del mes anterior —
   // manzanas con manzanas, sin importar en qué día del mes estemos.
   if (EST.periodo === 'mes') {
+    // Día de cierre del negocio (opcional): el mismo tramo del período anterior
+    const _ant = window.N360PeriodoMes && N360PeriodoMes.rangoAnterior();
+    if (_ant) return { from: _ant.desde, to: _ant.hasta };
     const y = hoy.getFullYear(), m = hoy.getMonth(); // m es 0-indexado
     const diaHoy = hoy.getDate();
     const desdeAnt = new Date(y, m - 1, 1);

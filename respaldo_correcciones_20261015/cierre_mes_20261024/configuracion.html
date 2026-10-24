@@ -1,0 +1,3596 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="movil-sin-zoom.css?v=20261021c" />
+  <script src="movil-recargar.js?v=20261021b" defer></script>
+<!-- Este archivo usa JS inline (sin version de cache como los .js
+     externos) -- si el navegador cachea el HTML completo, cambios
+     como este mismo (agregar una tarjeta nueva) nunca llegarian
+     hasta un refresco forzado. Se pide siempre version fresca. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<title>Configuración — Negocio360</title>
+
+<!-- Supabase CDN -->
+<script src="ver-como.js?v=20261023b"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="modulos-registro.js?v=20261024c"></script>
+<script src="auditoria-guard.js"></script>
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+
+    :root {
+      --bg-base:        #f5f5f7;
+      --bg-surface:     #ffffff;
+      --bg-surface-2:   #fafafa;
+      --bg-sidebar:     #ffffff;
+      --bg-header:      rgba(255,255,255,0.85);
+      --bg-hover:       #f0f0f5;
+      --bg-active:      #eff0ff;
+      --text-primary:   #0d0d14;
+      --text-secondary: #60607a;
+      --text-muted:     #9999b3;
+      --text-accent:    #5a5af4;
+      --border:         #e8e8ef;
+      --border-focus:   #5a5af4;
+      --accent:         #5a5af4;
+      --accent-soft:    #eff0ff;
+      --accent-2:       #22c55e;
+      --accent-2-soft:  #f0fdf4;
+      --accent-3:       #f97316;
+      --accent-3-soft:  #fff7ed;
+      --accent-4:       #8b5cf6;
+      --accent-4-soft:  #f5f3ff;
+      --accent-5:       #06b6d4;
+      --accent-5-soft:  #ecfeff;
+      --danger:         #ef4444;
+      --danger-soft:    #fef2f2;
+      --warning:        #f59e0b;
+      --warning-soft:   #fffbeb;
+      --success:        #22c55e;
+      --success-soft:   #f0fdf4;
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md:      0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+      --shadow-lg:      0 12px 32px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.05);
+      --radius-sm:      8px;
+      --radius-md:      12px;
+      --radius-lg:      16px;
+      --radius-xl:      20px;
+      --sidebar-w:      240px;
+      --header-h:       64px;
+      --font-main:      'Plus Jakarta Sans', sans-serif;
+      --font-mono:      'JetBrains Mono', monospace;
+      --transition:     0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    [data-theme="dark"] {
+      --bg-base:        #0c0c14;
+      --bg-surface:     #13131f;
+      --bg-surface-2:   #1a1a2a;
+      --bg-sidebar:     #13131f;
+      --bg-header:      rgba(19,19,31,0.9);
+      --bg-hover:       #1e1e30;
+      --bg-active:      #1e1e40;
+      --text-primary:   #f0f0fa;
+      --text-secondary: #9090b0;
+      --text-muted:     #5a5a7a;
+      --text-accent:    #7b7bff;
+      --border:         #1e1e30;
+      --border-focus:   #7b7bff;
+      --accent:         #7b7bff;
+      --accent-soft:    #1e1e40;
+      --accent-2:       #22c55e;
+      --accent-2-soft:  #0f2a1a;
+      --accent-3:       #f97316;
+      --accent-3-soft:  #2a1a0a;
+      --accent-4:       #a78bfa;
+      --accent-4-soft:  #1e1530;
+      --accent-5:       #22d3ee;
+      --accent-5-soft:  #0a1e25;
+      --danger:         #f87171;
+      --danger-soft:    #2a0f0f;
+      --warning:        #fbbf24;
+      --warning-soft:   #2a200a;
+      --success:        #4ade80;
+      --success-soft:   #0f2a1a;
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md:      0 4px 12px rgba(0,0,0,0.4);
+      --shadow-lg:      0 12px 32px rgba(0,0,0,0.5);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-main);
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      transition: background var(--transition), color var(--transition);
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+    button { cursor: pointer; border: none; background: none; font-family: inherit; }
+    ul, ol { list-style: none; }
+    img { max-width: 100%; }
+
+    #app { display: flex; min-height: 100vh; }
+
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 100;
+      transition: width var(--transition), transform var(--transition), background var(--transition);
+      overflow: hidden;
+    }
+    #sidebar.collapsed { width: 64px; }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+      min-height: var(--header-h);
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-icon svg { color: #fff; }
+    .logo-text {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text-primary);
+      white-space: nowrap;
+      transition: opacity var(--transition);
+    }
+    #sidebar.collapsed .logo-text,
+    #sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-title,
+    #sidebar.collapsed .nav-badge {
+      opacity: 0;
+      pointer-events: none;
+      width: 0;
+      overflow: hidden;
+    }
+    .sidebar-nav {
+      flex: 1;
+      padding: 12px 12px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .nav-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      padding: 12px 8px 6px;
+      white-space: nowrap;
+      transition: opacity var(--transition);
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      transition: all var(--transition);
+      cursor: pointer;
+      position: relative;
+      white-space: nowrap;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .nav-item svg { flex-shrink: 0; width: 18px; height: 18px; }
+    .nav-label { font-size: 13.5px; font-weight: 500; transition: opacity var(--transition); white-space: nowrap; }
+    .nav-badge {
+      margin-left: auto;
+      background: var(--danger);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 100px;
+      white-space: nowrap;
+    }
+
+    #main {
+      flex: 1;
+      margin-left: var(--sidebar-w);
+      transition: margin-left var(--transition);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    #main.sidebar-collapsed { margin-left: 64px; }
+
+    #header {
+      height: var(--header-h);
+      background: var(--bg-header);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      transition: background var(--transition), border-color var(--transition);
+    }
+    .header-toggle {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      transition: all var(--transition);
+    }
+    .header-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .header-title { font-size: 16px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+    .header-spacer { flex: 1; min-width: 8px; }
+    .date-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--text-secondary);
+      background: var(--bg-surface);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all var(--transition);
+    }
+    .date-selector:hover { border-color: var(--accent); color: var(--text-primary); }
+    .plan-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: var(--accent-soft);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .theme-btn {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      transition: all var(--transition);
+    }
+    .theme-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    #content {
+      flex: 1;
+      padding: 28px 28px 60px;
+      max-width: 1440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .greeting-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .greeting-text h1 { font-size: 24px; font-weight: 800; color: var(--text-primary); margin-bottom: 4px; }
+    .greeting-text p { font-size: 14px; color: var(--text-secondary); }
+    .greeting-actions { display: flex; align-items: center; gap: 10px; }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .section-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+    .section-subtitle { font-size: 12px; color: var(--text-muted); }
+    .section-action {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--accent);
+      cursor: pointer;
+      display: flex; align-items: center; gap: 4px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      transition: background var(--transition);
+    }
+    .section-action:hover { background: var(--accent-soft); }
+
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition);
+      min-width: 0;
+    }
+    .card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--border-focus);
+      transform: translateY(-1px);
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition);
+      cursor: default;
+      min-width: 0;
+    }
+    .kpi-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .kpi-icon {
+      width: 44px; height: 44px;
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .kpi-body { flex: 1; min-width: 0; }
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .kpi-value {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1.1;
+      margin-bottom: 6px;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+    .kpi-delta {
+      font-size: 11.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .kpi-delta.positive { color: var(--success); }
+    .kpi-delta.negative { color: var(--danger); }
+    .kpi-delta.neutral  { color: var(--text-muted); }
+    .kpi-delta.alert    { color: var(--warning); }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr);
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .chart-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition);
+      min-width: 0;
+    }
+    .chart-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chart-card-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+    .chart-period-btn {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-surface);
+      display: flex; align-items: center; gap: 4px;
+      transition: all var(--transition);
+    }
+    .chart-period-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .chart-canvas-wrap { position: relative; height: 200px; }
+
+    .donut-legend { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .legend-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .legend-left { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .legend-pct { font-size: 12.5px; font-weight: 700; color: var(--text-primary); }
+    .legend-val { font-size: 11px; color: var(--text-muted); }
+
+    .products-table { width: 100%; }
+    .products-table-header {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 0 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .product-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      transition: background var(--transition);
+      border-radius: 6px;
+    }
+    .product-row:last-child { border-bottom: none; }
+    .product-row:hover { background: var(--bg-hover); padding-left: 6px; padding-right: 6px; }
+    .product-avatar {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .product-name { flex: 1; font-size: 12.5px; font-weight: 500; color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .product-units { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+    .product-revenue { font-size: 12.5px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+    .empty-table { text-align: center; padding: 24px 0; color: var(--text-muted); font-size: 12.5px; }
+    .empty-table svg { margin: 0 auto 8px; display: block; opacity: 0.4; }
+
+    .actions-alerts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .quick-actions-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .action-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px 10px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--transition);
+      text-align: center;
+    }
+    .action-btn:hover {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+    }
+    .action-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+    .action-name { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+    .action-desc { font-size: 11px; color: var(--text-muted); line-height: 1.3; }
+
+    .alert-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .alert-item:last-child { border-bottom: none; }
+    .alert-item:hover { padding-left: 4px; }
+    .alert-icon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .alert-body { flex: 1; min-width: 0; }
+    .alert-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; overflow-wrap: anywhere; }
+    .alert-desc { font-size: 11.5px; color: var(--text-muted); overflow-wrap: anywhere; }
+    .alert-arrow { color: var(--text-muted); transition: transform var(--transition); flex-shrink: 0; }
+    .alert-item:hover .alert-arrow { transform: translateX(3px); }
+
+    .financial-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .financial-row:last-child { border-bottom: none; }
+    .financial-row.separator { border-top: 2px solid var(--border); margin-top: 4px; padding-top: 14px; }
+    .financial-label { font-size: 13px; color: var(--text-secondary); }
+    .financial-value { font-size: 13.5px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+    .financial-value.positive { color: var(--success); }
+    .financial-value.negative { color: var(--danger); }
+    .financial-value.accent   { color: var(--accent); }
+
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .report-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition);
+      min-width: 0;
+    }
+    .report-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .report-card-title { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+    .report-card-desc { font-size: 11.5px; color: var(--text-muted); flex: 1; }
+    .report-chart-mini { height: 40px; display: flex; align-items: flex-end; gap: 3px; }
+    .mini-bar { flex: 1; border-radius: 3px 3px 0 0; min-height: 4px; transition: opacity var(--transition); }
+    .mini-bar:hover { opacity: 0.7; }
+    .report-btn {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      text-align: center;
+      transition: all var(--transition);
+    }
+    .report-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-surface-2) 50%, var(--bg-hover) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-shimmer 1.5s infinite;
+      border-radius: 4px;
+    }
+    @keyframes skeleton-shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .status-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg-base);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+      padding: 32px;
+    }
+    .status-screen.active { display: flex; }
+    .status-icon { font-size: 48px; }
+    .status-title { font-size: 24px; font-weight: 800; color: var(--text-primary); }
+    .status-desc { font-size: 14px; color: var(--text-secondary); max-width: 380px; }
+    .status-btn {
+      padding: 12px 28px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 8px;
+      transition: opacity var(--transition);
+    }
+    .status-btn:hover { opacity: 0.85; }
+
+    #loader {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-base);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      transition: opacity 0.4s;
+    }
+    #loader.hidden { opacity: 0; pointer-events: none; }
+    .loader-logo {
+      width: 48px; height: 48px;
+      background: var(--accent);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .loader-spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    [data-tooltip] { position: relative; }
+    [data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%; bottom: calc(100% + 6px);
+      transform: translateX(-50%);
+      background: var(--text-primary);
+      color: var(--bg-surface);
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 5px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity var(--transition);
+      z-index: 200;
+    }
+    [data-tooltip]:hover::after { opacity: 1; }
+
+    /* =====================================================
+       OVERLAY for mobile sidebar
+    ===================================================== */
+    #sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 90;
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+    #sidebar-overlay.active { display: block; opacity: 1; }
+
+    /* =====================================================
+       RESPONSIVE — TRUE fluid breakpoints for TV / desktop /
+       laptop / tablet / phone (any brand/model)
+    ===================================================== */
+
+    /* Large desktops / TVs */
+    @media (min-width: 1600px) {
+      #content { max-width: 1680px; padding: 32px 40px 70px; }
+      .kpi-grid { grid-template-columns: repeat(6, 1fr); }
+    }
+
+    /* Standard laptop / small desktop */
+    @media (max-width: 1200px) {
+      .charts-grid { grid-template-columns: 1fr 1fr; }
+      .charts-grid > :last-child { grid-column: span 2; }
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    /* Tablet landscape */
+    @media (max-width: 960px) {
+      :root { --sidebar-w: 220px; }
+    }
+
+    /* Tablet portrait / large phones — collapse sidebar to overlay drawer */
+    @media (max-width: 860px) {
+      :root { --header-h: 58px; }
+      #sidebar {
+        transform: translateX(-100%);
+        width: 250px !important;
+        box-shadow: var(--shadow-lg);
+      }
+      #sidebar.mobile-open { transform: translateX(0); }
+      #sidebar.collapsed { width: 250px; }
+      #sidebar.collapsed .logo-text,
+      #sidebar.collapsed .nav-label,
+      #sidebar.collapsed .nav-section-title {
+        opacity: 1; width: auto; pointer-events: auto; overflow: visible;
+      }
+      #main, #main.sidebar-collapsed { margin-left: 0 !important; }
+      #header { padding: 0 14px; gap: 8px; }
+      .header-title { display: none; }
+      .date-selector span:not(#date-text):not(#full-date-text) { display: none; }
+      #content { padding: 18px 16px 48px; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .charts-grid > :last-child { grid-column: span 1; }
+      .actions-alerts-grid { grid-template-columns: 1fr; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .greeting-text h1 { font-size: 20px; }
+      .greeting-row { gap: 10px; }
+    }
+
+    /* Phones */
+    @media (max-width: 560px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .kpi-card { padding: 14px; gap: 10px; }
+      .kpi-icon { width: 36px; height: 36px; }
+      .kpi-value { font-size: 18px; }
+      .reports-grid { grid-template-columns: repeat(2, 1fr); }
+      .quick-actions-grid { grid-template-columns: repeat(2, 1fr); }
+      .greeting-text h1 { font-size: 18px; }
+      .greeting-text p { font-size: 12.5px; }
+      .section-title { font-size: 14px; }
+      #content { padding: 14px 12px 40px; }
+      .date-selector { padding: 7px 10px; }
+      .plan-badge span { display: none; }
+      .plan-badge { padding: 8px; }
+    }
+
+    /* Very small phones */
+    @media (max-width: 380px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .reports-grid { grid-template-columns: 1fr 1fr; }
+      .quick-actions-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .card { padding: 14px; }
+      .chart-card { padding: 14px; }
+    }
+
+    [data-theme="dark"] canvas { filter: brightness(0.95); }
+
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .stagger-1 { animation-delay: 0.05s; }
+    .stagger-2 { animation-delay: 0.10s; }
+    .stagger-3 { animation-delay: 0.15s; }
+    .stagger-4 { animation-delay: 0.20s; }
+    .stagger-5 { animation-delay: 0.25s; }
+
+    .currency-symbol { font-size: 0.75em; font-weight: 600; opacity: 0.8; vertical-align: super; }
+  
+
+    /* =====================================================
+       CONFIGURACIÓN — estilos propios de esta página
+    ===================================================== */
+    .cfg-wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    .cfg-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-sm); }
+    .cfg-card-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 4px; }
+    .cfg-card-icon { width: 42px; height: 42px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--accent-soft); color: var(--accent); }
+    .cfg-card.danger .cfg-card-icon { background: var(--danger-soft); color: var(--danger); }
+    .cfg-card-title { font-size: 16px; font-weight: 800; color: var(--text-primary); margin-bottom: 2px; }
+    .cfg-card-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+    .cfg-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+    .cfg-row-label { font-size: 13.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+    .cfg-row-sub { font-size: 12px; color: var(--text-muted); }
+    .cfg-switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; }
+    .cfg-switch input { opacity: 0; width: 0; height: 0; }
+    .cfg-switch-track { position: absolute; inset: 0; background: var(--border); border-radius: 100px; cursor: pointer; transition: background var(--transition); }
+    .cfg-switch-track::before { content: ''; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform var(--transition); box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+    .cfg-switch input:checked + .cfg-switch-track { background: var(--accent); }
+    .cfg-switch input:checked + .cfg-switch-track::before { transform: translateX(20px); }
+    .cfg-switch input:disabled + .cfg-switch-track { opacity: 0.5; cursor: not-allowed; }
+    .cfg-status { font-size: 12px; font-weight: 600; margin-top: 10px; display: none; align-items: center; gap: 6px; }
+    .cfg-status.show { display: flex; }
+    .cfg-status.ok { color: var(--success); }
+    .cfg-status.err { color: var(--danger); }
+    .cfg-danger-list { margin: 14px 0 4px; padding-left: 18px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.9; }
+    .cfg-btn-danger { margin-top: 18px; width: 100%; padding: 12px 18px; background: var(--danger); color: #fff; border-radius: var(--radius-sm); font-size: 13.5px; font-weight: 700; transition: opacity var(--transition); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .cfg-btn-danger:hover { opacity: 0.88; }
+    .cfg-btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+    .cfg-btn-neutral { margin-top: 18px; width: 100%; padding: 12px 18px; background: var(--accent); color: #fff; border-radius: var(--radius-sm); font-size: 13.5px; font-weight: 700; transition: opacity var(--transition); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .cfg-btn-neutral:hover { opacity: 0.88; }
+    .cfg-btn-neutral:disabled { opacity: 0.6; cursor: not-allowed; }
+    .cfg-pw-campo { display:block; margin-top:12px; }
+    .cfg-pw-campo span { display:block; font-size:12.5px; font-weight:600; color:var(--text-secondary); margin-bottom:5px; }
+    .cfg-pw-fila { position:relative; }
+    .cfg-pw-campo input { width:100%; box-sizing:border-box; padding:11px 42px 11px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-surface); color:var(--text-primary); font-size:14px; }
+    .cfg-pw-campo input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+    .cfg-pw-ojo { position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:0; color:var(--text-muted); cursor:pointer; padding:6px; font-size:12px; font-weight:600; }
+    .cfg-pw-ayuda { font-size:12px; color:var(--text-muted); margin-top:8px; }
+    .cfg-pw-olvido { margin-top:18px; padding-top:14px; border-top:1px dashed var(--border); }
+    .cfg-pw-olvido-titulo { font-size:13px; font-weight:700; color:var(--text-primary); }
+    .cfg-pw-link { margin-top:10px; background:none; border:0; padding:0; color:var(--accent); font-size:13px; font-weight:700; cursor:pointer; text-decoration:underline; }
+    .cfg-pw-link:disabled { opacity:.6; cursor:not-allowed; }
+    .cfg-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; cursor: pointer; }
+    .cfg-back:hover { color: var(--accent); }
+
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px;
+  background: var(--accent); color: #fff;
+  border: none; cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 13px; font-weight: 600;
+  transition: opacity .15s, transform .15s;
+  white-space: nowrap;
+}
+.btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-surface-2, var(--bg-app));
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 13px; font-weight: 600;
+}
+</style>
+<link rel="stylesheet" href="perfiles-guard.css" />
+</head>
+<body>
+
+<div id="loader">
+  <div class="loader-logo">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  </div>
+  <div class="loader-spinner"></div>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Negocio360…</p>
+</div>
+
+<div id="screen-suspended" class="status-screen">
+  <div class="status-icon">🔒</div>
+  <div class="status-title">Cuenta suspendida</div>
+  <div class="status-desc">Tu cuenta ha sido suspendida temporalmente. Contacta soporte para reactivarla.</div>
+  <button class="status-btn" onclick="window.location.href='mailto:soporte@negocio360.app'">Contactar soporte</button>
+</div>
+
+<div id="screen-cancelled" class="status-screen">
+  <div class="status-icon">❌</div>
+  <div class="status-title">Cuenta cancelada</div>
+  <div class="status-desc">Tu cuenta ha sido cancelada. Puedes reactivarla eligiendo un plan.</div>
+  <button class="status-btn" onclick="window.location.href='planes.html'">Ver planes</button>
+</div>
+
+<div id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
+<div id="app" style="display:none">
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <span class="logo-text" id="sidebar-logo-text">Negocio360</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">PRINCIPAL</div>
+
+      <div class="nav-item" onclick="navigate('dashboard.html')" data-tooltip="Dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('ventas.html')" data-tooltip="Ventas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Ventas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('clientes.html')" data-tooltip="Clientes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-label">Clientes</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('productos.html')" data-tooltip="Productos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <span class="nav-label">Productos / Servicios</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('compras.html')" data-tooltip="Compras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span class="nav-label">Compras</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('gastos.html')" data-tooltip="Gastos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="nav-label">Gastos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('caja.html')" data-tooltip="Caja / Pagos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span class="nav-label">Caja / Pagos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('cuentas-por-pagar.html')" data-tooltip="Cuentas por Pagar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+        <span class="nav-label">Cuentas por Pagar</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('salarios.html')" data-tooltip="Salarios">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+        <span class="nav-label">Salarios</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('auditoria.html')" data-tooltip="Auditoría">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-label">Auditoría</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('codigos-barras.html')" data-tooltip="Códigos de Barras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="2" height="12"/><rect x="6" y="6" width="1" height="12"/><rect x="9" y="6" width="3" height="12"/><rect x="14" y="6" width="1" height="12"/><rect x="17" y="6" width="2" height="12"/><rect x="21" y="6" width="1" height="12"/></svg>
+        <span class="nav-label">Códigos de Barras</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('sucursales.html')" data-tooltip="Sucursales">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="9" y1="15" x2="9" y2="15.01"/></svg>
+        <span class="nav-label">Sucursales</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span class="nav-label">Contabilidad</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="nav-label">Consulta/Inventario</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5 2L9 4l6 16 5.5-2"/><circle cx="9" cy="4" r="1"/></svg>
+        <span class="nav-label">Rutas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('delivery.html')" data-tooltip="Delivery">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/><path d="M2 17.5h1.5l1.5-8h9l3.5 4h4.5v4H21"/><path d="M5 9.5h5"/></svg>
+        <span class="nav-label">Delivery</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('activos.html')" data-tooltip="Activos Fijos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="2" y1="13" x2="22" y2="13"/></svg>
+        <span class="nav-label">Activos Fijos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('agenda.html')" data-tooltip="Agenda">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="nav-label">Agenda</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('produccion.html')" data-tooltip="Producción">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
+        <span class="nav-label">Producción</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('servicio.html')" data-tooltip="Servicio Postventa">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span class="nav-label">Servicio Postventa</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
+        <span class="nav-label">Créditos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('impuestos.html')" data-tooltip="Impuestos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="nav-label">Impuestos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('reportes.html')" data-tooltip="Reportes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-label">Reportes</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('chat.html')" data-tooltip="Chat con Negocio360">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="nav-label">Chat con Negocio360</span>
+      </div>
+
+      <div class="nav-section-title" style="margin-top:8px">CUENTA</div>
+
+      <div class="nav-item active" onclick="navigate('configuracion.html')" data-tooltip="Configuración">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="nav-label">Configuración</span>
+      </div>
+
+      <div
+        class="nav-item"
+        id="nav-admin"
+        onclick="navigate('admin.html')"
+        data-tooltip="Panel de Administración"
+        style="display:none; border-top:1px solid var(--border); margin-top:10px; padding-top:10px;"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="nav-label">⚙️ Panel de Administración</span>
+      </div>
+
+    </nav>
+  </aside>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <header id="header">
+      <button class="header-toggle" id="sidebar-toggle" onclick="toggleSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+
+      <span class="header-title">Configuración</span>
+      <div class="header-spacer"></div>
+
+      <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
+        <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </header>
+
+    <div id="content">
+
+      <div class="greeting-row fade-in">
+        <div class="greeting-text">
+          <div class="cfg-back" onclick="navigate('dashboard.html')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            Volver al dashboard
+          </div>
+          <h1 id="greeting-text">Configuración</h1>
+          <p id="greeting-sub">Ajustes de tu cuenta en Negocio360.</p>
+        </div>
+      </div>
+
+      <div class="cfg-wrap">
+
+        <!-- APP DE ESCRITORIO WINDOWS -->
+        <div class="cfg-card fade-in">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Aplicación de escritorio para Windows</div>
+              <div class="cfg-card-desc">Instala Negocio360 como programa de escritorio — acceso directo, sin abrir el navegador cada vez. Requiere conexión a internet para funcionar, igual que la versión web.</div>
+            </div>
+          </div>
+          <a class="cfg-btn-neutral" href="https://github.com/JackARAUZ12/Negocio360/raw/main/Negocio360-Setup.exe" download rel="noopener" style="text-decoration:none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Descargar para Windows
+          </a>
+        </div>
+
+        <!-- MIS NEGOCIOS -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Mis Negocios</div>
+              <div class="cfg-card-desc">Administra varios negocios bajo el mismo correo y contraseña -- cada uno completamente independiente, cambia entre ellos sin volver a iniciar sesión.</div>
+            </div>
+          </div>
+          <button class="cfg-btn-neutral" style="width:100%" onclick="window.location.href='negocios-vinculados.html'">
+            Ver mis negocios
+          </button>
+        </div>
+
+        <!-- SKU Y CÓDIGO DE BARRAS EN COMPROBANTES -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><line x1="7" y1="12" x2="7" y2="15"/><line x1="10" y1="12" x2="10" y2="15"/><line x1="14" y1="12" x2="14" y2="15"/><line x1="17" y1="12" x2="17" y2="15"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">SKU y código de barras en comprobantes</div>
+              <div class="cfg-card-desc">Muestra el SKU y/o código de barras de cada producto en las Proformas y en los comprobantes tamaño carta de Ventas y Créditos. Apagado por defecto.</div>
+            </div>
+          </div>
+
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label" id="skudoc-sku-label">Mostrar SKU</div>
+              <div class="cfg-row-sub" id="skudoc-sku-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="skudoc-sku-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleSkuDocClick(event, 'sku')"></span>
+            </label>
+          </div>
+
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label" id="skudoc-barras-label">Mostrar código de barras</div>
+              <div class="cfg-row-sub" id="skudoc-barras-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="skudoc-barras-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleSkuDocClick(event, 'barras')"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="skudoc-status"></div>
+        </div>
+
+        <!-- SISTEMA MULTIUSUARIO -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Sistema multiusuario</div>
+              <div class="cfg-card-desc">Controla si al entrar se pide elegir un usuario (con PIN y permisos por módulo) o si se ingresa directo al dashboard.</div>
+            </div>
+          </div>
+
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label" id="mu-row-label">Sistema multiusuario</div>
+              <div class="cfg-row-sub" id="mu-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="mu-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleMultiusuarioClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="mu-status"></div>
+        </div>
+
+        <!-- LOTES Y VENCIMIENTOS -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Lotes y vencimientos</div>
+              <div class="cfg-card-desc">Para negocios que manejan productos con fecha de caducidad (farmacias, alimentos, etc.). Al comprar, se registra el lote y su vencimiento — al vender, el sistema descuenta automáticamente del que vence primero, sin que el cajero tenga que hacer nada extra.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar control de lotes y vencimientos</div>
+              <div class="cfg-row-sub" id="lv-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="lv-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleLotesClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="lv-status"></div>
+        </div>
+
+        <!-- COSTO PROMEDIO PONDERADO -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Costo promedio del inventario</div>
+              <div class="cfg-card-desc">Al registrar una compra de contado, el costo del producto se recalcula como promedio ponderado entre lo que ya tenías y lo que compras. Solo afecta compras nuevas; no cambia el costo de compras anteriores.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Calcular costo promedio ponderado</div>
+              <div class="cfg-row-sub" id="cp-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cp-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCostoPromedioClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="cp-status"></div>
+        </div>
+
+        <!-- CIERRES DE CAJA AUTOMÁTICOS -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Cierres de caja automáticos</div>
+              <div class="cfg-card-desc">Si los activas, el sistema genera los cierres solo, cada madrugada. Si prefieres seguir haciéndolos a mano desde Caja, déjalos apagados — todo funciona igual que siempre.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Cierre diario automático</div>
+              <div class="cfg-row-sub" id="cad-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cad-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCierreAutoDiario(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Cierre mensual automático</div>
+              <div class="cfg-row-sub" id="cam-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cam-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCierreAutoMensual(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="cierres-auto-status"></div>
+        </div>
+
+        <!-- PRESENTACIONES / UNIDADES DE VENTA -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Presentaciones de venta</div>
+              <div class="cfg-card-desc">Para negocios que venden el mismo producto en varias presentaciones — una farmacia que vende por tableta, blíster de 10 o caja de 100; una ferretería que vende por metro o rollo completo. Cada presentación tiene su propio precio y descuenta del inventario la cantidad que corresponde.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar presentaciones de venta</div>
+              <div class="cfg-row-sub" id="pv-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="pv-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onTogglePresentacionesClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="pv-status"></div>
+        </div>
+
+        <!-- NUMERO DE SERIE -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="6" y1="11" x2="6" y2="13"/><line x1="9" y1="11" x2="9" y2="13"/><line x1="12" y1="11" x2="12" y2="13"/><line x1="15" y1="11" x2="15" y2="13"/><line x1="18" y1="11" x2="18" y2="13"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Número de serie</div>
+              <div class="cfg-card-desc">Para productos que necesitan rastrearse individualmente (electrónicos, equipos, etc.). Al activarlo, márcalo en cada producto que lo requiera desde su ficha — al venderlo, el sistema pedirá su número de serie, y quedará disponible para crear garantías en Servicio Postventa.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar número de serie</div>
+              <div class="cfg-row-sub" id="ns-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="ns-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleNumeroSerieClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="ns-status"></div>
+        </div>
+
+        <!-- MODELO DE PRODUCTO -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Columna de Modelo</div>
+              <div class="cfg-card-desc">Para negocios que necesitan distinguir el modelo exacto de cada producto (ej. electrodomésticos, repuestos). Al activarlo, aparece un campo "Modelo" al crear o editar un producto, y una columna nueva en el inventario.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Agregar columna de "Modelo" para productos en inventario</div>
+              <div class="cfg-row-sub" id="mp-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="mp-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleModeloProductoClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="mp-status"></div>
+        </div>
+
+        <!-- MODULO DE HOTEL -- apagado por defecto para cualquier
+             cuenta; oculto brevemente en el HTML hasta que el JS
+             carga el estado real (ver cargarModuloHotel). -->
+        <div class="cfg-card fade-in stagger-1" id="hotel-card" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 22h20"/><path d="M6 18v4"/><path d="M18 18v4"/><path d="M6 14v.01"/><path d="M10 14v.01"/><path d="M14 14v.01"/><path d="M18 14v.01"/><path d="M2 10h20"/><path d="M4 10V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6"/><path d="M8 22V10"/><path d="M16 22V10"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Módulo de Hotel <span style="font-size:10.5px;background:var(--accent-soft);color:var(--accent);padding:2px 7px;border-radius:10px;font-weight:700">EN DESARROLLO</span></div>
+              <div class="cfg-card-desc">Sistema completo de gestión hotelera: habitaciones, reservaciones, check-in/check-out, y más — construyéndose por fases. Visible únicamente en esta cuenta.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Hotel</div>
+              <div class="cfg-row-sub" id="hotel-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="hotel-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleModuloHotelClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="hotel-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="rest-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Módulo de Restaurante</div>
+              <div class="cfg-card-desc">Mesas, comandas y cocina. Se activa solo cuando eliges Restaurante en la personalización; aquí puedes activarlo o apagarlo cuando quieras.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Restaurante</div>
+              <div class="cfg-row-sub" id="rest-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="rest-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleModuloRestauranteClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="rest-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="facturacion-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🧾</div>
+            <div>
+              <div class="cfg-card-title">Datos de facturación</div>
+              <div class="cfg-card-desc">RUC, dirección y teléfono que aparecen en tus comprobantes, créditos y proformas -- editable aquí en cualquier momento.</div>
+            </div>
+          </div>
+          <div class="cfg-row" style="flex-direction:column;align-items:stretch;gap:10px">
+            <div>
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">RUC</label>
+              <input type="text" id="fact-ruc" placeholder="Ej: J0310000012345" onblur="guardarDatosFacturacion()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <div>
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Dirección</label>
+              <input type="text" id="fact-direccion" placeholder="Ej: De la Plaza España 1c al este, 2c al norte" onblur="guardarDatosFacturacion()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <div>
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">¿Cómo le llamas a tu comprobante?</label>
+              <input type="text" id="fact-titulo" list="fact-titulo-opciones" placeholder="Comprobante" oninput="previsualizarColoresComprobante()" onblur="guardarDatosFacturacion()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+              <datalist id="fact-titulo-opciones">
+                <option value="Comprobante">
+                <option value="Factura">
+                <option value="Recibo">
+                <option value="Nota de Venta">
+              </datalist>
+              <span style="font-size:11px;color:var(--text-muted)">Se usará en tus comprobantes de Ventas y Créditos, ej: "Factura de Venta".</span>
+            </div>
+            <div>
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Teléfono</label>
+              <input type="text" id="fact-telefono" placeholder="Ej: 8888-8888" onblur="guardarDatosFacturacion()" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+
+            <div style="border-top:1px solid var(--border,#e5e7eb);margin-top:4px;padding-top:12px">
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Color del encabezado del comprobante</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="color" id="fact-color-encabezado" value="#6EE7B7" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border,#e5e7eb);cursor:pointer" oninput="previsualizarColoresComprobante()" onchange="guardarDatosFacturacion()"/>
+                <span style="font-size:12px;color:var(--text-muted)">Es el color de fondo de la parte de arriba, donde va el nombre de tu negocio.</span>
+              </div>
+            </div>
+
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;margin-top:4px">
+              <input type="checkbox" id="fact-color-tabla-igual" checked onchange="onToggleColorTablaIgual(); guardarDatosFacturacion();" style="width:16px;height:16px"/>
+              <span>Usar el mismo color para la tabla de productos</span>
+            </label>
+
+            <div id="fact-wrap-color-tabla" style="display:none">
+              <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Color de la tabla de productos</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="color" id="fact-color-tabla" value="#6EE7B7" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border,#e5e7eb);cursor:pointer" oninput="previsualizarColoresComprobante()" onchange="guardarDatosFacturacion()"/>
+                <span style="font-size:12px;color:var(--text-muted)">El color de la fila de encabezado de la tabla (Descripción, Cant., Precio...).</span>
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--border,#e5e7eb);border-radius:10px;overflow:hidden;margin-top:4px">
+              <div id="fact-preview-encabezado" style="padding:12px 14px;font-weight:700;font-size:13px">Vista previa: Mi Negocio</div>
+              <div id="fact-preview-tabla" style="padding:8px 14px;font-weight:600;font-size:12px">Descripción · Cant. · Precio</div>
+            </div>
+
+            <button class="btn-primary" style="align-self:flex-start" onclick="guardarDatosFacturacion()">Guardar</button>
+          </div>
+          <div class="cfg-status" id="facturacion-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="iva-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🧾</div>
+            <div>
+              <div class="cfg-card-title">IVA / Impuestos</div>
+              <div class="cfg-card-desc">Se aplica en todo el sistema que cobre IVA (Ventas, Restaurante...). Apagado por defecto -- opcional.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Cobrar IVA</div>
+              <div class="cfg-row-sub" id="iva-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="iva-toggle" disabled onchange="guardarIva(this.checked)" />
+              <span class="cfg-switch-track"></span>
+            </label>
+          </div>
+          <div class="cfg-row" id="iva-wrap-porcentaje" style="display:none">
+            <div>
+              <div class="cfg-row-label">Porcentaje de IVA</div>
+              <div class="cfg-row-sub">Ejemplo: 15 para 15%. Se aplica a todo el sistema.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="number" id="iva-porcentaje" min="0" max="100" step="0.5" style="width:80px;padding:7px 10px;border-radius:8px;border:1px solid var(--border,#e5e7eb);text-align:right" />
+              <span>%</span>
+              <button class="btn btn-secondary" style="padding:7px 12px;font-size:12.5px" onclick="guardarPorcentajeIva()">Guardar</button>
+            </div>
+          </div>
+          <div class="cfg-status" id="iva-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="vet-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🐾</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Veterinaria</div>
+              <div class="cfg-card-desc">Fichas de mascotas, historia clínica, carnet de vacunación y recordatorios a los dueños.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Veterinaria</div>
+              <div class="cfg-row-sub" id="vet-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="vet-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleVetClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="vet-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="clinica-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🏥</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Clínica</div>
+              <div class="cfg-card-desc">Pacientes y expediente clínico (solo lo abren los médicos con su código de usuario), consultas firmadas, sala de espera sobre la Agenda, bitácora de accesos y cobro por Ventas.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Clínica</div>
+              <div class="cfg-row-sub" id="clinica-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="clinica-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleClinicaClick(event)"></span>
+            </label>
+          </div>
+          <div id="clinica-esp-wrap" style="display:none;padding-top:10px">
+            <div class="cfg-row-label" style="margin-bottom:6px">Especialidades de la clínica</div>
+            <div class="cfg-row-sub" style="margin-bottom:8px">Solo las que elijas aparecen al agendar y al escribir la consulta.</div>
+            <label style="display:flex;gap:8px;align-items:center;font-size:13px;font-weight:700;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="clinica-esp-todas" onchange="alMarcarClinicaTodas()" style="width:17px;height:17px"/> Todas (medicina general con todas las especialidades)</label>
+            <div id="clinica-esp-lista" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 12px;font-size:13px"></div>
+            <button class="btn btn-secondary" style="padding:7px 12px;font-size:12.5px;margin-top:10px" onclick="guardarClinicaEspecialidades()">Guardar especialidades</button>
+          </div>
+          <div class="cfg-status" id="clinica-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="insumos-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🩺</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Insumos Médicos</div>
+              <div class="cfg-card-desc">Para vender insumos y equipos médicos: lotes, vencimientos, salida por vencimiento (sale primero el lote que vence antes) y rotación y margen.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Insumos Médicos</div>
+              <div class="cfg-row-sub" id="insumos-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="insumos-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleInsumosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="insumos-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="transporte-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🚛</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Transporte de carga</div>
+              <div class="cfg-card-desc">Para empresas de transporte de carga: panel de operación conectado con Ventas, Créditos, Gastos y Caja (flota, viajes, costos y cobros en las próximas fases).</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Transporte de carga</div>
+              <div class="cfg-row-sub" id="transporte-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="transporte-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleTransporteClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="transporte-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="diseno-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🎨</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Diseño</div>
+              <div class="cfg-card-desc">Herramientas para diseñadores gráficos, imprentas y fotógrafos. Incluye Marca de agua: pon tu logo o texto a tus fotos y descárgalas (las fotos no se guardan en el sistema).</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Diseño</div>
+              <div class="cfg-row-sub" id="diseno-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="diseno-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleDisenoClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="diseno-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="fiados-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">📒</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Fiados</div>
+              <div class="cfg-card-desc">El cuaderno de la pulpería: anota quién te debe, cobra pagos o abonos y elimina si te equivocaste. Conectado con Clientes, Inventario, Ventas y Caja.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Fiados</div>
+              <div class="cfg-row-sub" id="fiados-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="fiados-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleFiadosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="fiados-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="cotizaciones-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🗒️</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Cotizaciones</div>
+              <div class="cfg-card-desc">Cotizaciones para tus clientes con productos y precios, en PDF o por WhatsApp. Independiente de Proformas: no crea ventas ni créditos, no toca Caja ni inventario.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Cotizaciones</div>
+              <div class="cfg-row-sub" id="cotizaciones-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cotizaciones-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCotizacionesClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="cotizaciones-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="certificados-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🎁</div>
+            <div>
+              <div class="cfg-card-title">Certificados de regalo</div>
+              <div class="cfg-card-desc">Vende o regala certificados (gift cards) de monto libre. Se usan en Ventas escribiendo su código. Cada certificado elige si vence, si se usa por partes y si se cobra por adelantado, como venta o es cortesía.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar Certificados de regalo</div>
+              <div class="cfg-row-sub" id="certificados-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="certificados-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCertificadosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="certificados-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="puntos-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🎁</div>
+            <div>
+              <div class="cfg-card-title">Programa de puntos</div>
+              <div class="cfg-card-desc">Tus clientes acumulan puntos por sus compras y los canjean por recompensas. Tú defines las reglas.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar programa de puntos</div>
+              <div class="cfg-row-sub" id="puntos-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="puntos-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onTogglePuntosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="puntos-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="farmacia-card" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">💊</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Farmacia <span style="font-size:10.5px;background:var(--accent-soft);color:var(--accent);padding:2px 7px;border-radius:10px;font-weight:700">EN DESARROLLO</span></div>
+              <div class="cfg-card-desc">Lotes y Vencimientos conectados con Productos/Servicios — construyéndose por fases. Visible únicamente en esta cuenta.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Farmacia</div>
+              <div class="cfg-row-sub" id="farmacia-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="farmacia-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleModuloFarmaciaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="farmacia-status"></div>
+
+          <div id="fefo-row-wrap" style="display:none;border-top:1px solid var(--border,#e5e7eb);margin-top:14px;padding-top:14px">
+            <div class="cfg-row">
+              <div>
+                <div class="cfg-row-label">Vender primero el lote que vence antes (FEFO)</div>
+                <div class="cfg-row-sub" id="fefo-row-sub">Cargando estado actual…</div>
+              </div>
+              <label class="cfg-switch">
+                <input type="checkbox" id="fefo-toggle" disabled />
+                <span class="cfg-switch-track" onclick="onToggleFefoClick(event)"></span>
+              </label>
+            </div>
+            <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">Es lo recomendado, pero no todas las farmacias lo manejan así -- apágalo si prefieres elegir el lote a vender manualmente.</p>
+          </div>
+        </div>
+
+        <!-- EDITAR PERFIL -->
+        <div class="cfg-card fade-in stagger-2">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.66V19a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v1.66"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Editar Perfil</div>
+              <div class="cfg-card-desc">Nombre comercial, razón social, logo, colores, ubicación y contacto. Se refleja de inmediato en todos los módulos, reportes y comprobantes.</div>
+            </div>
+          </div>
+          <button class="cfg-btn-neutral" onclick="navigate('perfil.html')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.66V19a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v1.66"/></svg>
+            Editar Perfil
+          </button>
+        </div>
+
+        <!-- EDITAR MÓDULOS -->
+        <div class="cfg-card fade-in stagger-3">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Editar módulos</div>
+              <div class="cfg-card-desc">
+                Activa o desactiva los módulos opcionales de tu negocio. Al desactivarlos se ocultan del menú lateral.
+                Los módulos obligatorios (Dashboard, Ventas, Clientes, Productos/Servicios, Compras, Gastos, Caja/Pagos,
+                Reportes, Chat con Negocio360 y Configuración) siempre están disponibles y no se pueden quitar.
+              </div>
+            </div>
+          </div>
+
+          <div id="cfg-modulos-lista">
+            <div style="font-size:12.5px;color:var(--text-muted);padding:14px 0">Cargando módulos…</div>
+          </div>
+          <div class="cfg-status" id="modulos-status"></div>
+        </div>
+
+        <!-- CERRAR SESIÓN -->
+        <div class="cfg-card fade-in stagger-3">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Cerrar sesión</div>
+              <div class="cfg-card-desc">Saldrás de tu cuenta en este dispositivo y volverás a la pantalla de inicio de sesión.</div>
+            </div>
+          </div>
+
+          <button class="cfg-btn-neutral" id="btn-cerrar-sesion" onclick="confirmarCerrarSesion()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            Cerrar sesión
+          </button>
+          <div class="cfg-status" id="logout-status"></div>
+        </div>
+
+        <!-- CAMBIAR CONTRASEÑA (oculta hasta confirmar que es una cuenta real de cliente:
+             no aparece en cuentas de prueba, cuentas internas de sucursal ni administradores) -->
+        <div class="cfg-card fade-in stagger-3" id="card-cambiar-contrasena" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Cambiar contraseña</div>
+              <div class="cfg-card-desc">Cambia la contraseña con la que entras a tu cuenta. Tu correo, tus datos y tus usuarios con PIN no cambian.</div>
+            </div>
+          </div>
+          <form id="form-cambiar-contrasena" autocomplete="on" onsubmit="event.preventDefault(); cambiarContrasena();">
+            <input type="email" id="pw-usuario" autocomplete="username" style="display:none" tabindex="-1" aria-hidden="true">
+            <label class="cfg-pw-campo"><span>Contraseña actual</span>
+              <div class="cfg-pw-fila"><input type="password" id="pw-actual" autocomplete="current-password" required>
+                <button type="button" class="cfg-pw-ojo" onclick="alternarVerContrasena('pw-actual', this)">Ver</button></div></label>
+            <label class="cfg-pw-campo"><span>Contraseña nueva</span>
+              <div class="cfg-pw-fila"><input type="password" id="pw-nueva" autocomplete="new-password" minlength="8" required>
+                <button type="button" class="cfg-pw-ojo" onclick="alternarVerContrasena('pw-nueva', this)">Ver</button></div></label>
+            <label class="cfg-pw-campo"><span>Repite la contraseña nueva</span>
+              <div class="cfg-pw-fila"><input type="password" id="pw-repetir" autocomplete="new-password" minlength="8" required>
+                <button type="button" class="cfg-pw-ojo" onclick="alternarVerContrasena('pw-repetir', this)">Ver</button></div></label>
+            <div class="cfg-pw-ayuda">Mínimo 8 caracteres. Usa letras y números, y evita contraseñas fáciles de adivinar.</div>
+            <button type="submit" class="cfg-btn-neutral" id="btn-cambiar-contrasena">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Cambiar contraseña
+            </button>
+          </form>
+          <div class="cfg-status" id="pw-status"></div>
+
+          <div class="cfg-pw-olvido">
+            <div class="cfg-pw-olvido-titulo">¿Olvidaste tu contraseña actual?</div>
+            <div class="cfg-pw-ayuda" style="margin-top:4px">Te enviamos un enlace a tu correo <strong id="pw-correo-oculto"></strong> para que crees una contraseña nueva sin necesidad de la actual. El enlace vence en poco tiempo; revisa también la carpeta de spam.</div>
+            <button type="button" class="cfg-pw-link" id="btn-olvide-contrasena" onclick="enviarEnlaceRecuperacion()">Enviarme el enlace para crear una contraseña nueva</button>
+            <div class="cfg-status" id="pw-olvido-status"></div>
+          </div>
+        </div>
+
+        <!-- ELIMINAR CUENTA (oculta hasta confirmar que NO es una cuenta de demostración) -->
+        <div class="cfg-card danger fade-in stagger-4" id="card-eliminar-cuenta" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </div>
+            <div>
+              <div class="cfg-card-title">Eliminar cuenta</div>
+              <div class="cfg-card-desc">Esta acción es permanente e irreversible.</div>
+            </div>
+          </div>
+
+          <ul class="cfg-danger-list">
+            <li>Se borran todas tus ventas, clientes, productos, compras, gastos, caja e impuestos.</li>
+            <li>Se borran tus usuarios/perfiles con PIN y tu configuración de la empresa.</li>
+            <li>Se elimina tu acceso (correo y contraseña) para iniciar sesión.</li>
+            <li>No hay forma de recuperar la información después de confirmar.</li>
+          </ul>
+
+          <button class="cfg-btn-danger" id="btn-eliminar-cuenta" onclick="confirmarEliminarCuenta()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Eliminar mi cuenta permanentemente
+          </button>
+          <div class="cfg-status" id="del-status"></div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================
+   SUPABASE
+===================================================== */
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentAuthUserId = null;
+
+/* =====================================================
+   THEME (igual que dashboard.html)
+===================================================== */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('n360_theme', theme);
+  document.getElementById('icon-sun').style.display  = theme === 'dark'  ? 'block' : 'none';
+  document.getElementById('icon-moon').style.display = theme === 'light' ? 'block' : 'none';
+}
+function toggleTheme() {
+  sessionStorage.setItem('n360_theme_manual', '1');
+  const curr = document.documentElement.getAttribute('data-theme');
+  applyTheme(curr === 'dark' ? 'light' : 'dark');
+}
+
+/* =====================================================
+   SIDEBAR (igual que dashboard.html)
+===================================================== */
+let sidebarCollapsed = false;
+const MOBILE_BREAKPOINT = 860;
+function isMobileView() { return window.innerWidth <= MOBILE_BREAKPOINT; }
+function toggleSidebar() {
+  if (isMobileView()) {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const isOpen  = sidebar.classList.toggle('mobile-open');
+    overlay.classList.toggle('active', isOpen);
+  } else {
+    sidebarCollapsed = !sidebarCollapsed;
+    document.getElementById('sidebar').classList.toggle('collapsed', sidebarCollapsed);
+    document.getElementById('main').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+  }
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('active');
+}
+window.addEventListener('resize', () => { if (!isMobileView()) closeMobileSidebar(); });
+function navigate(url) { closeMobileSidebar(); window.location.href = url; }
+
+/* =====================================================
+   ADMIN CHECK (igual que dashboard.html)
+===================================================== */
+async function checkAdminAccess(userEmail) {
+  try {
+    const { data, error } = await sbClient.from('administradores').select('email, activo')
+      .eq('email', userEmail).eq('activo', true).maybeSingle();
+    if (!error && data) {
+      const navAdmin = document.getElementById('nav-admin');
+      if (navAdmin) navAdmin.style.display = 'flex';
+    }
+  } catch (e) { console.debug('Admin check completed.'); }
+}
+
+/* =====================================================
+   MULTIUSUARIO — cargar y guardar el interruptor
+===================================================== */
+function setStatus(el, msg, ok) {
+  el.textContent = msg;
+  el.classList.remove('ok', 'err');
+  el.classList.add(ok ? 'ok' : 'err', 'show');
+  setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+async function cargarMultiusuario() {
+  const toggle  = document.getElementById('mu-toggle');
+  const sub     = document.getElementById('mu-row-sub');
+  const label   = document.getElementById('mu-row-label');
+  try {
+    const { data, error } = await sbClient
+      .from('usuarios')
+      .select('multiusuario_activo')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data ? (data.multiusuario_activo !== false) : true;
+    toggle.checked = activo;
+    label.textContent = activo ? 'Sistema multiusuario activado' : 'Sistema multiusuario desactivado';
+    sub.textContent = activo
+      ? 'Al entrar se pedirá elegir un usuario (con PIN).'
+      : 'Se entra directo al dashboard, sin selector de usuario.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarMultiusuario:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+// Un solo par de funciones para los 2 interruptores (SKU y código de
+// barras) -- comparten exactamente la misma tabla y el mismo patrón,
+// solo cambia el campo real (mostrar_sku / mostrar_codigo_barras).
+// A diferencia de multiusuario (que actualiza una fila que siempre
+// existe en usuarios), configuracion_proforma puede no tener fila
+// todavía para una cuenta que nunca configuró nada -- por eso se usa
+// upsert en vez de update, y el estado "sin fila" se trata como
+// apagado (el default real de la columna).
+const SKUDOC_CAMPOS = { sku: 'mostrar_sku', barras: 'mostrar_codigo_barras' };
+const SKUDOC_TEXTOS = {
+  sku:    { on: 'Mostrando SKU en Proformas y comprobantes', off: 'SKU oculto en Proformas y comprobantes' },
+  barras: { on: 'Mostrando código de barras en Proformas y comprobantes', off: 'Código de barras oculto en Proformas y comprobantes' },
+};
+
+async function cargarSkuDoc() {
+  const sub    = document.getElementById('skudoc-status');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_proforma')
+      .select('mostrar_sku, mostrar_codigo_barras')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+
+    ['sku', 'barras'].forEach(tipo => {
+      const activo = data ? (data[SKUDOC_CAMPOS[tipo]] === true) : false;
+      const toggle = document.getElementById(`skudoc-${tipo}-toggle`);
+      const label  = document.getElementById(`skudoc-${tipo}-label`);
+      const subEl  = document.getElementById(`skudoc-${tipo}-sub`);
+      toggle.checked = activo;
+      subEl.textContent = activo ? SKUDOC_TEXTOS[tipo].on : SKUDOC_TEXTOS[tipo].off;
+      toggle.disabled = false;
+    });
+  } catch (e) {
+    console.error('cargarSkuDoc:', e);
+    if (sub) sub.textContent = '';
+    ['sku', 'barras'].forEach(tipo => {
+      const subEl = document.getElementById(`skudoc-${tipo}-sub`);
+      if (subEl) subEl.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+    });
+  }
+}
+
+function onToggleSkuDocClick(evt, tipo) {
+  const toggle = document.getElementById(`skudoc-${tipo}-toggle`);
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarSkuDoc(tipo, toggle.checked);
+}
+
+async function guardarSkuDoc(tipo, activo) {
+  const toggle   = document.getElementById(`skudoc-${tipo}-toggle`);
+  const subEl    = document.getElementById(`skudoc-${tipo}-sub`);
+  const statusEl = document.getElementById('skudoc-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_proforma')
+      .upsert({ auth_user_id: currentAuthUserId, [SKUDOC_CAMPOS[tipo]]: activo, updated_at: new Date().toISOString() }, { onConflict: 'auth_user_id' });
+    if (error) throw error;
+    subEl.textContent = activo ? SKUDOC_TEXTOS[tipo].on : SKUDOC_TEXTOS[tipo].off;
+    setStatus(statusEl, activo ? 'Activado correctamente.' : 'Desactivado correctamente.', true);
+  } catch (e) {
+    console.error('guardarSkuDoc:', e);
+    toggle.checked = !activo; // revertir visualmente
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+function onToggleMultiusuarioClick(evt) {
+  const toggle = document.getElementById('mu-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarMultiusuario(toggle.checked);
+}
+
+async function guardarMultiusuario(activo) {
+  const toggle  = document.getElementById('mu-toggle');
+  const sub     = document.getElementById('mu-row-sub');
+  const label   = document.getElementById('mu-row-label');
+  const statusEl = document.getElementById('mu-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('usuarios')
+      .update({ multiusuario_activo: activo, updated_at: new Date().toISOString() })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    label.textContent = activo ? 'Sistema multiusuario activado' : 'Sistema multiusuario desactivado';
+    sub.textContent = activo
+      ? 'Al entrar se pedirá elegir un usuario (con PIN).'
+      : 'Se entra directo al dashboard, sin selector de usuario.';
+    setStatus(statusEl, activo ? 'Multiusuario activado correctamente.' : 'Multiusuario desactivado correctamente.', true);
+  } catch (e) {
+    console.error('guardarMultiusuario:', e);
+    toggle.checked = !activo; // revertir visualmente
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+/* =====================================================
+   LOTES Y VENCIMIENTOS — igual patrón que multiusuario, guardado en
+   configuracion_empresa.maneja_lotes_vencimiento, apagado por
+   defecto para no afectar a nadie que no lo active a propósito.
+===================================================== */
+async function cargarLotesVencimiento() {
+  const toggle = document.getElementById('lv-toggle');
+  const sub    = document.getElementById('lv-row-sub');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('maneja_lotes_vencimiento')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.maneja_lotes_vencimiento === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — Compras pedirá lote/vencimiento, y Ventas descontará del que vence primero.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarLotesVencimiento:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleLotesClick(evt) {
+  const toggle = document.getElementById('lv-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarLotesVencimiento(toggle.checked);
+}
+
+async function guardarLotesVencimiento(activo) {
+  const toggle = document.getElementById('lv-toggle');
+  const sub = document.getElementById('lv-row-sub');
+  const statusEl = document.getElementById('lv-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ maneja_lotes_vencimiento: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — Compras pedirá lote/vencimiento, y Ventas descontará del que vence primero.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    setStatus(statusEl, activo ? 'Lotes y vencimientos activado.' : 'Lotes y vencimientos desactivado.', true);
+  } catch (e) {
+    console.error('guardarLotesVencimiento:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+
+/* =====================================================
+   COSTO PROMEDIO PONDERADO — opcional, apagado por defecto
+   (configuracion_empresa.costo_promedio_activo).
+===================================================== */
+const CP_TXT_ON  = 'Activado — cada compra nueva recalcula el costo del producto (promedio ponderado).';
+const CP_TXT_OFF = 'Desactivado — el costo del producto solo cambia cuando tú lo editas.';
+async function cargarCostoPromedio() {
+  const toggle = document.getElementById('cp-toggle'), sub = document.getElementById('cp-row-sub');
+  if (!toggle) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('costo_promedio_activo').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.costo_promedio_activo === true;
+    toggle.checked = activo; sub.textContent = activo ? CP_TXT_ON : CP_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarCostoPromedio:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleCostoPromedioClick(evt) {
+  const toggle = document.getElementById('cp-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarCostoPromedio(toggle.checked);
+}
+async function guardarCostoPromedio(activo) {
+  const toggle = document.getElementById('cp-toggle'), sub = document.getElementById('cp-row-sub'), statusEl = document.getElementById('cp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ costo_promedio_activo: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? CP_TXT_ON : CP_TXT_OFF;
+    setStatus(statusEl, activo ? 'Costo promedio activado.' : 'Costo promedio desactivado.', true);
+  } catch (e) {
+    console.error('guardarCostoPromedio:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+/* =====================================================
+   CIERRES DE CAJA AUTOMÁTICOS — opcionales, apagados por
+   defecto. Con ambos apagados, el flujo manual desde Caja
+   funciona exactamente igual que siempre.
+===================================================== */
+async function cargarCierresAuto() {
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('cierre_auto_diario, cierre_auto_mensual')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    pintarCierreAuto('cad', data?.cierre_auto_diario === true, 'diario');
+    pintarCierreAuto('cam', data?.cierre_auto_mensual === true, 'mensual');
+  } catch (e) {
+    console.error('cargarCierresAuto:', e);
+    const s1 = document.getElementById('cad-row-sub');
+    const s2 = document.getElementById('cam-row-sub');
+    if (s1) s1.textContent = 'No se pudo cargar el estado.';
+    if (s2) s2.textContent = 'No se pudo cargar el estado.';
+  }
+}
+
+function pintarCierreAuto(prefijo, activo, tipo) {
+  const toggle = document.getElementById(prefijo + '-toggle');
+  const sub    = document.getElementById(prefijo + '-row-sub');
+  if (!toggle || !sub) return;
+  toggle.checked = activo;
+  toggle.disabled = false;
+  if (tipo === 'diario') {
+    sub.textContent = activo
+      ? 'Activado — cada madrugada se crea el cierre del día anterior.'
+      : 'Desactivado — los cierres diarios los haces tú desde Caja.';
+  } else {
+    sub.textContent = activo
+      ? 'Activado — el día 1 de cada mes se crea el cierre del mes que terminó.'
+      : 'Desactivado — los cierres mensuales los haces tú desde Caja.';
+  }
+}
+
+function onToggleCierreAutoDiario(evt) {
+  const t = document.getElementById('cad-toggle');
+  if (t.disabled) { evt.preventDefault(); return; }
+  t.checked = !t.checked;
+  guardarCierreAuto('cierre_auto_diario', t.checked, 'cad', 'diario');
+}
+function onToggleCierreAutoMensual(evt) {
+  const t = document.getElementById('cam-toggle');
+  if (t.disabled) { evt.preventDefault(); return; }
+  t.checked = !t.checked;
+  guardarCierreAuto('cierre_auto_mensual', t.checked, 'cam', 'mensual');
+}
+
+async function guardarCierreAuto(campo, activo, prefijo, tipo) {
+  const toggle = document.getElementById(prefijo + '-toggle');
+  const statusEl = document.getElementById('cierres-auto-status');
+  toggle.disabled = true;
+  try {
+    const payload = {};
+    payload[campo] = activo;
+    const { error } = await sbClient
+      .from('configuracion_empresa').update(payload)
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    pintarCierreAuto(prefijo, activo, tipo);
+    setStatus(statusEl, activo
+      ? `Cierre ${tipo} automático activado.`
+      : `Cierre ${tipo} automático desactivado.`, true);
+  } catch (e) {
+    console.error('guardarCierreAuto:', e);
+    toggle.checked = !activo;
+    toggle.disabled = false;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  }
+}
+
+/* =====================================================
+   PRESENTACIONES DE VENTA — mismo patrón que lotes y vencimientos,
+   guardado en configuracion_empresa.maneja_presentaciones, apagado
+   por defecto para no afectar a nadie que no lo active a propósito.
+===================================================== */
+async function cargarPresentaciones() {
+  const toggle = document.getElementById('pv-toggle');
+  const sub    = document.getElementById('pv-row-sub');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('maneja_presentaciones')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.maneja_presentaciones === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — en Productos puedes definir presentaciones, y al vender podrás elegir cuál.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarPresentaciones:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onTogglePresentacionesClick(evt) {
+  const toggle = document.getElementById('pv-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarPresentaciones(toggle.checked);
+}
+
+async function guardarPresentaciones(activo) {
+  const toggle = document.getElementById('pv-toggle');
+  const sub = document.getElementById('pv-row-sub');
+  const statusEl = document.getElementById('pv-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ maneja_presentaciones: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — en Productos puedes definir presentaciones, y al vender podrás elegir cuál.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    setStatus(statusEl, activo ? 'Presentaciones de venta activado.' : 'Presentaciones de venta desactivado.', true);
+  } catch (e) {
+    console.error('guardarPresentaciones:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+async function cargarNumeroSerie() {
+  const toggle = document.getElementById('ns-toggle');
+  const sub    = document.getElementById('ns-row-sub');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_numero_serie')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_numero_serie === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarNumeroSerie:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleNumeroSerieClick(evt) {
+  const toggle = document.getElementById('ns-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarNumeroSerie(toggle.checked);
+}
+
+async function guardarNumeroSerie(activo) {
+  const toggle = document.getElementById('ns-toggle');
+  const sub = document.getElementById('ns-row-sub');
+  const statusEl = document.getElementById('ns-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_numero_serie: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    setStatus(statusEl, activo ? 'Número de serie activado.' : 'Número de serie desactivado.', true);
+  } catch (e) {
+    console.error('guardarNumeroSerie:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+async function cargarModeloProducto() {
+  const toggle = document.getElementById('mp-toggle');
+  const sub    = document.getElementById('mp-row-sub');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_modelo_producto')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modelo_producto === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — el campo "Modelo" aparece al crear/editar productos, y como columna en el inventario.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarModeloProducto:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleModeloProductoClick(evt) {
+  const toggle = document.getElementById('mp-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModeloProducto(toggle.checked);
+}
+
+async function guardarModeloProducto(activo) {
+  const toggle = document.getElementById('mp-toggle');
+  const sub = document.getElementById('mp-row-sub');
+  const statusEl = document.getElementById('mp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_modelo_producto: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — el campo "Modelo" aparece al crear/editar productos, y como columna en el inventario.'
+      : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    setStatus(statusEl, activo ? 'Columna de Modelo activada.' : 'Columna de Modelo desactivada.', true);
+  } catch (e) {
+    console.error('guardarModeloProducto:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+// Cuenta autorizada para siquiera VER este modulo -- ninguna otra
+// cuenta del sistema llega a ver la tarjeta ni puede activarlo,
+// sin importar que tan curiosa sea la persona. Doble control real:
+// Modulo de Hotel -- apagado por defecto para todos, disponible
+// para cualquier cuenta que quiera activarlo desde aqui.
+async function cargarModuloHotel() {
+  const card = document.getElementById('hotel-card');
+  const toggle = document.getElementById('hotel-toggle');
+  const sub = document.getElementById('hotel-row-sub');
+  card.style.display = '';
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_modulo_hotel')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_hotel === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — el menú de Hotel aparece en el sidebar.'
+      : 'Desactivado — el módulo de hotel no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarModuloHotel:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleModuloHotelClick(evt) {
+  const toggle = document.getElementById('hotel-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloHotel(toggle.checked);
+}
+
+async function guardarModuloHotel(activo) {
+  const toggle = document.getElementById('hotel-toggle');
+  const sub = document.getElementById('hotel-row-sub');
+  const statusEl = document.getElementById('hotel-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_modulo_hotel: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — el menú de Hotel aparece en el sidebar.'
+      : 'Desactivado — el módulo de hotel no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Hotel activado.' : 'Módulo de Hotel desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloHotel:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+// Modulo de Restaurante -- mismo patron que Hotel. Se enciende solo al elegir Restaurante en
+// Personalizacion, y desde aqui cualquier cuenta lo puede activar o apagar cuando quiera.
+async function cargarModuloRestaurante() {
+  const toggle = document.getElementById('rest-toggle');
+  const sub = document.getElementById('rest-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_modulo_restaurante')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_restaurante === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — Mesas, Comandas y Cocina aparecen en el menú.'
+      : 'Desactivado — el módulo de Restaurante no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarModuloRestaurante:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleModuloRestauranteClick(evt) {
+  const toggle = document.getElementById('rest-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloRestaurante(toggle.checked);
+}
+
+async function guardarModuloRestaurante(activo) {
+  const toggle = document.getElementById('rest-toggle');
+  const sub = document.getElementById('rest-row-sub');
+  const statusEl = document.getElementById('rest-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_modulo_restaurante: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — Mesas, Comandas y Cocina aparecen en el menú.'
+      : 'Desactivado — el módulo de Restaurante no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Restaurante activado. Recarga la página para ver el menú.' : 'Módulo de Restaurante desactivado. Recarga la página para quitarlo del menú.', true);
+  } catch (e) {
+    console.error('guardarModuloRestaurante:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+// Modulo de Farmacia -- mismo patron exacto que Hotel/Restaurante.
+// IVA / Impuestos -- control central, afecta a todo el sistema que
+// cobre IVA (Ventas, Restaurante...). Apagado por defecto.
+// Datos de facturacion -- RUC, direccion, telefono. Antes solo se
+// podian poner UNA VEZ al registrarse (direccion) o nunca (RUC, no
+// existia en ningun lado). Ahora editables aqui, y como Ventas,
+// Creditos y Proformas ya leen de esta misma configuracion, el
+// cambio llega a los 3 modulos de una vez, sin tocarlos.
+async function cargarDatosFacturacion() {
+  const statusEl = document.getElementById('facturacion-status');
+  try {
+    // RUC/direccion/telefono viven en configuracion_empresa, pero el
+    // color del comprobante lo lee comprobante-carta.js de OTRA tabla
+    // (configuracion_proforma, la misma que usa Proformas) -- se
+    // consultan ambas por separado para no guardar nada en el lugar
+    // equivocado.
+    const [{ data, error }, { data: dataProforma, error: errorProforma }] = await Promise.all([
+      sbClient.from('configuracion_empresa').select('ruc, direccion, telefono').eq('auth_user_id', currentAuthUserId).maybeSingle(),
+      sbClient.from('configuracion_proforma').select('color_principal, color_tabla, color_tabla_usa_mismo, titulo_comprobante').eq('auth_user_id', currentAuthUserId).maybeSingle(),
+    ]);
+    if (error) throw error;
+    if (errorProforma) throw errorProforma;
+    document.getElementById('fact-ruc').value = data?.ruc || '';
+    document.getElementById('fact-direccion').value = data?.direccion || '';
+    document.getElementById('fact-telefono').value = data?.telefono || '';
+    document.getElementById('fact-titulo').value = dataProforma?.titulo_comprobante || 'Comprobante';
+    document.getElementById('fact-color-encabezado').value = dataProforma?.color_principal || '#6EE7B7';
+    const usaMismo = dataProforma?.color_tabla_usa_mismo !== false;
+    document.getElementById('fact-color-tabla-igual').checked = usaMismo;
+    document.getElementById('fact-color-tabla').value = dataProforma?.color_tabla || dataProforma?.color_principal || '#6EE7B7';
+    document.getElementById('fact-wrap-color-tabla').style.display = usaMismo ? 'none' : 'block';
+    previsualizarColoresComprobante();
+  } catch (e) {
+    console.error('cargarDatosFacturacion:', e);
+    setStatus(statusEl, 'No se pudo cargar. Intenta recargar la página.', false);
+  }
+}
+
+function onToggleColorTablaIgual() {
+  const usaMismo = document.getElementById('fact-color-tabla-igual').checked;
+  document.getElementById('fact-wrap-color-tabla').style.display = usaMismo ? 'none' : 'block';
+  previsualizarColoresComprobante();
+}
+
+function colorTextoSegunFondo(hex) {
+  const m = (hex || '').replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return '#fff';
+  const [r, g, b] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+  const luminosidad = (r * 299 + g * 587 + b * 114) / 1000;
+  return luminosidad > 150 ? '#141414' : '#fff';
+}
+
+function previsualizarColoresComprobante() {
+  const colorEncabezado = document.getElementById('fact-color-encabezado').value;
+  const usaMismo = document.getElementById('fact-color-tabla-igual').checked;
+  const colorTabla = usaMismo ? colorEncabezado : document.getElementById('fact-color-tabla').value;
+  const previewEncabezado = document.getElementById('fact-preview-encabezado');
+  const previewTabla = document.getElementById('fact-preview-tabla');
+  previewEncabezado.style.background = colorEncabezado;
+  previewEncabezado.style.color = colorTextoSegunFondo(colorEncabezado);
+  previewTabla.style.background = colorTabla;
+  previewTabla.style.color = colorTextoSegunFondo(colorTabla);
+  const titulo = document.getElementById('fact-titulo')?.value?.trim() || 'Comprobante';
+  if (previewEncabezado) previewEncabezado.textContent = `Vista previa: ${titulo} de Venta`;
+}
+
+async function guardarDatosFacturacion() {
+  const statusEl = document.getElementById('facturacion-status');
+  const ruc = document.getElementById('fact-ruc').value.trim();
+  const direccion = document.getElementById('fact-direccion').value.trim();
+  const telefono = document.getElementById('fact-telefono').value.trim();
+  const titulo = document.getElementById('fact-titulo').value.trim();
+  const colorEncabezado = document.getElementById('fact-color-encabezado').value;
+  const usaMismo = document.getElementById('fact-color-tabla-igual').checked;
+  const colorTabla = document.getElementById('fact-color-tabla').value;
+  try {
+    const [{ error }, { error: errorProforma }] = await Promise.all([
+      sbClient.from('configuracion_empresa')
+        .update({ ruc: ruc || null, direccion: direccion || null, telefono: telefono || null })
+        .eq('auth_user_id', currentAuthUserId),
+      sbClient.from('configuracion_proforma')
+        .update({ color_principal: colorEncabezado, color_tabla_usa_mismo: usaMismo, color_tabla: usaMismo ? null : colorTabla, titulo_comprobante: titulo || null })
+        .eq('auth_user_id', currentAuthUserId),
+    ]);
+    if (error) throw error;
+    if (errorProforma) throw errorProforma;
+    setStatus(statusEl, 'Datos de facturación guardados.', true);
+  } catch (e) {
+    console.error('guardarDatosFacturacion:', e);
+    setStatus(statusEl, 'No se pudo guardar. Intenta de nuevo.', false);
+  }
+}
+
+async function cargarIva() {
+  const toggle = document.getElementById('iva-toggle');
+  const sub = document.getElementById('iva-row-sub');
+  const wrapPct = document.getElementById('iva-wrap-porcentaje');
+  const inputPct = document.getElementById('iva-porcentaje');
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('iva_activo, iva_porcentaje_default')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.iva_activo === true;
+    toggle.checked = activo;
+    inputPct.value = data?.iva_porcentaje_default ?? 15;
+    wrapPct.style.display = activo ? 'flex' : 'none';
+    sub.textContent = activo ? `Activado — se cobra ${inputPct.value}% de IVA.` : 'Desactivado — no se cobra IVA en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarIva:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+async function guardarIva(activo) {
+  const toggle = document.getElementById('iva-toggle');
+  const sub = document.getElementById('iva-row-sub');
+  const wrapPct = document.getElementById('iva-wrap-porcentaje');
+  const statusEl = document.getElementById('iva-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ iva_activo: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    wrapPct.style.display = activo ? 'flex' : 'none';
+    const pct = document.getElementById('iva-porcentaje').value;
+    sub.textContent = activo ? `Activado — se cobra ${pct}% de IVA.` : 'Desactivado — no se cobra IVA en ningún lado.';
+    setStatus(statusEl, activo ? 'IVA activado.' : 'IVA desactivado.', true);
+  } catch (e) {
+    console.error('guardarIva:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+async function guardarPorcentajeIva() {
+  const pct = parseFloat(document.getElementById('iva-porcentaje').value);
+  const statusEl = document.getElementById('iva-status');
+  const sub = document.getElementById('iva-row-sub');
+  if (isNaN(pct) || pct < 0 || pct > 100) { setStatus(statusEl, 'El porcentaje debe estar entre 0 y 100.', false); return; }
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ iva_porcentaje_default: pct })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = `Activado — se cobra ${pct}% de IVA.`;
+    setStatus(statusEl, `Porcentaje de IVA actualizado a ${pct}%.`, true);
+  } catch (e) {
+    console.error('guardarPorcentajeIva:', e);
+    setStatus(statusEl, 'No se pudo guardar el porcentaje. Intenta de nuevo.', false);
+  }
+}
+
+// Modulo de Veterinaria: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloVet() {
+  const toggle = document.getElementById('vet-toggle');
+  const sub = document.getElementById('vet-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_veterinaria').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_veterinaria === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — "Veterinaria" aparece en el menú.' : 'Desactivado — el módulo de Veterinaria no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloVet:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleVetClick(evt) {
+  const toggle = document.getElementById('vet-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloVet(toggle.checked);
+}
+async function guardarModuloVet(activo) {
+  const toggle = document.getElementById('vet-toggle');
+  const sub = document.getElementById('vet-row-sub');
+  const statusEl = document.getElementById('vet-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_veterinaria: activo, ...(activo ? { maneja_lotes_vencimiento: true } : {}) }).eq('auth_user_id', currentAuthUserId);   // las vacunas y medicamentos llevan lote y vencimiento
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — "Veterinaria" aparece en el menú.' : 'Desactivado — el módulo de Veterinaria no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Veterinaria activado. Recarga la página para ver el menú.' : 'Módulo de Veterinaria desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloVet:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Modulo de Clinica: se activa/desactiva desde aqui. Apagado por defecto. Al encenderlo se
+// muestran las especialidades (vacio = todas).
+async function cargarModuloClinica() {
+  const toggle = document.getElementById('clinica-toggle');
+  const sub = document.getElementById('clinica-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_clinica, clinica_especialidades').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_clinica === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — "Clínica" aparece en el menú.' : 'Desactivado — el módulo de Clínica no aparece en ningún lado.';
+    pintarClinicaEspecialidades(Array.isArray(data?.clinica_especialidades) ? data.clinica_especialidades : []);
+    document.getElementById('clinica-esp-wrap').style.display = activo ? '' : 'none';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloClinica:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function pintarClinicaEspecialidades(cfg) {
+  const lista = document.getElementById('clinica-esp-lista');
+  if (!lista || typeof CLINICA_ESPECIALIDADES === 'undefined') return;
+  const todas = !cfg.length || cfg.includes('multiespecialidad');
+  document.getElementById('clinica-esp-todas').checked = todas;
+  lista.innerHTML = Object.entries(CLINICA_ESPECIALIDADES).map(([k, v]) =>
+    `<label style="display:flex;gap:7px;align-items:center;cursor:pointer"><input type="checkbox" data-clinica-esp="${k}" ${todas || cfg.includes(k) ? 'checked' : ''} ${todas ? 'disabled' : ''} style="width:16px;height:16px"/> ${v.e} ${v.n}</label>`).join('');
+}
+function alMarcarClinicaTodas() {
+  const t = document.getElementById('clinica-esp-todas').checked;
+  document.querySelectorAll('[data-clinica-esp]').forEach(el => { el.disabled = t; if (t) el.checked = true; });
+}
+async function guardarClinicaEspecialidades() {
+  const statusEl = document.getElementById('clinica-status');
+  const todas = document.getElementById('clinica-esp-todas').checked;
+  const elegidas = [...document.querySelectorAll('[data-clinica-esp]')].filter(el => el.checked).map(el => el.dataset.clinicaEsp);
+  if (!todas && !elegidas.length) { setStatus(statusEl, 'Elige al menos una especialidad (o marca "Todas").', false); return; }
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ clinica_especialidades: todas ? ['multiespecialidad'] : elegidas }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    setStatus(statusEl, 'Especialidades guardadas.', true);
+  } catch (e) { console.error('guardarClinicaEspecialidades:', e); setStatus(statusEl, 'No se pudieron guardar. Intenta de nuevo.', false); }
+}
+function onToggleClinicaClick(evt) {
+  const toggle = document.getElementById('clinica-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloClinica(toggle.checked);
+}
+async function guardarModuloClinica(activo) {
+  const toggle = document.getElementById('clinica-toggle');
+  const sub = document.getElementById('clinica-row-sub');
+  const statusEl = document.getElementById('clinica-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_clinica: activo, ...(activo ? { maneja_lotes_vencimiento: true } : {}) }).eq('auth_user_id', currentAuthUserId);   // los medicamentos llevan lote y vencimiento
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — "Clínica" aparece en el menú.' : 'Desactivado — el módulo de Clínica no aparece en ningún lado.';
+    document.getElementById('clinica-esp-wrap').style.display = activo ? '' : 'none';
+    setStatus(statusEl, activo ? 'Módulo de Clínica activado. Recarga la página para ver el menú.' : 'Módulo de Clínica desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloClinica:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Modulo de Insumos Medicos: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloInsumos() {
+  const toggle = document.getElementById('insumos-toggle');
+  const sub = document.getElementById('insumos-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_insumos').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_insumos === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Lotes, Vencimientos y Rotación aparecen en el menú.' : 'Desactivado — el módulo de Insumos Médicos no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloInsumos:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleInsumosClick(evt) {
+  const toggle = document.getElementById('insumos-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloInsumos(toggle.checked);
+}
+async function guardarModuloInsumos(activo) {
+  const toggle = document.getElementById('insumos-toggle');
+  const sub = document.getElementById('insumos-row-sub');
+  const statusEl = document.getElementById('insumos-status');
+  toggle.disabled = true;
+  try {
+    // Al activarlo tambien se enciende el control de lotes y vencimientos de los productos.
+    // Al desactivarlo NO se apaga: puede estar en uso por otro modulo y no se pierde nada.
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_insumos: activo, ...(activo ? { maneja_lotes_vencimiento: true } : {}) }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Lotes, Vencimientos y Rotación aparecen en el menú.' : 'Desactivado — el módulo de Insumos Médicos no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Insumos Médicos activado. Recarga la página para ver el menú.' : 'Módulo de Insumos Médicos desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloInsumos:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Modulo de Transporte de carga: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloTransporte() {
+  const toggle = document.getElementById('transporte-toggle');
+  const sub = document.getElementById('transporte-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_transporte').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_transporte === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Transporte aparece en el menú.' : 'Desactivado — el módulo de Transporte de carga no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloTransporte:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+// Modulo de Diseño: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloDiseno() {
+  const toggle = document.getElementById('diseno-toggle');
+  const sub = document.getElementById('diseno-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_diseno').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_diseno === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Diseño aparece en el menú.' : 'Desactivado — el módulo de Diseño no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloDiseno:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleDisenoClick(evt) {
+  const toggle = document.getElementById('diseno-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloDiseno(toggle.checked);
+}
+async function guardarModuloDiseno(activo) {
+  const toggle = document.getElementById('diseno-toggle');
+  const sub = document.getElementById('diseno-row-sub');
+  const statusEl = document.getElementById('diseno-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_diseno: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Diseño aparece en el menú.' : 'Desactivado — el módulo de Diseño no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Diseño activado. Recarga la página para ver el menú.' : 'Módulo de Diseño desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloDiseno:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+// Modulo de Fiados: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloFiados() {
+  const toggle = document.getElementById('fiados-toggle');
+  const sub = document.getElementById('fiados-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_fiados').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_fiados === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Fiados aparece en el menú y como opción al cobrar en Ventas.' : 'Desactivado — el módulo de Fiados no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloFiados:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+// Modulo de Cotizaciones: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloCotizaciones() {
+  const toggle = document.getElementById('cotizaciones-toggle');
+  const sub = document.getElementById('cotizaciones-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_cotizaciones').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_cotizaciones === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Cotizaciones aparece en el menú.' : 'Desactivado — el módulo de Cotizaciones no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloCotizaciones:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleCotizacionesClick(evt) {
+  const toggle = document.getElementById('cotizaciones-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloCotizaciones(toggle.checked);
+}
+async function guardarModuloCotizaciones(activo) {
+  const toggle = document.getElementById('cotizaciones-toggle');
+  const sub = document.getElementById('cotizaciones-row-sub');
+  const statusEl = document.getElementById('cotizaciones-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_cotizaciones: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Cotizaciones aparece en el menú.' : 'Desactivado — el módulo de Cotizaciones no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Cotizaciones activado. Recarga la página para ver el menú.' : 'Módulo de Cotizaciones desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloCotizaciones:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Certificados de regalo (23-oct-2026): mismo criterio que Cotizaciones. Apagado por defecto.
+async function cargarModuloCertificados() {
+  const toggle = document.getElementById('certificados-toggle');
+  const sub = document.getElementById('certificados-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_certificados').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_certificados === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Certificados de regalo aparece en el menú y en Ventas.' : 'Desactivado — no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloCertificados:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleCertificadosClick(evt) {
+  const toggle = document.getElementById('certificados-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloCertificados(toggle.checked);
+}
+async function guardarModuloCertificados(activo) {
+  const toggle = document.getElementById('certificados-toggle');
+  const sub = document.getElementById('certificados-row-sub');
+  const statusEl = document.getElementById('certificados-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_certificados: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Certificados de regalo aparece en el menú y en Ventas.' : 'Desactivado — no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Certificados de regalo activado. Recarga la página para ver el menú.' : 'Certificados de regalo desactivado (los certificados ya creados se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloCertificados:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+function onToggleFiadosClick(evt) {
+  const toggle = document.getElementById('fiados-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloFiados(toggle.checked);
+}
+async function guardarModuloFiados(activo) {
+  const toggle = document.getElementById('fiados-toggle');
+  const sub = document.getElementById('fiados-row-sub');
+  const statusEl = document.getElementById('fiados-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_fiados: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Fiados aparece en el menú y como opción al cobrar en Ventas.' : 'Desactivado — el módulo de Fiados no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Fiados activado. Recarga la página para ver el menú.' : 'Módulo de Fiados desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloFiados:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+function onToggleTransporteClick(evt) {
+  const toggle = document.getElementById('transporte-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloTransporte(toggle.checked);
+}
+async function guardarModuloTransporte(activo) {
+  const toggle = document.getElementById('transporte-toggle');
+  const sub = document.getElementById('transporte-row-sub');
+  const statusEl = document.getElementById('transporte-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_transporte: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Transporte aparece en el menú.' : 'Desactivado — el módulo de Transporte de carga no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Transporte de carga activado. Recarga la página para ver el menú.' : 'Módulo de Transporte de carga desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloTransporte:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Programa de puntos: se activa/desactiva desde aqui. Apagado por
+// defecto -- sin activarlo, el modulo no aparece ni cambia nada.
+async function cargarModuloPuntos() {
+  const toggle = document.getElementById('puntos-toggle');
+  const sub = document.getElementById('puntos-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_puntos').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_puntos === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — "Programa de puntos" aparece en el menú.'
+      : 'Desactivado — el programa de puntos no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarModuloPuntos:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onTogglePuntosClick(evt) {
+  const toggle = document.getElementById('puntos-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloPuntos(toggle.checked);
+}
+
+async function guardarModuloPuntos(activo) {
+  const toggle = document.getElementById('puntos-toggle');
+  const sub = document.getElementById('puntos-row-sub');
+  const statusEl = document.getElementById('puntos-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_puntos: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — "Programa de puntos" aparece en el menú.'
+      : 'Desactivado — el programa de puntos no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Programa de puntos activado. Recarga la página para ver el menú.' : 'Programa de puntos desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloPuntos:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+async function cargarModuloFarmacia() {
+  const card = document.getElementById('farmacia-card');
+  const toggle = document.getElementById('farmacia-toggle');
+  const sub = document.getElementById('farmacia-row-sub');
+  card.style.display = '';
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_modulo_farmacia, usa_farmacia_fase2, fefo_activo')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_farmacia === true;
+    toggle.checked = activo;
+    sub.textContent = activo
+      ? 'Activado — Lotes y Vencimientos aparecen en el sidebar.'
+      : 'Desactivado — el módulo de farmacia no aparece en ningún lado.';
+    toggle.disabled = false;
+
+    // FEFO (fase 2) -- solo visible/relevante si esta cuenta ya tiene
+    // esa fase habilitada (por ahora, solo cuentas elegidas a mano).
+    const wrapFefo = document.getElementById('fefo-row-wrap');
+    if (data?.usa_farmacia_fase2 === true) {
+      wrapFefo.style.display = 'block';
+      const toggleFefo = document.getElementById('fefo-toggle');
+      const subFefo = document.getElementById('fefo-row-sub');
+      const fefoActivo = data?.fefo_activo !== false; // default true
+      toggleFefo.checked = fefoActivo;
+      subFefo.textContent = fefoActivo
+        ? 'Activado — al vender, se descuenta automáticamente el lote que vence primero.'
+        : 'Desactivado — puedes elegir manualmente qué lote vender.';
+      toggleFefo.disabled = false;
+    } else {
+      wrapFefo.style.display = 'none';
+    }
+  } catch (e) {
+    console.error('cargarModuloFarmacia:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+
+function onToggleFefoClick(evt) {
+  const toggle = document.getElementById('fefo-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarFefoActivo(toggle.checked);
+}
+
+async function guardarFefoActivo(activo) {
+  const toggle = document.getElementById('fefo-toggle');
+  const sub = document.getElementById('fefo-row-sub');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ fefo_activo: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — al vender, se descuenta automáticamente el lote que vence primero.'
+      : 'Desactivado — puedes elegir manualmente qué lote vender.';
+  } catch (e) {
+    console.error('guardarFefoActivo:', e);
+    toggle.checked = !activo;
+    sub.textContent = 'No se pudo guardar el cambio. Intenta de nuevo.';
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+function onToggleModuloFarmaciaClick(evt) {
+  const toggle = document.getElementById('farmacia-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloFarmacia(toggle.checked);
+}
+
+async function guardarModuloFarmacia(activo) {
+  const toggle = document.getElementById('farmacia-toggle');
+  const sub = document.getElementById('farmacia-row-sub');
+  const statusEl = document.getElementById('farmacia-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_modulo_farmacia: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo
+      ? 'Activado — Lotes y Vencimientos aparecen en el sidebar.'
+      : 'Desactivado — el módulo de farmacia no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Farmacia activado.' : 'Módulo de Farmacia desactivado.', true);
+  } catch (e) {
+    console.error('guardarModuloFarmacia:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+/* =====================================================
+   EDITAR MÓDULOS — activar/desactivar módulos opcionales
+   La lista de módulos sale de modulos-guard.js (ModulosGuard),
+   así que agregar un módulo opcional nuevo en el futuro NO
+   requiere tocar este archivo: basta con agregarlo allá.
+   Se guarda en configuracion_empresa.metadata.modulosOpcionales
+   (misma columna jsonb "metadata" que ya usa Reportes para su
+   configuración de exportaciones, cada quien con su propia clave).
+===================================================== */
+let modulosOpcionalesCfg = {};
+
+async function cargarModulosOpcionales() {
+  const cont = document.getElementById('cfg-modulos-lista');
+  if (!cont) return;
+
+  if (!window.ModulosGuard) {
+    cont.innerHTML = '<div style="font-size:12.5px;color:var(--text-muted);padding:14px 0">No se pudo cargar el listado de módulos. Recarga la página.</div>';
+    return;
+  }
+
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('metadata')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+
+    modulosOpcionalesCfg = (data?.metadata && typeof data.metadata === 'object' && data.metadata.modulosOpcionales) || {};
+    pintarModulosOpcionales();
+  } catch (e) {
+    console.error('cargarModulosOpcionales:', e);
+    cont.innerHTML = '<div style="font-size:12.5px;color:var(--danger);padding:14px 0">No se pudo cargar el estado de los módulos. Intenta recargar la página.</div>';
+  }
+}
+
+function pintarModulosOpcionales() {
+  const cont = document.getElementById('cfg-modulos-lista');
+  if (!cont) return;
+  const modulos = Object.values(window.ModulosGuard.MODULOS_OPCIONALES);
+
+  cont.innerHTML = modulos.map(m => {
+    const activo = window.ModulosGuard.estaActivo(modulosOpcionalesCfg, m.key);
+    return `
+    <div class="cfg-row" data-modulo-row="${m.key}">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:19px;line-height:1">${m.icon}</span>
+        <div>
+          <div class="cfg-row-label">${m.label}</div>
+          <div class="cfg-row-sub">${m.desc || ''}</div>
+        </div>
+      </div>
+      <label class="cfg-switch">
+        <input type="checkbox" ${activo ? 'checked' : ''} data-modulo-input="${m.key}" />
+        <span class="cfg-switch-track" onclick="onToggleModuloClick(event,'${m.key}')"></span>
+      </label>
+    </div>`;
+  }).join('');
+}
+
+function onToggleModuloClick(evt, key) {
+  const input = document.querySelector(`input[data-modulo-input="${key}"]`);
+  if (!input || input.disabled) { evt.preventDefault(); return; }
+  input.checked = !input.checked;
+  guardarModulo(key, input.checked);
+}
+
+async function guardarModulo(key, activo) {
+  const input   = document.querySelector(`input[data-modulo-input="${key}"]`);
+  const statusEl = document.getElementById('modulos-status');
+  const modulo  = window.ModulosGuard.MODULOS_OPCIONALES[key];
+  if (input) input.disabled = true;
+
+  try {
+    const metadataActual = await metadataActualEmpresa();
+    const nuevaCfg = { ...(metadataActual.modulosOpcionales || {}), [key]: activo };
+    const nuevaMetadata = { ...metadataActual, modulosOpcionales: nuevaCfg };
+
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ metadata: nuevaMetadata, updated_at: new Date().toISOString() })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+
+    modulosOpcionalesCfg = nuevaCfg;
+    setStatus(statusEl, `${modulo?.label || 'Módulo'} ${activo ? 'activado' : 'desactivado'} correctamente.`, true);
+  } catch (e) {
+    console.error('guardarModulo:', e);
+    if (input) input.checked = !activo; // revertir visualmente
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    if (input) input.disabled = false;
+  }
+}
+
+// Lee metadata actual "fresca" desde Supabase antes de escribir, para no
+// pisar cambios guardados por otra pestaña/sección entre que se cargó la
+// página y que se tocó el interruptor.
+async function metadataActualEmpresa() {
+  try {
+    const { data } = await sbClient.from('configuracion_empresa')
+      .select('metadata').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    return (data && typeof data.metadata === 'object' && data.metadata) || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/* =====================================================
+   CERRAR SESIÓN
+===================================================== */
+function confirmarCerrarSesion() {
+  const ok = confirm('¿Seguro que quieres cerrar sesión?');
+  if (!ok) return;
+  ejecutarCerrarSesion();
+}
+
+async function ejecutarCerrarSesion() {
+  const btn = document.getElementById('btn-cerrar-sesion');
+  const statusEl = document.getElementById('logout-status');
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Cerrando sesión…';
+  try {
+    // Si había un perfil restringido activo (sistema multiusuario), se limpia
+    // para que la próxima vez se vuelva a pedir elegir usuario.
+    try { sessionStorage.removeItem('n360_perfil_activo'); } catch (e) {}
+
+    const { error } = await sbClient.auth.signOut();
+    if (error) throw error;
+    window.location.href = 'login.html';
+  } catch (e) {
+    console.error('ejecutarCerrarSesion:', e);
+    setStatus(statusEl, 'No se pudo cerrar sesión. Intenta de nuevo.', false);
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Cerrar sesión';
+  }
+}
+
+/* =====================================================
+   CUENTA DE DEMOSTRACIÓN — no se puede eliminar ni activar el
+   multiusuario (el servidor también lo bloquea).
+===================================================== */
+async function aplicarModoDemo() {
+  const card = document.getElementById('card-eliminar-cuenta');
+  let esDemo = false;
+  try {
+    const { data, error } = await sbClient.rpc('soy_cuenta_demo');
+    if (!error) esDemo = data === true;
+  } catch (_) {}
+  if (!esDemo) { if (card) card.style.display = ''; return; }
+  if (card) card.remove();
+  const toggle = document.getElementById('mu-toggle');
+  const sub = document.getElementById('mu-row-sub');
+  if (toggle) toggle.disabled = true;
+  if (sub) sub.textContent = 'No disponible en la cuenta de demostración.';
+}
+
+/* =====================================================
+   CAMBIAR CONTRASEÑA — solo cuentas reales de clientes.
+   El servidor decide si se muestra (no en cuentas de prueba, cuentas
+   internas de sucursal/bodega, negocios vinculados secundarios ni
+   administradores). Tampoco en "Ver como" (solo lectura).
+   Primero se comprueba la contraseña actual con un cliente aparte
+   (no toca la sesión abierta) y desde esa sesión recién verificada se
+   guarda la nueva.
+===================================================== */
+let pwEmailCuenta = null;
+async function aplicarCambioContrasena(email) {
+  const card = document.getElementById('card-cambiar-contrasena');
+  if (!card) return;
+  try {
+    if (window.N360VerComo && window.N360VerComo.activo) return;
+    if (!email) return;
+    const { data, error } = await sbClient.rpc('cuenta_puede_cambiar_contrasena');
+    if (error || !data || data.puede !== true) return;
+    pwEmailCuenta = email;
+    const u = document.getElementById('pw-usuario'); if (u) u.value = email;
+    const oc = document.getElementById('pw-correo-oculto'); if (oc) oc.textContent = ocultarCorreo(email);
+    card.style.display = '';
+  } catch (_) { /* si algo falla, simplemente no se muestra la opción */ }
+}
+
+// "jack@gmail.com" -> "ja**@gmail.com" (para que se reconozca sin mostrarlo completo)
+function ocultarCorreo(email) {
+  const [u, d] = String(email || '').split('@');
+  if (!d) return email || '';
+  return (u.length <= 2 ? u[0] + '*' : u.slice(0, 2) + '*'.repeat(Math.min(6, u.length - 2))) + '@' + d;
+}
+
+// ¿Olvidaste tu contraseña? -> el mismo enlace de recuperación que ya usa la
+// pantalla de inicio de sesión (lleva a reset-password.html). No cambia nada
+// hasta que la persona abre el enlace y escribe la contraseña nueva.
+let enviandoRecuperacion = false;
+async function enviarEnlaceRecuperacion() {
+  if (enviandoRecuperacion) return;
+  const statusEl = document.getElementById('pw-olvido-status');
+  const btn = document.getElementById('btn-olvide-contrasena');
+  if (!pwEmailCuenta) { setStatus(statusEl, 'Esta opción no está disponible para esta cuenta.', false); return; }
+  if (!confirm(`Te enviaremos un enlace a ${ocultarCorreo(pwEmailCuenta)} para crear una contraseña nueva.\n\n¿Enviar ahora?`)) return;
+  enviandoRecuperacion = true;
+  if (btn) btn.disabled = true;
+  try {
+    const { error } = await sbClient.auth.resetPasswordForEmail(pwEmailCuenta, {
+      redirectTo: window.location.origin + '/reset-password.html',
+    });
+    if (error) {
+      const m = String(error.message || '').toLowerCase();
+      setStatus(statusEl, (m.includes('rate') || m.includes('too many') || m.includes('seconds'))
+        ? 'Ya se envió un enlace hace poco. Espera unos minutos y revisa tu correo (también spam).'
+        : 'No se pudo enviar el correo. Intenta de nuevo.', false);
+      return;
+    }
+    setStatus(statusEl, `Listo: revisa ${ocultarCorreo(pwEmailCuenta)} (también spam) y abre el enlace para crear tu contraseña nueva.`, true);
+  } catch (e) {
+    console.error('enviarEnlaceRecuperacion:', e);
+    setStatus(statusEl, 'Sin conexión. Revisa tu internet e intenta de nuevo.', false);
+  } finally {
+    enviandoRecuperacion = false;
+    // Se deja pasar un minuto antes de permitir otro envío (evita mandar varios correos seguidos).
+    setTimeout(() => { if (btn) btn.disabled = false; }, 60000);
+  }
+}
+
+function alternarVerContrasena(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const ver = el.type === 'password';
+  el.type = ver ? 'text' : 'password';
+  if (btn) btn.textContent = ver ? 'Ocultar' : 'Ver';
+}
+
+function mensajeErrorContrasena(err) {
+  const m = String((err && (err.message || err.msg)) || '').toLowerCase();
+  const code = String((err && err.code) || '').toLowerCase();
+  if (code === 'same_password' || m.includes('different from the old')) return 'La contraseña nueva debe ser distinta a la actual.';
+  if (code === 'weak_password' || m.includes('weak') || m.includes('pwned') || m.includes('leaked'))
+    return 'Esa contraseña es muy débil o ya apareció filtrada en internet. Elige otra.';
+  if (m.includes('should be at least') || m.includes('at least')) return 'La contraseña nueva es muy corta.';
+  if (code === 'over_request_rate_limit' || m.includes('rate limit') || m.includes('too many')) return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+  if (m.includes('fetch') || m.includes('network')) return 'Sin conexión. Revisa tu internet e intenta de nuevo.';
+  return 'No se pudo cambiar la contraseña. Intenta de nuevo.';
+}
+
+let cambiandoContrasena = false;
+async function cambiarContrasena() {
+  if (cambiandoContrasena) return;
+  const statusEl = document.getElementById('pw-status');
+  const btn = document.getElementById('btn-cambiar-contrasena');
+  const actual = document.getElementById('pw-actual').value;
+  const nueva = document.getElementById('pw-nueva').value;
+  const repetir = document.getElementById('pw-repetir').value;
+
+  if (!pwEmailCuenta) { setStatus(statusEl, 'Esta opción no está disponible para esta cuenta.', false); return; }
+  if (!actual) { setStatus(statusEl, 'Escribe tu contraseña actual.', false); return; }
+  if (nueva.length < 8) { setStatus(statusEl, 'La contraseña nueva debe tener al menos 8 caracteres.', false); return; }
+  if (nueva !== repetir) { setStatus(statusEl, 'La contraseña nueva y su repetición no coinciden.', false); return; }
+  if (nueva === actual) { setStatus(statusEl, 'La contraseña nueva debe ser distinta a la actual.', false); return; }
+
+  cambiandoContrasena = true;
+  if (btn) btn.disabled = true;
+  // Cliente aparte, sin guardar nada en el navegador: no toca la sesión abierta.
+  const verif = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'n360_verificar_contrasena' },
+  });
+  try {
+    const { data: ses, error: errLogin } = await verif.auth.signInWithPassword({ email: pwEmailCuenta, password: actual });
+    if (errLogin || !ses || !ses.user) {
+      const m = String(errLogin?.message || '').toLowerCase();
+      setStatus(statusEl, (m.includes('rate') || m.includes('too many')) ? 'Demasiados intentos. Espera unos minutos y vuelve a probar.' : 'La contraseña actual no es correcta. Si no la recuerdas, usa "¿Olvidaste tu contraseña actual?" aquí abajo.', false);
+      return;
+    }
+    if (ses.user.id !== currentAuthUserId) { setStatus(statusEl, 'No se pudo verificar la cuenta. Recarga la página.', false); return; }
+
+    const { error: errUpd } = await verif.auth.updateUser({ password: nueva });
+    if (errUpd) { setStatus(statusEl, mensajeErrorContrasena(errUpd), false); return; }
+
+    ['pw-actual', 'pw-nueva', 'pw-repetir'].forEach(id => { const el = document.getElementById(id); if (el) { el.value = ''; el.type = 'password'; } });
+    document.querySelectorAll('#form-cambiar-contrasena .cfg-pw-ojo').forEach(b => { b.textContent = 'Ver'; });
+    setStatus(statusEl, 'Contraseña cambiada. Úsala la próxima vez que inicies sesión.', true);
+    // Rastro en la bitácora (sin la contraseña). Si falla, el cambio ya quedó hecho.
+    try {
+      await sbClient.from('auditoria_log').insert({
+        auth_user_id: currentAuthUserId, modulo: 'Configuración', tabla: 'cuenta', accion: 'UPDATE',
+        resumen: 'Se cambió la contraseña de la cuenta',
+      });
+    } catch (_) {}
+  } catch (e) {
+    console.error('cambiarContrasena:', e);
+    setStatus(statusEl, mensajeErrorContrasena(e), false);
+  } finally {
+    // Se cierra solo la sesión de verificación (scope local: no cierra esta ni otras).
+    try { await verif.auth.signOut({ scope: 'local' }); } catch (_) {}
+    cambiandoContrasena = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* =====================================================
+   ELIMINAR CUENTA — doble confirmación + RPC segura
+===================================================== */
+function confirmarEliminarCuenta() {
+  const primera = confirm(
+    '¿Estás seguro de que quieres eliminar tu cuenta?\n\n' +
+    'Se borrarán TODOS tus datos (ventas, clientes, productos, compras, gastos, caja, etc.) de forma permanente.'
+  );
+  if (!primera) return;
+
+  const segunda = confirm(
+    'Última confirmación:\n\n' +
+    'Esta acción NO se puede deshacer. Tu cuenta y toda la información de tu negocio se eliminarán para siempre.\n\n' +
+    '¿Deseas continuar?'
+  );
+  if (!segunda) return;
+
+  ejecutarEliminarCuenta();
+}
+
+async function ejecutarEliminarCuenta() {
+  const btn = document.getElementById('btn-eliminar-cuenta');
+  const statusEl = document.getElementById('del-status');
+  btn.disabled = true;
+  btn.textContent = 'Eliminando cuenta…';
+  try {
+    const { error } = await sbClient.rpc('eliminar_mi_cuenta');
+    if (error) throw error;
+    await sbClient.auth.signOut();
+    window.location.href = 'index.html?cuenta_eliminada=1';
+  } catch (e) {
+    console.error('ejecutarEliminarCuenta:', e);
+    setStatus(statusEl, 'No se pudo eliminar la cuenta. Intenta de nuevo o contacta soporte.', false);
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Eliminar mi cuenta permanentemente';
+  }
+}
+
+/* =====================================================
+   MAIN INIT
+===================================================== */
+async function initConfiguracion() {
+  const savedTheme = localStorage.getItem('n360_theme') || 'light';
+  applyTheme(savedTheme);
+
+  try {
+    const { data: { user }, error: sessionError } = await sbClient.auth.getUser();
+    if (sessionError || !user) { window.location.href = 'login.html'; return; }
+
+    currentAuthUserId = user.id;
+    if (user.email) checkAdminAccess(user.email);
+
+    // Si hay un perfil restringido activo (sistema multiusuario), esta
+    // página solo es para el perfil Admin: la cuenta y sus datos son de
+    // toda la cuenta, no de un usuario individual.
+    try {
+      const sesionRaw = sessionStorage.getItem('n360_perfil_activo');
+      if (sesionRaw) {
+        const sesion = JSON.parse(sesionRaw);
+        if (sesion && sesion.authUserId === user.id && sesion.tipo === 'restringido') {
+          alert('Solo el usuario Admin puede entrar a Configuración.');
+          window.location.href = 'dashboard.html';
+          return;
+        }
+      }
+    } catch (_) { /* si el JSON está corrupto, se ignora y se deja pasar */ }
+
+    const { data: profile } = await sbClient
+      .from('usuarios')
+      .select('estado_cuenta')
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+
+    if (profile) {
+      const estado = profile.estado_cuenta || 'activa';
+      if (estado === 'suspendida') { document.getElementById('screen-suspended').classList.add('active'); return; }
+      if (estado === 'cancelada')  { document.getElementById('screen-cancelled').classList.add('active'); return; }
+    }
+
+    // A partir de aquí ya se puede entrar a Configuración — pero antes se
+    // exige el código de administrador (mismo código de "Gestionar
+    // usuarios"). Si perfiles-guard.js no llegó a cargar por algún motivo,
+    // mostrarApp() se llama igual: nunca se bloquea el acceso por un
+    // fallo externo.
+    const mostrarApp = () => {
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('app').style.display = 'flex';
+      cargarMultiusuario().then(aplicarModoDemo);
+      aplicarCambioContrasena(user.email);
+      cargarSkuDoc();
+      cargarModulosOpcionales();
+      cargarLotesVencimiento();
+      cargarCostoPromedio();
+      cargarPresentaciones();
+      cargarNumeroSerie();
+      cargarModeloProducto();
+      cargarModuloHotel();
+      cargarModuloRestaurante();
+      cargarModuloFarmacia();
+      cargarModuloPuntos();
+      cargarModuloVet();
+      cargarModuloClinica();
+      cargarModuloInsumos();
+      cargarModuloTransporte();
+      cargarModuloDiseno();
+      cargarModuloFiados();
+      cargarModuloCotizaciones();
+      cargarModuloCertificados();
+      cargarIva();
+      cargarDatosFacturacion();
+      cargarCierresAuto();
+    };
+
+    if (window.PerfilesGuardConfig) {
+      window.PerfilesGuardConfig.requerirCodigoAdmin(mostrarApp);
+    } else {
+      mostrarApp();
+    }
+
+  } catch (err) {
+    console.error('Configuración init error:', err);
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+  }
+}
+
+sbClient.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_OUT') window.location.href = 'login.html';
+});
+
+document.addEventListener('DOMContentLoaded', initConfiguracion);
+document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
+</script>
+<script src="clinica-comun.js?v=20261024c"></script>
+<script src="perfiles-guard.js?v=20261021c"></script>
+<script src="modulos-guard.js?v=20261024a"></script>
+</body>
+</html>

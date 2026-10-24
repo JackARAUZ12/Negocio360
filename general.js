@@ -121,6 +121,7 @@ function startOfWeekISO() {
   return ymd(d);
 }
 function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   // día de cierre del negocio (opcional)
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }

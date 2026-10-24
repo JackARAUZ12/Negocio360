@@ -64,7 +64,8 @@
   =================================================== */
   function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   function todayISO() { return ymd(new Date()); }
-  function startOfMonthISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; }
+  function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   /* día de cierre del negocio (opcional) */ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; }
 
   function sumarFrecuencia(fechaISO, frecuencia, veces) {
     const d = new Date(fechaISO + 'T12:00:00');

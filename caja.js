@@ -69,6 +69,7 @@ function ymd(d) {
 }
 function todayISO()        { return ymd(new Date()); }
 function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   // día de cierre del negocio (opcional)
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }
@@ -1018,13 +1019,15 @@ function renderCierres() {
         ${fmtDate(c.fecha)}
         ${c.tipo === 'mensual' ? `<div style="font-size:10.5px;font-weight:700;color:var(--accent);margin-top:2px">📅 MENSUAL${c.periodo_inicio ? ` · ${fmtDate(c.periodo_inicio)} al ${fmtDate(c.periodo_fin)}` : ''}</div>` : ''}
         ${c.automatico ? `<div style="font-size:10px;color:var(--text-muted);margin-top:1px">generado automáticamente</div>` : ''}
+        ${c.monto_retirado ? `<div style="font-size:10.5px;color:var(--text-secondary);margin-top:1px">💼 Retiro ${fmt(c.monto_retirado)} · empezó de cero</div>` : ''}
+        ${c.diferencia_arqueo ? `<div style="font-size:10.5px;color:${Number(c.diferencia_arqueo) < 0 ? 'var(--danger)' : 'var(--success)'};margin-top:1px">Arqueo: ${Number(c.diferencia_arqueo) < 0 ? 'faltante' : 'sobrante'} ${fmt(Math.abs(c.diferencia_arqueo))}</div>` : ''}
       </td>
       <td>${fmt(c.saldo_inicial)}</td>
       <td class="td-entrada">${fmt(c.total_ingresos)}</td>
       <td class="td-salida">${fmt(c.total_egresos)}</td>
       <td style="color:${flujoNeto >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700">${fmt(c.saldo_final)}</td>
       <td class="td-actions" style="display:flex;align-items:center;gap:8px">
-        <span class="badge-movs" style="cursor:pointer;text-decoration:underline" title="Ver detalle" onclick="verDetalleCierre('${c.fecha}')">${c.movimientos_count} mov.</span>
+        <span class="badge-movs" style="cursor:pointer;text-decoration:underline" title="Ver detalle" onclick="verDetalleCierre('${c.fecha}'${c.tipo === 'mensual' && c.periodo_inicio ? `,'${c.periodo_inicio}',${Number(c.saldo_inicial) || 0}` : ''})">${c.movimientos_count} mov.</span>
         <button class="btn-icon" title="Deshacer este cierre — no borra ningún movimiento real, solo el recibo del cierre" onclick="confirmarDeshacerCierre('${c.id}','${fmtDate(c.fecha)}')" style="color:var(--danger)">↩️</button>
       </td>
     </tr>`;
@@ -1041,9 +1044,9 @@ let DETALLE_CIERRE_ACTUAL = { fecha: null, movimientos: [], resumen: null };
 // siempre cuadra con los 4 numeros ya guardados. No se guarda nada
 // nuevo en la base de datos -- funciona igual para cierres de hace
 // meses que para uno recien hecho.
-async function verDetalleCierre(fecha) {
+async function verDetalleCierre(fecha, desdeMensual, saldoInicialMensual) {
   openModal('modal-detalle-cierre');
-  document.getElementById('dc-titulo').textContent = `Detalle del cierre — ${fmtDate(fecha)}`;
+  document.getElementById('dc-titulo').textContent = desdeMensual ? `Detalle del cierre — ${fmtDate(desdeMensual)} al ${fmtDate(fecha)}` : `Detalle del cierre — ${fmtDate(fecha)}`;
   document.getElementById('dc-resumen').innerHTML = '';
   document.getElementById('dc-tbody').innerHTML = `<tr><td colspan="4" class="empty-cell">Cargando…</td></tr>`;
 
@@ -1053,12 +1056,12 @@ async function verDetalleCierre(fecha) {
       .select('tipo_flujo, monto, concepto, tipo_movimiento, created_at, saldo_anterior')
       .eq('auth_user_id', STATE.userId)
       .eq('estado', 'completado')
-      .eq('fecha', fecha)
-      .order('created_at');
+      .gte('fecha', desdeMensual || fecha).lte('fecha', fecha)
+      .order('created_at').range(0, 4999);
     if (error) throw error;
 
     const lista = movs || [];
-    const saldoInicial  = lista.length > 0 ? Number(lista[0].saldo_anterior) : 0;
+    const saldoInicial  = desdeMensual ? Number(saldoInicialMensual) || 0 : (lista.length > 0 ? Number(lista[0].saldo_anterior) : 0);
     const totalIngresos = lista.filter(r => r.tipo_flujo === 'INGRESO' && !esTransferenciaInterna(r)).reduce((s,r) => s + Number(r.monto), 0);
     const totalEgresos  = lista.filter(r => r.tipo_flujo === 'EGRESO' && !esTransferenciaInterna(r)).reduce((s,r)  => s + Number(r.monto), 0);
     const saldoFinal    = saldoInicial + totalIngresos - totalEgresos;
@@ -1150,61 +1153,126 @@ function exportarDetalleCierrePDF() {
   doc.save(`negocio360_cierre_caja_${fecha}.pdf`);
 }
 
-// Cierre MENSUAL: consolida todo el mes en curso en un solo registro.
-// Es independiente de los cierres diarios -- pueden convivir ambos sin
-// chocar, y ninguno afecta al otro.
+// Cierre MENSUAL (24-oct-2026): usa el DÍA DE CIERRE del negocio (Configuración ›
+// Cierres; si no eligió, el mes calendario como siempre). Se abre una ventana con el
+// resumen del período, el arqueo opcional (contar el dinero real) y, si el negocio lo
+// quiere, "empezar de cero": el saldo del cierre se registra como RETIRO. Todo lo hace
+// la base en UNA operación (caja_cierre_periodo); deshacer el cierre anula esos movimientos.
+const CM = { desde: null, hasta: null, sistema: 0 };
+function _isoLocal(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function _finPeriodoActual(dia, hoy) {
+  if (!dia) return _isoLocal(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0));
+  return hoy.getDate() >= dia ? _isoLocal(new Date(hoy.getFullYear(), hoy.getMonth(), dia))
+                              : _isoLocal(new Date(hoy.getFullYear(), hoy.getMonth() - 1, dia));
+}
+function _inicioPeriodo(dia, hasta) {
+  const h = new Date(hasta + 'T12:00:00');
+  return dia ? _isoLocal(new Date(h.getFullYear(), h.getMonth() - 1, dia + 1)) : _isoLocal(new Date(h.getFullYear(), h.getMonth(), 1));
+}
+function asegurarModalCierreMes() {
+  if (document.getElementById('modal-cierre-mes')) return;
+  const div = document.createElement('div');
+  div.innerHTML = `
+  <div class="modal-overlay" id="modal-cierre-mes" onclick="if(event.target===this)closeModal('modal-cierre-mes')">
+    <div class="modal-box" style="max-width:520px">
+      <div class="modal-header"><span class="modal-title">Cierre del mes</span>
+        <button class="modal-close" onclick="closeModal('modal-cierre-mes')">✕</button></div>
+      <div class="modal-body">
+        <div id="cm-periodo" style="font-weight:700;margin-bottom:8px"></div>
+        <div id="cm-resumen" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px;background:var(--bg-app);border-radius:10px;padding:10px 12px">Calculando…</div>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-size:13px;font-weight:600">
+          <input type="checkbox" id="cm-arqueo" style="width:auto" onchange="cmActualizar()"/> Conté el dinero (arqueo)</label>
+        <div id="cm-arqueo-wrap" style="display:none;margin-top:6px">
+          <input type="number" id="cm-contado" min="0" step="0.01" placeholder="¿Cuánto dinero había al cierre?" oninput="cmActualizar()"/>
+          <div id="cm-dif" style="font-size:12.5px;margin-top:4px"></div>
+        </div>
+        <div style="margin-top:14px;font-size:13px;font-weight:600">¿Qué se hace con el dinero del cierre?</div>
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px"><input type="radio" name="cm-destino" value="retiro" style="width:auto;margin-top:3px" onchange="cmActualizar()"/>
+          <span><b>Empezar de cero</b><br><span style="color:var(--text-muted);font-size:12px">Se registra un retiro por el saldo del cierre (se lo lleva el dueño o se deposita). La Caja empieza el nuevo período en cero.</span></span></label>
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px"><input type="radio" name="cm-destino" value="queda" style="width:auto;margin-top:3px" onchange="cmActualizar()"/>
+          <span><b>Se queda en Caja</b><br><span style="color:var(--text-muted);font-size:12px">Solo se guarda el resumen; la Caja sigue con su saldo.</span></span></label>
+        <div id="cm-final" style="margin-top:10px;font-size:13px"></div>
+        <p id="cm-error" style="color:var(--danger);font-size:12.5px"></p>
+      </div>
+      <div class="modal-footer"><button class="btn-ghost" onclick="closeModal('modal-cierre-mes')">Cancelar</button>
+        <button class="btn-primary" id="cm-btn" onclick="confirmarCierreMensual()">Cerrar el mes</button></div>
+    </div>
+  </div>`;
+  document.body.appendChild(div.firstElementChild);
+}
 async function crearCierreMensual() {
-  const hoy = new Date();
-  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-  const finMes    = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
-  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const desde = iso(inicioMes), hasta = iso(finMes);
-
-  const { data: existing } = await sbClient
-    .from('cierres_caja').select('id')
-    .eq('auth_user_id', STATE.userId).eq('fecha', hasta).eq('tipo', 'mensual')
-    .maybeSingle();
-  if (existing) { showToast('Ya existe un cierre mensual para este mes', 'error'); return; }
-
+  asegurarModalCierreMes();
+  document.getElementById('cm-error').textContent = '';
+  document.getElementById('cm-arqueo').checked = false; document.getElementById('cm-contado').value = '';
+  document.getElementById('cm-resumen').textContent = 'Calculando…';
+  openModal('modal-cierre-mes');
   try {
-    setBtnLoading('btn-cierre-mensual', true);
-
-    const movs = await traerTodasLasFilas(() => sbClient
-      .from('movimientos_financieros')
-      .select('tipo_flujo, monto, saldo_anterior, tipo_movimiento')
-      .eq('auth_user_id', STATE.userId).eq('estado', 'completado')
-      .gte('fecha', desde).lte('fecha', hasta)
-      .order('created_at').order('id'));
-
-    const lista = movs || [];
-    if (!lista.length) { showToast('No hay movimientos este mes para cerrar', 'error'); return; }
-
-    const saldoInicial  = Number(lista[0].saldo_anterior) || 0;
-    const totalIngresos = lista.filter(r => r.tipo_flujo === 'INGRESO' && !esTransferenciaInterna(r)).reduce((s,r) => s + Number(r.monto), 0);
-    const totalEgresos  = lista.filter(r => r.tipo_flujo === 'EGRESO' && !esTransferenciaInterna(r)).reduce((s,r)  => s + Number(r.monto), 0);
-
-    const { error } = await sbClient.from('cierres_caja').insert({
-      auth_user_id:      STATE.userId,
-      fecha:             hasta,
-      tipo:              'mensual',
-      periodo_inicio:    desde,
-      periodo_fin:       hasta,
-      saldo_inicial:     saldoInicial,
-      total_ingresos:    totalIngresos,
-      total_egresos:     totalEgresos,
-      saldo_final:       saldoInicial + totalIngresos - totalEgresos,
-      movimientos_count: lista.length,
+    const { data: cfg } = await sbClient.from('configuracion_empresa').select('dia_cierre_mensual, cierre_empezar_cero').eq('auth_user_id', STATE.userId).maybeSingle();
+    const dia = cfg?.dia_cierre_mensual || null;
+    try { window.N360PeriodoMes?.guardar(STATE.userId, dia, cfg?.cierre_empezar_cero); } catch (_) {}
+    CM.hasta = _finPeriodoActual(dia, new Date()); CM.desde = _inicioPeriodo(dia, CM.hasta);
+    document.querySelector(`input[name="cm-destino"][value="${cfg?.cierre_empezar_cero ? 'retiro' : 'queda'}"]`).checked = true;
+    document.getElementById('cm-periodo').textContent = `Período: ${fmtDate(CM.desde)} al ${fmtDate(CM.hasta)}${dia ? ` (tu día de cierre es el ${dia})` : ''}`;
+    const { data: ya } = await sbClient.from('cierres_caja').select('id').eq('auth_user_id', STATE.userId).eq('fecha', CM.hasta).eq('tipo', 'mensual').maybeSingle();
+    if (ya) { document.getElementById('cm-resumen').innerHTML = '<div style="grid-column:1/-1">Este período ya está cerrado. Si necesitas rehacerlo, deshaz el cierre en la lista de cierres.</div>'; document.getElementById('cm-btn').disabled = true; return; }
+    document.getElementById('cm-btn').disabled = false;
+    const movs = await traerTodasLasFilas(() => sbClient.from('movimientos_financieros')
+      .select('tipo_flujo, monto, tipo_movimiento, fecha').eq('auth_user_id', STATE.userId).eq('estado', 'completado')
+      .lte('fecha', CM.hasta).order('created_at').order('id'));
+    let ini = 0, ing = 0, egr = 0;
+    (movs || []).forEach(m => {
+      const v = Number(m.monto) || 0, signo = m.tipo_flujo === 'INGRESO' ? 1 : -1;
+      if (m.fecha < CM.desde) ini += signo * v;
+      else if (!esTransferenciaInterna(m)) { if (signo > 0) ing += v; else egr += v; }
     });
-    if (error) throw error;
-
-    showToast('Cierre mensual creado correctamente');
-    await loadCierres();
-  } catch(e) {
+    CM.sistema = Math.round((ini + ing - egr) * 100) / 100;
+    document.getElementById('cm-resumen').innerHTML = `
+      <span>Saldo al empezar el período</span><b style="text-align:right">${fmt(ini)}</b>
+      <span>Entradas del período</span><b style="text-align:right;color:var(--success)">${fmt(ing)}</b>
+      <span>Salidas del período</span><b style="text-align:right;color:var(--danger)">${fmt(egr)}</b>
+      <span style="font-weight:700">Saldo según el sistema</span><b style="text-align:right;font-size:15px">${fmt(CM.sistema)}</b>`;
+    cmActualizar();
+  } catch (e) {
     console.error('crearCierreMensual:', e);
-    showToast('Error al crear el cierre mensual', 'error');
-  } finally {
-    setBtnLoading('btn-cierre-mensual', false);
+    document.getElementById('cm-resumen').textContent = 'No se pudo calcular el período. Intenta de nuevo.';
   }
+}
+function cmActualizar() {
+  const arq = document.getElementById('cm-arqueo').checked;
+  document.getElementById('cm-arqueo-wrap').style.display = arq ? '' : 'none';
+  const contado = parseFloat(document.getElementById('cm-contado').value);
+  const difEl = document.getElementById('cm-dif');
+  let base = CM.sistema;
+  if (arq && !isNaN(contado)) {
+    const dif = Math.round((contado - CM.sistema) * 100) / 100;
+    difEl.innerHTML = dif === 0 ? '<span style="color:var(--success)">✅ Cuadra exacto con el sistema.</span>'
+      : dif < 0 ? `<span style="color:var(--danger)">Faltan ${fmt(-dif)}: se registrará como faltante.</span>`
+      : `<span style="color:var(--success)">Sobran ${fmt(dif)}: se registrará como sobrante.</span>`;
+    base = contado;
+  } else difEl.textContent = '';
+  const retiro = document.querySelector('input[name="cm-destino"]:checked')?.value === 'retiro';
+  document.getElementById('cm-final').innerHTML = retiro
+    ? `Se registrará un <b>retiro de ${fmt(Math.max(0, base))}</b> con fecha ${fmtDate(CM.hasta > todayISO() ? todayISO() : CM.hasta)} y la Caja empezará el nuevo período en cero.`
+    : `La Caja sigue con su saldo (${fmt(base)} al cierre).`;
+}
+async function confirmarCierreMensual() {
+  const err = document.getElementById('cm-error'); err.textContent = '';
+  const arq = document.getElementById('cm-arqueo').checked;
+  const contado = parseFloat(document.getElementById('cm-contado').value);
+  if (arq && (isNaN(contado) || contado < 0)) { err.textContent = 'Escribe cuánto dinero contaste.'; return; }
+  const retirar = document.querySelector('input[name="cm-destino"]:checked')?.value === 'retiro';
+  try {
+    setBtnLoading('cm-btn', true);
+    const { data, error } = await sbClient.rpc('caja_cierre_periodo', { p_hasta: CM.hasta, p_efectivo_contado: arq ? Math.round(contado * 100) / 100 : null, p_retirar: retirar, p_nota: null });
+    if (error) throw error;
+    closeModal('modal-cierre-mes');
+    showToast(retirar ? `Mes cerrado. Retiro de ${fmt(data?.retirado || 0)} registrado: la Caja empieza de cero.` : 'Cierre mensual creado correctamente');
+    try { await refrescarTrasMovimiento(); } catch (_) {}
+    await loadCierres();
+  } catch (e) {
+    console.error('confirmarCierreMensual:', e);
+    err.textContent = e?.message && !/fetch/i.test(e.message) ? e.message : 'No se pudo cerrar el mes. Intenta de nuevo.';
+  } finally { setBtnLoading('cm-btn', false); }
 }
 
 async function crearCierreDiario() {
@@ -1265,17 +1333,22 @@ async function crearCierreDiario() {
 // de ese día siguen exactamente igual, solo desaparece este resumen,
 // y el sistema vuelve a dejar hacer un cierre para esa fecha.
 function confirmarDeshacerCierre(cierreId, fechaTexto) {
-  if (!confirm(`¿Deshacer el cierre del ${fechaTexto}?\n\nEsto NO borra ninguna venta, compra ni movimiento real — solo el resumen del cierre, para poder rehacerlo cuando de verdad corresponda.`)) return;
+  const c = (STATE.cierres || []).find(x => x.id === cierreId);
+  const extra = (c && c.movimientos_cierre && c.movimientos_cierre.length)
+    ? '\n\nEste cierre registró ' + (c.monto_retirado ? 'un retiro de ' + fmt(c.monto_retirado) : '') + (c.monto_retirado && c.diferencia_arqueo ? ' y ' : '') + (c.diferencia_arqueo ? 'un ajuste de arqueo' : '') + ': también se anulará, y la Caja vuelve a como estaba.'
+    : '';
+  if (!confirm(`¿Deshacer el cierre del ${fechaTexto}?\n\nEsto NO borra ninguna venta, compra ni movimiento real — solo el resumen del cierre, para poder rehacerlo cuando de verdad corresponda.` + extra)) return;
   deshacerCierre(cierreId);
 }
 
 async function deshacerCierre(cierreId) {
   try {
-    const { error } = await sbClient.from('cierres_caja').delete()
-      .eq('id', cierreId).eq('auth_user_id', STATE.userId);
+    // La base borra el resumen y, si el cierre registró retiro o arqueo, los anula en la misma operación.
+    const { data, error } = await sbClient.rpc('caja_cierre_deshacer', { p_id: cierreId });
     if (error) throw error;
-    showToast('Cierre deshecho — tus movimientos reales siguen intactos');
+    showToast(data?.movimientos_anulados ? `Cierre deshecho — se anularon ${data.movimientos_anulados} movimiento(s) que había creado (retiro/arqueo)` : 'Cierre deshecho — tus movimientos reales siguen intactos');
     await loadCierres();
+    try { await refrescarTrasMovimiento(); } catch (_) {}
   } catch(e) {
     console.error('deshacerCierre:', e);
     showToast('No se pudo deshacer el cierre', 'error');
