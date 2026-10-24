@@ -4,7 +4,7 @@
 |---|---|---|---|
 | 1 — Base para atender y cobrar | ✅ Terminada y probada | ✅ Sí (2026-10-24, commit 7add681) | Agenda, pacientes/expediente con candado, consulta firmada, equipo y seguridad, cobro por Ventas |
 | 2 — Documentos | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Recetas (a Farmacia y a la cuenta), órdenes, constancias, certificados, referencias, consentimiento, CIE-10, adjuntos privados |
-| 3 — Operación diaria | Pendiente | | |
+| 3 — Operación diaria | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Sala de espera con turnos y pantalla, recordatorios por WhatsApp, honorarios → Salarios, reportes que cuadran con Ventas |
 | 4 — Especialidades | Pendiente | | |
 | 5 — Crecimiento y cierre | Pendiente | | |
 
@@ -126,6 +126,53 @@ eligen en pantalla y su PIN hoy se valida en el navegador). Por eso un permiso d
 - Revisor de seguridad de Supabase: solo los avisos esperados por diseño (tablas con candado sin
   políticas y funciones con su propia verificación de sesión).
 
+## Fase 3 — qué se hizo
+
+**Pantallas nuevas** (solo con "Módulo de Clínica" encendido):
+- `clinica-sala.html` — sala de espera del día: turno por orden de llegada, minutos esperando,
+  "Llegó", "Llamar" (queda la hora del llamado), "Atender", "No asistió" y "Aún no llega".
+  Se actualiza sola cada 20 s. **Modo pantalla** para una TV en la sala: solo muestra nombre e
+  inicial del apellido (nunca el nombre completo ni datos clínicos), el consultorio y suena un
+  aviso cuando llaman a alguien. También se abre con `clinica-sala.html?pantalla=1`.
+- `clinica-reportes.html` — por rango de fechas: citas, atendidas, inasistencia, lo cobrado
+  (ventas de las citas **menos devoluciones**, igual que en Ventas), tabla por médico con su
+  honorario, ingresos por servicio y producto, inasistencias con teléfono, diagnósticos más
+  frecuentes (solo con PIN médico o código de administrador, queda en la bitácora),
+  liquidaciones de honorarios y exportar a Excel (CSV).
+
+**Cambios en pantallas de la clínica**:
+- Agenda: botón "📲 Recordatorios" con las citas de mañana, mensaje de WhatsApp listo y marca
+  de "avisado".
+- Equipo: honorario de cada médico (ninguno, % de los servicios cobrados o monto fijo por
+  consulta cobrada) y el empleado de Salarios al que se le paga.
+
+**Honorarios → Salarios** (sin tocar cómo Salarios mueve Caja ni contabilidad):
+- Reportes calcula el honorario solo de consultas **cobradas**, descontando devoluciones, y sin
+  repetir consultas ya liquidadas (la base de datos también lo impide).
+- "Pagar en Salarios" guarda la liquidación y abre Salarios con el pago del empleado listo y el
+  honorario como una **bonificación** más. El monto se lee de la base de datos, no de la
+  página. Al confirmar, el pago sigue el camino de siempre de Salarios; la liquidación queda
+  "pagada" y ligada a ese pago solo si la bonificación realmente se pagó.
+- `salarios.js`: único archivo compartido tocado; si la cuenta no tiene Clínica, no hace nada.
+- Base de datos: `supabase/migraciones/20261024_clinica_fase3.sql` (aplicada; solo agrega):
+  hora del llamado en citas, honorario en el personal, tabla `clinica_honorarios` (no se borra;
+  lo calculado no cambia; no se paga dos veces una consulta) y `clinica_reporte_clinico`.
+
+## Pruebas de la Fase 3 (todas en verde)
+- **SQL revertido**: honorario y empleado validados, liquidación solo nace "enviada", no se paga
+  dos veces la misma consulta, lo calculado no se puede cambiar, no se borra, el pago ligado
+  debe ser de la misma cuenta, reporte clínico solo con sesión médica o código de administrador
+  y queda en la bitácora.
+- **Unitarias**: 57 (7 nuevas: turnos, espera, neto con devoluciones, honorario % y fijo,
+  consultas ya pagadas excluidas, resumen, CSV).
+- **Navegador**: 224 verificaciones (computadora y celular 360 px), nuevas: sala (conteos,
+  turnos, llegó, llamar, pantalla sin apellidos completos), recordatorio por WhatsApp y marcado,
+  reportes (cobrado 937.50 = ventas − devolución; honorario 30 % = 270; inasistencia; servicios;
+  diagnósticos con código y texto escapado; CSV), pagar en Salarios → pago registrado con la
+  bonificación → liquidación pagada y ligada → esas consultas ya no se vuelven a contar.
+- **Regresión contra `main`**: Ventas escribe exactamente lo mismo; Salarios (pago normal con
+  bonificación, Clínica apagada) escribe exactamente lo mismo y no lee los honorarios.
+
 ## Bitácora
 - 2026-10-23: creada la rama `modulo-clinica` con el plan (`PLAN.md`).
 - 2026-10-23: Fase 1 — base de datos aplicada en producción tras prueba revertida.
@@ -133,3 +180,4 @@ eligen en pantalla y su PIN hoy se valida en el navegador). Por eso un permiso d
   pruebas en navegador y cuadre; traído `main` (venta atómica, agenda general, certificados).
 - 2026-10-24: Fase 1 integrada a `main` (avance rápido, commit 7add681). El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Fase 2 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
+- 2026-10-24: Fase 3 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.

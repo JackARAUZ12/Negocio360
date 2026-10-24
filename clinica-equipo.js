@@ -114,6 +114,8 @@ async function cargar() {
     sb.from('clinica_consultorios').select('*').eq('auth_user_id', STATE.userId).order('activo', { ascending: false }).order('nombre'),
   ]);
   EQ.personal = p.data || []; EQ.consultorios = k.data || [];
+  try { const { data: em } = await sb.from('empleados').select('id, nombre, estado').eq('auth_user_id', STATE.userId).order('nombre'); EQ.empleados = em || []; }
+  catch (_) { EQ.empleados = []; }
   pintarPersonal(); pintarConsultorios();
 }
 
@@ -149,7 +151,8 @@ function pintarPersonal() {
       <div class="cl-fila"><div class="cl-avatar">${esc((p.nombre || '?').trim().charAt(0).toUpperCase())}</div>
         <div style="min-width:0"><div class="cl-nombre">${esc(p.nombre)}</div>
           <div><span class="cl-badge cl-badge-${r.clase}">${esc(r.n)}</span>${p.activo ? '' : ' <span class="cl-badge cl-badge-gris">Inactivo</span>'}${p.rol !== 'recepcion' ? (p.pin_configurado ? ' <span class="cl-badge cl-badge-verde">🔑 PIN</span>' : ' <span class="cl-badge cl-badge-rojo">Sin PIN</span>') : ''}</div>
-          <div class="cl-sub">${[p.especialidad, p.registro_profesional && 'Cód. ' + p.registro_profesional, cons(p.consultorio_id) && '🚪 ' + cons(p.consultorio_id), p.atiende ? 'Atiende pacientes' : ''].filter(Boolean).map(esc).join(' · ')}</div></div></div></div>`; }).join('');
+          <div class="cl-sub">${[p.especialidad, p.registro_profesional && 'Cód. ' + p.registro_profesional,
+            p.honorario_tipo === 'porcentaje' && `Honorario ${Number(p.honorario_valor)}%`, p.honorario_tipo === 'monto' && `Honorario fijo ${Number(p.honorario_valor)}`, cons(p.consultorio_id) && '🚪 ' + cons(p.consultorio_id), p.atiende ? 'Atiende pacientes' : ''].filter(Boolean).map(esc).join(' · ')}</div></div></div></div>`; }).join('');
 }
 function abrirPersona(id) {
   const p = id ? EQ.personal.find(x => x.id === id) : null;
@@ -166,12 +169,23 @@ function abrirPersona(id) {
   $e('pe-pin').value = ''; $e('pe-pin2').value = '';
   $e('pe-pin-ayuda').textContent = p?.pin_configurado ? 'Déjalo vacío para no cambiarlo. Si lo cambias, se cierran sus sesiones abiertas.' : 'De 4 a 8 números. Solo esta persona debe conocerlo.';
   $e('pe-activo').checked = p ? !!p.activo : true; $e('pe-activo-wrap').style.display = p ? '' : 'none';
+  $e('pe-hon-tipo').value = p?.honorario_tipo || 'ninguno'; $e('pe-hon-valor').value = p && p.honorario_tipo !== 'ninguno' ? Number(p.honorario_valor || 0) : '';
+  $e('pe-empleado').innerHTML = '<option value="">— Ninguno —</option>' + (EQ.empleados || []).filter(x => x.estado !== 'inactivo' || x.id === p?.empleado_id).map(x => `<option value="${esc(x.id)}">${esc(x.nombre)}</option>`).join('');
+  $e('pe-empleado').value = p?.empleado_id || '';
+  alCambiarHonorario();
   $e('pe-error').textContent = '';
   alCambiarRol();
   openModal('modal-persona');
 }
+function alCambiarHonorario() {
+  const t = $e('pe-hon-tipo').value;
+  $e('pe-hon-valor-wrap').style.display = t === 'ninguno' ? 'none' : '';
+  $e('pe-hon-valor-label').textContent = t === 'porcentaje' ? 'Porcentaje (%)' : 'Monto por consulta';
+  $e('pe-hon-valor').max = t === 'porcentaje' ? '100' : '';
+}
 function alCambiarRol() {
   const rol = $e('pe-rol').value;
+  $e('pe-hon-wrap').style.display = rol === 'recepcion' ? 'none' : '';
   $e('pe-pin-wrap').style.display = rol === 'recepcion' ? 'none' : '';
   $e('pe-rol-ayuda').textContent = rol === 'medico' ? 'Ve y escribe expedientes con su PIN.'
     : rol === 'admin' ? 'Todo lo del médico, más anular notas de otros, administrar el equipo y ver la bitácora.'
@@ -194,6 +208,10 @@ async function guardarPersona() {
   const datos = { nombre, rol, atiende: $e('pe-atiende').checked, especialidad: $e('pe-especialidad').value || null, registro_profesional: $e('pe-registro').value.trim() || null,
     telefono: $e('pe-telefono').value.trim() || null, consultorio_id: $e('pe-consultorio').value || null, pin: rol !== 'recepcion' && pin ? pin : null };
   if (EQ.editId) datos.activo = $e('pe-activo').checked;
+  const htipo = rol === 'recepcion' ? 'ninguno' : $e('pe-hon-tipo').value, hval = Number($e('pe-hon-valor').value || 0);
+  if (htipo !== 'ninguno' && !(hval > 0)) return (err.textContent = 'Escribe el valor del honorario (mayor que 0).');
+  if (htipo === 'porcentaje' && hval > 100) return (err.textContent = 'El porcentaje no puede pasar de 100.');
+  Object.assign(datos, { honorario_tipo: htipo, honorario_valor: htipo === 'ninguno' ? 0 : hval, empleado_id: $e('pe-empleado').value || null });
   const auth = await autorizacion();
   if (!auth) return;
   const btn = $e('pe-btn-guardar'); btn.disabled = true;

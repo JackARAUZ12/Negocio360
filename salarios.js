@@ -836,6 +836,7 @@ async function guardarAdelanto() {
 async function abrirPagarDesdeTabla(empleadoId) {
   const emp = STATE.empleados.find(e => e.id === empleadoId);
   if (!emp) return;
+  STATE._clinicaHonorario = null;   // honorarios de la Clínica: solo cuando se viene desde allá (ver aplicarHonorariosClinica)
   STATE.empleadoActual = emp;
   STATE.bonos = [];
   STATE.deducciones = [];
@@ -1013,6 +1014,18 @@ async function confirmarPagoSal() {
       usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
     }).select().single();
     if (errPago) throw errPago;
+
+    // Honorarios de la Clínica: la liquidación queda pagada y ligada a este pago, solo si la
+    // bonificación se pagó tal cual. Aislado: el pago YA se guardó, nada de esto lo revierte.
+    try {
+      const ch = STATE._clinicaHonorario;
+      if (ch && STATE.bonos.includes(ch.bono)) {
+        const { error: eCh } = await sbClient.from('clinica_honorarios').update({ estado: 'pagada', empleado_pago_id: pago.id })
+          .eq('id', ch.id).eq('auth_user_id', STATE.userId).eq('estado', 'enviada');
+        if (eCh) { console.warn('Honorarios de la clínica:', eCh); showToast('El pago se guardó, pero no se pudo marcar la liquidación de la clínica como pagada.', 'error'); }
+      }
+    } catch (eCh) { console.warn('Honorarios de la clínica:', eCh); }
+    STATE._clinicaHonorario = null;
 
     // Marca los adelantos como descontados (si el usuario aceptó)
     if (descontarAdelantos && STATE.adelantosPendientes.length) {
@@ -2708,6 +2721,7 @@ async function initSalarios() {
     await loadMetodosPago();
     await loadEmpleados();
     await loadKPIsSal();
+    await aplicarHonorariosClinica();
 
     if (window.Negocio360Tutorial) {
       const pasosSalarios = [
@@ -2722,6 +2736,31 @@ async function initSalarios() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
   }
+}
+
+// Honorarios desde la Clínica (solo si el módulo está activo): abre el pago del empleado ligado al
+// médico con los honorarios como una bonificación más. El monto se lee de la liquidación guardada
+// (no de lo que manda la página) y el pago sigue el camino de siempre (Caja y contabilidad incluidas).
+async function aplicarHonorariosClinica() {
+  if (STATE.empresaConfig?.usa_modulo_clinica !== true) return;
+  const raw = sessionStorage.getItem('n360_clinica_honorarios');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_clinica_honorarios');   // una sola vez
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { console.error('aplicarHonorariosClinica, dato corrupto:', e); return; }
+  try {
+    const { data: liq } = await sbClient.from('clinica_honorarios').select('id, estado, monto, empleado_id, desde, hasta')
+      .eq('id', d && d.liquidacionId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (!liq || liq.estado !== 'enviada') { showToast('Esa liquidación de honorarios ya no está pendiente.', 'error'); return; }
+    const emp = (STATE.empleados || []).find(e => e.id === liq.empleado_id);
+    if (!emp) { showToast('No se encontró al empleado ligado al médico. Revísalo en Clínica · Equipo.', 'error'); return; }
+    await abrirPagarDesdeTabla(emp.id);
+    const bono = { descripcion: `Honorarios clínica ${fmtDate(liq.desde)} al ${fmtDate(liq.hasta)}`, monto: round2(Number(liq.monto) || 0) };
+    STATE.bonos.push(bono);
+    STATE._clinicaHonorario = { id: liq.id, bono };
+    renderBonosSal(); recalcularTotalPagoSal();
+    showToast('Honorarios agregados como bonificación. Revisa y confirma el pago.');
+  } catch (e) { console.error('aplicarHonorariosClinica:', e); }
 }
 
 sbClient.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') window.location.href = 'login.html'; });

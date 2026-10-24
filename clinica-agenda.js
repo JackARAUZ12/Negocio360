@@ -269,7 +269,7 @@ async function confirmarCancelacion() {
   } catch (e) { console.error('cancelar:', e); $a('cn-error').textContent = clinicaTextoError(e, 'No se pudo cancelar.'); }
 }
 async function recordar(id) {
-  const c = AG.citas.find(x => x.id === id); if (!c) return;
+  const c = AG.citas.find(x => x.id === id) || (AG.recordar || []).find(x => x.id === id); if (!c) return;
   const p = pacienteDe(c);
   const tel = vetTelefonoWhatsApp(p.telefono, STATE.empresaConfig?.pais);
   if (!tel) { showToast('El paciente no tiene un teléfono válido. Agrégalo en su ficha.', 'error'); return; }
@@ -278,8 +278,40 @@ async function recordar(id) {
   try {
     const ahora = new Date().toISOString();
     const { error } = await sb.from('clinica_citas').update({ recordatorio_enviado_en: ahora }).eq('id', id).eq('auth_user_id', STATE.userId);
-    if (!error) { c.recordatorio_enviado_en = ahora; renderAgenda(); }
+    if (!error) { c.recordatorio_enviado_en = ahora; renderAgenda(); if ($a('modal-recordatorios').classList.contains('modal-open')) pintarRecordatorios(); }
   } catch (e) { console.warn('recordar:', e); }
+}
+
+/* ---------- Recordatorios del día siguiente (o de otra fecha), uno por uno por WhatsApp ---------- */
+async function abrirRecordatorios() {
+  $a('re-fecha').value = vetSumarDias(vetHoy(), 1);
+  openModal('modal-recordatorios');
+  await cargarRecordatorios();
+}
+async function cargarRecordatorios() {
+  const fecha = $a('re-fecha').value;
+  const cont = $a('re-lista');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+  cont.innerHTML = '<p class="cl-sub">Cargando…</p>';
+  try {
+    const { data, error } = await sb.from('clinica_citas').select('*, clinica_pacientes(id, nombres, apellidos, telefono, numero_expediente)')
+      .eq('auth_user_id', STATE.userId).eq('fecha', fecha).in('estado', ['programada', 'confirmada']).order('hora');
+    if (error) throw error;
+    AG.recordar = data || [];
+    pintarRecordatorios();
+  } catch (e) { console.error('cargarRecordatorios:', e); cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudieron cargar las citas.</p>'; }
+}
+function pintarRecordatorios() {
+  const lista = AG.recordar || [];
+  const pend = lista.filter(c => !c.recordatorio_enviado_en).length;
+  $a('re-resumen').textContent = lista.length ? `${lista.length} cita${lista.length === 1 ? '' : 's'} · ${pend} sin avisar` : '';
+  $a('re-lista').innerHTML = lista.length ? lista.map(c => {
+    const p = pacienteDe(c), tel = vetTelefonoWhatsApp(p.telefono, STATE.empresaConfig?.pais);
+    return `<div class="cl-item"><div class="cl-item-cab"><div><div class="cl-item-tit">${esc(vetFormatoHora(c.hora))} · ${esc(clinicaNombrePaciente(p))}</div>
+      <div class="cl-item-fecha">${c.medico_id ? esc(nombreMedico(c.medico_id)) : 'Sin médico'}${p.telefono ? ' · 📞 ' + esc(p.telefono) : ''}</div></div>
+      ${c.recordatorio_enviado_en ? '<span class="cl-badge cl-badge-verde">✓ Avisado</span>' : ''}</div>
+      <div class="cl-acciones">${tel ? `<button class="btn-accion-tabla ${c.recordatorio_enviado_en ? 'btn-ghost' : 'btn-primary'}" onclick="recordar('${c.id}')">📲 ${c.recordatorio_enviado_en ? 'Avisar de nuevo' : 'Enviar por WhatsApp'}</button>` : '<span class="cl-badge cl-badge-rojo">Sin teléfono válido</span>'}</div></div>`;
+  }).join('') : '<p class="cl-sub">No hay citas pendientes para esa fecha.</p>';
 }
 
 /* ---------- Nueva cita / editar ---------- */

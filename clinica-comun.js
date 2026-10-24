@@ -206,6 +206,7 @@ const CLINICA_MOTIVOS_RPC = {
   incompleto: 'Faltan datos obligatorios del documento.', tipo: 'Tipo de documento no válido.', contenido: 'El documento es demasiado grande.',
   consulta: 'Esa consulta no es de este paciente.', ya_en_farmacia: 'Esta receta ya está en Farmacia.', tipo_archivo: 'Solo se aceptan PDF, JPG, PNG o WEBP.',
   tamano: 'El archivo es muy grande (máximo 10 MB).', archivo_no_llego: 'El archivo no terminó de subir. Intenta de nuevo.',
+  honorario: 'Revisa el honorario: el porcentaje va de 0 a 100.', empleado: 'Ese empleado no existe en Salarios.', fechas: 'Revisa las fechas (máximo 2 años).',
 };
 function clinicaTextoMotivo(r) {
   if (!r) return 'No se pudo completar. Intenta de nuevo.';
@@ -222,11 +223,104 @@ const CLINICA_ACCIONES_BITACORA = {
   pin_definido: '🔑 Asignó un PIN', pin_cambiado: '🔑 Cambió su PIN', ver_bitacora: '🕵️ Revisó la bitácora',
   emitir_documento: '📄 Emitió un documento', anular_documento: '🚫 Anuló un documento', receta_a_farmacia: '💊 Pasó una receta a Farmacia',
   subir_adjunto: '📎 Subió un archivo', ver_adjunto: '👁️ Abrió un archivo', anular_adjunto: '🚫 Anuló un archivo',
+  ver_reporte: '📊 Vio el reporte clínico',
 };
+
+/* =====================================================
+   FASE 3 -- sala de espera, honorarios y reportes (puras)
+===================================================== */
+const _r2c = n => Math.round((Number(n) || 0) * 100) / 100;
+// "María José López" -> "María L." (para la pantalla de la sala: no muestra el nombre completo).
+function clinicaNombreCorto(p) {
+  const n = String(p?.nombres || '').trim().split(/\s+/)[0] || 'Paciente';
+  const a = String(p?.apellidos || '').trim();
+  return a ? `${n} ${a[0].toUpperCase()}.` : n;
+}
+// Turnos de hoy: los que llegaron, en orden de llegada (número fijo por llegada), y cuánto llevan esperando.
+function clinicaTurnos(citas, ahoraMs) {
+  const ahora = ahoraMs || Date.now();
+  const llegaron = (citas || []).filter(c => c.llegada_en && ['en_espera', 'en_consulta', 'atendida'].includes(c.estado))
+    .slice().sort((a, b) => String(a.llegada_en).localeCompare(String(b.llegada_en)));
+  return llegaron.map((c, i) => ({ ...c, turno: i + 1,
+    espera_min: c.estado === 'en_espera' ? Math.max(0, Math.floor((ahora - new Date(c.llegada_en).getTime()) / 60000)) : null }));
+}
+function clinicaTextoEspera(min) {
+  if (min == null) return '';
+  if (min < 1) return 'recién llegó';
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} h ${min % 60} min`;
+}
+// Neto cobrado de una venta = total - devoluciones vigentes. Factor = qué parte de la venta sigue cobrada.
+function clinicaNetoVenta(venta, devoluciones) {
+  if (!venta || venta.estado !== 'completada') return { neto: 0, factor: 0 };
+  const total = Number(venta.total) || 0;
+  const devuelto = (devoluciones || []).filter(d => d.venta_id === venta.id && d.estado !== 'anulada').reduce((t, d) => t + (Number(d.total) || 0), 0);
+  const neto = _r2c(Math.max(0, total - devuelto));
+  return { neto, factor: total > 0 ? neto / total : 0 };
+}
+// Honorarios por médico. Porcentaje: sobre los SERVICIOS cobrados (no medicamentos), proporcional a lo
+// que no se devolvió. Monto fijo: por cada consulta atendida y cobrada (si no se devolvió completa).
+// Las citas que ya están en una liquidación pagada no se vuelven a contar.
+function clinicaCalcularHonorarios({ medico, citas, ventas, detalles, devoluciones, pagadas }) {
+  const yaPagadas = new Set(pagadas || []);
+  const porVenta = {}; (detalles || []).forEach(d => { (porVenta[d.venta_id] = porVenta[d.venta_id] || []).push(d); });
+  const res = { lineas: [], monto: 0, base: 0, sinCobrar: 0, yaPagadas: 0 };
+  (citas || []).filter(c => c.medico_id === medico.id && c.estado === 'atendida').forEach(c => {
+    if (yaPagadas.has(c.id)) { res.yaPagadas++; return; }
+    const v = (ventas || []).find(x => x.id === c.venta_id);
+    if (!v || v.estado !== 'completada') { res.sinCobrar++; return; }
+    const { neto, factor } = clinicaNetoVenta(v, devoluciones);
+    const servicios = (porVenta[v.id] || []).filter(d => d.tipo_item === 'servicio').reduce((t, d) => t + (Number(d.subtotal) || 0), 0);
+    const base = _r2c(servicios * factor);
+    let monto = 0;
+    if (medico.honorario_tipo === 'porcentaje') monto = _r2c(base * (Number(medico.honorario_valor) || 0) / 100);
+    else if (medico.honorario_tipo === 'monto') monto = neto > 0 ? _r2c(medico.honorario_valor) : 0;
+    res.lineas.push({ cita_id: c.id, fecha: c.fecha, venta: v.numero_venta, neto, base, monto });
+    res.base = _r2c(res.base + base); res.monto = _r2c(res.monto + monto);
+  });
+  return res;
+}
+// Resumen para Reportes: por médico (citas, atendidas, no asistió, cobrado neto) y por servicio/producto.
+function clinicaResumenReporte({ citas, ventas, detalles, devoluciones, medicos }) {
+  const vPorId = {}; (ventas || []).forEach(v => { vPorId[v.id] = v; });
+  const fila = () => ({ citas: 0, atendidas: 0, no_asistio: 0, canceladas: 0, cobrado: 0, sin_cobrar: 0 });
+  const total = fila(), porMedico = {};
+  const ventasContadas = new Set();
+  (citas || []).forEach(c => {
+    const k = c.medico_id || '_sin';
+    const f = porMedico[k] = porMedico[k] || fila();
+    [f, total].forEach(x => {
+      x.citas++;
+      if (c.estado === 'atendida') x.atendidas++;
+      if (c.estado === 'no_asistio') x.no_asistio++;
+      if (c.estado === 'cancelada') x.canceladas++;
+    });
+    const v = vPorId[c.venta_id];
+    if (v && v.estado === 'completada' && !ventasContadas.has(v.id)) {
+      ventasContadas.add(v.id);
+      const { neto } = clinicaNetoVenta(v, devoluciones);
+      f.cobrado = _r2c(f.cobrado + neto); total.cobrado = _r2c(total.cobrado + neto);
+    } else if (c.estado === 'atendida' && !(v && v.estado === 'completada')) { f.sin_cobrar++; total.sin_cobrar++; }
+  });
+  const servicios = {};
+  (detalles || []).filter(d => ventasContadas.has(d.venta_id)).forEach(d => {
+    const k = d.producto_nombre || '—';
+    const s = servicios[k] = servicios[k] || { nombre: k, tipo: d.tipo_item, cantidad: 0, total: 0 };
+    s.cantidad = _r2c(s.cantidad + (Number(d.cantidad) || 0)); s.total = _r2c(s.total + (Number(d.subtotal) || 0));
+  });
+  const nombre = id => (medicos || []).find(m => m.id === id)?.nombre || 'Sin médico asignado';
+  return { total, porMedico: Object.entries(porMedico).map(([id, f]) => ({ medico_id: id === '_sin' ? null : id, nombre: id === '_sin' ? 'Sin médico asignado' : nombre(id), ...f }))
+    .sort((a, b) => b.citas - a.citas), servicios: Object.values(servicios).sort((a, b) => b.total - a.total) };
+}
+function clinicaCSV(filas) {
+  const celda = v => { let s = v == null ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  return '﻿' + filas.map(f => f.map(celda).join(',')).join('\r\n');
+}
 
 if (typeof module !== 'undefined') module.exports = {
   CLINICA_ESPECIALIDADES, clinicaEspecialidadesActivas, clinicaNombreEspecialidad, CLINICA_TIPOS_CITA, CLINICA_ESTADOS_CITA,
   clinicaSiguientesEstados, clinicaChoqueCita, clinicaSemana, clinicaMensajeCita, clinicaEdad, clinicaAnios, clinicaNombrePaciente,
   CLINICA_SIGNOS, clinicaValidarSignos, clinicaNumero, clinicaIMC, clinicaClasificarIMC, clinicaAlertasSignos, clinicaTextoPA,
   CLINICA_ESTADOS_NOTA, clinicaTextoError, clinicaTextoMotivo, CLINICA_ACCIONES_BITACORA,
+  clinicaNombreCorto, clinicaTurnos, clinicaTextoEspera, clinicaNetoVenta, clinicaCalcularHonorarios, clinicaResumenReporte, clinicaCSV,
 };

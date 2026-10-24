@@ -149,6 +149,10 @@
                        desc: 'Citas por día, semana y médico, sala de espera, recordatorio por WhatsApp y cobro de la visita por Ventas.' },
     'clinica-pacientes.html': { key: 'clinica_pacientes', label: 'Clínica · Pacientes', icon: '🩺', obligatorio: false, flagPropio: 'usa_modulo_clinica',
                        desc: 'Pacientes y expediente clínico (antecedentes, alergias, consultas firmadas), protegido con PIN médico.' },
+    'clinica-sala.html': { key: 'clinica_sala', label: 'Clínica · Sala de espera', icon: '🪑', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+                       desc: 'Turnos del día por orden de llegada, tiempo de espera, llamar al paciente y pantalla para la sala.' },
+    'clinica-reportes.html': { key: 'clinica_reportes', label: 'Clínica · Reportes y honorarios', icon: '📊', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+                       desc: 'Atendidos, inasistencias, ingresos por médico y servicio, diagnósticos frecuentes y honorarios pagados por Salarios.' },
     'clinica-equipo.html': { key: 'clinica_equipo', label: 'Clínica · Equipo y seguridad', icon: '👩‍⚕️', obligatorio: false, flagPropio: 'usa_modulo_clinica',
                        desc: 'Médicos y su PIN, recepción, consultorios, especialidades y bitácora de accesos al expediente.' },
 

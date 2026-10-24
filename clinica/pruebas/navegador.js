@@ -320,6 +320,25 @@ async function regresionVentas(browser, raizMain) {
   const viejo = await correr(raizMain), nuevo = await correr(RAIZ);
   verificar(viejo.some(x => (x.tabla === 'ventas' && x.op === 'insert') || x.tabla === 'venta_registrar_atomica'), 'regresión: la venta se registra con el código de main');
   verificar(norm(viejo) === norm(nuevo), 'regresión: Ventas escribe EXACTAMENTE lo mismo que antes (caja, inventario, cliente, detalle)');
+  // Salarios: el mismo pago (empleado con bonificación), con el código de main y con el nuevo, con Clínica apagada
+  const pagoSal = async raiz => {
+    const srv = servidor(raiz); const base = `http://127.0.0.1:${srv.address().port}`;
+    const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+    await page.goto(base + '/salarios.html');
+    await page.evaluate(({ UID }) => { const db = JSON.parse(JSON.stringify(window.__SEED)); db.configuracion_empresa[0].usa_modulo_clinica = false;
+      db.empleados = [{ id: 'emp-1', auth_user_id: UID, nombre: 'Juan', salario: 8000, tipo_salario: 'mensual', estado: 'activo' }];
+      sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('n360_clinica_honorarios', JSON.stringify({ liquidacionId: 'x' })); }, { UID });
+    await page.reload(); await esperarListo(page); await page.waitForFunction(() => typeof STATE !== 'undefined' && (STATE.empleados || []).length === 1, null, { timeout: 15000 });
+    await page.evaluate(async () => { sessionStorage.setItem('__LOG', '[]'); await abrirPagarDesdeTabla('emp-1'); STATE.bonos.push({ descripcion: 'Bono', monto: 500 }); recalcularTotalPagoSal(); await confirmarPagoSal(); });
+    await page.waitForTimeout(600);
+    const r = await page.evaluate(() => ({ log: JSON.parse(sessionStorage.getItem('__LOG') || '[]'), honorarios: sessionStorage.getItem('n360_clinica_honorarios') }));
+    await ctx.close(); srv.close(); return r;
+  };
+  const sv = await pagoSal(raizMain), sn = await pagoSal(RAIZ);
+  const normS = l => JSON.stringify(l.filter(x => x.op !== 'rpc'), (k, v) => ['id', 'created_at', 'fecha', 'updated_at', 'referencia_id', 'comprobante_numero', 'pago_id', 'ultimo_pago', 'proximo_pago'].includes(k) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id>' : v));
+  verificar(sv.log.some(x => x.tabla === 'empleados_pagos'), 'regresión: Salarios registra el pago con el código de main');
+  verificar(normS(sv.log) === normS(sn.log), 'regresión: Salarios escribe EXACTAMENTE lo mismo que antes (pago, caja, empleado)');
+  verificar(sn.honorarios !== null, 'regresión: con Clínica apagada Salarios ignora por completo los honorarios de la clínica');
 }
 
 
@@ -429,6 +448,95 @@ async function pruebasFase2(browser, base, ancho, alto) {
   await ctx.close();
 }
 
+
+// ---- FASE 3: sala de espera, recordatorios, honorarios -> Salarios y reportes que cuadran con las ventas
+function semillaFase3(UID, HOY) {
+  const db = JSON.parse(JSON.stringify(semilla()));
+  const hace = min => new Date(Date.now() - min * 60000).toISOString();
+  const manana = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  db.clinica_personal[1].nombre = 'Dra. Ruiz'; db.clinica_personal[1].honorario_tipo = 'porcentaje'; db.clinica_personal[1].honorario_valor = 30; db.clinica_personal[1].empleado_id = 'emp-1';
+  db.empleados = [{ id: 'emp-1', auth_user_id: UID, nombre: 'Dra. Ruiz', salario: 0, tipo_salario: 'mensual', estado: 'activo', cargo: 'Médico' }];
+  db.clinica_pacientes.push({ id: 'p-ana', auth_user_id: UID, nombres: 'Ana María', apellidos: 'Castillo', telefono: '88881111', numero_expediente: 'EXP-000002', activo: true },
+                            { id: 'p-luis', auth_user_id: UID, nombres: 'Luis', apellidos: 'Pérez', telefono: '88882222', numero_expediente: 'EXP-000003', activo: true });
+  db.clinica_citas = [
+    { id: 's1', auth_user_id: UID, paciente_id: 'p-ana', medico_id: 'per-med', consultorio_id: 'kons1', fecha: HOY, hora: '08:00', duracion_min: 30, estado: 'en_espera', llegada_en: hace(25) },
+    { id: 's2', auth_user_id: UID, paciente_id: 'p-luis', medico_id: 'per-med', fecha: HOY, hora: '09:00', duracion_min: 30, estado: 'programada' },
+    { id: 's3', auth_user_id: UID, paciente_id: 'pac-xss', medico_id: 'per-med', fecha: HOY, hora: '07:00', duracion_min: 30, estado: 'en_consulta', llegada_en: hace(60) },
+    { id: 'r1', auth_user_id: UID, paciente_id: 'p-luis', medico_id: 'per-med', fecha: manana, hora: '10:00', duracion_min: 30, estado: 'confirmada' },
+    { id: 'h1', auth_user_id: UID, paciente_id: 'p-ana', medico_id: 'per-med', fecha: HOY, hora: '06:00', duracion_min: 30, estado: 'atendida', venta_id: 'v1' },
+    { id: 'h2', auth_user_id: UID, paciente_id: 'p-luis', medico_id: 'per-med', fecha: HOY, hora: '06:30', duracion_min: 30, estado: 'atendida', venta_id: 'v2' },
+    { id: 'h3', auth_user_id: UID, paciente_id: 'p-luis', medico_id: 'per-med', fecha: HOY, hora: '05:00', duracion_min: 30, estado: 'no_asistio' },
+  ];
+  db.ventas = [{ id: 'v1', auth_user_id: UID, numero_venta: 'V-00010', estado: 'completada', total: 537.5 }, { id: 'v2', auth_user_id: UID, numero_venta: 'V-00011', estado: 'completada', total: 500 }];
+  db.venta_detalles = [{ venta_id: 'v1', auth_user_id: UID, producto_nombre: 'Consulta general', tipo_item: 'servicio', cantidad: 1, subtotal: 500 },
+    { venta_id: 'v1', auth_user_id: UID, producto_nombre: 'Acetaminofén 500 mg', tipo_item: 'producto', cantidad: 3, subtotal: 37.5 },
+    { venta_id: 'v2', auth_user_id: UID, producto_nombre: 'Consulta general', tipo_item: 'servicio', cantidad: 1, subtotal: 500 }];
+  db.devoluciones_venta = [{ venta_id: 'v2', auth_user_id: UID, total: 100, estado: 'activa' }];
+  db.clinica_consultas = [{ id: 'cc1', paciente_id: 'p-ana', medico_id: 'per-med', estado: 'cerrada', diagnosticos: [{ codigo: 'J00', nombre: 'Rinofaringitis aguda <b>x</b>' }] }];
+  return db;
+}
+async function pruebasFase3(browser, base, ancho, alto) {
+  const tag = ancho < 500 ? 'celular' : 'computadora';
+  console.log(`\n▶ Fase 3 en ${tag} (${ancho}px)`);
+  const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+  await page.goto(base + '/clinica-sala.html');
+  await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: semillaFase3(UID, HOY) });
+  await page.reload(); await esperarListo(page); await page.waitForSelector('#sa-espera .ag-card');
+  await sinDesborde(page, `${tag} sala de espera`);
+  verificar(await page.textContent('#sa-kpi-espera') === '1' && await page.textContent('#sa-kpi-consulta') === '1' && await page.textContent('#sa-kpi-llegar') === '1', `${tag}: sala cuenta esperando / en consulta / por llegar`);
+  const tarjeta = await page.textContent('#sa-espera');
+  verificar(tarjeta.includes('Turno 2') && /2[4-6] min/.test(tarjeta), `${tag}: turno por orden de llegada y minutos esperando (${tarjeta.match(/\d+ min/)})`);
+  await page.click('#sa-llegar >> text=🪑 Llegó'); await page.waitForFunction(() => document.getElementById('sa-kpi-espera').textContent === '2');
+  verificar((await page.textContent('#sa-espera')).includes('Turno 3'), `${tag}: el que llega recibe el siguiente turno`);
+  await page.locator('#sa-espera .ag-card', { hasText: 'Ana María' }).locator('text=📢 Llamar').click();
+  await page.waitForFunction(() => document.getElementById('sa-espera').textContent.includes('Llamado a las'));
+  await page.click('text=📺 Modo pantalla'); await page.waitForSelector('#sa-pantalla[style*="flex"]');
+  const pant = await page.textContent('#sa-pantalla');
+  verificar(pant.includes('Ana C.') && !pant.includes('Castillo') && pant.includes('Consultorio 1'), `${tag}: la pantalla de la sala muestra solo nombre e inicial y el consultorio`);
+  await sinDesborde(page, `${tag} modo pantalla`);
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/pantalla-' + tag + '.png' });
+  await page.click('.sp-salir');
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/sala-' + tag + '.png', fullPage: true });
+
+  // Recordatorios de mañana
+  await page.goto(base + '/clinica-agenda.html'); await esperarListo(page);
+  await page.click('text=📲 Recordatorios'); await page.waitForSelector('#re-lista .cl-item'); await modalesSinDesborde(page, `${tag} recordatorios`);
+  const [wa] = await Promise.all([ctx.waitForEvent('page'), page.click('#re-lista >> text=📲 Enviar por WhatsApp')]);
+  verificar(wa.url().includes('wa.me/50588882222') && decodeURIComponent(wa.url()).includes('Luis'), `${tag}: recordatorio abre WhatsApp con el mensaje listo`);
+  await wa.close(); await page.waitForSelector('#re-lista >> text=✓ Avisado');
+  verificar(true, `${tag}: la cita queda marcada como avisada`);
+
+  // Reportes: cobrado neto = 537.50 + (500 - 100 devueltos) = 937.50 ; honorario 30% de servicios: 500 + 500*(400/500) = 900 -> 270
+  await page.goto(base + '/clinica-reportes.html'); await esperarListo(page); await page.waitForSelector('#rp-medicos .cl-item');
+  await sinDesborde(page, `${tag} reportes`);
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/reportes-' + tag + '.png', fullPage: true });
+  verificar((await page.textContent('#rp-kpi-cobrado')).includes('937.50'), `${tag}: lo cobrado cuadra con las ventas menos devoluciones (937.50)`);
+  verificar((await page.textContent('#rp-medicos')).includes('270.00') && (await page.textContent('#rp-medicos')).includes('900.00'), `${tag}: honorario 30% de 900 en servicios = 270`);
+  verificar(await page.textContent('#rp-kpi-falta') === '17%', `${tag}: inasistencia 1 de 6 (${await page.textContent('#rp-kpi-falta')})`);
+  verificar((await page.textContent('#rp-servicios')).includes('1,000.00'), `${tag}: ingresos por servicio`);
+  await page.click('text=🔓 Ver diagnósticos'); await page.fill('#ac-codigo', '2468'); await page.click('#modal-admin .btn-primary');
+  await page.waitForSelector('#rp-dx >> text=J00');
+  verificar((await page.innerHTML('#rp-dx')).includes('&lt;b&gt;x'), `${tag}: diagnósticos frecuentes con código de administrador (texto escapado)`);
+  const [descarga] = await Promise.all([page.waitForEvent('download'), page.click('text=⬇️ Excel (CSV)')]);
+  verificar(descarga.suggestedFilename().startsWith('clinica_reporte_'), `${tag}: exporta el reporte a Excel (CSV)`);
+  // Pagar honorarios -> Salarios
+  await page.click('#rp-medicos >> text=💵 Pagar en Salarios');
+  await page.waitForURL(/salarios\.html/, { timeout: 10000 });
+  await page.waitForFunction(() => document.getElementById('modal-pagar-sal')?.classList.contains('modal-open') || document.getElementById('modal-pagar-sal')?.style.display === 'flex', null, { timeout: 15000 });
+  const bonos = await page.evaluate(() => STATE.bonos.map(b => [b.descripcion, b.monto]));
+  verificar(bonos.length === 1 && bonos[0][1] === 270, `${tag}: Salarios abre el pago con los honorarios como bonificación (${JSON.stringify(bonos)})`);
+  await page.evaluate(async () => { await confirmarPagoSal(); }); await page.waitForTimeout(500);
+  const fin = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB')); return { pagos: db.empleados_pagos || [], hon: db.clinica_honorarios || [] }; });
+  verificar(fin.pagos.length === 1 && fin.pagos[0].total_pagado === 270 && fin.hon[0].estado === 'pagada' && fin.hon[0].empleado_pago_id === fin.pagos[0].id,
+    `${tag}: pago registrado por Salarios y liquidación marcada pagada y ligada`);
+  // Volver a Reportes: esas consultas ya no se cuentan
+  await page.goto(base + '/clinica-reportes.html'); await esperarListo(page); await page.waitForSelector('#rp-medicos .cl-item');
+  verificar((await page.textContent('#rp-medicos')).includes('2 ya pagadas') && (await page.textContent('#rp-liq')).includes('Pagada'), `${tag}: las consultas pagadas no se vuelven a cobrar`);
+  verificar(page.__errores.length === 0, `${tag}: fase 3 sin errores de JavaScript (${page.__errores.join(' | ')})`);
+  verificar(!(await page.evaluate(() => window.__xss)), `${tag}: fase 3 sin XSS`);
+  await ctx.close();
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -461,6 +569,8 @@ async function regresion(browser, base) {
     await pruebaCuadre(browser, base);
     await pruebasFase2(browser, base, 1280, 900);
     await pruebasFase2(browser, base, 360, 740);
+    await pruebasFase3(browser, base, 1280, 900);
+    await pruebasFase3(browser, base, 360, 740);
     await pruebasEquipo(browser, base);
     await regresion(browser, base);
     await regresionVentas(browser, process.env.RAIZ_MAIN);

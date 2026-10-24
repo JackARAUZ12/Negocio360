@@ -10,7 +10,7 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024a"></script>
+  <script src="modulos-registro.js?v=20261024b"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1104,7 +1104,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <link rel="stylesheet" href="clinica.css?v=20261024a" />
+  <link rel="stylesheet" href="clinica.css?v=20261024b" />
 </head>
 <body>
 
@@ -1323,6 +1323,7 @@
         </div>
         <div class="cl-hbtns">
           <button type="button" data-clinica-chip class="cl-chip-sesion cerrada">🔒 Acceso médico</button>
+          <button class="btn-accion-tabla btn-ghost" onclick="abrirRecordatorios()">📲 Recordatorios</button>
           <button class="btn-accion-tabla btn-ghost" onclick="mostrarTutorial(true)">❓ Ayuda</button>
           <button class="btn-accion-tabla btn-primary" onclick="abrirCita()">+ Nueva cita</button>
         </div>
@@ -1353,9 +1354,9 @@
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261024a"></script>
-<script src="clinica-sesion.js?v=20261024a"></script>
-<script src="clinica-agenda.js?v=20261024a"></script>
+<script src="clinica-comun.js?v=20261024b"></script>
+<script src="clinica-sesion.js?v=20261024b"></script>
+<script src="clinica-agenda.js?v=20261024b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
@@ -1389,6 +1390,18 @@
       <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
       <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-recordatorios" onclick="if(event.target===this)closeModal('modal-recordatorios')">
+  <div class="modal-box" style="max-width:540px;width:100%" role="dialog" aria-labelledby="re-titulo">
+    <div class="modal-header"><span class="modal-title" id="re-titulo">📲 Recordatorios de citas</span><button class="modal-close" onclick="closeModal('modal-recordatorios')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div class="cl-diabar"><div class="cl-field" style="margin:0"><label for="re-fecha">Citas del día</label><input type="date" id="re-fecha" class="cl-in" onchange="cargarRecordatorios()"/></div><span class="cl-sub" id="re-resumen" style="align-self:flex-end"></span></div>
+      <p class="cl-sub">Cada botón abre WhatsApp con el mensaje listo; solo tienes que enviarlo. Queda marcado como avisado.</p>
+      <div id="re-lista"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-recordatorios')">Cerrar</button></div>
   </div>
 </div>
 

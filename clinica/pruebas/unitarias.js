@@ -111,4 +111,44 @@ t('certificado calcula fechas de reposo', () => {
 });
 t('documento anulado lleva sello', () => assert.ok(C.clinicaHtmlDocumento({ doc: { tipo: 'constancia', estado: 'anulado', contenido: { texto: 'x' } }, paciente: pac, negocio: {}, formato: 'carta' }).includes('ANULADO')));
 t('logo solo con https', () => assert.ok(C.clinicaHtmlDocumento({ doc: { tipo: 'constancia', contenido: { texto: 'x' } }, paciente: pac, negocio: { logo_principal_url: 'https://x.supabase.co/logo.png' }, formato: 'carta' }).includes('<img src="https://x.supabase.co/logo.png"')));
+// ---- Fase 3: sala de espera, honorarios y reportes
+t('nombre corto para la pantalla', () => { assert.strictEqual(C.clinicaNombreCorto({ nombres: 'María José', apellidos: 'López' }), 'María L.'); assert.strictEqual(C.clinicaNombreCorto({ nombres: 'Ana' }), 'Ana'); });
+t('turnos por orden de llegada', () => {
+  const ahora = Date.parse('2026-10-24T15:30:00Z');
+  const tu = C.clinicaTurnos([{ id: 'b', estado: 'en_espera', llegada_en: '2026-10-24T15:10:00Z' }, { id: 'a', estado: 'atendida', llegada_en: '2026-10-24T14:00:00Z' },
+    { id: 'c', estado: 'programada' }, { id: 'd', estado: 'cancelada', llegada_en: '2026-10-24T14:30:00Z' }], ahora);
+  assert.deepStrictEqual(Array.from(tu.map(x => x.id + x.turno)), ['a1', 'b2']);
+  assert.strictEqual(tu[1].espera_min, 20); assert.strictEqual(tu[0].espera_min, null);
+  assert.strictEqual(C.clinicaTextoEspera(75), '1 h 15 min'); assert.strictEqual(C.clinicaTextoEspera(0), 'recién llegó');
+});
+const ventasH = [{ id: 'v1', estado: 'completada', total: 600, numero_venta: 'V-1' }, { id: 'v2', estado: 'completada', total: 500, numero_venta: 'V-2' },
+  { id: 'v3', estado: 'anulada', total: 500 }, { id: 'v4', estado: 'completada', total: 500 }];
+const detH = [{ venta_id: 'v1', tipo_item: 'servicio', subtotal: 500, producto_nombre: 'Consulta', cantidad: 1 }, { venta_id: 'v1', tipo_item: 'producto', subtotal: 100, producto_nombre: 'Acet', cantidad: 8 },
+  { venta_id: 'v2', tipo_item: 'servicio', subtotal: 500, producto_nombre: 'Consulta', cantidad: 1 }, { venta_id: 'v4', tipo_item: 'servicio', subtotal: 500, producto_nombre: 'Consulta', cantidad: 1 }];
+const devH = [{ venta_id: 'v2', total: 250, estado: 'activa' }, { venta_id: 'v1', total: 600, estado: 'anulada' }, { venta_id: 'v4', total: 500, estado: 'activa' }];
+const citasH = [{ id: 'c1', medico_id: 'm1', estado: 'atendida', venta_id: 'v1', fecha: '2026-10-01' }, { id: 'c2', medico_id: 'm1', estado: 'atendida', venta_id: 'v2', fecha: '2026-10-02' },
+  { id: 'c3', medico_id: 'm1', estado: 'atendida', venta_id: 'v3' }, { id: 'c4', medico_id: 'm1', estado: 'atendida', venta_id: null }, { id: 'c5', medico_id: 'm2', estado: 'atendida', venta_id: 'v1' },
+  { id: 'c6', medico_id: 'm1', estado: 'no_asistio' }, { id: 'c7', medico_id: 'm1', estado: 'atendida', venta_id: 'v4' }, { id: 'c8', medico_id: 'm1', estado: 'atendida', venta_id: 'v1' }];
+t('neto de venta descuenta devoluciones vigentes', () => {
+  assert.strictEqual(C.clinicaNetoVenta(ventasH[0], devH).neto, 600);
+  assert.strictEqual(C.clinicaNetoVenta(ventasH[1], devH).neto, 250);
+  assert.strictEqual(C.clinicaNetoVenta(ventasH[2], devH).neto, 0);
+});
+t('honorario por porcentaje solo sobre servicios y neto de devoluciones', () => {
+  const h = C.clinicaCalcularHonorarios({ medico: { id: 'm1', honorario_tipo: 'porcentaje', honorario_valor: 30 }, citas: citasH, ventas: ventasH, detalles: detH, devoluciones: devH, pagadas: ['c8'] });
+  // c1: 500 servicio -> 150 ; c2: 500 * (250/500) = 250 -> 75 ; c7 devuelta completa -> 0 ; c3 anulada y c4 sin venta: sin cobrar ; c8 ya pagada
+  assert.strictEqual(h.monto, 225); assert.strictEqual(h.base, 750); assert.strictEqual(h.sinCobrar, 2); assert.strictEqual(h.yaPagadas, 1); assert.strictEqual(h.lineas.length, 3);
+});
+t('honorario monto fijo por consulta cobrada', () => {
+  const h = C.clinicaCalcularHonorarios({ medico: { id: 'm1', honorario_tipo: 'monto', honorario_valor: 100 }, citas: citasH, ventas: ventasH, detalles: detH, devoluciones: devH, pagadas: [] });
+  assert.strictEqual(h.monto, 300);   // c1, c2, c8 (c7 devuelta completa = 0)
+});
+t('resumen del reporte cuadra con las ventas', () => {
+  const r = C.clinicaResumenReporte({ citas: citasH, ventas: ventasH, detalles: detH, devoluciones: devH, medicos: [{ id: 'm1', nombre: 'Dra. A' }] });
+  // ventas ligadas y completadas: v1 (600, una sola vez aunque 3 citas la apunten), v2 (250), v4 (0)
+  assert.strictEqual(r.total.cobrado, 850); assert.strictEqual(r.total.citas, 8); assert.strictEqual(r.total.no_asistio, 1);
+  assert.strictEqual(r.servicios.find(x => x.nombre === 'Consulta').total, 1500);
+  assert.strictEqual(r.porMedico.find(x => x.medico_id === 'm1').nombre, 'Dra. A');
+});
+t('CSV seguro para Excel', () => { const c = C.clinicaCSV([['a', '=1+1', 'x,y', 'di"jo']]); assert.ok(c.includes("'=1+1") && c.includes('"x,y"') && c.includes('"di""jo"')); });
 console.log(`${ok} pruebas unitarias correctas${process.exitCode ? ' (CON FALLAS)' : ''}`);

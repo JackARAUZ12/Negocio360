@@ -187,6 +187,12 @@
       case 'clinica_documento_anular': { exigir(); const d = T('clinica_documentos').find(x => x.id === a.p_id); if (!a.p_motivo || a.p_motivo.length < 5) return { ok: false, motivo: 'falta_motivo' }; d.estado = 'anulado'; d.motivo_anulacion = a.p_motivo; guardar(); return { ok: true }; }
       case 'clinica_documento_farmacia': { exigir(); const d = T('clinica_documentos').find(x => x.id === a.p_id); if (d.farmacia_receta_id) return { ok: false, motivo: 'ya_en_farmacia' }; d.farmacia_receta_id = a.p_farmacia_receta_id; guardar(); return { ok: true }; }
       case 'clinica_adjunto_anular': { exigir(); const x = T('clinica_adjuntos').find(y => y.id === a.p_id); x.estado = 'anulado'; x.motivo_anulacion = a.p_motivo; guardar(); return { ok: true }; }
+      case 'clinica_reporte_clinico': {
+        const auth = a.p_auth || {}; const ok = auth.admin_pin === '2468' || T('_sesiones').some(x => x.token === auth.token && !x.cerrada);
+        if (!ok) return { ok: false, motivo: 'incorrecto', restantes: 3 };
+        const cuenta = {}; T('clinica_consultas').filter(c => c.estado === 'cerrada').forEach(c => (c.diagnosticos || []).forEach(d => { const k = d.codigo || d.nombre; cuenta[k] = cuenta[k] || { codigo: d.codigo || '—', nombre: d.nombre, total: 0 }; cuenta[k].total++; }));
+        return { ok: true, diagnosticos: Object.values(cuenta).sort((x, y) => y.total - x.total), notas: [] };
+      }
       case 'clinica_cambiar_pin': return a.p_pin_actual === PIN_OK ? { ok: true } : { ok: false, motivo: 'incorrecto', restantes: 4 };
     }
     return undefined;
