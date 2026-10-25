@@ -127,13 +127,15 @@
     const db = leerDB(); const T = k => (db[k] = db[k] || []);
     const sesion = () => T('_sesiones').find(s => s.token === a.p_token && !s.cerrada);
     const persona = s => T('clinica_personal').find(p => p.id === s.personal_id);
-    const exigir = () => { const s = sesion(); if (!s) throw { message: 'clinica_sesion_invalida' }; return persona(s); };
+    // Como en el servidor: la verificación de siempre solo acepta médico y administración; la de enfermería, también enfermería.
+    const exigirEnf = () => { const s = sesion(); const p = s && persona(s); if (!p || !['medico', 'admin', 'enfermeria'].includes(p.rol)) throw { message: 'clinica_sesion_invalida' }; return p; };
+    const exigir = () => { const p = exigirEnf(); if (p.rol === 'enfermeria') throw { message: 'clinica_sesion_invalida' }; return p; };
     const guardar = () => guardarDB(db);
     switch (nombre) {
       case 'clinica_iniciar_sesion_perfil': {
         const perfil = T('perfiles_acceso').find(x => x.id === a.p_perfil_id);
         if (!perfil) return { ok: false, motivo: 'no_encontrado' };
-        const p = T('clinica_personal').find(x => x.perfil_id === a.p_perfil_id && x.activo !== false && ['medico', 'admin'].includes(x.rol));
+        const p = T('clinica_personal').find(x => x.perfil_id === a.p_perfil_id && x.activo !== false && ['medico', 'admin', 'enfermeria'].includes(x.rol));
         if (!p) return { ok: false, motivo: 'sin_acceso_clinico' };
         if (a.p_pin !== (perfil.tipo === 'admin' ? '2468' : PIN_OK)) return { ok: false, motivo: 'incorrecto', restantes: 4 };
         const token = (p.id.length % 2 ? 'cd' : 'ab').repeat(32); T('_sesiones').push({ token, personal_id: p.id }); guardar();
@@ -195,6 +197,7 @@
         if (!a.p_id) {
           const perfil = T('perfiles_acceso').find(x => x.id === d.perfil_id); if (!perfil) return { ok: false, motivo: 'perfil' };
           if (T('clinica_personal').some(x => x.perfil_id === d.perfil_id)) return { ok: false, motivo: 'perfil_repetido' };
+          if (d.rol === 'enfermeria') { d.agenda_profesional_id = null; d.honorario_tipo = 'ninguno'; d.honorario_valor = 0; }
           const prof = d.agenda_profesional_id && T('agenda_profesionales').find(x => x.id === d.agenda_profesional_id);
           const f = { id: uuid(), auth_user_id: UID, nombre: perfil.nombre, perfil_id: perfil.id, rol: d.rol || 'medico', especialidad: d.especialidad, registro_profesional: d.registro_profesional,
             consultorio_id: d.consultorio_id, agenda_profesional_id: d.agenda_profesional_id || null, honorario_tipo: d.honorario_tipo || 'ninguno', honorario_valor: d.honorario_valor || 0,
@@ -225,17 +228,20 @@
         return { ok: true, diagnosticos: Object.values(cuenta).sort((x, y) => y.total - x.total), notas: [] };
       }
       case 'clinica_estancia_nota_agregar': {
-        const p = exigir(); const e = T('clinica_estancias').find(x => x.id === a.p_estancia_id); const d = a.p_datos || {};
+        const p = exigirEnf(); const e = T('clinica_estancias').find(x => x.id === a.p_estancia_id); const d = a.p_datos || {};
         if (!e) return { ok: false, motivo: 'no_encontrado' }; if (e.estado !== 'activa') return { ok: false, motivo: 'estancia_cerrada' };
         if (!String(d.texto || '').trim()) return { ok: false, motivo: 'texto' };
+        if (p.rol === 'enfermeria' && (d.tipo || 'evolucion') !== 'enfermeria') return { ok: false, motivo: 'solo_enfermeria' };
         if (d.fc != null && (Number(d.fc) < 20 || Number(d.fc) > 250)) return { ok: false, motivo: 'signos' };
         T('clinica_estancia_notas').push({ id: uuid(), estancia_id: e.id, paciente_id: e.paciente_id, ...d, autor_id: p.id, autor_nombre: p.nombre, created_at: new Date().toISOString() });
         T('clinica_bitacora').push({ accion: 'nota_estancia', quien: p.nombre }); guardar(); return { ok: true };
       }
-      case 'clinica_estancia_notas': { exigir(); return { ok: true, notas: T('clinica_estancia_notas').filter(n => n.estancia_id === a.p_estancia_id) }; }
+      case 'clinica_estancia_notas': { const p = exigirEnf(); const e = T('clinica_estancias').find(x => x.id === a.p_estancia_id);
+        return { ok: true, rol: p.rol, alergias: (T('clinica_antecedentes').find(x => e && x.paciente_id === e.paciente_id) || {}).alergias || null,
+          notas: T('clinica_estancia_notas').filter(n => n.estancia_id === a.p_estancia_id) }; }
       case 'clinica_iniciar_sesion_demo': {
         if (window.__DEMO !== true) return { ok: false, motivo: 'solo_demo' };
-        const p = T('clinica_personal').find(x => x.id === a.p_personal_id && x.activo !== false && ['medico', 'admin'].includes(x.rol));
+        const p = T('clinica_personal').find(x => x.id === a.p_personal_id && x.activo !== false && ['medico', 'admin', 'enfermeria'].includes(x.rol));
         if (!p) return { ok: false, motivo: 'no_encontrado' };
         const token = 'de'.repeat(32); T('_sesiones').push({ token, personal_id: p.id }); guardar();
         return { ok: true, token, personal_id: p.id, nombre: p.nombre, rol: p.rol };

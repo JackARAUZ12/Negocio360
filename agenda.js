@@ -111,8 +111,15 @@ function renderUserInfo(profile, email) {
 
 async function cargarClientesAgenda() {
   try {
-    const { data } = await sb.from('clientes').select('id,nombre').eq('auth_user_id', STATE.userId).order('nombre');
-    STATE.clientes = data || [];
+    // Todos los clientes (de 1000 en 1000: la base entrega como máximo 1000 por consulta), con su apellido.
+    let todos = [];
+    for (let i = 0; i < 100; i++) {
+      const { data, error } = await sb.from('clientes').select('id,nombre,apellido,telefono').eq('auth_user_id', STATE.userId).order('nombre').order('id').range(i * 1000, i * 1000 + 999);
+      if (error) throw error;
+      todos = todos.concat(data || []);
+      if (!data || data.length < 1000) break;
+    }
+    STATE.clientes = todos.map(c => ({ ...c, nombre: [c.nombre, c.apellido].filter(x => x && String(x).trim()).join(' ').trim() || c.nombre || '' }));
     const sel = document.getElementById('ne-cliente');
     if (sel) sel.innerHTML = '<option value="">— Sin vincular —</option>' +
       STATE.clientes.map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');

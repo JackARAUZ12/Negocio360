@@ -338,7 +338,7 @@ async function cobrarCita() {
   const c = citaPorId(SA.citaCuenta); if (!c) return;
   const btn = $s('cu-btn-cobrar'); btn.disabled = true;
   try {
-    const r = await ClinicaCitas.cobrar(c, { convenio: SA.convenio && $s('cu-seguro')?.checked ? SA.convenio : null,
+    const r = await ClinicaCitas.cobrar(c, { convenio: SA.convenio && $s('cu-seguro')?.checked ? SA.convenio : null, convenioDisponible: SA.convenio,
       alCerrar: async cobrado => { if (cobrado) { avisarCambio(); showToast('✅ Visita cobrada y registrada en Ventas.'); } await cargar(); } });
     if (!r.ok) { $s('cu-error').textContent = r.motivo; await cargar(); }
     else if (r.dentro) closeModal('modal-cuenta');
@@ -394,7 +394,7 @@ function abrirPantalla() {
   try { document.documentElement.requestFullscreen?.()?.catch?.(() => {}); } catch (_) {}   // sin un toque, el navegador no deja pantalla completa
   // Lo que ya estaba llamado al abrir no suena: solo los llamados nuevos.
   SA.ultimoLlamado = ultimoLlamado()?.llamado_en || null;
-  activarSonido();
+  activarSonido(); pintarBotonVoz();
   renderPantalla(clinicaTurnos(SA.citas));
 }
 function cerrarPantalla() {
@@ -423,6 +423,32 @@ function sonar() {
       g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.6); o.start(t0); o.stop(t0 + 0.62); });
   } catch (_) {}
 }
+// Voz: después del "ding-dong" se anuncia el turno, el nombre corto y a dónde pasar (se puede apagar).
+function vozActiva() { try { return localStorage.getItem('n360_sala_voz') !== 'no'; } catch (_) { return true; } }
+function pintarBotonVoz() { const b = $s('sp-voz'); if (!b) return; const on = vozActiva(); b.textContent = on ? '🗣️ Voz: sí' : '🔇 Voz: no'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+function alternarVoz() {
+  try { localStorage.setItem('n360_sala_voz', vozActiva() ? 'no' : 'si'); } catch (_) {}
+  pintarBotonVoz(); activarSonido();
+  if (!vozActiva()) { try { window.speechSynthesis?.cancel(); } catch (_) {} }
+}
+function anunciar(texto) {
+  if (!vozActiva() || !texto) return;
+  window.__ultimoAnuncio = texto;
+  try {
+    const sintesis = window.speechSynthesis; if (!sintesis || typeof SpeechSynthesisUtterance === 'undefined') return;
+    const u = new SpeechSynthesisUtterance(texto);
+    const voces = sintesis.getVoices() || [];
+    const voz = voces.find(v => /^es[-_](NI|MX|US|419|CR|HN|SV|GT|PA|CO)/i.test(v.lang)) || voces.find(v => /^es/i.test(v.lang));
+    if (voz) u.voice = voz;
+    u.lang = voz?.lang || 'es-MX'; u.rate = 0.92; u.volume = 1;
+    sintesis.cancel();
+    setTimeout(() => { try { sintesis.speak(u); } catch (_) {} }, 2500);   // después del ding-dong
+  } catch (_) {}
+}
+function textoAnuncio(c, turno) {
+  const donde = consultorio(c.consultorio_id);
+  return `Turno ${turno || ''}. ${clinicaNombreCorto(c.clinica_pacientes) || ''}. ${donde ? 'Pase a ' + donde : 'Pase a consulta'}.`.replace(/\s+/g, ' ').trim();
+}
 function ultimoLlamado() {
   return SA.citas.filter(c => c.llamado_en && c.estado === 'en_espera' && Date.now() - new Date(c.llamado_en).getTime() < 10 * 60000)
     .sort((a, b) => String(b.llamado_en).localeCompare(String(a.llamado_en)))[0];
@@ -431,6 +457,7 @@ function renderPantalla(turnos) {
   const ult = ultimoLlamado();
   if (ult && ult.llamado_en !== SA.ultimoLlamado) {         // llamado nuevo: suena y se resalta
     SA.ultimoLlamado = ult.llamado_en; sonar();
+    anunciar(textoAnuncio(ult, turnos.find(x => x.id === ult.id)?.turno));
     const caja = $s('sp-llamado'); caja.classList.remove('sp-alerta'); void caja.offsetWidth; caja.classList.add('sp-alerta');
   }
   const t = id => turnos.find(x => x.id === id)?.turno;

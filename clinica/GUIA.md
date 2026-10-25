@@ -65,6 +65,9 @@ del médico. En "Cliente" puedes elegir:
   computadora o un teléfono), con un "ding-dong" y el nombre resaltado. Muestra solo el
   nombre y la inicial del apellido, nunca datos médicos.
 
+La pantalla también **dice en voz alta** el turno, el nombre y a dónde pasar
+(botón **🗣️ Voz: sí / no** arriba).
+
 **Pantalla de la sala en otro equipo (TV, computadora o teléfono):** entra con la misma
 cuenta, abre **Sala de espera → 📺 Modo pantalla** (o la dirección
 `clinica-sala.html?pantalla=1`). Arriba aparece **● En vivo**. Si sale el botón naranja
@@ -106,16 +109,20 @@ se registra nada. Para casos especiales (pago separado, puntos, certificados) es
 **"Otras opciones"**. Lo mismo al cobrar una estancia, facturar a una aseguradora, vender
 los medicamentos de una receta o cobrar una cita desde la Agenda.
 
+Al terminar de cobrar puedes **🧾 imprimir el ticket**, **📲 enviarlo por WhatsApp** al
+paciente o descargar el **📄 recibo PDF**.
+
 ### Con seguro o convenio
 
 1. En **Clínica · Seguros y convenios** agrega la aseguradora o empresa y su
    **% de cobertura**.
 2. En la ficha del paciente elige su seguro, el número de póliza y cuándo vence.
-3. Al cobrar desde la Sala, la cuenta muestra cuánto paga el paciente y cuánto la
-   aseguradora. El paciente paga solo su parte.
+3. Al cobrar (desde la Sala, la Agenda u Observación), la pantalla de cobro muestra
+   **"🛡️ Aplicar seguro"**: el paciente paga solo su parte. Si hoy no se usa el seguro,
+   quita la marca y paga todo.
 4. En **Seguros y convenios → Por facturar** aparece lo que cubrió cada aseguradora.
    **"Facturar"** abre Ventas a nombre de la aseguradora: si te paga después, elige
-   **Crédito**, y su pago se registra en Créditos como cualquier cliente.
+   **Fiado** (se activa en Configuración), y su pago se registra como el de cualquier cliente.
    Una cita nunca se factura dos veces.
 
 ## 7. Observación y hospitalización
@@ -125,7 +132,9 @@ los medicamentos de una receta o cobrar una cita desde la Agenda.
 1. **+ Ingreso**: paciente, observación u hospitalización, cama, médico, el servicio
    que se cobra (por día en hospitalización) y la nota de ingreso.
 2. **📝 Notas y signos**: evolución, enfermería, indicaciones y alta, con signos
-   vitales. Solo con el código del médico.
+   vitales, con el código del médico. **Enfermería** (rol propio en Médicos y seguridad)
+   entra con su código, ve las **alergias** y escribe solo **notas de enfermería con
+   signos**; no abre expedientes ni consultas (el servidor no se lo permite).
 3. **💊 Cuenta**: medicamentos, sueros e insumos que se usan.
 4. **🏁 Dar de alta** y luego **💳 Cobrar**: Ventas abre la cuenta completa (días +
    lo usado). Una estancia cobrada ya no cambia.

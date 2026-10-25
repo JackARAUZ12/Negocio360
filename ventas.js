@@ -3137,7 +3137,7 @@ async function aplicarCobroClinica() {
   }
   renderCarrito('servicio'); renderCarrito('producto'); calcularResumen();
   S._clinicaCobro = { tipo: d.tipo, id: d.id };
-  showToast(d.tipo === 'reclamo' ? 'Factura a la aseguradora cargada: elige "Crédito" como forma de pago si te pagará después.' : 'Cuenta de la estancia cargada en la venta.');
+  showToast(d.tipo === 'reclamo' ? 'Factura a la aseguradora cargada: si te pagará después, elige "Fiado" como forma de pago.' : 'Cuenta de la estancia cargada en la venta.');
   if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock o ya no disponibles). Revísalos.`, 'warning');
 }
 
@@ -5290,6 +5290,8 @@ async function enriquecerItemsConCombo(items) {
 // sigue saliendo por su propia vía, como siempre. El botón "Descargar recibo"
 // del detalle (opciones.manual) siempre descarga, porque lo pide la persona.
 async function descargarReciboDeVenta(venta, items, opciones = {}) {
+  // En el cobro de la Clínica el recibo no se descarga solo: la Clínica ofrece ticket, PDF y WhatsApp.
+  if (opciones.manual !== true && S._motorClinica === true) return;
   try {
     await cargarConfigVentaRapida();
     const cfg = VR.config || {};
@@ -8302,6 +8304,12 @@ async function initVentas() {
    cuentas con el módulo (ventas.html?clinica_cobro=1&motor=1); en cualquier otro caso no se instala.
    ============================================================ */
 function instalarMotorClinica() {
+  S._motorClinica = true;
+  const traerVenta = async ventaId => {
+    const { data: v } = await sb.from('ventas').select('*').eq('id', ventaId).eq('auth_user_id', S.userId).maybeSingle();
+    if (v && !(S.ventas || []).some(x => x.id === v.id)) S.ventas = [v, ...(S.ventas || [])];
+    return v;
+  };
   const llegarAlPago = () => { for (let i = 0; i < 6 && S.paso < 5; i++) { const antes = S.paso; pasoSiguiente(); if (S.paso === antes) break; } return S.paso >= 5; };
   window.N360MotorVenta = {
     estado() {
@@ -8318,6 +8326,24 @@ function instalarMotorClinica() {
       };
     },
     fmt: n => fmt(n),
+    // Ticket de la venta por la misma ruta de siempre (Bluetooth, app de escritorio, USB o impresión normal).
+    // La Clínica abre la ventana de impresión en el mismo toque y la pasa aquí; si hay impresora directa, se cierra.
+    async imprimirTicket(ventaId, ventana) {
+      const v = await traerVenta(ventaId); if (!v) return false;
+      S.ventaDetalleId = v.id;
+      let usada = false; const abrir = window.open;
+      if (ventana) window.open = () => { usada = true; return ventana; };
+      try { await reimprimirTicketVenta(); } finally { window.open = abrir; }
+      if (ventana && !usada) { try { ventana.close(); } catch (_) {} }
+      return true;
+    },
+    async descargarRecibo(ventaId) {
+      const v = await traerVenta(ventaId); if (!v) return false;
+      const { data: items } = await sb.from('venta_detalles').select('*').eq('venta_id', v.id).eq('auth_user_id', S.userId);
+      await descargarReciboDeVenta(v, items || [], { manual: true });
+      return true;
+    },
+    clienteTelefono() { return S.clienteObjeto?.telefono || ''; },
     async bancos() { return (await cargarBancosDisponibles()).map(b => ({ id: b.id, nombre: b.nombre, moneda: b.moneda || 'NIO' })); },
     irAPago: llegarAlPago,
     // op: { metodoId, metodoNombre, fiado, banco: {id, nombre, moneda}, notas }

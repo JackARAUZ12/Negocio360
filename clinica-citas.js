@@ -103,7 +103,7 @@ const ClinicaCitas = (() => {
   // y lo que se agregó a la cuenta; al confirmar, la cita queda cobrada (venta_id) y completada.
   // Con seguro (convenio vigente del paciente): el paciente paga su parte y lo que cubre la aseguradora queda
   // anotado en la cita para facturárselo después desde Clínica · Seguros.
-  async function cobrar(cita, { convenio, alCerrar } = {}) {
+  async function cobrar(cita, { convenio, convenioDisponible, alCerrar } = {}) {
     const { data: actual, error } = await sb.from('agenda_citas').select('id, venta_id, cliente_id, cliente_nombre, agenda_citas_servicios(*), ventas(estado, numero_venta)')
       .eq('id', cita.id).eq('auth_user_id', STATE.userId).maybeSingle();
     if (error) throw error;
@@ -126,21 +126,43 @@ const ClinicaCitas = (() => {
       }
     }
     const extra = await cargos(cita.id);
-    const d = clinicaCobroAgenda(actual, extra);
-    if (!d.items.length) return { ok: false, motivo: 'La cuenta está vacía: los servicios de la cita no están en tu catálogo.' };
-    if (convenio) {
-      const { data: prods } = await sb.from('productos').select('id, tipo').eq('auth_user_id', STATE.userId).in('id', d.items.map(x => x.producto_id));
-      const tipos = {}; (prods || []).forEach(x => { tipos[x.id] = x.tipo; });
-      const rep = clinicaAplicarConvenio(d.items, convenio.cobertura_pct, tipos);
-      d.items = rep.paciente;
-      await guardarInfo(cita.id, { convenio_id: convenio.id, cobertura_pct: Number(convenio.cobertura_pct), monto_cubierto: rep.cubierto, cubierto_servicios: rep.cubiertoServicios });
-    } else await guardarInfo(cita.id, { convenio_id: null, cobertura_pct: null, monto_cubierto: null, cubierto_servicios: null });
-    sessionStorage.setItem('n360_agenda_cobro', JSON.stringify(d));
-    // Sin salir de la Clínica: Ventas se abre en una ventana aquí mismo (si no se puede, como antes).
+    const base = clinicaCobroAgenda(actual, extra);
+    if (!base.items.length) return { ok: false, motivo: 'La cuenta está vacía: los servicios de la cita no están en tu catálogo.' };
+    // Arma lo que se cobra, con o sin el seguro (se puede cambiar en la pantalla de cobro).
+    let tipos = null;
+    const preparar = async conv => {
+      const d = { ...base, items: base.items.map(x => ({ ...x })) };
+      if (conv) {
+        if (!tipos) {
+          const { data: prods } = await sb.from('productos').select('id, tipo').eq('auth_user_id', STATE.userId).in('id', d.items.map(x => x.producto_id));
+          tipos = {}; (prods || []).forEach(x => { tipos[x.id] = x.tipo; });
+        }
+        const rep = clinicaAplicarConvenio(d.items, conv.cobertura_pct, tipos);
+        d.items = rep.paciente;
+        await guardarInfo(cita.id, { convenio_id: conv.id, cobertura_pct: Number(conv.cobertura_pct), monto_cubierto: rep.cubierto, cubierto_servicios: rep.cubiertoServicios });
+      } else await guardarInfo(cita.id, { convenio_id: null, cobertura_pct: null, monto_cubierto: null, cubierto_servicios: null });
+      sessionStorage.setItem('n360_agenda_cobro', JSON.stringify(d));
+      return d;
+    };
+    const d = await preparar(convenio || null);
+    const disponible = convenioDisponible || convenio || null;
+    // Se cobra en la pantalla de cobro de la Clínica (si no se puede, como antes, en Ventas).
     if (typeof clinicaAbrirCobro === 'function' && clinicaAbrirCobro({ titulo: `Cobrar visita · ${d.cliente || ''}`.trim(), alCerrar,
+      seguro: disponible ? { nombre: disponible.nombre, pct: Number(disponible.cobertura_pct), aplicado: !!convenio, cambiar: aplicar => preparar(aplicar ? disponible : null) } : null,
       alTerminar: ventaId => clinicaLigarVenta('agenda_citas', cita.id, ventaId, { estado: 'completada', updated_at: new Date().toISOString() }) })) return { ok: true, dentro: true };
     window.location.href = 'ventas.html';
     return { ok: true };
   }
-  return { cargar, una, delPaciente, medicos, guardarInfo, cambiarEstado, cargos, cobrar };
+  // Seguro vigente del paciente de una cita (para cobrar desde la Agenda): { paciente, convenio } o nulls.
+  async function seguroDeCita(citaId, clienteId) {
+    let pac = null;
+    const { data: inf } = await sb.from('clinica_cita_info').select('paciente_id').eq('auth_user_id', STATE.userId).eq('agenda_cita_id', citaId).maybeSingle();
+    const cols = 'id, cliente_id, convenio_id, poliza, poliza_vence';
+    if (inf?.paciente_id) { const { data } = await sb.from('clinica_pacientes').select(cols).eq('auth_user_id', STATE.userId).eq('id', inf.paciente_id).maybeSingle(); pac = data; }
+    if (!pac && clienteId) { const { data } = await sb.from('clinica_pacientes').select(cols).eq('auth_user_id', STATE.userId).eq('cliente_id', clienteId).eq('activo', true).limit(1); pac = (data || [])[0] || null; }
+    if (!pac?.convenio_id) return { paciente: pac, convenio: null };
+    const { data: k } = await sb.from('clinica_convenios').select('id, nombre, cobertura_pct, activo').eq('auth_user_id', STATE.userId).eq('id', pac.convenio_id).maybeSingle();
+    return { paciente: pac, convenio: clinicaConvenioVigente(pac, k) ? k : null };
+  }
+  return { cargar, una, delPaciente, medicos, guardarInfo, cambiarEstado, cargos, cobrar, seguroDeCita };
 })();

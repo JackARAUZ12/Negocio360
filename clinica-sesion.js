@@ -114,7 +114,7 @@ const ClinicaSesion = (() => {
     let lista = [];
     const enDemo = await esDemo();
     try {
-      let q = sb.from('clinica_personal').select('id, nombre, rol, perfil_id').eq('auth_user_id', uid).eq('activo', true).in('rol', ['medico', 'admin']);
+      let q = sb.from('clinica_personal').select('id, nombre, rol, perfil_id').eq('auth_user_id', uid).eq('activo', true).in('rol', ['medico', 'admin', 'enfermeria']);
       if (!enDemo) q = q.not('perfil_id', 'is', null);
       const { data, error } = await q.order('nombre');
       if (error) throw error;
@@ -124,7 +124,7 @@ const ClinicaSesion = (() => {
     const yo = enDemo ? null : lista.find(p => p.perfil_id === perfilActual());
     const valor = p => enDemo ? p.id : p.perfil_id;
     sel.innerHTML = (yo ? '' : (lista.length > 1 ? '<option value="">— Elige el médico —</option>' : ''))
-      + (yo ? [yo] : lista).map(p => `<option value="${esc(valor(p))}">${esc(p.nombre)}${p.rol === 'admin' ? ' (administración)' : ''}</option>`).join('');
+      + (yo ? [yo] : lista).map(p => `<option value="${esc(valor(p))}">${esc(p.nombre)}${p.rol === 'admin' ? ' (administración)' : p.rol === 'enfermeria' ? ' (enfermería)' : ''}</option>`).join('');
     document.getElementById('cp-pin-wrap').style.display = enDemo ? 'none' : '';
     document.getElementById('cp-demo').style.display = enDemo ? '' : 'none';
     document.getElementById('cp-persona-wrap').style.display = yo ? 'none' : '';

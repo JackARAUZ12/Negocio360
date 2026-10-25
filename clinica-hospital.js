@@ -97,7 +97,7 @@ async function init() {
       ClinicaCitas.medicos(),
       sb.from('productos').select('id, nombre, precio, tipo').eq('auth_user_id', STATE.userId).eq('tipo', 'servicio').eq('activo', true).order('nombre'),
     ]);
-    HO.medicos = meds.filter(m => m.activo); HO.servicios = sv.data || [];
+    HO.medicos = meds.filter(m => m.activo && m.rol !== 'enfermeria'); HO.servicios = sv.data || [];
     await cargar();
   } catch (e) {
     console.error('init clinica-hospital:', e);
@@ -112,7 +112,7 @@ const servicioDe = id => HO.servicios.find(x => x.id === id) || null;
 async function cargar() {
   try {
     const { data, error } = await sb.from('clinica_estancias')
-      .select('*, clinica_pacientes(id, nombres, apellidos, numero_expediente, telefono, cliente_id), ventas(estado, numero_venta)')
+      .select('*, clinica_pacientes(id, nombres, apellidos, numero_expediente, telefono, cliente_id, convenio_id, poliza_vence), ventas(estado, numero_venta)')
       .eq('auth_user_id', STATE.userId).order('ingreso_en', { ascending: false }).limit(300);
     if (error) throw error;
     HO.estancias = data || [];
@@ -223,7 +223,7 @@ async function abrirNotas(id) {
   $h('no-titulo').textContent = `📝 ${e.numero} · ${clinicaNombrePaciente(e.clinica_pacientes || {})}`;
   $h('no-form').style.display = e.estado === 'activa' ? '' : 'none';
   SIGNOS_EST.forEach(k => { $h('no-' + k).value = ''; }); $h('no-texto').value = ''; $h('no-tipo').value = 'evolucion'; $h('no-error').textContent = '';
-  $h('no-lista').innerHTML = '<p class="cl-sub">Cargando…</p>';
+  $h('no-lista').innerHTML = '<p class="cl-sub">Cargando…</p>'; $h('no-alergias').innerHTML = '';
   openModal('modal-notas');
   await pintarNotas();
 }
@@ -231,6 +231,11 @@ async function pintarNotas() {
   try {
     const r = await ClinicaSesion.rpc('clinica_estancia_notas', { p_estancia_id: HO.notasId });
     if (!r || !r.ok) { $h('no-lista').innerHTML = `<p style="color:var(--danger,#dc2626)">${esc(clinicaTextoMotivo(r))}</p>`; return; }
+    // Enfermería solo escribe notas de enfermería (el servidor también lo exige); se le muestran las alergias.
+    const esEnf = r.rol === 'enfermeria';
+    [...$h('no-tipo').options].forEach(o => { o.disabled = esEnf && o.value !== 'enfermeria'; o.hidden = esEnf && o.value !== 'enfermeria'; });
+    if (esEnf) $h('no-tipo').value = 'enfermeria';
+    $h('no-alergias').innerHTML = r.alergias ? `<div class="cl-alerta" style="margin:0 0 10px">⚠️ ALERGIAS: ${esc(r.alergias)}</div>` : '';
     const notas = (r.notas || []).slice().reverse();
     $h('no-lista').innerHTML = notas.length ? notas.map(n => {
       const sg = [n.pa_sistolica && n.pa_diastolica && `PA ${n.pa_sistolica}/${n.pa_diastolica}`, n.fc && `FC ${n.fc}`, n.fr && `FR ${n.fr}`, n.temperatura && `T ${n.temperatura} °C`,
@@ -364,9 +369,35 @@ async function cobrar(id) {
       clienteId = nuevo.id;
       await sb.from('clinica_pacientes').update({ cliente_id: clienteId }).eq('id', p.id).eq('auth_user_id', STATE.userId);
     }
-    sessionStorage.setItem('n360_clinica_cobro', JSON.stringify({ tipo: 'estancia', id, clienteId, cliente: clinicaNombrePaciente(p), items: c.items }));
-    // Sin salir de la Clínica: Ventas se abre en una ventana aquí mismo.
+    // Seguro del paciente (si tiene uno vigente): el paciente paga su parte y lo cubierto queda anotado en la
+    // estancia para facturárselo a la aseguradora en Seguros (igual que en las citas). Se puede quitar al cobrar.
+    let conv = null;
+    if (p.convenio_id) {
+      const { data: k } = await sb.from('clinica_convenios').select('id, nombre, cobertura_pct, activo').eq('auth_user_id', STATE.userId).eq('id', p.convenio_id).maybeSingle();
+      if (clinicaConvenioVigente(p, k)) conv = k;
+    }
+    let tipos = null;
+    const preparar = async k => {
+      let items = c.items.map(x => ({ ...x }));
+      if (k) {
+        if (!tipos) {
+          const { data: prods } = await sb.from('productos').select('id, tipo').eq('auth_user_id', STATE.userId).in('id', items.map(x => x.producto_id));
+          tipos = {}; (prods || []).forEach(x => { tipos[x.id] = x.tipo; });
+        }
+        const rep = clinicaAplicarConvenio(items, k.cobertura_pct, tipos);
+        items = rep.paciente;
+        const { error: eS } = await sb.from('clinica_estancias').update({ convenio_id: k.id, cobertura_pct: Number(k.cobertura_pct), monto_cubierto: rep.cubierto, cubierto_servicios: rep.cubiertoServicios }).eq('id', id).eq('auth_user_id', STATE.userId);
+        if (eS) throw eS;
+      } else {
+        const { error: eS } = await sb.from('clinica_estancias').update({ convenio_id: null, cobertura_pct: null, monto_cubierto: null, cubierto_servicios: null }).eq('id', id).eq('auth_user_id', STATE.userId);
+        if (eS) throw eS;
+      }
+      sessionStorage.setItem('n360_clinica_cobro', JSON.stringify({ tipo: 'estancia', id, clienteId, cliente: clinicaNombrePaciente(p), items }));
+    };
+    await preparar(conv);
+    // Se cobra en la pantalla de cobro de la Clínica.
     if (typeof clinicaAbrirCobro === 'function' && clinicaAbrirCobro({ titulo: `Cobrar estancia · ${clinicaNombrePaciente(p)}`,
+      seguro: conv ? { nombre: conv.nombre, pct: Number(conv.cobertura_pct), aplicado: true, cambiar: aplicar => preparar(aplicar ? conv : null) } : null,
       alTerminar: ventaId => clinicaLigarVenta('clinica_estancias', id, ventaId),
       alCerrar: async cobrado => { if (cobrado) showToast('✅ Estancia cobrada y registrada en Ventas.'); await cargar(); } })) return;
     window.location.href = 'ventas.html';

@@ -71,11 +71,7 @@ hospitalización, Seguros y convenios, Reportes y honorarios, Médicos y segurid
    la función que entrega los archivos adjuntos y el inicio de sesión de la demo.
    La contraseña de la demo se verificó dentro de la base de datos. Conviene que Jack
    entre una vez a la demo y suba un archivo de prueba.
-2. **Seguro al cobrar desde la Agenda:** el reparto con la aseguradora se hace al cobrar
-   desde la **Sala de espera**; si se cobra desde la Agenda, se cobra todo al paciente.
-3. **Estancias con seguro:** las estancias se cobran completas al paciente (sin reparto).
-4. **Enfermería:** las notas de estancia las escriben usuarios marcados como médicos o
-   administración clínica; no hay un rol aparte de enfermería.
+2. ~~Seguro desde la Agenda, seguro en hospitalización y rol de Enfermería~~: **hechos** (25-oct).
 5. **Fuerza del candado (cuentas reales):** el expediente queda tan protegido como los códigos de los
    usuarios. Recomendación: códigos de 6 números y no compartirlos.
 6. Tablas de la primera versión que quedaron sin uso (vacías, no se borran):

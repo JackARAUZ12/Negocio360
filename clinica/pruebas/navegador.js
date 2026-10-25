@@ -930,6 +930,8 @@ async function pruebaEnVivo(browser, base, ancho, alto) {
   const st = await tv.evaluate(() => ({ son: window.__sonidos, alerta: document.getElementById('sp-llamado').classList.contains('sp-alerta'),
     lista: document.querySelector('#sp-lista .sp-item-llamado')?.textContent || '', texto: document.getElementById('sa-pantalla').textContent }));
   verificar(st.son === 1, `${tag}: suena una vez al llamar (${st.son})`);
+  const voz = await tv.evaluate(() => ({ t: window.__ultimoAnuncio || '', b: document.getElementById('sp-voz')?.textContent || '' }));
+  verificar(/Turno 2/.test(voz.t) && voz.t.includes('Ana C.') && voz.t.includes('Consultorio 1') && voz.b.includes('Voz'), `${tag}: la pantalla anuncia en voz alta el turno, el nombre y a dónde pasar ("${voz.t}")`);
   verificar(st.alerta && st.lista.includes('Ana C.'), `${tag}: se resalta a la persona llamada en la pantalla y en la lista`);
   verificar(!st.texto.includes('Castillo'), `${tag}: la pantalla sigue mostrando solo nombre e inicial`);
   await sinDesborde(tv, `${tag} pantalla en vivo`);
@@ -1083,6 +1085,150 @@ async function pruebaAgendaPacientes(browser, base) {
   await n.ctx.close();
 }
 
+// Punto 2: Agenda con TODOS los clientes y su apellido; usuarios limitados entran al Panel; ticket/WhatsApp/PDF al cobrar.
+async function pruebaPunto2(browser, base) {
+  console.log('\n▶ Agenda con todos los clientes, usuarios limitados al Panel, ticket y WhatsApp al cobrar');
+  let { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+  await page.goto(base + '/agenda.html');
+  await page.evaluate(({ db, UID }) => { for (let i = 0; i < 1205; i++) db.clientes.push({ id: 'cx-' + i, auth_user_id: UID, nombre: 'Cliente ' + String(i).padStart(4, '0'), apellido: 'Masivo', telefono: '8800' + String(i).padStart(4, '0'), activo: true });
+    sessionStorage.setItem('__DB', JSON.stringify(db)); }, { db: semilla(), UID });
+  await page.reload(); await esperarListo(page); await page.waitForFunction(() => window.N360Citas && STATE.empresaConfig?.usa_modulo_clinica === true, null, { timeout: 15000 });
+  await page.evaluate(() => N360Citas.nuevaCita()); await page.waitForSelector('#modal-cita.modal-open');
+  const ops = await page.$$eval('#ct-cliente option', os => os.map(o => o.textContent));
+  verificar(ops.filter(t => / Masivo$/.test(t)).length === 1205 && ops.includes('Cliente Existente'), `Agenda: carga TODOS los clientes (más de 1000) con su apellido (${ops.filter(t => / Masivo$/.test(t)).length})`);
+  await page.fill('#modal-cita .sb-input', '88001204'); await page.waitForSelector('.sb-lista >> visible=true');
+  verificar((await page.locator('.sb-lista >> visible=true').textContent()).includes('Cliente 1204 Masivo'), 'Agenda: se puede buscar al cliente por su teléfono');
+  await ctx.close();
+  // Usuario limitado (solo Sala de espera): al entrar a una pantalla que no es suya, cae en el Panel de Clínica
+  ({ ctx, page } = await nuevaPagina(browser, base, 1280, 900));
+  await page.goto(base + '/clinica-panel.html');
+  await page.evaluate(({ db, UID }) => { db.usuarios[0].multiusuario_activo = true; db.perfiles_acceso.find(p => p.id === 'perf-caja').modulos = ['clinica_sala'];
+    sessionStorage.setItem('__DB', JSON.stringify(db));
+    sessionStorage.setItem('n360_perfil_activo', JSON.stringify({ id: 'perf-caja', nombre: 'Cajera', tipo: 'restringido', modulos: ['clinica_sala'], authUserId: UID })); }, { db: semilla(), UID });
+  await page.goto(base + '/clientes.html');
+  await page.waitForURL(/clinica-panel\.html/, { timeout: 15000 }).catch(() => {});
+  verificar(/clinica-panel\.html/.test(page.url()), `usuario limitado: entra al Panel de Clínica, no a una pantalla suelta (${page.url().split('/').pop()})`);
+  await ctx.close();
+  // Después de cobrar: imprimir ticket, enviar por WhatsApp y recibo PDF
+  ({ ctx, page } = await nuevaPagina(browser, base, 360, 740));
+  await page.goto(base + '/clinica-sala.html');
+  await page.evaluate(({ db }) => { db.clientes[0].telefono = '8888-1234'; sessionStorage.setItem('__DB', JSON.stringify(db)); },
+    { db: conCitas(semilla(), [citaAgenda('ag-t', { cliente_id: 'cli-1', cliente_nombre: 'Cliente Existente', estado: 'en_atencion' })]) });
+  await page.reload(); await esperarListo(page); await page.waitForFunction(() => typeof ClinicaCitas !== 'undefined');
+  await page.evaluate(() => ClinicaCitas.cobrar({ id: 'ag-t' }));
+  await cobrarEnClinica(page, 'Efectivo', 500);
+  verificar(await page.isVisible('#clc-ticket') && await page.isVisible('#clc-wa') && await page.isVisible('#clc-pdf'), 'cobro: ofrece imprimir ticket, enviar por WhatsApp y recibo PDF');
+  const [wa] = await Promise.all([ctx.waitForEvent('page'), page.click('#clc-wa')]);
+  const u = decodeURIComponent(wa.url());
+  verificar(u.includes('wa.me/50588881234') && u.includes('500.00') && /V-\d+/.test(u), `cobro: el recibo por WhatsApp va al teléfono del cliente con el total y el número de venta`);
+  await wa.close();
+  const [tk] = await Promise.all([ctx.waitForEvent('page', { timeout: 8000 }).catch(() => null), page.click('#clc-ticket')]);
+  verificar(!!tk, 'cobro: "Imprimir ticket" abre la impresión del ticket (misma ruta que Ventas)');
+  if (tk) await tk.close().catch(() => {});
+  const nDescargas = await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).length);
+  verificar(nDescargas > 0 && page.__errores.length === 0, `cobro: sin errores al imprimir / compartir (${page.__errores.join(' | ')})`);
+  await ctx.close();
+}
+
+// Seguro al cobrar desde la Agenda y en hospitalización (lo cubierto se factura a la aseguradora en Seguros).
+async function pruebaSeguros2(browser, base) {
+  console.log('\n▶ Seguro desde la Agenda y en hospitalización');
+  const db0 = () => { const db = semillaFase5(); Object.assign(db.clinica_pacientes[0], { convenio_id: 'k1', poliza: 'POL-9', poliza_vence: '2099-12-31' }); return db; };
+  // Agenda
+  let { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+  await page.goto(base + '/agenda.html');
+  await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: conCitas(db0(), [citaAgenda('ag-s', { cliente_id: 'cli-pedro', cliente_nombre: 'Pedro Gómez', estado: 'en_atencion' })]) });
+  await page.reload(); await esperarListo(page); await page.waitForFunction(() => window.N360Citas && STATE.empresaConfig?.usa_modulo_clinica === true, null, { timeout: 15000 });
+  await page.evaluate(async () => { await N360Citas.abrirCita('ag-s'); await N360Citas.cobrar(); });
+  await marcoCobro(page, 1); await page.waitForSelector('#clc-seguro');
+  verificar(await page.isChecked('#clc-seguro') && (await page.textContent('#clc-total')).includes('100.00'), 'Agenda: el cobro aplica el seguro del paciente (paga su 20%: 100.00)');
+  verificar(/agenda\.html/.test(page.url()), 'Agenda: se cobra sin salir de la Agenda');
+  await page.click('#clc-seguro'); await page.waitForFunction(() => (document.getElementById('clc-total')?.textContent || '').includes('500.00'), null, { timeout: 20000 });
+  verificar(true, 'Agenda: al quitar el seguro, el paciente paga todo (500.00)');
+  await page.click('#clc-seguro'); await page.waitForFunction(() => (document.getElementById('clc-total')?.textContent || '').includes('100.00'), null, { timeout: 20000 });
+  await cobrarEnClinica(page, 'Efectivo');
+  let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+  const inf = db.clinica_cita_info.find(x => x.agenda_cita_id === 'ag-s'), cit = db.agenda_citas.find(x => x.id === 'ag-s'), v1 = db.ventas.find(v => v.id === cit.venta_id);
+  verificar(inf.monto_cubierto === 400 && inf.convenio_id === 'k1' && v1 && Number(v1.total) === 100, `Agenda: la venta es de 100 y quedan 400 por facturar a la aseguradora (${inf.monto_cubierto})`);
+  verificar(page.__errores.length === 0, `Agenda con seguro: sin errores (${page.__errores.join(' | ')})`);
+  await ctx.close();
+  // Hospitalización
+  ({ ctx, page } = await nuevaPagina(browser, base, 360, 740));
+  await page.goto(base + '/clinica-hospital.html');
+  await page.evaluate(({ db, HOY, UID }) => { db.clinica_estancias = [{ id: 'e-s', auth_user_id: UID, numero: 'HOS-000001', paciente_id: 'pac-xss', tipo: 'hospitalizacion', estado: 'alta', servicio_id: 'srv-dia',
+      ingreso_en: HOY + 'T08:00:00Z', alta_en: HOY + 'T09:00:00Z' }]; sessionStorage.setItem('__DB', JSON.stringify(db)); }, { db: db0(), HOY, UID });
+  await page.reload(); await esperarListo(page); await page.click('#ho-chips >> text=🏁 Con alta'); await page.waitForSelector('#ho-lista >> text=💳 Cobrar');
+  await page.click('#ho-lista >> text=💳 Cobrar');
+  await marcoCobro(page, 1); await page.waitForSelector('#clc-seguro');
+  const totE = await page.textContent('#clc-total');
+  verificar(await page.isChecked('#clc-seguro') && totE.includes('300.00'), `hospitalización: la estancia se cobra con el seguro (paga su 20%: ${totE})`);
+  await sinDesborde(page, 'celular cobro de estancia con seguro');
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/cobro-seguro-celular.png' });
+  await cobrarEnClinica(page, 'Efectivo'); await page.click('#clc-listo');
+  db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+  const e = db.clinica_estancias[0];
+  verificar(e.monto_cubierto === 1200 && e.convenio_id === 'k1' && !!e.venta_id, `hospitalización: quedan 1200 por facturar a la aseguradora y la estancia cobrada (${e.monto_cubierto})`);
+  // Seguros: la estancia aparece por facturar y se factura a la aseguradora
+  await page.goto(base + '/clinica-seguros.html'); await esperarListo(page); await page.waitForSelector('#sg-pendiente .cl-item');
+  const pend = await page.textContent('#sg-pendiente');
+  verificar(pend.includes('Estancia HOS-000001') && pend.includes('1,200.00'), 'Seguros: la estancia aparece en "Por facturar"');
+  await page.click('#sg-pendiente >> text=🧾 Facturar'); await marcoCobro(page, 1); await cobrarEnClinica(page, 'Efectivo'); await page.click('#clc-listo');
+  db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+  const rec = db.clinica_reclamos[0];
+  verificar(rec && rec.estado === 'facturado' && JSON.stringify(rec.citas) === '["e-s"]' && rec.monto === 1200, `Seguros: la estancia se facturó a la aseguradora (${rec && rec.monto})`);
+  verificar(page.__errores.length === 0, `hospitalización con seguro: sin errores (${page.__errores.join(' | ')})`);
+  await ctx.close();
+}
+
+// Rol de Enfermería: notas de enfermería y signos de los internados; no abre expedientes.
+async function pruebaEnfermeria(browser, base) {
+  console.log('\n▶ Rol de enfermería');
+  const db0 = () => { const db = semillaFase5();
+    db.perfiles_acceso.push({ id: 'perf-enf', auth_user_id: UID, nombre: 'Enf. Rosa', tipo: 'restringido', activo: true });
+    db.clinica_personal.push({ id: 'per-enf', auth_user_id: UID, perfil_id: 'perf-enf', nombre: 'Enf. Rosa', rol: 'enfermeria', activo: true, honorario_tipo: 'ninguno', honorario_valor: 0 });
+    db.clinica_estancias = [{ id: 'e-n', auth_user_id: UID, numero: 'OBS-000001', paciente_id: 'pac-xss', tipo: 'observacion', estado: 'activa', ingreso_en: HOY + 'T08:00:00Z' }];
+    return db; };
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clinica-equipo.html');
+    await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: db0() });
+    await page.reload(); await esperarListo(page); await page.waitForSelector('#eq-personal-lista .cl-card');
+    verificar((await page.textContent('#eq-personal-lista')).includes('Enfermería'), `${tag}: Médicos y seguridad muestra el rol Enfermería`);
+    await page.click('text=+ Marcar un usuario como médico');
+    verificar(await page.$$eval('#pe-rol option', os => os.some(o => o.value === 'enfermeria')), `${tag}: se puede marcar a un usuario como Enfermería`);
+    await page.selectOption('#pe-rol', 'enfermeria');
+    verificar(!(await page.isVisible('#pe-profesional')) && !(await page.isVisible('#pe-hon-tipo')), `${tag}: enfermería no pide columna de Agenda ni honorarios`);
+    await page.evaluate(() => closeModal('modal-persona'));
+    // Observación: entra con su código, ve las alergias y solo escribe notas de enfermería
+    await page.goto(base + '/clinica-hospital.html'); await esperarListo(page); await page.waitForSelector('#ho-lista >> text=📝 Notas y signos');
+    await page.click('#ho-lista >> text=📝 Notas y signos'); await page.waitForSelector('#modal-clinica-pin.modal-open');
+    verificar(await page.$$eval('#cp-persona option', os => os.some(o => o.value === 'perf-enf' && o.textContent.includes('enfermería'))), `${tag}: enfermería aparece para entrar con su código`);
+    await page.selectOption('#cp-persona', 'perf-enf'); await page.fill('#cp-pin', '1357'); await page.click('#cp-ok');
+    await page.waitForSelector('#no-alergias .cl-alerta');
+    verificar((await page.textContent('#no-alergias')).includes('Penicilina'), `${tag}: enfermería ve las alergias del paciente`);
+    const tipos = await page.$$eval('#no-tipo option', os => os.filter(o => !o.disabled).map(o => o.value));
+    verificar(JSON.stringify(tipos) === '["enfermeria"]', `${tag}: enfermería solo puede escribir notas de enfermería (${tipos})`);
+    await page.fill('#no-texto', 'Paciente tranquilo, signos estables'); await page.fill('#no-pa_sistolica', '118'); await page.fill('#no-pa_diastolica', '76');
+    await page.click('#no-btn'); await page.waitForSelector('#no-lista >> text=Paciente tranquilo');
+    verificar((await page.textContent('#no-lista')).includes('PA 118/76'), `${tag}: la nota de enfermería se guarda con sus signos`);
+    // El servidor tampoco deja otra clase de nota
+    const r = await page.evaluate(() => ClinicaSesion.rpc('clinica_estancia_nota_agregar', { p_estancia_id: 'e-n', p_datos: { tipo: 'evolucion', texto: 'x' } }));
+    verificar(r && r.motivo === 'solo_enfermeria', `${tag}: el servidor rechaza a enfermería las notas del médico`);
+    await modalesSinDesborde(page, `${tag} notas de enfermería`);
+    if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/enfermeria-' + tag + '.png' });
+    await page.evaluate(() => closeModal('modal-notas'));
+    // Pacientes: no abre el expediente
+    await page.goto(base + '/clinica-pacientes.html?paciente=pac-xss'); await esperarListo(page);
+    await page.waitForSelector('#modal-ficha.modal-open'); await page.click('#fi-tab-exp').catch(() => {});
+    await page.waitForSelector('#fi-panel-exp >> text=Enfermería no abre expedientes', { timeout: 10000 }).catch(() => {});
+    const exp = await page.textContent('#fi-panel-exp');
+    verificar(exp.includes('Enfermería no abre expedientes') && !exp.includes('Penicilina'), `${tag}: enfermería no abre el expediente`);
+    verificar(page.__errores.length === 0, `${tag} enfermería: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Cuenta DEMO: no usa el multiusuario. El expediente se abre eligiendo el médico, sin código.
 async function pruebaDemo(browser, base) {
   console.log('\n▶ Cuenta demo (sin multiusuario)');
@@ -1152,6 +1298,7 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
+    if (process.env.SOLO_NUEVO) { await pruebaPunto2(browser, base); await pruebaSeguros2(browser, base); await pruebaEnfermeria(browser, base); await pruebaEnVivo(browser, base, 360, 740); throw 'fin'; }
     if (process.env.SOLO_PANEL) { await pruebaPanel(browser, base, 1280, 900); await pruebaPanel(browser, base, 360, 740); await pruebaAgendaPacientes(browser, base); throw 'fin'; }
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 1280, 900);
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 360, 740);
@@ -1166,6 +1313,9 @@ async function regresion(browser, base) {
     await pruebasFase5(browser, base, 360, 740);
     await pruebaCuadreFase5(browser, base);
     await pruebaDemo(browser, base);
+    await pruebaPunto2(browser, base);
+    await pruebaSeguros2(browser, base);
+    await pruebaEnfermeria(browser, base);
     await pruebaEnVivo(browser, base, 1280, 900);
     await pruebaEnVivo(browser, base, 360, 740);
     await pruebaPanel(browser, base, 1280, 900);

@@ -392,7 +392,7 @@
     C.pacientes = await pacientesSinCliente();
     const nombrePac = p => [p.nombres, p.apellidos].filter(Boolean).join(' ');
     sel.innerHTML = '<option value="">— Escribir nombre (cliente nuevo o de paso) —</option>' +
-      (STATE.clientes || []).map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('') +
+      (STATE.clientes || []).map(c => `<option value="${c.id}"${c.telefono ? ` data-buscar="${esc(c.telefono)}"` : ''}>${esc(c.nombre)}</option>`).join('') +
       C.pacientes.map(p => `<option value="pac:${p.id}">🩺 ${esc(nombrePac(p))} (paciente${p.numero_expediente ? ' ' + esc(p.numero_expediente) : ''})</option>`).join('');
     sel.dataset.lleno = '1';
     // Un solo campo: se busca el cliente (o paciente) y, si no está, lo escrito queda como persona nueva.
@@ -633,6 +633,18 @@
   // Cobrar: se arma la venta con cliente y servicios (mismo camino que la veterinaria).
   async function cobrar() {
     const c = C.edit; if (!c) return;
+    // Clínica: se cobra con la pantalla de cobro de la Clínica (con el seguro del paciente, si tiene), sin salir
+    // de la Agenda. La venta se registra con el mismo motor de Ventas. Si no se pudo cargar, sigue como antes.
+    if (STATE.empresaConfig?.usa_modulo_clinica === true && await cargarCobroClinica()) {
+      try {
+        const seg = await ClinicaCitas.seguroDeCita(c.id, c.cliente_id);
+        const r = await ClinicaCitas.cobrar({ id: c.id, paciente_id: seg.paciente?.id || null }, { convenio: seg.convenio, convenioDisponible: seg.convenio,
+          alCerrar: async cobrado => { if (cobrado) showToast('✅ Cita cobrada y registrada en Ventas.'); await refrescar(); } });
+        if (!r.ok) { showToast(r.motivo || 'No se pudo preparar el cobro.', 'error'); return; }
+        if (r.dentro) closeModal('modal-cita');
+        return;
+      } catch (e) { console.error('cobrar (clínica):', e); showToast('No se pudo preparar el cobro. Intenta de nuevo.', 'error'); return; }
+    }
     const lin = c.agenda_citas_servicios || [];
     const conCatalogo = lin.filter(l => l.producto_id);
     const sinCatalogo = lin.filter(l => !l.producto_id);
@@ -667,23 +679,22 @@
       citaId: c.id, clienteId: c.cliente_id || null, cliente: c.cliente_nombre, items,
       sinCatalogo: sinCatalogo.map(l => `${l.servicio_nombre} (${fmt(l.precio)})`),
     }));
-    // Clínica: se cobra sin salir de la Agenda, con la MISMA pantalla de Ventas en una ventana aquí mismo.
-    if (STATE.empresaConfig?.usa_modulo_clinica === true && await cargarCobroClinica()) {
-      const citaId = c.id;
-      if (clinicaAbrirCobro({ titulo: `Cobrar cita · ${c.cliente_nombre || ''}`.trim(),
-        alTerminar: ventaId => clinicaLigarVenta('agenda_citas', citaId, ventaId, { estado: 'completada', updated_at: new Date().toISOString() }),
-        alCerrar: async cobrado => { if (cobrado) showToast('✅ Cita cobrada y registrada en Ventas.'); await refrescar(); } })) { closeModal('modal-cita'); return; }
-    }
     window.location.href = 'ventas.html';
   }
-  // La ventana de cobro de la Clínica vive en clinica-comun.js: se carga solo cuando hace falta.
-  function cargarCobroClinica() {
-    if (typeof clinicaAbrirCobro === 'function') return Promise.resolve(true);
+  // La pantalla de cobro de la Clínica vive en sus archivos: se cargan solo cuando hace falta (en orden).
+  const VER_CLINICA = '20261025i';
+  function cargarScript(src, listo) {
+    if (listo()) return Promise.resolve(true);
     return new Promise(res => {
-      const sc = document.createElement('script'); sc.src = 'clinica-comun.js?v=20261025h';
-      sc.onload = () => res(typeof clinicaAbrirCobro === 'function'); sc.onerror = () => res(false);
+      const sc = document.createElement('script'); sc.src = src;
+      sc.onload = () => res(listo()); sc.onerror = () => res(false);
       document.head.appendChild(sc);
     });
+  }
+  async function cargarCobroClinica() {
+    return await cargarScript('vet-comun.js?v=20261004b', () => typeof vetHoy === 'function')
+      && await cargarScript('clinica-comun.js?v=' + VER_CLINICA, () => typeof clinicaAbrirCobro === 'function')
+      && await cargarScript('clinica-citas.js?v=' + VER_CLINICA, () => typeof ClinicaCitas !== 'undefined');
   }
 
   async function refrescar() {

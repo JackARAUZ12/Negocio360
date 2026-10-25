@@ -117,6 +117,12 @@ async function cargar() {
       ClinicaCitas.cargar(desde, hasta),
     ]);
     SG.convenios = k.data || []; SG.reclamos = r.data || []; SG.citas = cc.citas;
+    // Estancias (observación / hospitalización) cobradas con seguro en estas fechas: también se facturan aquí.
+    const { data: est } = await sb.from('clinica_estancias').select('id, numero, alta_en, convenio_id, cobertura_pct, monto_cubierto, venta_id, clinica_pacientes(nombres, apellidos)')
+      .eq('auth_user_id', STATE.userId).not('convenio_id', 'is', null).gt('monto_cubierto', 0).not('venta_id', 'is', null)
+      .gte('alta_en', desde + 'T00:00:00').lte('alta_en', hasta + 'T23:59:59');
+    SG.citas = SG.citas.concat((est || []).map(e => ({ id: e.id, tipo: 'estancia', fecha: String(e.alta_en).slice(0, 10), convenio_id: e.convenio_id,
+      cobertura_pct: Number(e.cobertura_pct), monto_cubierto: Number(e.monto_cubierto), venta_id: e.venta_id, clinica_pacientes: e.clinica_pacientes, motivo: `Estancia ${e.numero || ''}`.trim() })));
     // Solo cuentan las citas cuya venta (la parte del paciente) sigue completada.
     const vIds = [...new Set(SG.citas.filter(c => c.venta_id && c.monto_cubierto > 0).map(c => c.venta_id))];
     const vivas = new Set();
@@ -143,13 +149,13 @@ function render() {
       ${g.citas.map(c => `<label class="cl-check" style="margin:4px 0"><input type="checkbox" ${SG.sel[g.convenio_id].has(c.id) ? 'checked' : ''} onchange="alternarCita('${g.convenio_id}','${c.id}')"/>
         ${esc(vetFechaLarga(c.fecha))} · ${esc(clinicaNombrePaciente(c.clinica_pacientes || {}))} · ${esc(c.motivo || '')} — <b>${esc(fmt(c.monto_cubierto))}</b> <span class="cl-sub">(${esc(Number(c.cobertura_pct))}%)</span></label>`).join('')}
       <div class="cl-acciones">${k.cliente_id ? '' : '<span class="cl-badge cl-badge-ambar">Se creará como cliente al facturar</span>'}
-        <button class="btn-accion-tabla btn-primary" ${elegidas.length ? '' : 'disabled'} onclick="facturar('${g.convenio_id}')">🧾 Facturar ${esc(fmt(monto))} (${elegidas.length} cita${elegidas.length === 1 ? '' : 's'})</button></div></div>`;
+        <button class="btn-accion-tabla btn-primary" ${elegidas.length ? '' : 'disabled'} onclick="facturar('${g.convenio_id}')">🧾 Facturar ${esc(fmt(monto))} (${elegidas.length} concepto${elegidas.length === 1 ? '' : 's'})</button></div></div>`;
   }).join('') : '<div class="cl-info">No hay nada pendiente de facturar a aseguradoras en estas fechas.</div>';
   // Facturas
   const est = { enviado: ['Falta confirmar en Ventas', 'ambar'], facturado: ['Facturado', 'verde'], anulado: ['Anulado', 'rojo'] };
   $g('sg-facturas').innerHTML = SG.reclamos.length ? SG.reclamos.map(r => `<div class="cl-item"><div class="cl-item-cab"><div>
       <div class="cl-item-tit">${esc(convenio(r.convenio_id)?.nombre || '')} · ${esc(fmt(r.monto))}</div>
-      <div class="cl-item-fecha">${esc(new Date(r.created_at).toLocaleDateString('es-NI'))} · ${(r.citas || []).length} cita(s)${r.ventas ? ' · ' + esc(r.ventas.numero_venta || '') : ''}</div></div>
+      <div class="cl-item-fecha">${esc(new Date(r.created_at).toLocaleDateString('es-NI'))} · ${(r.citas || []).length} concepto(s)${r.ventas ? ' · ' + esc(r.ventas.numero_venta || '') : ''}</div></div>
       <span class="cl-badge cl-badge-${est[r.estado][1]}">${est[r.estado][0]}</span></div>
       ${r.estado === 'enviado' ? `<div class="cl-acciones"><button class="btn-accion-tabla btn-ghost" onclick="irAVentas('${r.id}')">🧾 Abrir en Ventas</button><button class="btn-accion-tabla btn-ghost" onclick="anularReclamo('${r.id}')">🚫 Anular</button></div>` : ''}</div>`).join('')
     : '<p class="cl-sub">Todavía no hay facturas a aseguradoras.</p>';
@@ -207,11 +213,11 @@ async function facturar(convId) {
   const g = clinicaPendientesSeguro(SG.citas, SG.reclamos).find(x => x.convenio_id === convId); if (!g) return;
   const elegidas = g.citas.filter(c => SG.sel[convId].has(c.id)); if (!elegidas.length) return;
   const monto = Math.round(elegidas.reduce((t, c) => t + c.monto_cubierto, 0) * 100) / 100;
-  if (!confirm(`¿Facturar ${fmt(monto)} a ${k.nombre} por ${elegidas.length} cita(s)?\n\nSe abrirá Ventas con la factura lista: si te paga después, elige "Crédito".`)) return;
+  if (!confirm(`¿Facturar ${fmt(monto)} a ${k.nombre} por ${elegidas.length} concepto(s)?\n\nSe abrirá la pantalla de cobro: si la aseguradora te paga después, elige "Fiado" (se activa en Configuración).`)) return;
   try {
     await clienteDe(k);
     const { data, error } = await sb.from('clinica_reclamos').insert({ auth_user_id: STATE.userId, convenio_id: k.id, estado: 'enviado', citas: elegidas.map(c => c.id), monto,
-      detalle: { lineas: elegidas.map(c => ({ cita_id: c.id, fecha: c.fecha, paciente: clinicaNombrePaciente(c.clinica_pacientes || {}), monto: c.monto_cubierto, pct: c.cobertura_pct })) } }).select('id').single();
+      detalle: { lineas: elegidas.map(c => ({ cita_id: c.id, tipo: c.tipo || 'cita', fecha: c.fecha, paciente: clinicaNombrePaciente(c.clinica_pacientes || {}), monto: c.monto_cubierto, pct: c.cobertura_pct })) } }).select('id').single();
     if (error) throw error;
     await irAVentas(data.id, k, monto, elegidas.length);
   } catch (e) { console.error('facturar:', e); showToast(clinicaTextoError(e, 'No se pudo preparar la factura.'), 'error'); }

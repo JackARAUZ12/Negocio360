@@ -899,7 +899,10 @@
   function primerModuloPermitido(perfil) {
     const permitido = MODULO_ORDEN.find(k => (perfil.modulos || []).includes(k));
     const entry = Object.entries(MODULOS).find(([, v]) => v.key === permitido);
-    return entry ? entry[0] : 'dashboard.html';
+    if (!entry) return 'dashboard.html';
+    // Una pantalla que va dentro de un panel (p. ej. Clínica) se abre desde su panel.
+    const panel = (window.NEGOCIO360_MODULOS || {})[entry[0]]?.enPanel;
+    return panel || entry[0];
   }
 
   function redirigirSiHaceFalta(perfil) {

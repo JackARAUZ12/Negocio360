@@ -76,7 +76,7 @@ function renderUserInfo(profile, email) {
 ===================================================== */
 const EQ = { personal: [], consultorios: [], usuarios: [], profesionales: [], empleados: [], editId: null, editConsultorio: null, codigoAdmin: null, codigoHasta: 0, pidiendo: null };
 const $e = id => document.getElementById(id);
-const ROLES = { medico: { n: 'Médico', clase: 'azul' }, admin: { n: 'Administración clínica', clase: 'morado' }, recepcion: { n: 'Recepción (ya no se usa)', clase: 'gris' } };
+const ROLES = { medico: { n: 'Médico', clase: 'azul' }, admin: { n: 'Administración clínica', clase: 'morado' }, enfermeria: { n: 'Enfermería', clase: 'verde' }, recepcion: { n: 'Recepción (ya no se usa)', clase: 'gris' } };
 
 async function init() {
   applyTheme(localStorage.getItem('n360_theme') || 'light');
@@ -179,7 +179,7 @@ function abrirPersona(id) {
     : (libres.length ? '<option value="">— Elige el usuario —</option>' : '<option value="">No hay usuarios libres</option>') + libres.map(u => `<option value="${esc(u.id)}">${esc(u.nombre)}${u.tipo === 'admin' ? ' (administrador)' : ''}</option>`).join('');
   $e('pe-usuario').disabled = !!p;
   $e('pe-usuario-ayuda').style.display = p ? 'none' : '';
-  $e('pe-rol').value = p?.rol === 'admin' ? 'admin' : 'medico';
+  $e('pe-rol').value = ['admin', 'enfermeria'].includes(p?.rol) ? p.rol : 'medico';
   const selE = $e('pe-especialidad');
   if (selE.options.length <= 1) Object.entries(CLINICA_ESPECIALIDADES).forEach(([k, v]) => selE.add(new Option(`${v.e} ${v.n}`, v.n)));
   selE.value = p?.especialidad && [...selE.options].some(o => o.value === p.especialidad) ? p.especialidad : '';
@@ -207,7 +207,11 @@ function alCambiarHonorario() {
 function alCambiarRol() {
   const rol = $e('pe-rol').value;
   $e('pe-rol-ayuda').textContent = rol === 'medico' ? 'Ve y escribe expedientes con su código de usuario.'
+    : rol === 'enfermeria' ? 'Con su código escribe notas de enfermería y signos de los pacientes en observación u hospitalización, y ve sus alergias. No abre expedientes ni consultas.'
     : 'Todo lo del médico, más anular notas de otros, administrar médicos y ver la bitácora.';
+  // Enfermería no tiene columna en la Agenda ni honorarios por consulta.
+  document.querySelectorAll('.pe-solo-medico').forEach(el => { el.style.display = rol === 'enfermeria' ? 'none' : ''; });
+  if (rol === 'enfermeria') { $e('pe-profesional').value = ''; $e('pe-hon-tipo').value = 'ninguno'; alCambiarHonorario(); }
 }
 async function guardarPersona() {
   const err = $e('pe-error'); err.textContent = '';

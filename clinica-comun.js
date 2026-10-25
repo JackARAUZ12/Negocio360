@@ -333,6 +333,7 @@ function clinicaTextoError(e, porDefecto) {
   return porDefecto || 'No se pudo completar. Intenta de nuevo.';
 }
 const CLINICA_MOTIVOS_RPC = {
+  solo_enfermeria: 'Enfermería solo escribe notas de enfermería (con signos). Ingreso, evolución, indicaciones y alta son del médico.',
   falta_motivo: 'Escribe el motivo.', proximo_control: 'El próximo control no puede ser una fecha pasada.',
   cita: 'Esa cita ya no está disponible para atender.', cita_con_nota: 'Esa cita ya tiene una nota de consulta.',
   no_borrador: 'Esta nota ya está cerrada: no se puede modificar.', no_autor: 'Solo el médico que escribió la nota puede hacer esto.',
@@ -724,6 +725,8 @@ function _clCobroModal() {
 #cl-cobro .clc-tot{margin-top:10px;font-size:13.5px}
 #cl-cobro .clc-tot div{display:flex;justify-content:space-between;padding:3px 0;color:var(--text-secondary)}
 #cl-cobro .clc-tot .clc-grande{font-size:22px;font-weight:900;color:var(--text-primary);padding-top:8px;margin-top:4px;border-top:2px solid var(--border,#e5e7eb)}
+#cl-cobro .clc-seguro{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:12px;border-radius:12px;background:var(--accent-soft,#eef);font-size:13.5px;cursor:pointer}
+#cl-cobro .clc-seguro input{width:20px;height:20px;flex:none;margin:1px 0 0;accent-color:var(--accent,#6C63FF)}
 #cl-cobro .clc-sec{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin:16px 0 8px}
 #cl-cobro .clc-chips{display:flex;flex-wrap:wrap;gap:8px}
 #cl-cobro .clc-chip{border:1.5px solid var(--border,#e5e7eb);background:var(--bg-surface,#fff);color:var(--text-primary);border-radius:12px;padding:10px 14px;font-weight:700;font-size:13.5px;cursor:pointer;flex:1 1 auto;min-width:110px}
@@ -763,10 +766,10 @@ function _clCobroPreparar(doc) {
   const st = doc.createElement('style'); st.textContent = _CL_COBRO_CSS; (doc.head || doc.documentElement).appendChild(st);
 }
 const _clMotor = () => { try { return document.getElementById('clc-marco').contentWindow.N360MotorVenta || null; } catch (_) { return null; } };
-function clinicaAbrirCobro({ titulo, alTerminar, alCerrar } = {}) {
+function clinicaAbrirCobro({ titulo, alTerminar, alCerrar, seguro } = {}) {
   if (_CL_COBRO.abierto) return false;
-  const m = _clCobroModal(), fr = document.getElementById('clc-marco');
-  Object.assign(_CL_COBRO, { abierto: true, alTerminar: alTerminar || null, alCerrar: alCerrar || null, ventaId: null, metodo: null, banco: null, bancos: [], estado: null, cobrando: false });
+  const m = _clCobroModal();
+  Object.assign(_CL_COBRO, { abierto: true, alTerminar: alTerminar || null, alCerrar: alCerrar || null, seguro: seguro || null, ventaId: null, metodo: null, banco: null, bancos: [], estado: null, cobrando: false });
   m.classList.remove('clc-avanzado');
   document.getElementById('clc-tit').textContent = '💳 ' + (titulo || 'Cobrar');
   document.getElementById('clc-cuerpo').innerHTML = '<div class="clc-cargando">Preparando la cuenta…</div>';
@@ -781,6 +784,12 @@ function clinicaAbrirCobro({ titulo, alTerminar, alCerrar } = {}) {
     });
   }
   m.style.display = 'flex';
+  _clCargarMotor();
+  return true;
+}
+// Carga (o recarga, p. ej. al aplicar o quitar el seguro) la venta preparada en el motor de Ventas.
+function _clCargarMotor() {
+  const fr = document.getElementById('clc-marco');
   clearInterval(_CL_COBRO.vigia); let n = 0;
   _CL_COBRO.vigia = setInterval(() => {
     n++;
@@ -792,8 +801,8 @@ function clinicaAbrirCobro({ titulo, alTerminar, alCerrar } = {}) {
     }
     if (n > 600) { clearInterval(_CL_COBRO.vigia); _clCobroError('No se pudo preparar la cuenta. Revisa tu conexión o usa "Otras opciones".', true); }
   }, 50);
+  try { if (fr.contentWindow && fr.contentWindow.location.href !== 'about:blank') { fr.contentWindow.location.replace('ventas.html?clinica_cobro=1&motor=1'); return; } } catch (_) {}
   fr.src = 'ventas.html?clinica_cobro=1&motor=1';
-  return true;
 }
 function _clCobroError(msg, sinCuenta) {
   if (sinCuenta) document.getElementById('clc-cuerpo').innerHTML = `<div class="clc-cargando" style="color:var(--danger,#dc2626)">${_clEsc(msg)}</div>`;
@@ -814,6 +823,8 @@ async function _clCobroPintar() {
       ${Number(r.impuestos) > 0 ? `<div><span>${_clEsc(e.impuestosTexto)}</span><span>${_clEsc(t.impuestos)}</span></div>` : ''}
       <div class="clc-grande"><span>Total</span><span id="clc-total">${_clEsc(t.cobrar)}</span></div>
     </div>
+    ${_CL_COBRO.seguro ? `<label class="clc-seguro"><input type="checkbox" id="clc-seguro" ${_CL_COBRO.seguro.aplicado ? 'checked' : ''}/>
+      <span><b>🛡️ Aplicar seguro: ${_clEsc(_CL_COBRO.seguro.nombre)}</b> (cubre el ${_clEsc(String(_CL_COBRO.seguro.pct))}%)<span class="cl-sub" style="display:block">${_CL_COBRO.seguro.aplicado ? 'El paciente paga solo su parte; lo cubierto se factura a la aseguradora en Seguros.' : 'Sin seguro: el paciente paga todo.'}</span></span></label>` : ''}
     <div class="clc-sec">Forma de pago</div>
     <div class="clc-chips" id="clc-metodos">${metodos || '<span class="cl-sub">No hay formas de pago activas: configúralas en Caja.</span>'}</div>
     <div id="clc-bancos-wrap" style="display:none"><div class="clc-sec">¿A qué banco entra?</div><div class="clc-chips" id="clc-bancos"></div></div>
@@ -829,6 +840,15 @@ async function _clCobroPintar() {
   document.querySelectorAll('#clc-metodos .clc-chip').forEach(b => b.addEventListener('click', () => _clElegirMetodo(b.dataset.metodo, b.dataset.nombre)));
   document.getElementById('clc-recibido').addEventListener('input', _clCambio);
   document.getElementById('clc-cobrar').addEventListener('click', _clCobrarAhora);
+  const seg = document.getElementById('clc-seguro');
+  if (seg) seg.addEventListener('change', async () => {
+    if (_CL_COBRO.cobrando) { seg.checked = !seg.checked; return; }
+    const aplicar = seg.checked;
+    document.getElementById('clc-cuerpo').innerHTML = '<div class="clc-cargando">Recalculando la cuenta…</div>'; document.getElementById('clc-pie').innerHTML = '';
+    try { await _CL_COBRO.seguro.cambiar(aplicar); _CL_COBRO.seguro.aplicado = aplicar; _CL_COBRO.metodo = null; _CL_COBRO.banco = null; _clCargarMotor(); }
+    catch (e) { console.error('cambiar seguro:', e); _clCobroError('No se pudo recalcular la cuenta. Cierra e intenta de nuevo.', true); }
+  });
+  try { _CL_COBRO.telefono = _clMotor().clienteTelefono() || ''; } catch (_) { _CL_COBRO.telefono = ''; }
   try { _CL_COBRO.bancos = await _clMotor().bancos(); } catch (_) { _CL_COBRO.bancos = []; }
   if (e.metodos.length === 1) _clElegirMetodo(e.metodos[0].id, e.metodos[0].nombre);
 }
@@ -891,10 +911,36 @@ async function _clCobroHecho(r) {
   document.getElementById('clc-cuerpo').innerHTML = `<div class="clc-ok"><div class="clc-ok-ico">✅</div><div class="clc-ok-tit">Cobrado ${_clEsc(f(total))}</div>
     <div class="cl-sub">Venta ${_clEsc(r.numero || '')} · ${_clEsc(_CL_COBRO.metodo?.nombre || '')}</div>
     ${cambio > 0 ? `<div style="margin-top:12px;font-size:18px;font-weight:900">Cambio: ${_clEsc(f(cambio))}</div>` : ''}
-    <div class="cl-sub" style="margin-top:12px">Quedó registrada en Ventas y en Caja, como cualquier venta.</div></div>`;
+    <div class="cl-sub" style="margin-top:12px">Quedó registrada en Ventas y en Caja, como cualquier venta.</div>
+    <div class="clc-chips" style="margin-top:16px">
+      <button type="button" class="clc-chip" id="clc-ticket">🧾 Imprimir ticket</button>
+      ${_clTelWhatsApp(_CL_COBRO.telefono) ? '<button type="button" class="clc-chip" id="clc-wa">📲 Enviar por WhatsApp</button>' : ''}
+      <button type="button" class="clc-chip" id="clc-pdf">📄 Recibo PDF</button>
+    </div></div>`;
   document.getElementById('clc-pie').innerHTML = '<button type="button" class="clc-btn" id="clc-listo">✓ Listo</button>';
   document.getElementById('clc-listo').addEventListener('click', clinicaCerrarCobro);
+  const venta = { ...r, cliente: _CL_COBRO.estado?.cliente || '', metodo: _CL_COBRO.metodo?.nombre || '', totalTexto: f(total) };
+  document.getElementById('clc-ticket').addEventListener('click', () => {
+    // La ventana de impresión se abre en el mismo toque (si no, el navegador la bloquea); si hay impresora directa, se cierra sola.
+    let w = null; try { w = window.open('', '_blank', 'width=380,height=600'); } catch (_) {}
+    Promise.resolve(_clMotor()?.imprimirTicket(r.ventaId, w)).catch(() => { try { w && w.close(); } catch (_) {} if (typeof showToast === 'function') showToast('No se pudo imprimir el ticket.', 'error'); });
+  });
+  document.getElementById('clc-pdf').addEventListener('click', () => { Promise.resolve(_clMotor()?.descargarRecibo(r.ventaId)).catch(() => {}); });
+  const wa = document.getElementById('clc-wa');
+  if (wa) wa.addEventListener('click', () => { const u = _clEnlaceRecibo(venta); if (u) window.open(u, '_blank'); });
   try { if (_CL_COBRO.alTerminar) await _CL_COBRO.alTerminar(r.ventaId); } catch (x) { console.warn('después del cobro:', x); }
+}
+// Recibo por WhatsApp (mismo formato de número que los recordatorios).
+function _clTelWhatsApp(tel) {
+  if (typeof vetTelefonoWhatsApp === 'function') return vetTelefonoWhatsApp(tel, (typeof STATE !== 'undefined' && STATE.empresaConfig?.pais) || 'NI');
+  const d = String(tel || '').replace(/\D/g, ''); if (d.length < 7) return null;
+  return d.length === 8 ? '505' + d : d;
+}
+function _clEnlaceRecibo(v) {
+  const tel = _clTelWhatsApp(_CL_COBRO.telefono); if (!tel) return null;
+  const negocio = (typeof STATE !== 'undefined' && (STATE.empresaConfig?.nombre_comercial || STATE.empresaConfig?.nombre_negocio)) || 'nuestra clínica';
+  const texto = `Hola${v.cliente ? ' ' + v.cliente : ''}, gracias por su visita a ${negocio}. Su pago de ${v.totalTexto} quedó registrado (recibo ${v.numero || ''}${v.metodo ? ', ' + v.metodo : ''}). ¡Que tenga un excelente día!`;
+  return `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
 }
 // Casos especiales: se muestra la venta completa (la misma), ya en "Método de pago".
 function clinicaCobroAvanzado() {

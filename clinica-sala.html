@@ -1104,7 +1104,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <link rel="stylesheet" href="clinica.css?v=20261025h" />
+  <link rel="stylesheet" href="clinica.css?v=20261025i" />
 </head>
 <body>
 
@@ -1346,15 +1346,15 @@
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261025h"></script>
-<script src="clinica-sesion.js?v=20261025h"></script>
-<script src="clinica-citas.js?v=20261025h"></script>
-<script src="clinica-sala.js?v=20261025h"></script>
+<script src="clinica-comun.js?v=20261025i"></script>
+<script src="clinica-sesion.js?v=20261025i"></script>
+<script src="clinica-citas.js?v=20261025i"></script>
+<script src="clinica-sala.js?v=20261025i"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
-<script src="perfiles-guard.js?v=20261025c"></script>
-<script src="modulos-guard.js?v=20261025c"></script>
+<script src="perfiles-guard.js?v=20261025i"></script>
+<script src="modulos-guard.js?v=20261025i"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">
@@ -1387,7 +1387,7 @@
 </div>
 
 <div id="sa-pantalla" class="sp" style="display:none" role="dialog" aria-label="Pantalla de la sala">
-  <div class="sp-cab"><span id="sp-negocio"></span><span class="sp-der"><span id="sp-envivo" class="sp-envivo" title="Los llamados llegan al instante">● En vivo</span><span id="sp-hora"></span></span><button class="sp-salir" onclick="cerrarPantalla()" aria-label="Salir de la pantalla">✕</button></div>
+  <div class="sp-cab"><span id="sp-negocio"></span><span class="sp-der"><span id="sp-envivo" class="sp-envivo" title="Los llamados llegan al instante">● En vivo</span><button type="button" id="sp-voz" class="sp-voz" onclick="alternarVoz()" aria-pressed="true">🗣️ Voz: sí</button><span id="sp-hora"></span></span><button class="sp-salir" onclick="cerrarPantalla()" aria-label="Salir de la pantalla">✕</button></div>
   <button id="sp-sonido" class="sp-sonido" style="display:none" onclick="activarSonido()">🔊 Toca aquí para activar el sonido de los llamados</button>
   <div class="sp-cuerpo"><div class="sp-llamado" id="sp-llamado"></div><div class="sp-cola"><div class="sp-tit">En espera</div><div id="sp-lista"></div></div></div>
 </div>
@@ -1450,6 +1450,7 @@
 .sp-cola{background:#1e293b;border-radius:22px;padding:18px;overflow:hidden}.sp-tit{font-size:clamp(18px,2.4vw,30px);font-weight:800;margin-bottom:10px;opacity:.8}
 .sp-item{font-size:clamp(18px,2.6vw,34px);padding:8px 0;border-bottom:1px solid #334155}.sp-item b{display:inline-block;min-width:1.8em;color:#93c5fd}
 .sp-der{display:flex;align-items:center;gap:14px;margin-left:auto}
+.sp-voz{background:none;border:1px solid #475569;color:#cbd5e1;border-radius:10px;padding:4px 10px;font-size:clamp(12px,1.6vw,17px);font-weight:700;cursor:pointer;white-space:nowrap}
 .sp-envivo{font-size:clamp(12px,1.6vw,18px);font-weight:700;color:#4ade80;opacity:0;transition:opacity .3s}.sp-envivo.on{opacity:1}
 .sp-sonido{margin:10px 22px 0;padding:12px 16px;border:0;border-radius:14px;background:#f59e0b;color:#111827;font-size:clamp(15px,2vw,22px);font-weight:800;cursor:pointer;white-space:normal}
 .sp-llamado.sp-alerta{animation:spAlerta 1s ease-in-out 10}
@@ -1458,6 +1459,8 @@
 .ag-card.sa-llamando{box-shadow:0 0 0 3px #f59e0b}
 @media (prefers-reduced-motion:reduce){.sp-llamado.sp-alerta{animation:none;background:#b45309}}
 @media (max-width:700px){.sp-cuerpo{grid-template-columns:1fr}}
+.sp-envivo{white-space:nowrap}#sp-negocio{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:600px){#sp-hora{display:none}.sp-cab{padding:10px 12px;gap:8px}.sp-der{gap:8px}}
 </style>
 </body>
 </html>

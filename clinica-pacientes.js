@@ -326,6 +326,13 @@ async function pintarExpediente() {
       <button class="btn-accion-tabla btn-primary" onclick="entrarExpediente()">🔓 Entrar con mi código</button></div>`;
     return;
   }
+  if (s.rol === 'enfermeria') {            // el servidor tampoco se lo abre: solo notas y signos en Observación
+    CP.exp = null;
+    cont.innerHTML = `<div class="cl-candado"><div class="cl-candado-icono">💉</div>
+      <p class="cl-nombre" style="margin:6px 0 4px">Enfermería no abre expedientes</p>
+      <p class="cl-sub" style="margin:0 0 14px">Las notas y los signos de los pacientes internados se escriben en <a href="clinica-hospital.html" style="color:var(--accent)">Observación y hospitalización</a>.</p></div>`;
+    return;
+  }
   cont.innerHTML = '<p class="cl-sub">Cargando expediente…</p>';
   try {
     CP.exp = await ClinicaSesion.rpc('clinica_expediente_abrir', { p_paciente_id: CP.ficha.id });
