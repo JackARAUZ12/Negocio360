@@ -689,40 +689,71 @@ function clinicaCobroAgenda(cita, cargos) {
   });
   return { citaId: cita.id, clienteId: cita.cliente_id || null, cliente: cita.cliente_nombre || '', items, sinCatalogo };
 }
-/* ---------- Cobrar SIN salir de la Clínica ----------
-   La venta se hace con la MISMA pantalla de Ventas de siempre (mismos pasos, candados, caja, inventario,
-   lotes, impuestos, contabilidad y reportes), abierta en una ventana dentro de la Clínica: nada se calcula
-   aparte, por eso todo cuadra igual que una venta normal. Quien llama deja preparado lo que se cobra
-   (n360_agenda_cobro, n360_clinica_cobro o n360_receta_a_vender). Ventas llega sola hasta "Método de pago";
-   al confirmar avisa (n360_operacion_completada) y aquí se comprueba que quedó ligado. */
-const _CL_COBRO = { abierto: false, alTerminar: null, ventaId: null, vigia: null, escuchando: false };
+/* ---------- Cobrar en la Clínica (pantalla propia) ----------
+   La Clínica muestra SU pantalla de cobro (paciente, conceptos, impuestos, total, forma de pago, recibido y
+   cambio). La venta se registra con el MISMO motor de Ventas, que trabaja sin mostrarse
+   (ventas.html?clinica_cobro=1&motor=1): mismos cálculos, candados, Caja, inventario, lotes, impuestos,
+   contabilidad y reportes. Nada se calcula aparte, por eso todo cuadra igual que una venta normal.
+   Quien llama deja preparado lo que se cobra (n360_agenda_cobro, n360_clinica_cobro o n360_receta_a_vender).
+   Casos especiales (pago separado, puntos, certificados): "Otras opciones" muestra la venta completa. */
+const _CL_COBRO = { abierto: false, alTerminar: null, alCerrar: null, ventaId: null, vigia: null, escuchando: false, metodo: null, banco: null, bancos: [], estado: null, cobrando: false, clienteId: null };
 const _CL_COBRO_CSS = `#sidebar,#sidebar-overlay,#header,.mobile-menu-btn{display:none!important}
 #main{margin-left:0!important;width:100%!important;min-height:0!important}html,body{overflow-x:hidden}`;
+const _clEsc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function _clCobroModal() {
   let m = document.getElementById('cl-cobro');
   if (m) return m;
   const st = document.createElement('style');
-  st.textContent = `#cl-cobro{position:fixed;inset:0;z-index:100050;background:rgba(15,23,42,.55);display:none;align-items:stretch;justify-content:center;padding:16px}
-#cl-cobro .clc-caja{background:var(--bg-surface,#fff);color:var(--text-primary);border-radius:16px;width:100%;max-width:1100px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-#cl-cobro .clc-cab{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border,#e5e7eb);flex-wrap:wrap}
-#cl-cobro .clc-tit{flex:1;min-width:0;font-weight:800;font-size:15px}
-#cl-cobro .clc-estado{font-size:12.5px;font-weight:700;color:var(--text-muted)}
-#cl-cobro .clc-estado.ok{color:#16a34a}
-#cl-cobro .clc-cuerpo{position:relative;flex:1;min-height:0}
+  st.textContent = `#cl-cobro{position:fixed;inset:0;z-index:100050;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:16px}
+#cl-cobro .clc-caja{background:var(--bg-surface,#fff);color:var(--text-primary);border-radius:18px;width:100%;max-width:560px;max-height:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#cl-cobro.clc-avanzado .clc-caja{max-width:1100px;height:100%}
+#cl-cobro .clc-cab{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border,#e5e7eb)}
+#cl-cobro .clc-tit{flex:1;min-width:0;font-weight:800;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cl-cobro .clc-x{flex:none;border:0;background:var(--bg-hover,#f0f0f5);color:var(--text-primary);width:34px;height:34px;border-radius:10px;font-size:16px;cursor:pointer}
+#cl-cobro .clc-cuerpo{flex:1;min-height:0;overflow-y:auto;padding:14px 16px}
+#cl-cobro .clc-marco-wrap{position:absolute;left:-10000px;top:0;width:1100px;height:800px;visibility:hidden}
+#cl-cobro.clc-avanzado .clc-marco-wrap{position:relative;left:0;width:100%;height:100%;visibility:visible;flex:1}
+#cl-cobro.clc-avanzado .clc-cuerpo,#cl-cobro.clc-avanzado .clc-pie{display:none}
 #cl-cobro iframe{display:block;width:100%;height:100%;border:0;background:var(--bg-base,#f5f5f7)}
-#cl-cobro .clc-cargando{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg-base,#f5f5f7);color:var(--text-muted);font-size:13px}
-@media (max-width:600px){#cl-cobro{padding:0}#cl-cobro .clc-caja{border-radius:0}#cl-cobro .clc-estado{display:none}#cl-cobro .clc-tit{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#cl-cobro .clc-cab{flex-wrap:nowrap}#cl-cobro .clc-cab .btn-accion-tabla{flex:none}}`;
+#cl-cobro .clc-quien{font-size:13px;color:var(--text-secondary);margin-bottom:10px}
+#cl-cobro .clc-quien b{color:var(--text-primary)}
+#cl-cobro .clc-linea{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);font-size:13.5px}
+#cl-cobro .clc-linea>span:first-child{flex:1;min-width:0;word-break:break-word}
+#cl-cobro .clc-linea>b{flex:none;white-space:nowrap}
+#cl-cobro .clc-cant{color:var(--text-muted);font-size:12px}
+#cl-cobro .clc-tot{margin-top:10px;font-size:13.5px}
+#cl-cobro .clc-tot div{display:flex;justify-content:space-between;padding:3px 0;color:var(--text-secondary)}
+#cl-cobro .clc-tot .clc-grande{font-size:22px;font-weight:900;color:var(--text-primary);padding-top:8px;margin-top:4px;border-top:2px solid var(--border,#e5e7eb)}
+#cl-cobro .clc-sec{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin:16px 0 8px}
+#cl-cobro .clc-chips{display:flex;flex-wrap:wrap;gap:8px}
+#cl-cobro .clc-chip{border:1.5px solid var(--border,#e5e7eb);background:var(--bg-surface,#fff);color:var(--text-primary);border-radius:12px;padding:10px 14px;font-weight:700;font-size:13.5px;cursor:pointer;flex:1 1 auto;min-width:110px}
+#cl-cobro .clc-chip.activo{border-color:var(--accent,#6C63FF);background:var(--accent-soft,#eef);color:var(--accent,#6C63FF)}
+#cl-cobro .clc-fila{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+#cl-cobro .clc-fila>div{flex:1 1 140px;min-width:0}
+#cl-cobro label.clc-lab{display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:4px}
+#cl-cobro .clc-in{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--border,#e5e7eb);background:var(--bg-surface,#fff);color:var(--text-primary);font-size:15px}
+#cl-cobro .clc-cambio{font-size:20px;font-weight:900;padding:8px 0}
+#cl-cobro .clc-err{color:var(--danger,#dc2626);font-size:13px;font-weight:600;min-height:18px;margin-top:10px}
+#cl-cobro .clc-pie{padding:12px 16px;border-top:1px solid var(--border,#e5e7eb);display:flex;flex-direction:column;gap:8px}
+#cl-cobro .clc-btn{border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:900;cursor:pointer;background:var(--accent,#6C63FF);color:#fff;width:100%}
+#cl-cobro .clc-btn:disabled{opacity:.55;cursor:not-allowed}
+#cl-cobro .clc-link{border:0;background:none;color:var(--text-muted);font-size:12.5px;font-weight:700;cursor:pointer;padding:2px}
+#cl-cobro .clc-ok{text-align:center;padding:26px 6px}
+#cl-cobro .clc-ok-ico{font-size:52px}
+#cl-cobro .clc-ok-tit{font-size:20px;font-weight:900;margin:6px 0}
+#cl-cobro .clc-cargando{text-align:center;padding:40px 10px;color:var(--text-muted);font-size:13.5px}
+@media (max-width:600px){#cl-cobro{padding:0;align-items:stretch}#cl-cobro .clc-caja{border-radius:0;max-width:none}}`;
   document.head.appendChild(st);
   m = document.createElement('div'); m.id = 'cl-cobro'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', 'Cobrar');
   m.innerHTML = `<div class="clc-caja"><div class="clc-cab"><span class="clc-tit" id="clc-tit">💳 Cobrar</span>
-      <span class="clc-estado" id="clc-estado">Se registra en Ventas como una venta normal</span>
-      <button type="button" class="btn-accion-tabla btn-ghost" id="clc-cerrar">✕ Cerrar sin cobrar</button></div>
-    <div class="clc-cuerpo"><div class="clc-cargando" id="clc-cargando">Preparando el cobro…</div><iframe id="clc-marco" title="Cobro" src="about:blank"></iframe></div></div>`;
+      <button type="button" class="clc-x" id="clc-cerrar" aria-label="Cerrar">✕</button></div>
+    <div class="clc-cuerpo" id="clc-cuerpo"></div>
+    <div class="clc-pie" id="clc-pie"></div>
+    <div class="clc-marco-wrap" id="clc-marco-wrap"><iframe id="clc-marco" title="Venta" src="about:blank" tabindex="-1"></iframe></div></div>`;
   document.body.appendChild(m);
   document.getElementById('clc-cerrar').addEventListener('click', clinicaCerrarCobro);
   document.getElementById('clc-marco').addEventListener('load', () => {
-    const fr = document.getElementById('clc-marco');
-    try { const doc = fr.contentDocument; if (doc && doc.location.href !== 'about:blank') { _clCobroPreparar(doc); document.getElementById('clc-cargando').style.display = 'none'; } } catch (_) {}
+    try { const doc = document.getElementById('clc-marco').contentDocument; if (doc && doc.location.href !== 'about:blank') _clCobroPreparar(doc); } catch (_) {}
   });
   return m;
 }
@@ -731,41 +762,155 @@ function _clCobroPreparar(doc) {
   doc.documentElement.dataset.clCobro = '1';
   const st = doc.createElement('style'); st.textContent = _CL_COBRO_CSS; (doc.head || doc.documentElement).appendChild(st);
 }
+const _clMotor = () => { try { return document.getElementById('clc-marco').contentWindow.N360MotorVenta || null; } catch (_) { return null; } };
 function clinicaAbrirCobro({ titulo, alTerminar, alCerrar } = {}) {
   if (_CL_COBRO.abierto) return false;
   const m = _clCobroModal(), fr = document.getElementById('clc-marco');
-  _CL_COBRO.abierto = true; _CL_COBRO.alTerminar = alTerminar || null; _CL_COBRO.alCerrar = alCerrar || null; _CL_COBRO.ventaId = null;
+  Object.assign(_CL_COBRO, { abierto: true, alTerminar: alTerminar || null, alCerrar: alCerrar || null, ventaId: null, metodo: null, banco: null, bancos: [], estado: null, cobrando: false });
+  m.classList.remove('clc-avanzado');
   document.getElementById('clc-tit').textContent = '💳 ' + (titulo || 'Cobrar');
-  const est = document.getElementById('clc-estado'); est.textContent = 'Se registra en Ventas como una venta normal'; est.classList.remove('ok');
-  const b = document.getElementById('clc-cerrar'); b.textContent = '✕ Cerrar sin cobrar'; b.classList.remove('btn-primary'); b.classList.add('btn-ghost');
-  document.getElementById('clc-cargando').style.display = 'flex';
+  document.getElementById('clc-cuerpo').innerHTML = '<div class="clc-cargando">Preparando la cuenta…</div>';
+  document.getElementById('clc-pie').innerHTML = '';
   if (!_CL_COBRO.escuchando) {
     _CL_COBRO.escuchando = true;
     window.addEventListener('message', async ev => {
       const f = document.getElementById('clc-marco');
       if (!_CL_COBRO.abierto || !f || ev.source !== f.contentWindow || ev.origin !== location.origin) return;
-      if (!ev.data || ev.data.tipo !== 'n360_operacion_completada' || !ev.data.ventaId) return;
-      _CL_COBRO.ventaId = ev.data.ventaId;
-      const e2 = document.getElementById('clc-estado'); e2.textContent = '✅ Cobrado: ' + (ev.data.nota || 'venta registrada'); e2.classList.add('ok');
-      const b2 = document.getElementById('clc-cerrar'); b2.textContent = '✓ Listo'; b2.classList.remove('btn-ghost'); b2.classList.add('btn-primary');
-      try { if (_CL_COBRO.alTerminar) await _CL_COBRO.alTerminar(ev.data.ventaId); } catch (x) { console.warn('después del cobro:', x); }
+      if (!ev.data || ev.data.tipo !== 'n360_operacion_completada' || !ev.data.ventaId || _CL_COBRO.ventaId) return;
+      await _clCobroHecho({ ventaId: ev.data.ventaId, numero: String(ev.data.nota || '').replace(/^Venta\s*/, ''), total: ev.data.monto });
     });
   }
   m.style.display = 'flex';
-  // Se oculta el menú de Ventas lo antes posible (sin parpadeo) mientras carga.
   clearInterval(_CL_COBRO.vigia); let n = 0;
-  _CL_COBRO.vigia = setInterval(() => { n++; try { const d = fr.contentDocument; if (d && d.location.href !== 'about:blank') _clCobroPreparar(d); } catch (_) {} if (n > 400) clearInterval(_CL_COBRO.vigia); }, 25);
-  fr.src = 'ventas.html?clinica_cobro=1';
+  _CL_COBRO.vigia = setInterval(() => {
+    n++;
+    try { const d = fr.contentDocument; if (d && d.location.href !== 'about:blank') _clCobroPreparar(d); } catch (_) {}
+    const motor = _clMotor();
+    if (motor) {
+      let e = null; try { e = motor.estado(); } catch (_) {}
+      if (e && e.listo) { clearInterval(_CL_COBRO.vigia); _CL_COBRO.estado = e; _clCobroPintar(); return; }
+    }
+    if (n > 600) { clearInterval(_CL_COBRO.vigia); _clCobroError('No se pudo preparar la cuenta. Revisa tu conexión o usa "Otras opciones".', true); }
+  }, 50);
+  fr.src = 'ventas.html?clinica_cobro=1&motor=1';
   return true;
+}
+function _clCobroError(msg, sinCuenta) {
+  if (sinCuenta) document.getElementById('clc-cuerpo').innerHTML = `<div class="clc-cargando" style="color:var(--danger,#dc2626)">${_clEsc(msg)}</div>`;
+  else { const e = document.getElementById('clc-err'); if (e) e.textContent = msg; }
+  if (sinCuenta) document.getElementById('clc-pie').innerHTML = '<button type="button" class="clc-link" onclick="clinicaCobroAvanzado()">Otras opciones (abrir la venta completa) →</button>';
+}
+async function _clCobroPintar() {
+  const e = _CL_COBRO.estado, r = e.resumen || {}, t = r.texto || {};
+  const lineas = e.items.map(i => `<div class="clc-linea"><span>${_clEsc(i.nombre)}<span class="clc-cant" style="display:block">${_clEsc(String(i.cantidad))} × ${_clEsc(i.precioTexto)}</span></span><b>${_clEsc(i.texto)}</b></div>`).join('');
+  const metodos = e.metodos.map(mt => `<button type="button" class="clc-chip" data-metodo="${_clEsc(mt.id)}" data-nombre="${_clEsc(mt.nombre)}">${_clEsc(mt.nombre)}</button>`).join('')
+    + (e.fiado ? '<button type="button" class="clc-chip" data-metodo="__fiado" data-nombre="Fiado">📒 Fiado (paga después)</button>' : '');
+  document.getElementById('clc-cuerpo').innerHTML = `
+    <div class="clc-quien">Cliente: <b>${_clEsc(e.cliente || 'Consumidor final')}</b></div>
+    <div class="clc-lineas">${lineas}</div>
+    <div class="clc-tot">
+      <div><span>Subtotal</span><span>${_clEsc(t.subtotal)}</span></div>
+      ${Number(r.descuento) > 0 ? `<div><span>Descuento</span><span>-${_clEsc(t.descuento)}</span></div>` : ''}
+      ${Number(r.impuestos) > 0 ? `<div><span>${_clEsc(e.impuestosTexto)}</span><span>${_clEsc(t.impuestos)}</span></div>` : ''}
+      <div class="clc-grande"><span>Total</span><span id="clc-total">${_clEsc(t.cobrar)}</span></div>
+    </div>
+    <div class="clc-sec">Forma de pago</div>
+    <div class="clc-chips" id="clc-metodos">${metodos || '<span class="cl-sub">No hay formas de pago activas: configúralas en Caja.</span>'}</div>
+    <div id="clc-bancos-wrap" style="display:none"><div class="clc-sec">¿A qué banco entra?</div><div class="clc-chips" id="clc-bancos"></div></div>
+    <div id="clc-efectivo" style="display:none" class="clc-fila">
+      <div><label class="clc-lab" for="clc-recibido">Recibido</label><input class="clc-in" id="clc-recibido" type="number" inputmode="decimal" step="any" min="0" placeholder="0.00"/></div>
+      <div><label class="clc-lab">Cambio</label><div class="clc-cambio" id="clc-cambio">—</div></div>
+    </div>
+    <div class="clc-sec">Nota (opcional)</div>
+    <input class="clc-in" id="clc-nota" maxlength="300" placeholder="Aparece en la venta"/>
+    <div class="clc-err" id="clc-err" role="alert"></div>`;
+  document.getElementById('clc-pie').innerHTML = `<button type="button" class="clc-btn" id="clc-cobrar" disabled>Cobrar ${_clEsc(t.cobrar)}</button>
+    <button type="button" class="clc-link" onclick="clinicaCobroAvanzado()">Otras opciones (pago separado, puntos, certificados…) →</button>`;
+  document.querySelectorAll('#clc-metodos .clc-chip').forEach(b => b.addEventListener('click', () => _clElegirMetodo(b.dataset.metodo, b.dataset.nombre)));
+  document.getElementById('clc-recibido').addEventListener('input', _clCambio);
+  document.getElementById('clc-cobrar').addEventListener('click', _clCobrarAhora);
+  try { _CL_COBRO.bancos = await _clMotor().bancos(); } catch (_) { _CL_COBRO.bancos = []; }
+  if (e.metodos.length === 1) _clElegirMetodo(e.metodos[0].id, e.metodos[0].nombre);
+}
+function _clNecesitaBanco(nombre) { const n = String(nombre || '').toLowerCase(); return (n.includes('tarjeta') || n.includes('transferencia')) && _CL_COBRO.bancos.length > 0; }
+function _clElegirMetodo(id, nombre) {
+  if (_CL_COBRO.cobrando) return;
+  _CL_COBRO.metodo = { id, nombre }; _CL_COBRO.banco = null;
+  document.querySelectorAll('#clc-metodos .clc-chip').forEach(b => b.classList.toggle('activo', b.dataset.metodo === id));
+  const conBanco = id !== '__fiado' && _clNecesitaBanco(nombre);
+  document.getElementById('clc-bancos-wrap').style.display = conBanco ? '' : 'none';
+  if (conBanco) {
+    document.getElementById('clc-bancos').innerHTML = _CL_COBRO.bancos.map(b => `<button type="button" class="clc-chip" data-banco="${_clEsc(b.id)}">🏦 ${_clEsc(b.nombre)}${b.moneda && b.moneda !== 'NIO' ? ' (' + _clEsc(b.moneda) + ')' : ''}</button>`).join('');
+    document.querySelectorAll('#clc-bancos .clc-chip').forEach(b => b.addEventListener('click', () => {
+      _CL_COBRO.banco = _CL_COBRO.bancos.find(x => x.id === b.dataset.banco) || null;
+      document.querySelectorAll('#clc-bancos .clc-chip').forEach(x => x.classList.toggle('activo', x === b)); _clListo();
+    }));
+  }
+  document.getElementById('clc-efectivo').style.display = /efectivo/i.test(nombre) ? 'flex' : 'none';
+  document.getElementById('clc-err').textContent = '';
+  _clListo(); _clCambio();
+}
+function _clListo() {
+  const m = _CL_COBRO.metodo, b = document.getElementById('clc-cobrar'); if (!b) return;
+  b.disabled = !m || (m.id !== '__fiado' && _clNecesitaBanco(m.nombre) && !_CL_COBRO.banco) || _CL_COBRO.cobrando;
+}
+function _clCambio() {
+  const el = document.getElementById('clc-cambio'); if (!el) return;
+  const total = Number(_CL_COBRO.estado?.resumen?.cobrar ?? _CL_COBRO.estado?.resumen?.total) || 0;
+  const rec = Number(document.getElementById('clc-recibido').value);
+  if (!(rec > 0)) { el.textContent = '—'; el.style.color = ''; return; }
+  const dif = Math.round((rec - total) * 100) / 100;
+  const f = _clMotor()?.fmt || (x => x.toFixed(2));
+  el.textContent = dif >= 0 ? f(dif) : 'Faltan ' + f(-dif);
+  el.style.color = dif >= 0 ? 'var(--success,#16a34a)' : 'var(--danger,#dc2626)';
+}
+async function _clCobrarAhora() {
+  if (_CL_COBRO.cobrando || _CL_COBRO.ventaId) return;
+  const m = _CL_COBRO.metodo, motor = _clMotor();
+  if (!m || !motor) return;
+  const total = Number(_CL_COBRO.estado?.resumen?.cobrar ?? _CL_COBRO.estado?.resumen?.total) || 0;
+  const rec = Number(document.getElementById('clc-recibido')?.value);
+  if (/efectivo/i.test(m.nombre) && rec > 0 && rec + 0.004 < total) { document.getElementById('clc-err').textContent = 'Lo recibido es menos que el total.'; return; }
+  _CL_COBRO.cobrando = true; _clListo();
+  const btn = document.getElementById('clc-cobrar'); btn.textContent = 'Cobrando…';
+  document.getElementById('clc-err').textContent = '';
+  let r;
+  try { r = await motor.cobrar({ metodoId: m.id === '__fiado' ? null : m.id, metodoNombre: m.nombre, fiado: m.id === '__fiado', banco: _CL_COBRO.banco, notas: document.getElementById('clc-nota').value.trim() }); }
+  catch (e) { r = { ok: false, motivo: 'No se pudo registrar la venta. Intenta de nuevo.' }; }
+  _CL_COBRO.cobrando = false;
+  if (r && r.ok) { if (!_CL_COBRO.ventaId) await _clCobroHecho(r); return; }
+  btn.textContent = 'Cobrar ' + (_CL_COBRO.estado?.resumen?.texto?.cobrar || ''); _clListo();
+  document.getElementById('clc-err').textContent = (r && r.motivo) || 'No se registró la venta.';
+}
+async function _clCobroHecho(r) {
+  _CL_COBRO.ventaId = r.ventaId;
+  const f = _clMotor()?.fmt || (x => Number(x || 0).toFixed(2));
+  const rec = Number(document.getElementById('clc-recibido')?.value), total = Number(r.total) || 0;
+  const cambio = /efectivo/i.test(_CL_COBRO.metodo?.nombre || '') && rec > total ? Math.round((rec - total) * 100) / 100 : 0;
+  document.getElementById('cl-cobro').classList.remove('clc-avanzado');
+  document.getElementById('clc-cuerpo').innerHTML = `<div class="clc-ok"><div class="clc-ok-ico">✅</div><div class="clc-ok-tit">Cobrado ${_clEsc(f(total))}</div>
+    <div class="cl-sub">Venta ${_clEsc(r.numero || '')} · ${_clEsc(_CL_COBRO.metodo?.nombre || '')}</div>
+    ${cambio > 0 ? `<div style="margin-top:12px;font-size:18px;font-weight:900">Cambio: ${_clEsc(f(cambio))}</div>` : ''}
+    <div class="cl-sub" style="margin-top:12px">Quedó registrada en Ventas y en Caja, como cualquier venta.</div></div>`;
+  document.getElementById('clc-pie').innerHTML = '<button type="button" class="clc-btn" id="clc-listo">✓ Listo</button>';
+  document.getElementById('clc-listo').addEventListener('click', clinicaCerrarCobro);
+  try { if (_CL_COBRO.alTerminar) await _CL_COBRO.alTerminar(r.ventaId); } catch (x) { console.warn('después del cobro:', x); }
+}
+// Casos especiales: se muestra la venta completa (la misma), ya en "Método de pago".
+function clinicaCobroAvanzado() {
+  const m = document.getElementById('cl-cobro'); if (!m || _CL_COBRO.ventaId) return;
+  m.classList.add('clc-avanzado');
+  try { _clMotor()?.irAPago(); } catch (_) {}
 }
 function clinicaCerrarCobro() {
   const m = document.getElementById('cl-cobro'); if (!m) return;
+  if (_CL_COBRO.cobrando) return;                         // no se cierra a media venta
   clearInterval(_CL_COBRO.vigia);
-  m.style.display = 'none';
+  m.style.display = 'none'; m.classList.remove('clc-avanzado');
   document.getElementById('clc-marco').src = 'about:blank';
   ['n360_agenda_cobro', 'n360_clinica_cobro', 'n360_receta_a_vender'].forEach(k => { try { sessionStorage.removeItem(k); } catch (_) {} });
   const cobrado = !!_CL_COBRO.ventaId, fin = _CL_COBRO.alCerrar;
-  _CL_COBRO.abierto = false; _CL_COBRO.alTerminar = null; _CL_COBRO.alCerrar = null; _CL_COBRO.ventaId = null;
+  Object.assign(_CL_COBRO, { abierto: false, alTerminar: null, alCerrar: null, ventaId: null, metodo: null, banco: null, estado: null });
   if (!cobrado && typeof showToast === 'function') showToast('No se cobró nada.');
   if (typeof fin === 'function') { try { fin(cobrado); } catch (_) {} }
 }

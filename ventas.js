@@ -6253,6 +6253,7 @@ async function _confirmarVentaInterno(conImpresion) {
     // avisa al padre que la venta sí se registró — igual que con los
     // pagos de Créditos, Rutas nunca calcula nada, solo reacciona.
     if (window.self !== window.top) {
+      S._ultimaVenta = { ventaId, numero: S.numeroVenta, total: r.total };
       try { window.parent.postMessage({ tipo: 'n360_operacion_completada', monto: r.total, nota: `Venta ${S.numeroVenta}`, ventaId, txOrdenId: S._txVinculo?.ordenId || null, txVinculada: !!S._txVinculo?.ok }, '*'); } catch(e) {}
       S._txVinculo = null;
     }
@@ -8260,6 +8261,7 @@ async function initVentas() {
     if (params.get('clinica_cobro') === '1' && S.empresaConfig?.usa_modulo_clinica === true && S.carrito.length) {
       for (let i = 0; S.clienteId && i < 6 && S.paso < 5; i++) { const antes = S.paso; pasoSiguiente(); if (S.paso === antes) break; }
     }
+    if (params.get('clinica_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_clinica === true && window.self !== window.top) instalarMotorClinica();
     // Deep link desde el módulo de Rutas ("Vender aquí") — abre Nueva
     // Venta con ese cliente ya elegido, mismo flujo de siempre.
     const rutaClienteId = params.get('ruta_cliente');
@@ -8290,6 +8292,58 @@ async function initVentas() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
   }
+}
+
+/* ============================================================
+   MOTOR DE COBRO PARA LA CLÍNICA
+   La Clínica muestra SU propia pantalla de cobro y aquí se registra la venta por el MISMO camino de
+   siempre (los pasos de la venta y confirmarVenta): mismos cálculos, candados, Caja, inventario, lotes,
+   impuestos, contabilidad y reportes. Solo existe dentro de la ventana de cobro de la Clínica, en
+   cuentas con el módulo (ventas.html?clinica_cobro=1&motor=1); en cualquier otro caso no se instala.
+   ============================================================ */
+function instalarMotorClinica() {
+  const llegarAlPago = () => { for (let i = 0; i < 6 && S.paso < 5; i++) { const antes = S.paso; pasoSiguiente(); if (S.paso === antes) break; } return S.paso >= 5; };
+  window.N360MotorVenta = {
+    estado() {
+      if (S.carrito.length) calcularResumen();
+      const r = S._resumen || {};
+      return {
+        listo: S.carrito.length > 0, clienteId: S.clienteId || null, cliente: S.clienteNombre || '',
+        items: S.carrito.map(i => ({ nombre: i.nombre, tipo: i.tipo, cantidad: i.cantidad, precio: i.precio, subtotal: i.subtotal, texto: fmt(i.subtotal), precioTexto: fmt(i.precio) })),
+        resumen: { subtotal: r.subtotal, descuento: r.descuento, impuestos: r.impuestos, total: r.total, cobrar: r.cobrar,
+          texto: { subtotal: fmt(r.subtotal || 0), descuento: fmt(r.descuento || 0), impuestos: fmt(r.impuestos || 0), total: fmt(r.total || 0), cobrar: fmt(r.cobrar ?? r.total ?? 0) } },
+        impuestosTexto: document.getElementById('res-impuestos-label')?.textContent || 'Impuestos',
+        metodos: (S.metodosPago || []).map(m => ({ id: m.id, nombre: m.nombre })),
+        fiado: S.empresaConfig?.usa_modulo_fiados === true && !!S.clienteId,
+      };
+    },
+    fmt: n => fmt(n),
+    async bancos() { return (await cargarBancosDisponibles()).map(b => ({ id: b.id, nombre: b.nombre, moneda: b.moneda || 'NIO' })); },
+    irAPago: llegarAlPago,
+    // op: { metodoId, metodoNombre, fiado, banco: {id, nombre, moneda}, notas }
+    async cobrar(op = {}) {
+      const avisos = [], tOrig = window.showToast;
+      window.showToast = (m, t) => { if (t === 'error' || t === 'warning') avisos.push(String(m)); return tOrig && tOrig(m, t); };
+      S._ultimaVenta = null;
+      try {
+        if (!S.carrito.length) return { ok: false, motivo: 'La cuenta está vacía.' };
+        if (!llegarAlPago()) return { ok: false, motivo: avisos.pop() || 'Falta un dato de la venta (por ejemplo, el cliente).' };
+        if (op.notas) { const ob = document.getElementById('venta-observaciones'); if (ob && !ob.value.trim()) ob.value = String(op.notas).slice(0, 1000); }
+        if (op.fiado) seleccionarFiado();
+        else {
+          seleccionarMetodoPago(op.metodoId, op.metodoNombre);
+          await mostrarSelectorBanco(op.metodoNombre);       // (seleccionarMetodoPago lo lanza sin esperar)
+          if (op.banco && op.banco.id) elegirBancoVenta(op.banco.id, op.banco.nombre, op.banco.moneda || 'NIO');
+        }
+        await confirmarVenta(false);
+        if (S._ultimaVenta) return { ok: true, ...S._ultimaVenta };
+        return { ok: false, motivo: avisos.filter(Boolean).pop() || 'No se registró la venta.' };
+      } catch (e) {
+        console.error('motor de cobro de la clínica:', e);
+        return { ok: false, motivo: 'No se pudo registrar la venta. Revisa tu conexión e intenta de nuevo.' };
+      } finally { window.showToast = tOrig; }
+    },
+  };
 }
 
 /* ============================================================

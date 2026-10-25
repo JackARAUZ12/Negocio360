@@ -680,7 +680,7 @@
   function cargarCobroClinica() {
     if (typeof clinicaAbrirCobro === 'function') return Promise.resolve(true);
     return new Promise(res => {
-      const sc = document.createElement('script'); sc.src = 'clinica-comun.js?v=20261025g';
+      const sc = document.createElement('script'); sc.src = 'clinica-comun.js?v=20261025h';
       sc.onload = () => res(typeof clinicaAbrirCobro === 'function'); sc.onerror = () => res(false);
       document.head.appendChild(sc);
     });
