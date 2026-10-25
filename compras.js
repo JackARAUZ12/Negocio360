@@ -474,6 +474,16 @@ async function loadCompras() {
     STATE.compras      = data || [];
     STATE.comprasTotal = count || 0;
 
+    // Compras a crédito (con cuenta por pagar viva): se pagan desde Cuentas por pagar,
+    // nunca con el botón "Completar" (antes se descontaban dos veces de Caja).
+    STATE.comprasConCxp = new Set();
+    const idsPend = STATE.compras.filter(c => c.estado === 'pendiente').map(c => c.id);
+    if (idsPend.length) {
+      const { data: cx } = await sbClient.from('cuentas_por_pagar').select('compra_id')
+        .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').in('compra_id', idsPend);
+      (cx || []).forEach(x => STATE.comprasConCxp.add(x.compra_id));
+    }
+
     renderCompras();
     renderPaginacionCompras();
   } catch(e) {
@@ -531,7 +541,7 @@ function renderCompras() {
         <button class="btn-icon" onclick="verDetalleCompra('${c.id}')" title="Ver detalle">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
-        ${c.estado === 'pendiente' ? `
+        ${c.estado === 'pendiente' && !(STATE.comprasConCxp && STATE.comprasConCxp.has(c.id)) ? `
         <button class="btn-icon" style="color:var(--success)" onclick="abrirCompletarCompra('${c.id}')" title="Completar — ya se pagó, descontar de Caja">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
         </button>` : ''}
@@ -2818,6 +2828,17 @@ async function completarCompra() {
 
   const compra = STATE.compras.find(c => c.id === compraToCompletar);
   if (!compra) { errEl.textContent = 'No se encontró la compra.'; return; }
+
+  // Compra a crédito: ya tiene cuenta por pagar → se paga desde Cuentas por pagar (si no, sale dos veces de Caja).
+  {
+    const { data: cx, error: eCx } = await sbClient.from('cuentas_por_pagar').select('numero')
+      .eq('auth_user_id', STATE.userId).eq('compra_id', compra.id).neq('estado', 'anulado').limit(1);
+    if (eCx) { errEl.textContent = 'No se pudo revisar si la compra es a crédito. Intenta de nuevo.'; return; }
+    if (cx && cx.length) {
+      errEl.textContent = `Esta compra es a crédito (${cx[0].numero || 'cuenta por pagar'}). Págala desde Cuentas por pagar para que no se descuente dos veces de Caja.`;
+      return;
+    }
+  }
 
   const metodoSel = document.getElementById('cc-metodo-pago');
   const metodoPagoId = metodoSel.value || null;
