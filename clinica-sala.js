@@ -338,8 +338,10 @@ async function cobrarCita() {
   const c = citaPorId(SA.citaCuenta); if (!c) return;
   const btn = $s('cu-btn-cobrar'); btn.disabled = true;
   try {
-    const r = await ClinicaCitas.cobrar(c, { convenio: SA.convenio && $s('cu-seguro')?.checked ? SA.convenio : null });
+    const r = await ClinicaCitas.cobrar(c, { convenio: SA.convenio && $s('cu-seguro')?.checked ? SA.convenio : null,
+      alCerrar: async cobrado => { if (cobrado) { avisarCambio(); showToast('✅ Visita cobrada y registrada en Ventas.'); } await cargar(); } });
     if (!r.ok) { $s('cu-error').textContent = r.motivo; await cargar(); }
+    else if (r.dentro) closeModal('modal-cuenta');
   } catch (e) { console.error('cobrarCita:', e); $s('cu-error').textContent = 'No se pudo preparar el cobro. Intenta de nuevo.'; }
   finally { btn.disabled = false; }
 }

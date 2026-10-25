@@ -667,7 +667,23 @@
       citaId: c.id, clienteId: c.cliente_id || null, cliente: c.cliente_nombre, items,
       sinCatalogo: sinCatalogo.map(l => `${l.servicio_nombre} (${fmt(l.precio)})`),
     }));
+    // Clínica: se cobra sin salir de la Agenda, con la MISMA pantalla de Ventas en una ventana aquí mismo.
+    if (STATE.empresaConfig?.usa_modulo_clinica === true && await cargarCobroClinica()) {
+      const citaId = c.id;
+      if (clinicaAbrirCobro({ titulo: `Cobrar cita · ${c.cliente_nombre || ''}`.trim(),
+        alTerminar: ventaId => clinicaLigarVenta('agenda_citas', citaId, ventaId, { estado: 'completada', updated_at: new Date().toISOString() }),
+        alCerrar: async cobrado => { if (cobrado) showToast('✅ Cita cobrada y registrada en Ventas.'); await refrescar(); } })) { closeModal('modal-cita'); return; }
+    }
     window.location.href = 'ventas.html';
+  }
+  // La ventana de cobro de la Clínica vive en clinica-comun.js: se carga solo cuando hace falta.
+  function cargarCobroClinica() {
+    if (typeof clinicaAbrirCobro === 'function') return Promise.resolve(true);
+    return new Promise(res => {
+      const sc = document.createElement('script'); sc.src = 'clinica-comun.js?v=20261025g';
+      sc.onload = () => res(typeof clinicaAbrirCobro === 'function'); sc.onerror = () => res(false);
+      document.head.appendChild(sc);
+    });
   }
 
   async function refrescar() {

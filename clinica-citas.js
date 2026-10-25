@@ -103,12 +103,28 @@ const ClinicaCitas = (() => {
   // y lo que se agregó a la cuenta; al confirmar, la cita queda cobrada (venta_id) y completada.
   // Con seguro (convenio vigente del paciente): el paciente paga su parte y lo que cubre la aseguradora queda
   // anotado en la cita para facturárselo después desde Clínica · Seguros.
-  async function cobrar(cita, { convenio } = {}) {
+  async function cobrar(cita, { convenio, alCerrar } = {}) {
     const { data: actual, error } = await sb.from('agenda_citas').select('id, venta_id, cliente_id, cliente_nombre, agenda_citas_servicios(*), ventas(estado, numero_venta)')
       .eq('id', cita.id).eq('auth_user_id', STATE.userId).maybeSingle();
     if (error) throw error;
     if (!actual) return { ok: false, motivo: 'No se encontró la cita.' };
     if (actual.venta_id && actual.ventas && actual.ventas.estado !== 'anulada') return { ok: false, motivo: `Esta visita ya fue cobrada (${actual.ventas.numero_venta || 'venta'}).` };
+    // El paciente se cobra como cliente: si la cita aún no tiene cliente, se usa el del paciente o se crea con sus
+    // datos (igual que en Observación), y queda ligado a la cita y al expediente. Así Ventas abre con el cliente listo.
+    if (!actual.cliente_id && cita.paciente_id) {
+      const { data: pac } = await sb.from('clinica_pacientes').select('id, nombres, apellidos, telefono, cliente_id').eq('id', cita.paciente_id).eq('auth_user_id', STATE.userId).maybeSingle();
+      if (pac) {
+        let cid = pac.cliente_id;
+        if (!cid) {
+          const { data: nuevo, error: eC } = await sb.from('clientes').insert({ auth_user_id: STATE.userId, nombre: [pac.nombres, pac.apellidos].filter(Boolean).join(' ').slice(0, 100) || 'Paciente', telefono: pac.telefono || null }).select('id').single();
+          if (eC) throw eC;
+          cid = nuevo.id;
+          await sb.from('clinica_pacientes').update({ cliente_id: cid }).eq('id', pac.id).eq('auth_user_id', STATE.userId).is('cliente_id', null);
+        }
+        await sb.from('agenda_citas').update({ cliente_id: cid }).eq('id', cita.id).eq('auth_user_id', STATE.userId).is('cliente_id', null);
+        actual.cliente_id = cid;
+      }
+    }
     const extra = await cargos(cita.id);
     const d = clinicaCobroAgenda(actual, extra);
     if (!d.items.length) return { ok: false, motivo: 'La cuenta está vacía: los servicios de la cita no están en tu catálogo.' };
@@ -120,6 +136,9 @@ const ClinicaCitas = (() => {
       await guardarInfo(cita.id, { convenio_id: convenio.id, cobertura_pct: Number(convenio.cobertura_pct), monto_cubierto: rep.cubierto, cubierto_servicios: rep.cubiertoServicios });
     } else await guardarInfo(cita.id, { convenio_id: null, cobertura_pct: null, monto_cubierto: null, cubierto_servicios: null });
     sessionStorage.setItem('n360_agenda_cobro', JSON.stringify(d));
+    // Sin salir de la Clínica: Ventas se abre en una ventana aquí mismo (si no se puede, como antes).
+    if (typeof clinicaAbrirCobro === 'function' && clinicaAbrirCobro({ titulo: `Cobrar visita · ${d.cliente || ''}`.trim(), alCerrar,
+      alTerminar: ventaId => clinicaLigarVenta('agenda_citas', cita.id, ventaId, { estado: 'completada', updated_at: new Date().toISOString() }) })) return { ok: true, dentro: true };
     window.location.href = 'ventas.html';
     return { ok: true };
   }

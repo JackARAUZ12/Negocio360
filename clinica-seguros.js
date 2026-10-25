@@ -223,6 +223,10 @@ async function irAVentas(id, k, monto, n) {
     const prod = await servicioCobertura(), cliente = await clienteDe(k);
     sessionStorage.setItem('n360_clinica_cobro', JSON.stringify({ tipo: 'reclamo', id, clienteId: cliente, cliente: k.nombre,
       concepto: `Cobertura ${k.nombre} · ${n} cita${n === 1 ? '' : 's'}`, items: [{ producto_id: prod, cantidad: 1, total: monto }] }));
+    // Sin salir de la Clínica: Ventas se abre en una ventana aquí mismo (si te paga después, "Crédito").
+    if (typeof clinicaAbrirCobro === 'function' && clinicaAbrirCobro({ titulo: `Facturar a ${k.nombre}`,
+      alTerminar: ventaId => clinicaLigarVenta('clinica_reclamos', id, ventaId, { estado: 'facturado' }, q => q.eq('estado', 'enviado')),
+      alCerrar: async cobrado => { if (cobrado) showToast('✅ Factura registrada en Ventas.'); await cargar(); } })) return;
     window.location.href = 'ventas.html';
   } catch (e) { console.error('irAVentas:', e); showToast('No se pudo abrir Ventas.', 'error'); }
 }

@@ -97,7 +97,11 @@ Cada vez que alguien abre un expediente queda anotado en la **bitácora**
 
 En la Sala de espera, en la tarjeta del paciente atendido, toca
 **💳 Cuenta y cobro**. Ahí ves el servicio de la cita y lo que se agregó
-(medicamentos de la receta, insumos). **"Cobrar en Ventas"** abre la venta lista.
+(medicamentos de la receta, insumos). Al cobrar **no sales de la Clínica**: se abre una
+ventana de cobro aquí mismo con la venta lista en **"Método de pago"** (el paciente ya
+como cliente). Eliges cómo paga y confirmas. Si cierras la ventana sin confirmar, no se
+registra nada. Lo mismo al cobrar una estancia, facturar a una aseguradora, vender los
+medicamentos de una receta o cobrar una cita desde la Agenda.
 El cobro es una venta normal: caja, inventario, impuestos y reportes quedan exactos.
 También puedes cobrar desde la misma Agenda: incluye lo agregado a la cuenta.
 

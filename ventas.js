@@ -5805,6 +5805,24 @@ async function _confirmarVentaInterno(conImpresion) {
     } catch (eTxChk) { console.warn('Revisar orden de transporte:', eTxChk); }
   }
 
+  // Clínica (solo cuentas con el módulo): candado para no cobrar dos veces la misma visita, estancia o
+  // factura a la aseguradora (otra pestaña, otro equipo o la misma ventana abierta dos veces).
+  if (S.empresaConfig?.usa_modulo_clinica === true && (S._agendaCitaId || S._clinicaCobro?.id)) {
+    try {
+      const cc = S._clinicaCobro;
+      const tabla = cc?.id ? (cc.tipo === 'estancia' ? 'clinica_estancias' : 'clinica_reclamos') : 'agenda_citas';
+      const id = cc?.id || S._agendaCitaId;
+      const { data: x, error: eX } = await sb.from(tabla).select('venta_id' + (tabla === 'clinica_reclamos' ? ', estado' : '')).eq('id', id).eq('auth_user_id', S.userId).maybeSingle();
+      if (eX) throw eX;
+      if (!x) { showToast('Ya no existe lo que se iba a cobrar. No se registró la venta.', 'error'); return; }
+      if (tabla === 'clinica_reclamos' && x.estado !== 'enviado') { showToast('Esa factura a la aseguradora ya no está pendiente. No se registró otra venta.', 'error'); return; }
+      if (x.venta_id) {
+        const { data: vPrev } = await sb.from('ventas').select('numero_venta, estado').eq('id', x.venta_id).eq('auth_user_id', S.userId).maybeSingle();
+        if (vPrev && vPrev.estado !== 'anulada') { showToast(`Esto ya se cobró en la venta ${vPrev.numero_venta || ''}. No se registró otra venta.`, 'error'); return; }
+      }
+    } catch (eClChk) { console.warn('Revisar cobro de la clínica:', eClChk); showToast('No se pudo comprobar si ya estaba cobrado. Revisa tu conexión e intenta de nuevo.', 'error'); return; }
+  }
+
   // Aviso (no bloquea): productos con costo 0 o vendidos por debajo del costo
   // hacen que la ganancia de los reportes salga mal.
   try {
@@ -8236,6 +8254,11 @@ async function initVentas() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('action')==='new') {
       setTimeout(abrirNuevaVenta, 400);
+    }
+    // Cobro desde la Clínica (ventana dentro de la Clínica): la venta ya viene armada; se avanza sola hasta
+    // "Método de pago" validando cada paso igual que si el usuario tocara "Siguiente".
+    if (params.get('clinica_cobro') === '1' && S.empresaConfig?.usa_modulo_clinica === true && S.carrito.length) {
+      for (let i = 0; S.clienteId && i < 6 && S.paso < 5; i++) { const antes = S.paso; pasoSiguiente(); if (S.paso === antes) break; }
     }
     // Deep link desde el módulo de Rutas ("Vender aquí") — abre Nueva
     // Venta con ese cliente ya elegido, mismo flujo de siempre.

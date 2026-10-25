@@ -97,6 +97,14 @@ async function modalesSinDesborde(page, nombre) {
   r.forEach(m => verificar(m.ancho <= page.viewportSize().width + 1 && m.dentro, `${nombre}: ventana ${m.id} cabe en pantalla`));
 }
 const esperarListo = page => page.waitForFunction(() => document.getElementById('app')?.style.display === 'flex', null, { timeout: 15000 });
+// Cobro dentro de la Clínica: espera la ventana de cobro y devuelve la pantalla de Ventas que va adentro.
+async function marcoCobro(page, nItems) {
+  await page.waitForSelector('#cl-cobro', { state: 'visible', timeout: 15000 });
+  let fr = null;
+  for (let i = 0; i < 150 && !fr; i++) { fr = page.frames().find(f => /ventas\.html\?clinica_cobro=1/.test(f.url())); if (!fr) await page.waitForTimeout(100); }
+  await fr.waitForFunction(n => typeof S !== 'undefined' && S.carrito && (n == null ? S.carrito.length > 0 : S.carrito.length === n), nItems ?? null, { timeout: 15000 });
+  return fr;
+}
 
 async function flujoCompleto(browser, base, ancho, alto) {
   const tag = ancho < 500 ? 'celular' : 'computadora';
@@ -185,11 +193,20 @@ async function flujoCompleto(browser, base, ancho, alto) {
   verificar((await page.textContent('#cu-lista')).includes('537.50'), `${tag}: total estimado 500 + 3×12.50 = 537.50`);
   await modalesSinDesborde(page, `${tag} cuenta`);
   await page.click('#cu-btn-cobrar');
-  await page.waitForURL(/ventas\.html/);
-  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 2, null, { timeout: 15000 });
-  const carrito = await page.evaluate(() => ({ cita: S._agendaCitaId, items: S.carrito.map(i => ({ id: i.id, cantidad: i.cantidad, precio: i.precio })) }));
+  const fv = await marcoCobro(page, 2);
+  verificar(/clinica-sala\.html/.test(page.url()), `${tag}: cobrar NO saca de la Clínica (la venta se hace en una ventana aquí mismo)`);
+  await fv.waitForFunction(() => S.paso === 5, null, { timeout: 10000 }).catch(() => {});
+  verificar(await fv.evaluate(() => S.paso) === 5, `${tag}: la venta llega sola hasta "Método de pago"`);
+  verificar(await fv.evaluate(() => getComputedStyle(document.getElementById('sidebar')).display === 'none'), `${tag}: la ventana de cobro no muestra el menú de Ventas`);
+  await sinDesborde(page, `${tag} ventana de cobro`);
+  if (process.env.FOTOS) await page.waitForTimeout(800), await page.screenshot({ path: process.env.FOTOS + '/cobro-' + tag + '.png' });
+  const carrito = await fv.evaluate(() => ({ cita: S._agendaCitaId, items: S.carrito.map(i => ({ id: i.id, cantidad: i.cantidad, precio: i.precio })) }));
   verificar(carrito.cita === 'ag-maria', `${tag}: la venta queda ligada a la cita de la Agenda (camino de siempre)`);
   verificar(carrito.items.find(i => i.id === 'prod-acet')?.cantidad === 3 && carrito.items.find(i => i.id === 'prod-consulta')?.precio === 500, `${tag}: servicio y medicamento llegan al carrito con su cantidad y precio`);
+  // Cerrar sin cobrar: no se registra nada y lo preparado se borra
+  await page.click('#clc-cerrar'); await page.waitForSelector('#cl-cobro', { state: 'hidden' });
+  const nada = await page.evaluate(() => ({ v: (JSON.parse(sessionStorage.getItem('__DB')).ventas || []).length, p: sessionStorage.getItem('n360_agenda_cobro') }));
+  verificar(nada.v === 0 && !nada.p, `${tag}: "Cerrar sin cobrar" no registra ninguna venta`);
   verificar(page.__errores.length === 0, `${tag}: sin errores de JavaScript (${page.__errores.join(' | ')})`);
   verificar(!(await page.evaluate(() => window.__xss)), `${tag}: ningún texto escrito por usuarios se ejecutó (XSS)`);
   await ctx.close();
@@ -211,31 +228,32 @@ async function pruebaCuadre(browser, base) {
       await page.goto(base + '/clinica-sala.html');
       await page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semillaCuadre() });
       await page.reload(); await esperarListo(page); await page.waitForFunction(() => typeof ClinicaCitas !== 'undefined');
-      await Promise.all([page.waitForURL(/ventas\.html/), page.evaluate(() => ClinicaCitas.cobrar({ id: 'ag-c' }))]);
+      await page.evaluate(() => ClinicaCitas.cobrar({ id: 'ag-c' }));
     } else {
       await page.goto(base + '/ventas.html');
       await page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semillaCuadre() });
       await page.reload();
     }
-    await esperarListo(page);
-    await page.waitForFunction(() => typeof S !== 'undefined' && Array.isArray(S.productosCache) && S.productosCache.length === 2, null, { timeout: 15000 });
-    if (desdeClinica) await page.waitForFunction(() => S.carrito.length === 2, null, { timeout: 15000 });
-    else await page.evaluate(async () => {
+    const t = desdeClinica ? await marcoCobro(page, 2) : page;       // desde la Clínica, Ventas va DENTRO de la ventana de cobro
+    if (!desdeClinica) await esperarListo(page);
+    await t.waitForFunction(() => typeof S !== 'undefined' && Array.isArray(S.productosCache) && S.productosCache.length === 2, null, { timeout: 15000 });
+    if (!desdeClinica) await page.evaluate(async () => {
       await abrirNuevaVenta(); selectClienteOpcion('existente'); seleccionarCliente('cli-1');
       await agregarAlCarritoConPrecio('prod-consulta', 'servicio', null);
       await agregarAlCarritoConPrecio('prod-acet', 'producto', null); cambiarCantidad('prod-acet', 3);
     });
     await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
-    await page.evaluate(async () => { for (let i = 0; i < 8 && S.paso < 5; i++) { const a = S.paso; if (S.paso === 4 || S.paso === 5) seleccionarMetodoPago('mp-efectivo', 'Efectivo'); pasoSiguiente(); await new Promise(r => setTimeout(r, 150)); if (S.paso === a) break; } });
-    const paso = await page.evaluate(() => S.paso);
-    await page.evaluate(() => { if (!S.metodoPagoId) seleccionarMetodoPago('mp-efectivo', 'Efectivo'); });
-    await page.evaluate(() => { window.__toasts = []; const o = window.showToast; window.showToast = (m, t) => { window.__toasts.push(m); return o && o(m, t); }; });
-    await page.evaluate(async () => { await confirmarVenta(false); });
-    if (process.env.DEPURAR) console.log('  avisos de Ventas:', await page.evaluate(() => window.__toasts));
+    await t.evaluate(async () => { for (let i = 0; i < 8 && S.paso < 5; i++) { const a = S.paso; if (S.paso === 4 || S.paso === 5) seleccionarMetodoPago('mp-efectivo', 'Efectivo'); pasoSiguiente(); await new Promise(r => setTimeout(r, 150)); if (S.paso === a) break; } });
+    const paso = await t.evaluate(() => S.paso);
+    await t.evaluate(() => { if (!S.metodoPagoId) seleccionarMetodoPago('mp-efectivo', 'Efectivo'); });
+    await t.evaluate(() => { window.__toasts = []; const o = window.showToast; window.showToast = (m, t) => { window.__toasts.push(m); return o && o(m, t); }; });
+    await t.evaluate(async () => { await confirmarVenta(false); });
+    if (process.env.DEPURAR) console.log('  avisos de Ventas:', await t.evaluate(() => window.__toasts));
     await page.waitForTimeout(800);
+    const avisoClinica = desdeClinica ? await page.textContent('#clc-estado') : '';
     const r = await page.evaluate(() => ({ log: JSON.parse(sessionStorage.getItem('__LOG') || '[]'), db: JSON.parse(sessionStorage.getItem('__DB')) }));
-    const errores = page.__errores; await ctx.close();
-    return { ...r, paso, errores };
+    const errores = page.__errores, url = page.url(); await ctx.close();
+    return { ...r, paso, errores, avisoClinica, url };
   };
   const limpiar = o => JSON.parse(JSON.stringify(o, (k, v) => ['id', 'venta_id', 'created_at', 'fecha', 'updated_at', 'numero_venta', 'numero_factura', 'observaciones', 'notas', 'referencia_id', 'referencia_caja'].includes(k) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id generado>' : v)));
   const RPC_DINERO = ['venta_registrar_atomica', 'descontar_lote_venta', 'descontar_lote_fefo'];
@@ -251,6 +269,7 @@ async function pruebaCuadre(browser, base) {
   }
   const ventaA = a.db.ventas?.[0], citaA = a.db.agenda_citas.find(c => c.id === 'ag-c');
   verificar(ventaA && citaA.venta_id === ventaA.id && citaA.estado === 'completada', 'cuadre: la cita de la Agenda quedó ligada a su venta y completada');
+  verificar(/clinica-sala\.html/.test(a.url) && a.avisoClinica.includes('Cobrado'), `cuadre: se cobró sin salir de la Clínica y la ventana avisa que quedó cobrado (${a.avisoClinica})`);
   verificar(!b.db.agenda_citas.find(c => c.id === 'ag-c').venta_id, 'cuadre: la venta directa no toca la Agenda ni la clínica');
   verificar(Number(ventaA?.total) === 537.5, `cuadre: total de la venta 537.50 (${ventaA?.total})`);
   // Doble cobro: una visita ya cobrada no se vuelve a preparar para cobrar.
@@ -260,6 +279,14 @@ async function pruebaCuadre(browser, base) {
   await page.reload(); await esperarListo(page); await page.waitForFunction(() => typeof ClinicaCitas !== 'undefined');
   const r2 = await page.evaluate(async () => { const r = await ClinicaCitas.cobrar({ id: 'ag-c' }); return { r, payload: sessionStorage.getItem('n360_agenda_cobro') }; });
   verificar(r2.r.ok === false && /ya fue cobrada/.test(r2.r.motivo) && !r2.payload, 'cuadre: una visita ya cobrada no se puede cobrar dos veces');
+  // Candado en Ventas: otro equipo que ya tenía el cobro abierto ANTES de que se cobrara tampoco puede cobrarlo otra vez.
+  await page.evaluate(() => { sessionStorage.setItem('n360_agenda_cobro', JSON.stringify({ citaId: 'ag-c', clienteId: 'cli-1', cliente: 'Cliente Existente', items: [{ producto_id: 'prod-consulta', cantidad: 1, total: 500 }] }));
+    clinicaAbrirCobro({ titulo: 'prueba' }); });
+  const fDos = await marcoCobro(page, 1);
+  await fDos.evaluate(() => { window.__toasts = []; const o = window.showToast; window.showToast = (m, t) => { window.__toasts.push(m); return o && o(m, t); }; });
+  await confirmarVentaAbierta(fDos);
+  const dos = await fDos.evaluate(() => ({ n: JSON.parse(sessionStorage.getItem('__DB')).ventas.length, avisos: window.__toasts }));
+  verificar(dos.n === 1 && dos.avisos.some(m => /ya se cobró/.test(m)), `cuadre: candado — la misma visita no se cobra dos veces aunque se intente desde otra ventana (${dos.n} venta; ${dos.avisos.filter(m => /cobr/.test(m)).join(' | ')})`);
   await ctx.close();
   // Cobrar desde la Agenda misma también incluye lo que el médico dejó en la cuenta (solo con Clínica encendida).
   const ag = await nuevaPagina(browser, base, 1280, 900);
@@ -517,9 +544,10 @@ async function pruebasFase2(browser, base, ancho, alto) {
 
   // Receta a Farmacia -> Ventas (camino de siempre de Farmacia)
   await page.locator('#fi-panel-exp .cl-item', { hasText: 'RX-000001' }).locator('text=💊 Pasar a Farmacia').click();
-  await page.waitForURL(/ventas\.html/, { timeout: 10000 });
-  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 1, null, { timeout: 15000 });
-  const cart = await page.evaluate(() => S.carrito.map(i => ({ id: i.id, cantidad: i.cantidad })));
+  const fRx = await marcoCobro(page, 1);
+  verificar(/clinica-pacientes\.html/.test(page.url()), `${tag}: vender la receta no saca del expediente`);
+  const cart = await fRx.evaluate(() => S.carrito.map(i => ({ id: i.id, cantidad: i.cantidad })));
+  await page.click('#clc-cerrar');
   const farm = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB')); return { r: db.farmacia_recetas, i: db.farmacia_receta_items, d: db.clinica_documentos.find(x => x.numero === 'RX-000001') }; });
   verificar(farm.r.length === 1 && farm.r[0].numero_receta === 'RX-000001' && farm.i.length === 2 && farm.d.farmacia_receta_id === farm.r[0].id, `${tag}: receta registrada en Farmacia · Recetas y ligada`);
   verificar(cart[0].id === 'prod-acet' && cart[0].cantidad === 10, `${tag}: los medicamentos del inventario llegan al carrito de Ventas`);
@@ -750,11 +778,13 @@ async function pruebasFase5(browser, base, ancho, alto) {
   // Alta y cobro
   await page.click('#ho-lista >> text=🏁 Dar de alta'); await page.waitForSelector('#ho-lista >> text=Alta · falta cobrar');
   verificar(await page.locator('#ho-lista >> text=📝 Notas y signos').count() === 1 && await page.locator('#ho-lista >> text=💳 Cobrar').count() === 1, `${tag}: con alta queda lista para cobrar`);
-  await page.click('#ho-lista >> text=💳 Cobrar'); await page.waitForURL(/ventas\.html/);
-  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 2, null, { timeout: 15000 });
-  const carE = await page.evaluate(() => ({ cobro: S._clinicaCobro, items: S.carrito.map(i => [i.id, i.cantidad, i.precio]), cliente: S.clienteId }));
+  await page.click('#ho-lista >> text=💳 Cobrar');
+  const fE = await marcoCobro(page, 2);
+  const carE = await fE.evaluate(() => ({ cobro: S._clinicaCobro, items: S.carrito.map(i => [i.id, i.cantidad, i.precio]), cliente: S.clienteId }));
   verificar(carE.cobro?.tipo === 'estancia' && JSON.stringify(carE.items) === '[["srv-dia",1,1500],["prod-suero",2,120]]' && carE.cliente === 'cli-pedro', `${tag}: Ventas abre la cuenta de la estancia con el paciente (${JSON.stringify(carE)})`);
-  await confirmarVentaAbierta(page);
+  await confirmarVentaAbierta(fE);
+  verificar((await page.textContent('#clc-estado')).includes('Cobrado') && /clinica-hospital\.html/.test(page.url()), `${tag}: la estancia se cobra sin salir de Observación`);
+  await page.click('#clc-cerrar');
   const est = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB')); const e = db.clinica_estancias[0]; return { e, v: db.ventas.find(v => v.id === e.venta_id) }; });
   verificar(!!est.v && Number(est.v.total) === 1740, `${tag}: la estancia quedó cobrada y ligada a su venta (${est.v && est.v.total})`);
   await page.goto(base + '/clinica-hospital.html'); await esperarListo(page); await page.click('#ho-chips >> text=🏁 Con alta');
@@ -774,10 +804,11 @@ async function pruebasFase5(browser, base, ancho, alto) {
   verificar(caja.includes('cubre el 80%') && caja.includes('100.00') && caja.includes('400.00'), `${tag}: la cuenta muestra lo que paga el paciente y lo que cubre el seguro`);
   verificar((await page.innerHTML('#cu-seguro-box')).includes('&lt;b&gt;x'), `${tag}: el nombre del convenio se muestra como texto`);
   await modalesSinDesborde(page, `${tag} cuenta con seguro`);
-  await page.click('#cu-btn-cobrar'); await page.waitForURL(/ventas\.html/);
-  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 1, null, { timeout: 15000 });
-  verificar(await page.evaluate(() => S.carrito[0].precio) === 100, `${tag}: el paciente paga solo su 20% (100.00)`);
-  await confirmarVentaAbierta(page);
+  await page.click('#cu-btn-cobrar');
+  const fS = await marcoCobro(page, 1);
+  verificar(await fS.evaluate(() => S.carrito[0].precio) === 100, `${tag}: el paciente paga solo su 20% (100.00)`);
+  await confirmarVentaAbierta(fS);
+  await page.click('#clc-cerrar');
   const snap = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB')); return { i: db.clinica_cita_info.find(x => x.agenda_cita_id === 'ag-s'), c: db.agenda_citas.find(x => x.id === 'ag-s') }; });
   verificar(snap.i.monto_cubierto === 400 && snap.i.cubierto_servicios === 400 && snap.i.convenio_id === 'k1' && !!snap.c.venta_id, `${tag}: queda anotado lo que cubre el seguro (400) y la cita cobrada`);
   // Facturar a la aseguradora
@@ -785,13 +816,14 @@ async function pruebasFase5(browser, base, ancho, alto) {
   await sinDesborde(page, `${tag} seguros`);
   if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/seguros-' + tag + '.png', fullPage: true });
   verificar((await page.textContent('#sg-kpi-pend')).includes('400.00'), `${tag}: por facturar a aseguradoras 400.00`);
-  await page.click('#sg-pendiente >> text=🧾 Facturar'); await page.waitForURL(/ventas\.html/);
-  await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 1, null, { timeout: 15000 });
-  const fac = await page.evaluate(() => ({ cobro: S._clinicaCobro, item: [S.carrito[0].nombre, S.carrito[0].precio], cliente: S.clienteId, db: JSON.parse(sessionStorage.getItem('__DB')) }));
+  await page.click('#sg-pendiente >> text=🧾 Facturar');
+  const fF = await marcoCobro(page, 1);
+  const fac = await fF.evaluate(() => ({ cobro: S._clinicaCobro, item: [S.carrito[0].nombre, S.carrito[0].precio], cliente: S.clienteId, db: JSON.parse(sessionStorage.getItem('__DB')) }));
   const k1 = fac.db.clinica_convenios.find(k => k.id === 'k1');
   verificar(fac.cobro?.tipo === 'reclamo' && fac.item[1] === 400 && /Cobertura Seguros América/.test(fac.item[0]) && k1.cliente_id && fac.cliente === k1.cliente_id,
     `${tag}: la factura a la aseguradora se abre en Ventas a nombre de la aseguradora (${JSON.stringify(fac.item)})`);
-  await confirmarVentaAbierta(page);
+  await confirmarVentaAbierta(fF);
+  await page.click('#clc-cerrar');
   const rec = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_reclamos[0]);
   verificar(rec.estado === 'facturado' && !!rec.venta_id && rec.monto === 400 && JSON.stringify(rec.citas) === '["ag-s"]', `${tag}: la factura quedó registrada y ligada a su venta`);
   await page.goto(base + '/clinica-seguros.html'); await esperarListo(page); await page.waitForSelector('#sg-pendiente .cl-info');

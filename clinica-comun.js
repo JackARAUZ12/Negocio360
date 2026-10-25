@@ -689,6 +689,103 @@ function clinicaCobroAgenda(cita, cargos) {
   });
   return { citaId: cita.id, clienteId: cita.cliente_id || null, cliente: cita.cliente_nombre || '', items, sinCatalogo };
 }
+/* ---------- Cobrar SIN salir de la Clínica ----------
+   La venta se hace con la MISMA pantalla de Ventas de siempre (mismos pasos, candados, caja, inventario,
+   lotes, impuestos, contabilidad y reportes), abierta en una ventana dentro de la Clínica: nada se calcula
+   aparte, por eso todo cuadra igual que una venta normal. Quien llama deja preparado lo que se cobra
+   (n360_agenda_cobro, n360_clinica_cobro o n360_receta_a_vender). Ventas llega sola hasta "Método de pago";
+   al confirmar avisa (n360_operacion_completada) y aquí se comprueba que quedó ligado. */
+const _CL_COBRO = { abierto: false, alTerminar: null, ventaId: null, vigia: null, escuchando: false };
+const _CL_COBRO_CSS = `#sidebar,#sidebar-overlay,#header,.mobile-menu-btn{display:none!important}
+#main{margin-left:0!important;width:100%!important;min-height:0!important}html,body{overflow-x:hidden}`;
+function _clCobroModal() {
+  let m = document.getElementById('cl-cobro');
+  if (m) return m;
+  const st = document.createElement('style');
+  st.textContent = `#cl-cobro{position:fixed;inset:0;z-index:100050;background:rgba(15,23,42,.55);display:none;align-items:stretch;justify-content:center;padding:16px}
+#cl-cobro .clc-caja{background:var(--bg-surface,#fff);color:var(--text-primary);border-radius:16px;width:100%;max-width:1100px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#cl-cobro .clc-cab{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border,#e5e7eb);flex-wrap:wrap}
+#cl-cobro .clc-tit{flex:1;min-width:0;font-weight:800;font-size:15px}
+#cl-cobro .clc-estado{font-size:12.5px;font-weight:700;color:var(--text-muted)}
+#cl-cobro .clc-estado.ok{color:#16a34a}
+#cl-cobro .clc-cuerpo{position:relative;flex:1;min-height:0}
+#cl-cobro iframe{display:block;width:100%;height:100%;border:0;background:var(--bg-base,#f5f5f7)}
+#cl-cobro .clc-cargando{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg-base,#f5f5f7);color:var(--text-muted);font-size:13px}
+@media (max-width:600px){#cl-cobro{padding:0}#cl-cobro .clc-caja{border-radius:0}#cl-cobro .clc-estado{display:none}#cl-cobro .clc-tit{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#cl-cobro .clc-cab{flex-wrap:nowrap}#cl-cobro .clc-cab .btn-accion-tabla{flex:none}}`;
+  document.head.appendChild(st);
+  m = document.createElement('div'); m.id = 'cl-cobro'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', 'Cobrar');
+  m.innerHTML = `<div class="clc-caja"><div class="clc-cab"><span class="clc-tit" id="clc-tit">💳 Cobrar</span>
+      <span class="clc-estado" id="clc-estado">Se registra en Ventas como una venta normal</span>
+      <button type="button" class="btn-accion-tabla btn-ghost" id="clc-cerrar">✕ Cerrar sin cobrar</button></div>
+    <div class="clc-cuerpo"><div class="clc-cargando" id="clc-cargando">Preparando el cobro…</div><iframe id="clc-marco" title="Cobro" src="about:blank"></iframe></div></div>`;
+  document.body.appendChild(m);
+  document.getElementById('clc-cerrar').addEventListener('click', clinicaCerrarCobro);
+  document.getElementById('clc-marco').addEventListener('load', () => {
+    const fr = document.getElementById('clc-marco');
+    try { const doc = fr.contentDocument; if (doc && doc.location.href !== 'about:blank') { _clCobroPreparar(doc); document.getElementById('clc-cargando').style.display = 'none'; } } catch (_) {}
+  });
+  return m;
+}
+function _clCobroPreparar(doc) {
+  if (!doc || !doc.documentElement || doc.documentElement.dataset.clCobro === '1') return;
+  doc.documentElement.dataset.clCobro = '1';
+  const st = doc.createElement('style'); st.textContent = _CL_COBRO_CSS; (doc.head || doc.documentElement).appendChild(st);
+}
+function clinicaAbrirCobro({ titulo, alTerminar, alCerrar } = {}) {
+  if (_CL_COBRO.abierto) return false;
+  const m = _clCobroModal(), fr = document.getElementById('clc-marco');
+  _CL_COBRO.abierto = true; _CL_COBRO.alTerminar = alTerminar || null; _CL_COBRO.alCerrar = alCerrar || null; _CL_COBRO.ventaId = null;
+  document.getElementById('clc-tit').textContent = '💳 ' + (titulo || 'Cobrar');
+  const est = document.getElementById('clc-estado'); est.textContent = 'Se registra en Ventas como una venta normal'; est.classList.remove('ok');
+  const b = document.getElementById('clc-cerrar'); b.textContent = '✕ Cerrar sin cobrar'; b.classList.remove('btn-primary'); b.classList.add('btn-ghost');
+  document.getElementById('clc-cargando').style.display = 'flex';
+  if (!_CL_COBRO.escuchando) {
+    _CL_COBRO.escuchando = true;
+    window.addEventListener('message', async ev => {
+      const f = document.getElementById('clc-marco');
+      if (!_CL_COBRO.abierto || !f || ev.source !== f.contentWindow || ev.origin !== location.origin) return;
+      if (!ev.data || ev.data.tipo !== 'n360_operacion_completada' || !ev.data.ventaId) return;
+      _CL_COBRO.ventaId = ev.data.ventaId;
+      const e2 = document.getElementById('clc-estado'); e2.textContent = '✅ Cobrado: ' + (ev.data.nota || 'venta registrada'); e2.classList.add('ok');
+      const b2 = document.getElementById('clc-cerrar'); b2.textContent = '✓ Listo'; b2.classList.remove('btn-ghost'); b2.classList.add('btn-primary');
+      try { if (_CL_COBRO.alTerminar) await _CL_COBRO.alTerminar(ev.data.ventaId); } catch (x) { console.warn('después del cobro:', x); }
+    });
+  }
+  m.style.display = 'flex';
+  // Se oculta el menú de Ventas lo antes posible (sin parpadeo) mientras carga.
+  clearInterval(_CL_COBRO.vigia); let n = 0;
+  _CL_COBRO.vigia = setInterval(() => { n++; try { const d = fr.contentDocument; if (d && d.location.href !== 'about:blank') _clCobroPreparar(d); } catch (_) {} if (n > 400) clearInterval(_CL_COBRO.vigia); }, 25);
+  fr.src = 'ventas.html?clinica_cobro=1';
+  return true;
+}
+function clinicaCerrarCobro() {
+  const m = document.getElementById('cl-cobro'); if (!m) return;
+  clearInterval(_CL_COBRO.vigia);
+  m.style.display = 'none';
+  document.getElementById('clc-marco').src = 'about:blank';
+  ['n360_agenda_cobro', 'n360_clinica_cobro', 'n360_receta_a_vender'].forEach(k => { try { sessionStorage.removeItem(k); } catch (_) {} });
+  const cobrado = !!_CL_COBRO.ventaId, fin = _CL_COBRO.alCerrar;
+  _CL_COBRO.abierto = false; _CL_COBRO.alTerminar = null; _CL_COBRO.alCerrar = null; _CL_COBRO.ventaId = null;
+  if (!cobrado && typeof showToast === 'function') showToast('No se cobró nada.');
+  if (typeof fin === 'function') { try { fin(cobrado); } catch (_) {} }
+}
+// Respaldo: si Ventas registró la venta pero no alcanzó a ligarla, se liga aquí, SOLO si sigue libre
+// (nunca se reemplaza otra venta). Devuelve true si quedó ligada a esta venta.
+async function clinicaLigarVenta(tabla, id, ventaId, extra = {}, condicion = null) {
+  const { data: x } = await sb.from(tabla).select('venta_id').eq('id', id).eq('auth_user_id', STATE.userId).maybeSingle();
+  if (!x) return false;
+  if (x.venta_id === ventaId) return true;
+  if (x.venta_id) {
+    const { data: v } = await sb.from('ventas').select('estado').eq('id', x.venta_id).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (v && v.estado !== 'anulada') { console.warn('clinicaLigarVenta: ya ligada a otra venta', tabla, id); return false; }
+  }
+  let q = sb.from(tabla).update({ venta_id: ventaId, ...extra }).eq('id', id).eq('auth_user_id', STATE.userId);
+  q = x.venta_id ? q.eq('venta_id', x.venta_id) : q.is('venta_id', null);
+  if (condicion) q = condicion(q);
+  const { error } = await q;
+  if (error) { console.warn('clinicaLigarVenta:', error); return false; }
+  return true;
+}
 function clinicaCSV(filas) {
   const celda = v => { let s = v == null ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   return '﻿' + filas.map(f => f.map(celda).join(',')).join('\r\n');

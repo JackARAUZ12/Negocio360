@@ -248,6 +248,8 @@ async function recetaAFarmacia(id) {
     const vendibles = filas.filter(f => f.producto_id);
     if (vendibles.length && confirm('La receta quedó en Farmacia. ¿Vender los medicamentos ahora?')) {
       sessionStorage.setItem('n360_receta_a_vender', JSON.stringify({ recetaId: fr.id, items: vendibles.map(f => ({ producto_id: f.producto_id, cantidad: f.cantidad })) }));
+      if (typeof clinicaAbrirCobro === 'function' && clinicaAbrirCobro({ titulo: 'Vender los medicamentos de la receta',
+        alCerrar: cobrado => { if (cobrado) showToast('✅ Medicamentos vendidos y registrados en Ventas.'); } })) return;
       window.location.href = 'ventas.html';
     } else showToast('Receta enviada a Farmacia · Recetas.');
   } catch (e) { if (!e.cancelado) { console.error('recetaAFarmacia:', e); showToast('No se pudo pasar a Farmacia. Intenta de nuevo.', 'error'); } }

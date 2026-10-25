@@ -365,6 +365,10 @@ async function cobrar(id) {
       await sb.from('clinica_pacientes').update({ cliente_id: clienteId }).eq('id', p.id).eq('auth_user_id', STATE.userId);
     }
     sessionStorage.setItem('n360_clinica_cobro', JSON.stringify({ tipo: 'estancia', id, clienteId, cliente: clinicaNombrePaciente(p), items: c.items }));
+    // Sin salir de la Clínica: Ventas se abre en una ventana aquí mismo.
+    if (typeof clinicaAbrirCobro === 'function' && clinicaAbrirCobro({ titulo: `Cobrar estancia · ${clinicaNombrePaciente(p)}`,
+      alTerminar: ventaId => clinicaLigarVenta('clinica_estancias', id, ventaId),
+      alCerrar: async cobrado => { if (cobrado) showToast('✅ Estancia cobrada y registrada en Ventas.'); await cargar(); } })) return;
     window.location.href = 'ventas.html';
   } catch (x) { console.error('cobrar estancia:', x); showToast('No se pudo preparar el cobro. Intenta de nuevo.', 'error'); }
 }
