@@ -25,7 +25,9 @@ const ClinicaCitas = (() => {
       .select('id, nombre, rol, activo, perfil_id, agenda_profesional_id, consultorio_id, especialidad, honorario_tipo, honorario_valor, empleado_id')
       .eq('auth_user_id', STATE.userId).order('nombre');
     if (error) throw error;
-    return (data || []).filter(m => m.perfil_id);
+    // En las cuentas reales un médico es un usuario del sistema; en las demos (sin multiusuario) basta el médico de ejemplo.
+    const demo = typeof ClinicaSesion !== 'undefined' && ClinicaSesion.esDemo ? await ClinicaSesion.esDemo() : false;
+    return (data || []).filter(m => m.perfil_id || demo);
   }
   // Citas de la Agenda entre dos fechas, ya vistas por la clínica (ver clinicaCitaDeAgenda).
   async function cargar(desde, hasta, { soloEstados } = {}) {

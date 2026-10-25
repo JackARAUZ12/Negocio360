@@ -278,9 +278,12 @@ rangos, Glasgow); regresión contra `main` idéntica.
 - `ventas.js`: cobro de estancias y facturas a aseguradoras (solo con Clínica encendida,
   mismo patrón que Veterinaria). `agenda-citas.js`: al cobrar desde la Agenda se cobra todo
   al paciente (se borra un reparto con seguro preparado antes).
-- **Cuenta demo "Clínica"** (`demo-clinica@negocio360oficial.com`, en el selector del login,
-  código de los médicos 1234), registrada en `cuentas_prueba` como demo pública, con datos de
-  ejemplo y sin ventas ni caja. Script: `supabase/migraciones/20261024_clinica_demo.sql`.
+- **Cuenta demo "Clínica"** (`demo-clinica@negocio360oficial.com`, en el selector del login),
+  registrada en `cuentas_prueba` como demo pública, con datos de ejemplo y sin ventas ni caja.
+  Script: `supabase/migraciones/20261024_clinica_demo.sql`. **Ajuste (pedido de Jack): las demos
+  no usan multiusuario** → se quitaron los usuarios de ejemplo de la demo y en cuentas demo el
+  expediente se abre eligiendo el médico, sin código (`clinica_iniciar_sesion_demo`, solo para
+  cuentas demo; `20261025_clinica_demo_sin_usuarios.sql`).
 - **Guía de uso** (`clinica/GUIA.md`) e **informe final** (`clinica/INFORME_FINAL.md`).
 - Base de datos: `supabase/migraciones/20261024_clinica_fase5.sql` (aplicada; solo agrega).
 
@@ -303,3 +306,4 @@ Clínica apagada Ventas ignora estos cobros; regresión contra `main`.
 - 2026-10-24: Ajuste pedido por Jack — sin agenda propia (se usa la Agenda) y médicos = usuarios del sistema. Probado e integrado a `main`.
 - 2026-10-24: Fase 4 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Fase 5 terminada, probada e integrada a `main`. Módulo completo; apagado por defecto. Demo "Clínica" publicada.
+- 2026-10-25: La demo "Clínica" ya no usa multiusuario: el expediente se abre eligiendo el médico (solo en cuentas demo).

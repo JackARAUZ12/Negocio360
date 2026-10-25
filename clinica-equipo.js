@@ -117,8 +117,11 @@ async function cargarUsuarios() {
   return (data || []).filter(u => u.activo !== false).map(u => ({ id: u.id, nombre: u.nombre, tipo: u.tipo, es_principal: !!u.es_principal }));
 }
 async function cargar() {
+  EQ.demo = await ClinicaSesion.esDemo();
+  let qp = sb.from('clinica_personal').select('*').eq('auth_user_id', STATE.userId);
+  if (!EQ.demo) qp = qp.not('perfil_id', 'is', null);
   const [p, k, u, pr, em] = await Promise.all([
-    sb.from('clinica_personal').select('*').eq('auth_user_id', STATE.userId).not('perfil_id', 'is', null).order('activo', { ascending: false }).order('nombre'),
+    qp.order('activo', { ascending: false }).order('nombre'),
     sb.from('clinica_consultorios').select('*').eq('auth_user_id', STATE.userId).order('activo', { ascending: false }).order('nombre'),
     cargarUsuarios().catch(e => { console.error('usuarios:', e); return []; }),
     sb.from('agenda_profesionales').select('id, nombre, activo, empleado_id').eq('auth_user_id', STATE.userId).order('orden').order('nombre'),
@@ -126,6 +129,8 @@ async function cargar() {
   ]);
   EQ.personal = p.data || []; EQ.consultorios = k.data || []; EQ.usuarios = u; EQ.profesionales = pr.data || []; EQ.empleados = em.data || [];
   pintarPersonal(); pintarConsultorios();
+  const aviso = document.getElementById('eq-demo');
+  if (aviso) aviso.style.display = EQ.demo ? '' : 'none';
 }
 
 /* ---------- Autorización de administrador ---------- */
@@ -160,7 +165,7 @@ function pintarPersonal() {
     return `<div class="cl-card" tabindex="0" role="button" onclick="abrirPersona('${p.id}')" onkeydown="if(event.key==='Enter')abrirPersona('${p.id}')" style="${p.activo ? '' : 'opacity:.6'}">
       <div class="cl-fila"><div class="cl-avatar">${esc(((u?.nombre || p.nombre) || '?').trim().charAt(0).toUpperCase())}</div>
         <div style="min-width:0"><div class="cl-nombre">${esc(u?.nombre || p.nombre)}</div>
-          <div><span class="cl-badge cl-badge-${r.clase}">${esc(r.n)}</span>${p.activo ? '' : ' <span class="cl-badge cl-badge-gris">Sin acceso clínico</span>'}${u ? '' : ' <span class="cl-badge cl-badge-rojo">El usuario ya no existe</span>'}</div>
+          <div><span class="cl-badge cl-badge-${r.clase}">${esc(r.n)}</span>${p.activo ? '' : ' <span class="cl-badge cl-badge-gris">Sin acceso clínico</span>'}${u ? '' : EQ.demo && !p.perfil_id ? ' <span class="cl-badge cl-badge-azul">Médico de ejemplo (demo)</span>' : ' <span class="cl-badge cl-badge-rojo">El usuario ya no existe</span>'}</div>
           <div class="cl-sub">${[p.especialidad, p.registro_profesional && 'Cód. ' + p.registro_profesional,
             prof(p.agenda_profesional_id) ? '📅 Agenda: ' + prof(p.agenda_profesional_id) : 'Sin columna en la Agenda',
             p.honorario_tipo === 'porcentaje' && `Honorario ${Number(p.honorario_valor)}%`, p.honorario_tipo === 'monto' && `Honorario fijo ${Number(p.honorario_valor)}`, cons(p.consultorio_id) && '🚪 ' + cons(p.consultorio_id)].filter(Boolean).map(esc).join(' · ')}</div></div></div></div>`; }).join('');

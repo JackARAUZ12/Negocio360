@@ -56,7 +56,10 @@ hospitalización, Seguros y convenios, Reportes y honorarios, Médicos y segurid
 ## 4. Cuenta demo
 
 - Login → "Probar cuenta de demostración" → **🏥 Clínica**
-  (`demo-clinica@negocio360oficial.com`). Código de los médicos: **1234**.
+  (`demo-clinica@negocio360oficial.com`). Como todas las demos, **no usa el sistema
+  multiusuario**: el expediente se abre eligiendo el médico, sin código. El servidor solo
+  permite esa entrada en cuentas demo (`clinica_iniciar_sesion_demo`); las clínicas reales
+  siempre usan el código del usuario médico.
 - Datos de ejemplo: 3 médicos (medicina general, pediatría, odontología), 5 pacientes,
   antecedentes, un seguro (80 %), citas de hoy y mañana, dos notas firmadas (una con
   odontograma) y un paciente en observación. Sin ventas ni movimientos de caja.
@@ -73,7 +76,7 @@ hospitalización, Seguros y convenios, Reportes y honorarios, Médicos y segurid
 3. **Estancias con seguro:** las estancias se cobran completas al paciente (sin reparto).
 4. **Enfermería:** las notas de estancia las escriben usuarios marcados como médicos o
    administración clínica; no hay un rol aparte de enfermería.
-5. **Fuerza del candado:** el expediente queda tan protegido como los códigos de los
+5. **Fuerza del candado (cuentas reales):** el expediente queda tan protegido como los códigos de los
    usuarios. Recomendación: códigos de 6 números y no compartirlos.
 6. Tablas de la primera versión que quedaron sin uso (vacías, no se borran):
    `clinica_citas`, `clinica_cargos`, `clinica_personal_secretos`.

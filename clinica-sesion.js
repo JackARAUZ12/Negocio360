@@ -16,7 +16,13 @@
 const ClinicaSesion = (() => {
   const CLAVE = 'n360_clinica_sesion';
   const INACTIVIDAD_MS = 15 * 60 * 1000;
-  let uid = null, alCambiar = null, ultimaActividad = Date.now(), pendiente = null;
+  let uid = null, alCambiar = null, ultimaActividad = Date.now(), pendiente = null, demo = null;
+  // Las cuentas de demostración no usan el multiusuario: ahí el expediente se abre eligiendo el médico,
+  // sin código (el servidor solo lo permite si de verdad es una cuenta demo).
+  async function esDemo() {
+    if (demo === null) { try { const { data } = await sb.rpc('soy_cuenta_demo'); demo = data === true; } catch (_) { demo = false; } }
+    return demo;
+  }
 
   // Perfil multiusuario elegido en esta pestaña: si alguien "cambia de usuario", la sesión médica
   // abierta por el perfil anterior ya no sirve (no se hereda el acceso al expediente).
@@ -65,7 +71,8 @@ const ClinicaSesion = (() => {
       <div id="cp-form">
         <div class="cl-field" id="cp-persona-wrap"><label for="cp-persona">¿Quién eres?</label><select id="cp-persona" class="cl-in"></select></div>
         <div class="cl-info" id="cp-yo" style="display:none;margin-bottom:10px"></div>
-        <div class="cl-field"><label for="cp-pin">Tu código de usuario (el mismo con el que entras al sistema)</label>
+        <div class="cl-info" id="cp-demo" style="display:none;margin-bottom:10px">🧪 Cuenta de demostración: solo elige el médico. En una clínica real, cada médico entra con su propio código de usuario.</div>
+        <div class="cl-field" id="cp-pin-wrap"><label for="cp-pin">Tu código de usuario (el mismo con el que entras al sistema)</label>
           <input type="password" id="cp-pin" class="cl-in cl-pin-in" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="••••" data-lpignore="true" data-1p-ignore="true"/></div>
       </div>
       <div id="cp-vacio" class="cl-info" style="display:none">Todavía no hay usuarios marcados como médicos. El administrador los marca en <a href="clinica-equipo.html" style="color:var(--accent)">Clínica · Médicos y seguridad</a>.</div>
@@ -84,10 +91,11 @@ const ClinicaSesion = (() => {
       const pid = document.getElementById('cp-persona').value, pin = document.getElementById('cp-pin').value.trim();
       err.textContent = '';
       if (!pid) { err.textContent = 'Elige tu nombre.'; return; }
-      if (!/^[0-9]{4,8}$/.test(pin)) { err.textContent = 'El código tiene de 4 a 6 números.'; return; }
+      if (!demo && !/^[0-9]{4,8}$/.test(pin)) { err.textContent = 'El código tiene de 4 a 6 números.'; return; }
       btn.disabled = true;
       try {
-        const { data, error } = await sb.rpc('clinica_iniciar_sesion_perfil', { p_perfil_id: pid, p_pin: pin });
+        const { data, error } = demo ? await sb.rpc('clinica_iniciar_sesion_demo', { p_personal_id: pid })
+          : await sb.rpc('clinica_iniciar_sesion_perfil', { p_perfil_id: pid, p_pin: pin });
         if (error) throw error;
         if (!data || !data.ok) { err.textContent = clinicaTextoMotivo(data); document.getElementById('cp-pin').value = ''; document.getElementById('cp-pin').focus(); return; }
         guardar(data); ultimaActividad = Date.now();
@@ -104,16 +112,21 @@ const ClinicaSesion = (() => {
     document.getElementById('cp-error').textContent = ''; document.getElementById('cp-pin').value = '';
     document.getElementById('cp-ayuda').textContent = ayuda || 'El expediente es confidencial.';
     let lista = [];
+    const enDemo = await esDemo();
     try {
-      const { data, error } = await sb.from('clinica_personal').select('id, nombre, rol, perfil_id')
-        .eq('auth_user_id', uid).eq('activo', true).in('rol', ['medico', 'admin']).not('perfil_id', 'is', null).order('nombre');
+      let q = sb.from('clinica_personal').select('id, nombre, rol, perfil_id').eq('auth_user_id', uid).eq('activo', true).in('rol', ['medico', 'admin']);
+      if (!enDemo) q = q.not('perfil_id', 'is', null);
+      const { data, error } = await q.order('nombre');
       if (error) throw error;
       lista = data || [];
     } catch (e) { console.error('ClinicaSesion.pedir:', e); }
     // Si el usuario que está usando el sistema es médico, solo se le pide su código.
-    const yo = lista.find(p => p.perfil_id === perfilActual());
-    sel.innerHTML = (yo ? '' : (lista.length > 1 ? '<option value="">— Elige tu nombre —</option>' : ''))
-      + (yo ? [yo] : lista).map(p => `<option value="${esc(p.perfil_id)}">${esc(p.nombre)}${p.rol === 'admin' ? ' (administración)' : ''}</option>`).join('');
+    const yo = enDemo ? null : lista.find(p => p.perfil_id === perfilActual());
+    const valor = p => enDemo ? p.id : p.perfil_id;
+    sel.innerHTML = (yo ? '' : (lista.length > 1 ? '<option value="">— Elige el médico —</option>' : ''))
+      + (yo ? [yo] : lista).map(p => `<option value="${esc(valor(p))}">${esc(p.nombre)}${p.rol === 'admin' ? ' (administración)' : ''}</option>`).join('');
+    document.getElementById('cp-pin-wrap').style.display = enDemo ? 'none' : '';
+    document.getElementById('cp-demo').style.display = enDemo ? '' : 'none';
     document.getElementById('cp-persona-wrap').style.display = yo ? 'none' : '';
     const caja = document.getElementById('cp-yo');
     caja.style.display = yo ? '' : 'none';
@@ -122,7 +135,7 @@ const ClinicaSesion = (() => {
     document.getElementById('cp-vacio').style.display = lista.length ? 'none' : '';
     document.getElementById('cp-ok').style.display = lista.length ? '' : 'none';
     openModal('modal-clinica-pin');
-    setTimeout(() => { (lista.length > 1 && !yo ? sel : document.getElementById('cp-pin')).focus(); }, 50);
+    setTimeout(() => { (enDemo || (lista.length > 1 && !yo) ? sel : document.getElementById('cp-pin')).focus(); }, 50);
     return new Promise(res => { pendiente = res; });
   }
 
@@ -152,5 +165,5 @@ const ClinicaSesion = (() => {
     });
   }
 
-  return { iniciar, leer, comprobar, pedir, rpc, bloquear, pintarChips };
+  return { iniciar, leer, comprobar, pedir, rpc, bloquear, pintarChips, esDemo };
 })();

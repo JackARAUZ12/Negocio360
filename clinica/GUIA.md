@@ -3,7 +3,8 @@
 Esta guía explica, paso a paso y sin palabras técnicas, cómo usar el Módulo Clínica.
 
 > **Para probarlo sin tocar tu cuenta:** en la pantalla de inicio toca
-> "Probar cuenta de demostración" → **🏥 Clínica**. El código de los médicos de la demo es **1234**.
+> "Probar cuenta de demostración" → **🏥 Clínica**. La demo no usa el sistema de usuarios:
+> para abrir un expediente solo eliges el médico (en una clínica real se pide su código).
 
 ---
 

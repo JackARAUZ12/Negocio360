@@ -858,6 +858,47 @@ async function pruebaCuadreFase5(browser, base) {
   await ctx.close();
 }
 
+// Cuenta DEMO: no usa el multiusuario. El expediente se abre eligiendo el médico, sin código.
+async function pruebaDemo(browser, base) {
+  console.log('\n▶ Cuenta demo (sin multiusuario)');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await ctx.addInitScript(() => { window.__DEMO = true; });
+    const db = semilla(); db.perfiles_acceso = []; db.clinica_personal.forEach(m => { m.perfil_id = null; });
+    db.clinica_personal[1].nombre = 'Dra. Ruiz';
+    await page.goto(base + '/clinica-pacientes.html');
+    await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db });
+    await page.reload(); await esperarListo(page); await page.waitForSelector('.cl-card');
+    await page.click('.cl-card'); await page.click('text=🔓 Entrar con mi código'); await page.waitForSelector('#modal-clinica-pin.modal-open');
+    verificar(!(await page.isVisible('#cp-pin-wrap')) && await page.isVisible('#cp-demo'), `${tag} demo: no se pide código, solo elegir el médico`);
+    const ops = await page.$$eval('#cp-persona option', os => os.map(o => o.value).filter(Boolean));
+    verificar(JSON.stringify(ops.sort()) === '["per-admin","per-med"]', `${tag} demo: aparecen los médicos de ejemplo sin usuario (${ops})`);
+    await modalesSinDesborde(page, `${tag} demo elegir médico`);
+    await page.selectOption('#cp-persona', 'per-med'); await page.click('#cp-ok');
+    await page.waitForSelector('#fi-panel-exp .cl-alerta');
+    verificar((await page.textContent('#fi-panel-exp .cl-alerta')).includes('Penicilina'), `${tag} demo: abre el expediente eligiendo el médico`);
+    // La sala ve a los médicos de ejemplo
+    await page.goto(base + '/clinica-sala.html');
+    await page.evaluate(({ UID, HOY }) => { const db = JSON.parse(sessionStorage.getItem('__DB'));
+      db.agenda_citas = [{ id: 'ag-d', auth_user_id: UID, fecha: HOY, cliente_nombre: 'Ana', estado: 'confirmada' }];
+      db.agenda_citas_servicios = [{ id: 's-d', auth_user_id: UID, cita_id: 'ag-d', profesional_id: 'prof-ruiz', servicio_nombre: 'Consulta general', precio: 500, hora_inicio: '09:00:00', duracion_min: 30, orden: 0 }];
+      sessionStorage.setItem('__DB', JSON.stringify(db)); }, { UID, HOY });
+    await page.reload(); await esperarListo(page); await page.waitForSelector('#sa-llegar .ag-card');
+    verificar((await page.textContent('#sa-llegar')).includes('Dra. Ruiz'), `${tag} demo: la sala muestra al médico de ejemplo`);
+    await page.goto(base + '/clinica-equipo.html'); await esperarListo(page); await page.waitForSelector('#eq-personal-lista .cl-card');
+    verificar(await page.isVisible('#eq-demo') && (await page.textContent('#eq-personal-lista')).includes('Médico de ejemplo (demo)'), `${tag} demo: Médicos explica que la demo no usa usuarios`);
+    verificar(page.__errores.length === 0, `${tag} demo: sin errores de JavaScript (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+  // En una cuenta real, la entrada sin código no funciona aunque se intente directamente.
+  const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+  await page.goto(base + '/clinica-pacientes.html'); await esperarListo(page);
+  const r = await page.evaluate(async () => (await sb.rpc('clinica_iniciar_sesion_demo', { p_personal_id: 'per-med' })).data);
+  verificar(r && r.ok === false && r.motivo === 'solo_demo', 'cuenta real: no se puede abrir el expediente sin código');
+  await ctx.close();
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -897,6 +938,7 @@ async function regresion(browser, base) {
     await pruebasFase5(browser, base, 1280, 900);
     await pruebasFase5(browser, base, 360, 740);
     await pruebaCuadreFase5(browser, base);
+    await pruebaDemo(browser, base);
     await pruebasEquipo(browser, base);
     await regresion(browser, base);
     await regresionVentas(browser, process.env.RAIZ_MAIN);
