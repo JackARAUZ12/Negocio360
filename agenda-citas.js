@@ -294,6 +294,8 @@
               <div><input type="text" id="ct-cliente-nombre" placeholder="Nombre del cliente"/></div>
               <div><input type="tel" id="ct-cliente-tel" placeholder="Teléfono (opcional)"/></div>
             </div>
+            <label id="ct-guardar-cliente-wrap" style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;cursor:pointer">
+              <input type="checkbox" id="ct-guardar-cliente"/> Guardar como cliente nuevo (aparece en Clientes y en las próximas citas)</label>
           </div>
           <div class="form-group">
             <label style="display:flex;align-items:center;justify-content:space-between">Servicios *
@@ -372,17 +374,68 @@
     $('ct-cliente').addEventListener('change', alCambiarCliente);
   }
 
-  function llenarClientes() {
+  // Con el Módulo de Clínica: los pacientes que todavía no son clientes también se pueden agendar
+  // (al guardar la cita se les crea su cliente y quedan ligados a su expediente).
+  const usaClinica = () => STATE.empresaConfig?.usa_modulo_clinica === true;
+  async function pacientesSinCliente() {
+    if (!usaClinica()) return [];
+    try {
+      const { data, error } = await sb.from('clinica_pacientes').select('id, nombres, apellidos, telefono, numero_expediente, cliente_id')
+        .eq('auth_user_id', STATE.userId).eq('activo', true).is('cliente_id', null).order('nombres').limit(5000);
+      if (error) throw error;
+      return data || [];
+    } catch (e) { console.warn('pacientes para la agenda:', e); return []; }
+  }
+  async function llenarClientes() {
     const sel = $('ct-cliente');
     if (sel.dataset.lleno === '1') return;
+    C.pacientes = await pacientesSinCliente();
+    const nombrePac = p => [p.nombres, p.apellidos].filter(Boolean).join(' ');
     sel.innerHTML = '<option value="">— Escribir nombre (cliente nuevo o de paso) —</option>' +
-      (STATE.clientes || []).map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+      (STATE.clientes || []).map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('') +
+      C.pacientes.map(p => `<option value="pac:${p.id}">🩺 ${esc(nombrePac(p))} (paciente${p.numero_expediente ? ' ' + esc(p.numero_expediente) : ''})</option>`).join('');
     sel.dataset.lleno = '1';
     if (window.N360SelectBuscable) N360SelectBuscable.mejorar(sel, { placeholder: 'Escribe el nombre del cliente…', incluirVacio: true, anchoCompleto: true });
   }
   function alCambiarCliente() {
     const id = $('ct-cliente').value;
     $('ct-libre-wrap').style.display = id ? 'none' : '';
+    $('ct-guardar-cliente-wrap').style.display = id ? 'none' : 'flex';
+  }
+  // Antes de guardar: si se eligió un paciente de la Clínica o se pidió guardar a la persona nueva como
+  // cliente, se crea ese cliente (y se liga al expediente). Queda elegido en la lista, así un segundo
+  // intento (p. ej. "Guardar de todas formas" por un cruce de horario) no lo vuelve a crear.
+  async function asegurarCliente() {
+    const sel = $('ct-cliente'), val = sel.value;
+    let nuevo = null, pac = null;
+    if (val.startsWith('pac:')) {
+      pac = (C.pacientes || []).find(p => p.id === val.slice(4));
+      if (!pac) throw new Error('No se encontró el paciente.');
+      const { data: actual } = await sb.from('clinica_pacientes').select('cliente_id').eq('id', pac.id).eq('auth_user_id', STATE.userId).maybeSingle();
+      if (actual?.cliente_id) { const { data: c } = await sb.from('clientes').select('id, nombre').eq('id', actual.cliente_id).eq('auth_user_id', STATE.userId).maybeSingle(); nuevo = c; }
+      if (!nuevo) nuevo = { nombre: [pac.nombres, pac.apellidos].filter(Boolean).join(' ').slice(0, 100), apellido: null, telefono: pac.telefono || null };
+    } else if (!val && $('ct-guardar-cliente').checked) {
+      const nombre = $('ct-cliente-nombre').value.trim();
+      if (!nombre) return;
+      const igual = (STATE.clientes || []).find(c => String(c.nombre || '').trim().toLowerCase() === nombre.toLowerCase());
+      if (igual) throw new Error(`Ya tienes un cliente llamado "${igual.nombre}": elígelo en la lista o quita la casilla para agendarlo solo de paso.`);
+      nuevo = { nombre: nombre.slice(0, 100), apellido: null, telefono: $('ct-cliente-tel').value.trim() || null };
+    } else return;
+    if (!nuevo.id) {
+      const { data, error } = await sb.from('clientes').insert({ auth_user_id: STATE.userId, nombre: nuevo.nombre, apellido: nuevo.apellido, telefono: nuevo.telefono }).select('id, nombre').single();
+      if (error) throw error;
+      nuevo = { ...nuevo, ...data };
+    }
+    if (pac) {
+      const { error } = await sb.from('clinica_pacientes').update({ cliente_id: nuevo.id }).eq('id', pac.id).eq('auth_user_id', STATE.userId);
+      if (error) console.warn('ligar paciente con su cliente:', error);
+      C.pacientes = C.pacientes.filter(p => p.id !== pac.id);
+      sel.querySelector(`option[value="pac:${pac.id}"]`)?.remove();
+    }
+    STATE.clientes = [...(STATE.clientes || []), { id: nuevo.id, nombre: nuevo.nombre }];
+    if (!sel.querySelector(`option[value="${nuevo.id}"]`)) sel.insertAdjacentHTML('beforeend', `<option value="${nuevo.id}">${esc(nuevo.nombre)}</option>`);
+    sel.value = nuevo.id; sel.dispatchEvent(new Event('change'));
+    if (!C.edit) C.telNuevo = nuevo.telefono || '';
   }
 
   function opcionesServicio(sel) {
@@ -449,8 +502,9 @@
   }
 
   async function nuevaCita(pre = {}) {
-    await cargarBase(); asegurarModales(); llenarClientes();
-    C.edit = null;
+    await cargarBase(); asegurarModales(); await llenarClientes();
+    C.edit = null; C.telNuevo = '';
+    $('ct-guardar-cliente').checked = usaClinica();
     $('ct-titulo').textContent = 'Nueva cita';
     $('ct-fecha').value = pre.fecha || (STATE.calVista === 'dia' ? ymdLocal(STATE.calFecha) : todayLocalISO());
     $('ct-estado').value = 'reservada';
@@ -463,7 +517,8 @@
   }
 
   async function abrirCita(id) {
-    await cargarBase(); asegurarModales(); llenarClientes();
+    await cargarBase(); asegurarModales(); await llenarClientes();
+    $('ct-guardar-cliente').checked = false; C.telNuevo = '';
     const { data: c, error } = await sb.from('agenda_citas').select('*, agenda_citas_servicios(*)').eq('id', id).eq('auth_user_id', STATE.userId).maybeSingle();
     if (error || !c) { showToast('No se encontró la cita', 'error'); return; }
     if (c.venta_id && !C.ventasEstado[c.venta_id]) {
@@ -504,13 +559,15 @@
   }
 
   function datosFormulario() {
-    const clienteId = $('ct-cliente').value || null;
+    const valor = $('ct-cliente').value || null;
+    const pac = valor && valor.startsWith('pac:') ? (C.pacientes || []).find(p => p.id === valor.slice(4)) : null;   // se vuelve cliente al guardar
+    const clienteId = pac ? null : valor;
     const cli = clienteId ? (STATE.clientes || []).find(x => x.id === clienteId) : null;
     return {
       fecha: $('ct-fecha').value,
       cliente_id: clienteId,
-      cliente_nombre: cli ? cli.nombre : $('ct-cliente-nombre').value.trim(),
-      cliente_telefono: clienteId ? (C.edit?.cliente_telefono || '') : $('ct-cliente-tel').value.trim(),
+      cliente_nombre: pac ? [pac.nombres, pac.apellidos].filter(Boolean).join(' ') : cli ? cli.nombre : $('ct-cliente-nombre').value.trim(),
+      cliente_telefono: clienteId ? (C.edit?.cliente_telefono || C.telNuevo || '') : $('ct-cliente-tel').value.trim(),
       estado: $('ct-estado').value,
       notas: $('ct-notas').value.trim(),
       creado_por: C.edit?.creado_por || perfilActivo(),
@@ -519,7 +576,7 @@
 
   async function guardar(permitirCruce) {
     const err = $('ct-error'); err.textContent = '';
-    const datos = datosFormulario();
+    let datos = datosFormulario();
     const lineas = leerLineas();
     if (!datos.fecha) { err.textContent = 'Elige la fecha.'; return; }
     if (!datos.cliente_nombre) { err.textContent = 'Elige un cliente o escribe su nombre.'; return; }
@@ -530,6 +587,10 @@
     }
     const btn = $('ct-btn-guardar'); btn.disabled = true;
     try {
+      if ($('ct-cliente').value.startsWith('pac:') || (!$('ct-cliente').value && $('ct-guardar-cliente').checked)) {
+        try { await asegurarCliente(); } catch (e) { err.textContent = e?.message || 'No se pudo guardar el cliente.'; return; }
+        datos = datosFormulario();
+      }
       const { data, error } = await sb.rpc('agenda_cita_guardar', { p_cita_id: C.edit?.id || null, p_datos: datos, p_servicios: lineas, p_permitir_cruce: !!permitirCruce });
       if (error) throw error;
       if (!data?.ok) {

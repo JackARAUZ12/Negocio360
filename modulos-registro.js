@@ -145,17 +145,21 @@
                                desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
 
     // ---- Clínica (secundario: apagado para toda cuenta hasta encender "Módulo de Clínica" en Configuración) ----
-    'clinica-pacientes.html': { key: 'clinica_pacientes', label: 'Clínica · Pacientes', icon: '🩺', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+    // El Panel es la entrada única de Clínica en el menú: las demás pantallas se abren DENTRO del panel
+    // ("enPanel"), pero conservan su propia llave para los permisos por usuario.
+    'clinica-panel.html': { key: 'clinica_panel', label: 'Clínica · Panel', icon: '🏥', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+                       desc: 'Toda la clínica en un solo lugar: el ciclo del paciente de hoy (agendar, sala, consulta, cobro y control), lo que falta preparar y lo pendiente.' },
+    'clinica-pacientes.html': { key: 'clinica_pacientes', label: 'Clínica · Pacientes', icon: '🩺', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
                        desc: 'Pacientes y expediente clínico (antecedentes, alergias, consultas firmadas): solo lo abren los médicos con su código de usuario.' },
-    'clinica-sala.html': { key: 'clinica_sala', label: 'Clínica · Sala de espera', icon: '🪑', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+    'clinica-sala.html': { key: 'clinica_sala', label: 'Clínica · Sala de espera', icon: '🪑', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
                        desc: 'Las citas de hoy de la Agenda: turnos por llegada, llamar al paciente, pantalla para la sala, recordatorios por WhatsApp y cobro.' },
-    'clinica-hospital.html': { key: 'clinica_hospital', label: 'Clínica · Observación y hospitalización', icon: '🛏️', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+    'clinica-hospital.html': { key: 'clinica_hospital', label: 'Clínica · Observación y hospitalización', icon: '🛏️', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
                        desc: 'Pacientes en observación o internados: cama, médico, notas de evolución con candado, cuenta por día y medicamentos, alta y cobro.' },
-    'clinica-seguros.html': { key: 'clinica_seguros', label: 'Clínica · Seguros y convenios', icon: '🛡️', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+    'clinica-seguros.html': { key: 'clinica_seguros', label: 'Clínica · Seguros y convenios', icon: '🛡️', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
                        desc: 'Aseguradoras y empresas con su cobertura: el paciente paga su parte y lo cubierto se factura a la aseguradora por Ventas.' },
-    'clinica-reportes.html': { key: 'clinica_reportes', label: 'Clínica · Reportes y honorarios', icon: '📊', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+    'clinica-reportes.html': { key: 'clinica_reportes', label: 'Clínica · Reportes y honorarios', icon: '📊', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
                        desc: 'Atendidos, inasistencias, ingresos por médico y servicio, diagnósticos frecuentes y honorarios pagados por Salarios.' },
-    'clinica-equipo.html': { key: 'clinica_equipo', label: 'Clínica · Médicos y seguridad', icon: '👩‍⚕️', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+    'clinica-equipo.html': { key: 'clinica_equipo', label: 'Clínica · Médicos y seguridad', icon: '👩‍⚕️', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
                        desc: 'Qué usuarios del sistema son médicos (su columna en la Agenda y honorarios), consultorios, especialidades y bitácora de accesos.' },
 
     // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
@@ -218,4 +222,10 @@
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
+  // Un panel (p. ej. Clínica) se puede abrir si el usuario tiene el panel o cualquiera de las pantallas que van dentro.
+  window.NEGOCIO360_PANEL_PERMITIDO = function (archivo, permitidos) {
+    const m = MODULOS[archivo]; if (!m || !permitidos) return false;
+    if (permitidos.has(m.key)) return true;
+    return Object.entries(MODULOS).some(([, h]) => h.enPanel === archivo && permitidos.has(h.key));
+  };
 })();

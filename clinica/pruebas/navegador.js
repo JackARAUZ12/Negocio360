@@ -28,7 +28,7 @@ function conCitas(db, lista) {
   return db;
 }
 function semilla() {
-  const vistos = ['clinica_sala', 'clinica_pacientes', 'clinica_equipo', 'clinica_reportes', 'agenda', 'ventas', 'dashboard'].map(k => ({ auth_user_id: UID, modulo_key: k }));
+  const vistos = ['clinica_panel', 'clinica_sala', 'clinica_pacientes', 'clinica_equipo', 'clinica_reportes', 'agenda', 'ventas', 'dashboard'].map(k => ({ auth_user_id: UID, modulo_key: k }));
   return {
     configuracion_empresa: [{ id: 'cfg1', auth_user_id: UID, usa_modulo_clinica: true, nombre_comercial: 'Clínica Sur', moneda: 'C$', pais: 'NI', clinica_especialidades: [], onboarding_completado: true }],
     usuarios: [{ id: 'us1', auth_user_id: UID, nombre: 'Jack', multiusuario_activo: false, estado_cuenta: 'activa' }],
@@ -902,6 +902,124 @@ async function pruebaEnVivo(browser, base, ancho, alto) {
   await ctx.close();
 }
 
+// Panel de Clínica: toda la clínica en un solo lugar; los submódulos se abren DENTRO del panel, en orden.
+async function pruebaPanel(browser, base, ancho, alto) {
+  const tag = ancho < 500 ? 'celular' : 'computadora';
+  console.log(`\n▶ Panel de Clínica en ${tag} (${ancho}px)`);
+  const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+  await page.goto(base + '/clinica-panel.html');
+  await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: semillaFase3(UID, HOY) });
+  await page.reload(); await esperarListo(page); await page.waitForSelector('#cpn-ciclo .cpn-ciclo-paso');
+  await page.waitForFunction(() => document.getElementById('cpn-preparar-lista').children.length > 0);
+  await sinDesborde(page, `${tag} panel inicio`);
+  const tabs = await page.$$eval('#cpn-tabs .cpn-tab', as => as.map(a => a.textContent.trim()));
+  verificar(JSON.stringify(tabs.map(t => t.replace(/^\S+\s/, ''))) === JSON.stringify(['Agenda', 'Sala de espera', 'Pacientes y expediente', 'Observación', 'Seguros', 'Reportes y honorarios', 'Médicos y seguridad']),
+    `${tag}: los submódulos van en orden (${tabs.join(' | ')})`);
+  const ciclo = await page.textContent('#cpn-ciclo');
+  verificar(/1\D*Agendar/.test(ciclo) && ciclo.includes('1 por llegar hoy') && ciclo.includes('1 esperando') && ciclo.includes('1 en consulta') && ciclo.includes('Control'),
+    `${tag}: el ciclo del paciente muestra los pasos y cuántos hay hoy en cada uno`);
+  const prep = await page.textContent('#cpn-preparar');
+  verificar(prep.includes('Tus médicos') && prep.includes('columna en la Agenda') && prep.includes('Servicios') && /de \d pasos listos|Lista para trabajar/.test(prep), `${tag}: lista para preparar la clínica con su avance`);
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/panel-' + tag + '.png', fullPage: true });
+  // El menú lateral muestra solo el Panel de Clínica (no cada pantalla suelta)
+  const menu = await page.$$eval('.sidebar-nav .nav-item, .sidebar-nav .sidebar-item', els => els.map(e => e.textContent.trim()));
+  verificar(menu.some(t => /^\W*Panel$/u.test(t)) && !menu.some(t => t.includes('Sala de espera') || t.includes('Médicos y seguridad')), `${tag}: el menú lateral muestra solo "Panel" en Clínica`);
+
+  // Abrir la Sala: se carga DENTRO del panel, sin el menú propio de la pantalla
+  await page.click('#cpn-tabs >> text=Sala de espera');
+  await page.waitForFunction(() => location.hash === '#sala');
+  const marco = () => page.frame({ url: /clinica-(sala|pacientes)\.html/ });
+  await page.waitForFunction(() => { try { const d = document.getElementById('cpn-marco').contentDocument; return d && d.querySelector('#sa-espera .ag-card'); } catch (_) { return false; } }, null, { timeout: 20000 });
+  const dentro = await marco().evaluate(() => ({ menu: getComputedStyle(document.getElementById('sidebar')).display, cab: getComputedStyle(document.getElementById('header')).display, ancho: document.documentElement.scrollWidth <= innerWidth + 1 }));
+  verificar(dentro.menu === 'none' && dentro.cab === 'none', `${tag}: la Sala se abre dentro del panel sin su menú ni encabezado`);
+  verificar(dentro.ancho, `${tag}: la Sala dentro del panel no se desborda`);
+  verificar(await page.isVisible('#cpn-pasos') && (await page.textContent('#cpn-pasos .cpn-paso.activo')).includes('Llega y espera'), `${tag}: arriba se ve el paso del ciclo (Llega y espera)`);
+  await page.click('.cpn-sig');
+  verificar((await page.textContent('#cpn-pasos .cpn-paso.activo')).includes('Consulta'), `${tag}: "Siguiente paso" avanza a Consulta`);
+  await sinDesborde(page, `${tag} panel con la sala`);
+  if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/panel-sala-' + tag + '.png' });
+  // Desde adentro se pasa a otra pantalla (Atender → expediente) y el panel la sigue
+  await marco().click('#sa-consulta >> text=🩺 Expediente');
+  await page.waitForFunction(() => location.hash === '#pacientes', null, { timeout: 15000 });
+  verificar((await page.textContent('#cpn-tabs .cpn-tab.activa')).includes('Pacientes'), `${tag}: al pasar al expediente, el panel marca Pacientes`);
+  verificar(page.url().includes('clinica-panel.html'), `${tag}: nunca se sale del panel`);
+  // Volver al inicio del panel, y "Atrás" regresa a la pantalla anterior
+  await page.click('#cpn-inicio');
+  await page.waitForFunction(() => document.getElementById('cpn-inicio-vista').style.display !== 'none' && !location.hash.replace('#', ''));
+  verificar(true, `${tag}: el botón 🏥 Panel regresa al inicio`);
+  await page.goBack(); await page.waitForFunction(() => location.hash === '#pacientes');
+  verificar(await page.isVisible('#cpn-marco-wrap'), `${tag}: "Atrás" regresa a la pantalla anterior dentro del panel`);
+  // Recorrido guiado
+  await page.click('#cpn-inicio'); await page.click('text=▶ Ver recorrido'); await page.waitForSelector('#tm-card', { state: 'visible' });
+  verificar((await page.textContent('#tm-titulo')).includes('Panel de Clínica'), `${tag}: el recorrido guiado explica el panel`);
+  await page.click('#tm-btn-saltar').catch(() => {});
+  verificar(page.__errores.length === 0, `${tag} panel: sin errores de JavaScript (${page.__errores.join(' | ')})`);
+  await ctx.close();
+
+  // Usuario con permisos limitados: solo ve en el panel lo que le dieron
+  const u = await nuevaPagina(browser, base, ancho, alto);
+  await u.page.goto(base + '/clinica-panel.html');
+  await u.page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('n360_perfil_activo', JSON.stringify({ id: 'perf-caja', nombre: 'Cajera', tipo: 'restringido', modulos: ['clinica_sala'] })); }, { db: semillaFase3(UID, HOY) });
+  await u.page.reload(); await esperarListo(u.page); await u.page.waitForSelector('#cpn-tabs .cpn-tab');
+  const t2 = await u.page.$$eval('#cpn-tabs .cpn-tab', as => as.map(a => a.dataset.sub));
+  verificar(JSON.stringify(t2) === '["sala"]' && u.page.url().includes('clinica-panel.html'), `${tag}: un usuario con solo "Sala" entra al panel y solo ve la Sala (${t2})`);
+  await u.ctx.close();
+}
+
+// Agenda: se puede agendar a un paciente de la Clínica (aunque no sea cliente) o a una persona nueva.
+async function pruebaAgendaPacientes(browser, base) {
+  console.log('\n▶ Agenda con pacientes de la Clínica y personas nuevas');
+  const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+  await page.goto(base + '/agenda.html');
+  await page.evaluate(({ db }) => { db.clinica_pacientes.push({ id: 'pac-nuevo', auth_user_id: db.configuracion_empresa[0].auth_user_id, nombres: 'Rosa', apellidos: 'Díaz', telefono: '88883333', numero_expediente: 'EXP-000009', activo: true, cliente_id: null });
+    db.clinica_pacientes[0].cliente_id = 'cli-1';   // este ya es cliente: no se repite
+    sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semilla() });
+  await page.reload(); await esperarListo(page);
+  await page.waitForFunction(() => window.N360Citas && STATE.empresaConfig && STATE.empresaConfig.usa_modulo_clinica === true, null, { timeout: 15000 });
+  const llenarLinea = () => page.evaluate(() => { const f = document.querySelector('#ct-lineas .ac-linea-form'); f.querySelector('.lc-serv').value = 'prod-consulta'; f.querySelector('.lc-serv').dispatchEvent(new Event('change', { bubbles: true }));
+    f.querySelector('.lc-prof').value = 'prof-ruiz'; f.querySelector('.lc-hora').value = '10:00'; f.querySelector('.lc-min').value = '30'; });
+  await page.evaluate(() => N360Citas.nuevaCita()); await page.waitForSelector('#modal-cita.modal-open');
+  const ops = await page.$$eval('#ct-cliente option', os => os.map(o => ({ v: o.value, t: o.textContent })));
+  verificar(ops.some(o => o.v === 'pac:pac-nuevo' && o.t.includes('Rosa Díaz') && o.t.includes('paciente')), 'Agenda: los pacientes de la Clínica que no son clientes aparecen en la lista');
+  verificar(!ops.some(o => o.v === 'pac:pac-xss'), 'Agenda: no se repite un paciente que ya es cliente');
+  verificar(await page.isChecked('#ct-guardar-cliente'), 'Agenda (con Clínica): "Guardar como cliente nuevo" viene marcado');
+  await page.evaluate(() => { const s = document.getElementById('ct-cliente'); s.value = 'pac:pac-nuevo'; s.dispatchEvent(new Event('change', { bubbles: true })); });
+  await llenarLinea(); await page.click('#ct-btn-guardar'); await page.waitForSelector('#modal-cita.modal-open', { state: 'hidden', timeout: 15000 });
+  let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+  const cli = (db.clientes || []).find(c => c.nombre === 'Rosa Díaz');
+  const pac = db.clinica_pacientes.find(p => p.id === 'pac-nuevo');
+  const cita = (db.agenda_citas || []).find(c => c.cliente_nombre === 'Rosa Díaz');
+  verificar(cli && cli.telefono === '88883333' && pac.cliente_id === cli.id, 'Agenda: al agendar al paciente se le crea su cliente y queda ligado a su expediente');
+  verificar(cita && cita.cliente_id === cli.id && cita.cliente_telefono === '88883333', 'Agenda: la cita queda a nombre del paciente (con su cliente y teléfono)');
+  // Persona nueva, guardada como cliente
+  await page.evaluate(() => N360Citas.nuevaCita()); await page.waitForSelector('#modal-cita.modal-open');
+  verificar(!(await page.$$eval('#ct-cliente option', os => os.map(o => o.value))).includes('pac:pac-nuevo'), 'Agenda: el paciente ya ligado sale una sola vez (como cliente)');
+  await page.fill('#ct-cliente-nombre', 'Mario Nuevo'); await page.fill('#ct-cliente-tel', '88884444');
+  await llenarLinea(); await page.click('#ct-btn-guardar'); await page.waitForSelector('#modal-cita.modal-open', { state: 'hidden', timeout: 15000 });
+  db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+  const mario = (db.clientes || []).find(c => c.nombre === 'Mario Nuevo');
+  verificar(mario && mario.telefono === '88884444' && (db.agenda_citas || []).some(c => c.cliente_id === mario.id), 'Agenda: una persona nueva queda guardada como cliente y con su cita');
+  // Mismo nombre que un cliente que ya existe: avisa en vez de duplicarlo
+  await page.evaluate(() => N360Citas.nuevaCita()); await page.waitForSelector('#modal-cita.modal-open');
+  await page.fill('#ct-cliente-nombre', 'mario nuevo'); await llenarLinea(); await page.click('#ct-btn-guardar');
+  await page.waitForFunction(() => document.getElementById('ct-error').textContent.length > 0);
+  verificar((await page.textContent('#ct-error')).includes('Ya tienes un cliente'), 'Agenda: no duplica un cliente con el mismo nombre');
+  // De paso (sin guardar como cliente): igual que siempre
+  await page.click('#ct-guardar-cliente'); await page.click('#ct-btn-guardar'); await page.waitForSelector('#modal-cita.modal-open', { state: 'hidden', timeout: 15000 });
+  db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+  verificar(db.clientes.filter(c => /mario nuevo/i.test(c.nombre)).length === 1 && db.agenda_citas.some(c => c.cliente_nombre === 'mario nuevo' && !c.cliente_id), 'Agenda: "de paso" sigue funcionando sin crear cliente');
+  verificar(page.__errores.length === 0, `Agenda: sin errores de JavaScript (${page.__errores.join(' | ')})`);
+  await ctx.close();
+  // Sin Clínica: la Agenda queda como antes (no aparecen pacientes y la casilla viene sin marcar)
+  const n = await nuevaPagina(browser, base, 1280, 900);
+  await n.page.goto(base + '/agenda.html');
+  await n.page.evaluate(({ db }) => { db.configuracion_empresa[0].usa_modulo_clinica = false; db.clinica_pacientes[0].cliente_id = null; sessionStorage.setItem('__DB', JSON.stringify(db)); }, { db: semilla() });
+  await n.page.reload(); await esperarListo(n.page); await n.page.waitForFunction(() => window.N360Citas && STATE.empresaConfig && STATE.empresaConfig.usa_modulo_clinica === false, null, { timeout: 15000 });
+  await n.page.evaluate(() => N360Citas.nuevaCita()); await n.page.waitForSelector('#modal-cita.modal-open');
+  verificar(!(await n.page.isChecked('#ct-guardar-cliente')) && !(await n.page.$$eval('#ct-cliente option', os => os.some(o => o.value.startsWith('pac:')))), 'Agenda sin Clínica: igual que antes (sin pacientes, casilla sin marcar)');
+  await n.ctx.close();
+}
+
 // Cuenta DEMO: no usa el multiusuario. El expediente se abre eligiendo el médico, sin código.
 async function pruebaDemo(browser, base) {
   console.log('\n▶ Cuenta demo (sin multiusuario)');
@@ -962,7 +1080,8 @@ async function regresion(browser, base) {
   const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
   await page.goto(base + '/clientes.html'); await page.waitForTimeout(2500);
   const enlaces = await page.$$eval('.sidebar-nav a, .sidebar-nav .nav-item', els => els.map(e => e.textContent.trim()));
-  verificar(enlaces.some(t => t.includes('Pacientes')) && enlaces.some(t => t.includes('Médicos y seguridad')) && !enlaces.some(t => t.includes('Clínica · Agenda')), 'con Clínica encendida su sección aparece en el menú (sin agenda propia: se usa la Agenda)');
+  verificar(enlaces.some(t => /Panel$/.test(t)) && !enlaces.some(t => t.includes('Sala de espera') || t.includes('Médicos y seguridad') || t.includes('Clínica · Agenda')),
+    'con Clínica encendida su sección aparece en el menú como un solo "Panel" (las pantallas van dentro del panel)');
   await ctx.close();
 }
 
@@ -970,6 +1089,7 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
+    if (process.env.SOLO_PANEL) { await pruebaPanel(browser, base, 1280, 900); await pruebaPanel(browser, base, 360, 740); await pruebaAgendaPacientes(browser, base); throw 'fin'; }
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 1280, 900);
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 360, 740);
     await pruebaCuadre(browser, base);
@@ -985,6 +1105,9 @@ async function regresion(browser, base) {
     await pruebaDemo(browser, base);
     await pruebaEnVivo(browser, base, 1280, 900);
     await pruebaEnVivo(browser, base, 360, 740);
+    await pruebaPanel(browser, base, 1280, 900);
+    await pruebaPanel(browser, base, 360, 740);
+    await pruebaAgendaPacientes(browser, base);
     await pruebasEquipo(browser, base);
     await regresion(browser, base);
     await regresionVentas(browser, process.env.RAIZ_MAIN);

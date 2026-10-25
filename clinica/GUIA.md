@@ -8,6 +8,23 @@ Esta guía explica, paso a paso y sin palabras técnicas, cómo usar el Módulo 
 
 ---
 
+## 0. El Panel de Clínica (todo en un solo lugar)
+
+En el menú, la sección **Clínica** tiene una sola entrada: **🏥 Panel**. Ahí está todo:
+
+- **Arriba**, todas las partes en orden: Agenda → Sala de espera → Pacientes y expediente →
+  Observación | Seguros → Reportes y honorarios | Médicos y seguridad. Cada una se abre
+  **dentro del panel**; el botón **🏥 Panel** siempre te regresa al inicio.
+- **El ciclo de cada paciente, hoy**: 1 Agendar → 2 Llega y espera → 3 Consulta →
+  4 Cobrar → 5 Control (y vuelve a empezar). Cada paso dice cuántos pacientes hay ahí y
+  se puede tocar. Dentro de cada pantalla verás en qué paso vas y **"Siguiente paso →"**.
+- **🧰 Prepara tu clínica**: la lista de lo que falta para empezar (médicos, su columna en
+  la Agenda, servicios con precio…), cada uno con su botón. Se marca ✅ solo.
+- **📌 Pendientes**: visitas sin cobrar, pacientes en observación, quién espera.
+- **▶ Ver recorrido**: una explicación paso a paso (sale sola la primera vez).
+
+Un usuario con permisos limitados solo ve en el panel las partes que le diste.
+
 ## 1. Encenderlo (una sola vez)
 
 1. Entra a **Configuración** → tarjeta **🏥 Módulo de Clínica** → actívalo.
@@ -29,8 +46,15 @@ Los demás usuarios (caja, recepción) **no pueden ver** notas clínicas.
 
 ## 3. Las citas: en la Agenda de siempre
 
-Las citas se hacen en la **Agenda** del sistema, en la columna del médico, con el
-paciente como cliente. La clínica no tiene una agenda aparte.
+Las citas se hacen en la **Agenda** del sistema (también desde el Panel), en la columna
+del médico. En "Cliente" puedes elegir:
+
+- un **cliente** que ya existe,
+- un **🩺 paciente** de la clínica aunque todavía no sea cliente (al guardar la cita se le
+  crea su cliente y queda ligado a su expediente), o
+- escribir una **persona nueva**: con la casilla **"Guardar como cliente nuevo"** queda
+  guardada para las próximas veces (si ya hay un cliente con ese nombre, te avisa para no
+  repetirlo). Sin la casilla, queda solo "de paso", como antes.
 
 ## 4. El día a día: Sala de espera
 

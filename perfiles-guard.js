@@ -906,7 +906,8 @@
     if (perfil.tipo === 'admin') return;
     const file = currentFile();
     const mod  = MODULOS[file];
-    if (mod && mod.key !== 'chat' && !(perfil.modulos || []).includes(mod.key)) {
+    const panelOk = window.NEGOCIO360_PANEL_PERMITIDO && window.NEGOCIO360_PANEL_PERMITIDO(file, new Set(perfil.modulos || []));
+    if (mod && mod.key !== 'chat' && !(perfil.modulos || []).includes(mod.key) && !panelOk) {
       location.href = primerModuloPermitido(perfil);
     }
   }
@@ -947,7 +948,8 @@
       const mod  = MODULOS[file];
       const soloAdmin = (window.NEGOCIO360_MODULOS || {})[file]?.soloAdmin === true;
       if (!mod && !soloAdmin) return; // páginas no controladas (login, etc.) se dejan intactas
-      if (soloAdmin || !permitidos.has(mod.key)) { // Configuración y Auditoría son solo del administrador
+      const panelOk = window.NEGOCIO360_PANEL_PERMITIDO && window.NEGOCIO360_PANEL_PERMITIDO(file, permitidos);
+      if (soloAdmin || (!permitidos.has(mod.key) && !panelOk)) { // Configuración y Auditoría son solo del administrador
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
         item.classList.add('mg-oculto-modulo'); // el buscador del sidebar nunca lo vuelve a mostrar

@@ -15,7 +15,7 @@ para todas las cuentas y se enciende en Configuración. Hay una cuenta demo púb
 | 4 — Especialidades | Plantilla propia de las 16 especialidades con cálculos automáticos (edad gestacional, Glasgow, PHQ-9/GAD-7, cintura, HbA1c, IPSS…) y **odontograma**. |
 | 5 — Crecimiento | **Observación y hospitalización** (ingreso, notas y signos con candado, cuenta por día, alta y cobro), **seguros y convenios** (el paciente paga su parte y lo cubierto se factura a la aseguradora por Ventas), **cuenta demo "Clínica"**, guía de uso (`GUIA.md`) y este informe. |
 
-Pantallas (solo con el módulo encendido): Pacientes, Sala de espera, Observación y
+Entrada única: **🏥 Panel de Clínica** (todo se abre dentro del panel, en el orden del ciclo del paciente). Pantallas (solo con el módulo encendido): Pacientes, Sala de espera, Observación y
 hospitalización, Seguros y convenios, Reportes y honorarios, Médicos y seguridad.
 
 ## 2. Cómo se protegió el sistema existente
