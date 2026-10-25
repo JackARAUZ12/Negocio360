@@ -26,6 +26,12 @@ function applyTheme(theme) {
   if (sun)  sun.style.display  = theme === 'dark'  ? 'block' : 'none';
   if (moon) moon.style.display = theme === 'light' ? 'block' : 'none';
 }
+// La pantalla abierta dentro del panel cambia de tema junto con el panel.
+const _applyThemePanel = applyTheme;
+applyTheme = function (theme) {
+  _applyThemePanel(theme);
+  try { const w = document.getElementById('cpn-marco')?.contentWindow; if (w && typeof w.applyTheme === 'function') w.applyTheme(theme); else w?.document?.documentElement?.setAttribute('data-theme', theme); } catch (_) {}
+};
 function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
 function isMobileViewport() { return window.innerWidth <= 860; }
 function toggleSidebar() {

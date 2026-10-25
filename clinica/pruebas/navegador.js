@@ -937,6 +937,11 @@ async function pruebaPanel(browser, base, ancho, alto) {
   await page.click('.cpn-sig');
   verificar((await page.textContent('#cpn-pasos .cpn-paso.activo')).includes('Consulta'), `${tag}: "Siguiente paso" avanza a Consulta`);
   await sinDesborde(page, `${tag} panel con la sala`);
+  await page.evaluate(() => toggleTheme());
+  const temas = await page.evaluate(() => [document.documentElement.dataset.theme, document.getElementById('cpn-marco').contentDocument.documentElement.dataset.theme,
+    getComputedStyle(document.getElementById('cpn-marco').contentDocument.querySelector('.ag-card')).backgroundColor]);
+  verificar(temas[0] === 'dark' && temas[1] === 'dark' && temas[2] !== 'rgb(255, 255, 255)', `${tag}: al cambiar a tema oscuro, la pantalla de adentro también cambia y sus cuadros no quedan blancos (${temas})`);
+  await page.evaluate(() => toggleTheme());
   if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/panel-sala-' + tag + '.png' });
   // Desde adentro se pasa a otra pantalla (Atender → expediente) y el panel la sigue
   await marco().click('#sa-consulta >> text=🩺 Expediente');
