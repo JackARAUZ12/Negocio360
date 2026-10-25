@@ -983,7 +983,10 @@ async function pruebaAgendaPacientes(browser, base) {
   await page.waitForFunction(() => window.N360Citas && STATE.empresaConfig && STATE.empresaConfig.usa_modulo_clinica === true, null, { timeout: 15000 });
   const llenarLinea = () => page.evaluate(() => { const f = document.querySelector('#ct-lineas .ac-linea-form'); f.querySelector('.lc-serv').value = 'prod-consulta'; f.querySelector('.lc-serv').dispatchEvent(new Event('change', { bubbles: true }));
     f.querySelector('.lc-prof').value = 'prof-ruiz'; f.querySelector('.lc-hora').value = '10:00'; f.querySelector('.lc-min').value = '30'; });
+  const escribir = async t => { await page.fill('#modal-cita .sb-input', t); await page.click('#ct-notas'); await page.waitForTimeout(250); };
   await page.evaluate(() => N360Citas.nuevaCita()); await page.waitForSelector('#modal-cita.modal-open');
+  const cajas = await page.$$eval('#modal-cita input[type=text]', els => els.filter(e => e.offsetParent !== null && !e.closest('#ct-lineas')).map(e => e.placeholder));
+  verificar(cajas.length === 1 && /persona nueva/.test(cajas[0]), `Agenda: un solo campo para buscar o escribir el nombre (${cajas.join(' | ')})`);
   const ops = await page.$$eval('#ct-cliente option', os => os.map(o => ({ v: o.value, t: o.textContent })));
   verificar(ops.some(o => o.v === 'pac:pac-nuevo' && o.t.includes('Rosa Díaz') && o.t.includes('paciente')), 'Agenda: los pacientes de la Clínica que no son clientes aparecen en la lista');
   verificar(!ops.some(o => o.v === 'pac:pac-xss'), 'Agenda: no se repite un paciente que ya es cliente');
@@ -999,20 +1002,29 @@ async function pruebaAgendaPacientes(browser, base) {
   // Persona nueva, guardada como cliente
   await page.evaluate(() => N360Citas.nuevaCita()); await page.waitForSelector('#modal-cita.modal-open');
   verificar(!(await page.$$eval('#ct-cliente option', os => os.map(o => o.value))).includes('pac:pac-nuevo'), 'Agenda: el paciente ya ligado sale una sola vez (como cliente)');
-  await page.fill('#ct-cliente-nombre', 'Mario Nuevo'); await page.fill('#ct-cliente-tel', '88884444');
+  await page.fill('#modal-cita .sb-input', 'Mario Nuevo'); await page.waitForSelector('.sb-lista .sb-libre');
+  verificar((await page.textContent('.sb-lista .sb-libre')).includes('Persona nueva: «Mario Nuevo»'), 'Agenda: la lista ofrece "➕ Persona nueva" con lo escrito');
+  await page.click('#ct-notas'); await page.waitForTimeout(250);
+  verificar(await page.inputValue('#modal-cita .sb-input') === 'Mario Nuevo' && await page.isVisible('#ct-cliente-tel'), 'Agenda: el nombre escrito no se borra al salir del campo y pide el teléfono');
+  await page.fill('#ct-cliente-tel', '88884444');
   await llenarLinea(); await page.click('#ct-btn-guardar'); await page.waitForSelector('#modal-cita.modal-open', { state: 'hidden', timeout: 15000 });
   db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
   const mario = (db.clientes || []).find(c => c.nombre === 'Mario Nuevo');
   verificar(mario && mario.telefono === '88884444' && (db.agenda_citas || []).some(c => c.cliente_id === mario.id), 'Agenda: una persona nueva queda guardada como cliente y con su cita');
   // Mismo nombre que un cliente que ya existe: avisa en vez de duplicarlo
   await page.evaluate(() => N360Citas.nuevaCita()); await page.waitForSelector('#modal-cita.modal-open');
-  await page.fill('#ct-cliente-nombre', 'mario nuevo'); await llenarLinea(); await page.click('#ct-btn-guardar');
+  await escribir('mario nuevo'); await llenarLinea(); await page.click('#ct-btn-guardar');
   await page.waitForFunction(() => document.getElementById('ct-error').textContent.length > 0);
   verificar((await page.textContent('#ct-error')).includes('Ya tienes un cliente'), 'Agenda: no duplica un cliente con el mismo nombre');
   // De paso (sin guardar como cliente): igual que siempre
   await page.click('#ct-guardar-cliente'); await page.click('#ct-btn-guardar'); await page.waitForSelector('#modal-cita.modal-open', { state: 'hidden', timeout: 15000 });
   db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
   verificar(db.clientes.filter(c => /mario nuevo/i.test(c.nombre)).length === 1 && db.agenda_citas.some(c => c.cliente_nombre === 'mario nuevo' && !c.cliente_id), 'Agenda: "de paso" sigue funcionando sin crear cliente');
+  // Escribir parte del nombre y elegirlo de la lista: queda el cliente existente (sin pedir teléfono)
+  await page.evaluate(() => N360Citas.nuevaCita()); await page.waitForSelector('#modal-cita.modal-open');
+  await page.fill('#modal-cita .sb-input', 'Mario'); await page.click('.sb-lista .sb-op:not(.sb-libre) >> text=Mario Nuevo');
+  verificar(await page.$eval('#ct-cliente', s => s.value) === mario.id && !(await page.isVisible('#ct-cliente-tel')), 'Agenda: al elegir un cliente de la lista queda elegido (sin campos de persona nueva)');
+  await page.evaluate(() => closeModal('modal-cita'));
   verificar(page.__errores.length === 0, `Agenda: sin errores de JavaScript (${page.__errores.join(' | ')})`);
   await ctx.close();
   // Sin Clínica: la Agenda queda como antes (no aparecen pacientes y la casilla viene sin marcar)

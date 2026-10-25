@@ -291,11 +291,11 @@
             <label>Cliente *</label>
             <select id="ct-cliente"><option value="">— Escribir nombre (cliente nuevo o de paso) —</option></select>
             <div class="form-row" id="ct-libre-wrap" style="margin-top:6px">
-              <div><input type="text" id="ct-cliente-nombre" placeholder="Nombre del cliente"/></div>
+              <div id="ct-nombre-wrap"><input type="text" id="ct-cliente-nombre" placeholder="Nombre del cliente"/></div>
               <div><input type="tel" id="ct-cliente-tel" placeholder="Teléfono (opcional)"/></div>
             </div>
             <label id="ct-guardar-cliente-wrap" style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;cursor:pointer">
-              <input type="checkbox" id="ct-guardar-cliente"/> Guardar como cliente nuevo (aparece en Clientes y en las próximas citas)</label>
+              <input type="checkbox" id="ct-guardar-cliente" style="width:18px;height:18px;flex:none;margin:0"/> <span style="flex:1;min-width:0">Guardar como cliente nuevo (aparece en Clientes y en las próximas citas)</span></label>
           </div>
           <div class="form-group">
             <label style="display:flex;align-items:center;justify-content:space-between">Servicios *
@@ -395,8 +395,15 @@
       (STATE.clientes || []).map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('') +
       C.pacientes.map(p => `<option value="pac:${p.id}">🩺 ${esc(nombrePac(p))} (paciente${p.numero_expediente ? ' ' + esc(p.numero_expediente) : ''})</option>`).join('');
     sel.dataset.lleno = '1';
-    if (window.N360SelectBuscable) N360SelectBuscable.mejorar(sel, { placeholder: 'Escribe el nombre del cliente…', incluirVacio: true, anchoCompleto: true });
+    // Un solo campo: se busca el cliente (o paciente) y, si no está, lo escrito queda como persona nueva.
+    if (window.N360SelectBuscable) {
+      N360SelectBuscable.mejorar(sel, { placeholder: 'Busca el cliente o escribe el nombre de una persona nueva…', anchoCompleto: true,
+        textoLibre: { leer: () => $('ct-cliente-nombre').value, escribir: t => { $('ct-cliente-nombre').value = t; } } });
+      $('ct-nombre-wrap').style.display = 'none'; $('ct-libre-wrap').style.gridTemplateColumns = '1fr';
+    }
   }
+  // Vuelve a mostrar en el buscador el cliente elegido o el nombre escrito.
+  function refrescarBuscador() { const s = $('ct-cliente'); s.value = s.value; }
   function alCambiarCliente() {
     const id = $('ct-cliente').value;
     $('ct-libre-wrap').style.display = id ? 'none' : '';
@@ -509,7 +516,7 @@
     $('ct-fecha').value = pre.fecha || (STATE.calVista === 'dia' ? ymdLocal(STATE.calFecha) : todayLocalISO());
     $('ct-estado').value = 'reservada';
     $('ct-cliente').value = ''; alCambiarCliente();
-    $('ct-cliente-nombre').value = ''; $('ct-cliente-tel').value = '';
+    $('ct-cliente-nombre').value = ''; $('ct-cliente-tel').value = ''; refrescarBuscador();
     $('ct-notas').value = '';
     $('ct-lineas').innerHTML = lineaHTML({ hora_inicio: pre.hora || C.config.hora_inicio, duracion_min: 60, precio: 0, profesional_id: pre.profesional_id || '' }, 0, false);
     prepararModal(false);
@@ -532,7 +539,7 @@
     $('ct-fecha').value = c.fecha;
     $('ct-estado').value = c.estado;
     $('ct-cliente').value = c.cliente_id || ''; alCambiarCliente();
-    $('ct-cliente-nombre').value = c.cliente_id ? '' : c.cliente_nombre;
+    $('ct-cliente-nombre').value = c.cliente_id ? '' : c.cliente_nombre; refrescarBuscador();
     $('ct-cliente-tel').value = c.cliente_telefono || '';
     $('ct-notas').value = c.notas || '';
     $('ct-lineas').innerHTML = lin.map((l, i) => lineaHTML(l, i, cobrada)).join('');
@@ -547,6 +554,7 @@
     $('ct-btn-cobrar').style.display = existe && !cobrada && c?.estado !== 'cancelada' ? '' : 'none';
     $('ct-btn-agregar').style.display = cobrada ? 'none' : '';
     ['ct-fecha', 'ct-cliente', 'ct-cliente-nombre', 'ct-cliente-tel'].forEach(id => { $(id).disabled = !!cobrada; });
+    const buscador = $('ct-cliente').parentElement.querySelector('.sb-input'); if (buscador) buscador.disabled = !!cobrada;
     const nota = $('ct-pagada');
     if (existe && c?.venta_id) {
       const num = C.ventasEstado['n_' + c.venta_id] || '';

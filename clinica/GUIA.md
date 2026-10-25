@@ -52,7 +52,7 @@ del médico. En "Cliente" puedes elegir:
 - un **cliente** que ya existe,
 - un **🩺 paciente** de la clínica aunque todavía no sea cliente (al guardar la cita se le
   crea su cliente y queda ligado a su expediente), o
-- escribir una **persona nueva**: con la casilla **"Guardar como cliente nuevo"** queda
+- escribir el nombre de una **persona nueva** en el mismo campo (la lista ofrece "➕ Persona nueva"): con la casilla **"Guardar como cliente nuevo"** queda
   guardada para las próximas veces (si ya hay un cliente con ese nombre, te avisa para no
   repetirlo). Sin la casilla, queda solo "de paso", como antes.
 
