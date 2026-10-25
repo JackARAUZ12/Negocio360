@@ -858,6 +858,50 @@ async function pruebaCuadreFase5(browser, base) {
   await ctx.close();
 }
 
+// En vivo: al oprimir "Llamar" en un equipo, la pantalla de la sala en OTRO equipo lo muestra al instante,
+// suena y resalta a la persona (sin esperar la actualización de respaldo de 15 s).
+async function pruebaEnVivo(browser, base, ancho, alto) {
+  const tag = ancho < 500 ? 'celular' : 'computadora';
+  console.log(`\n▶ Sala en vivo, pantalla en ${tag} (${ancho}px)`);
+  const { ctx, page: rec } = await nuevaPagina(browser, base, 1280, 900);
+  const tv = await ctx.newPage(); tv.__errores = []; tv.on('pageerror', e => tv.__errores.push(String(e)));
+  await tv.setViewportSize({ width: ancho, height: alto });
+  const db = semillaFase3(UID, HOY); (db.clinica_cita_info || []).forEach(i => { i.llamado_en = null; });
+  for (const [p, url] of [[rec, '/clinica-sala.html'], [tv, '/clinica-sala.html?pantalla=1']]) {
+    await p.goto(base + url); await p.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db });
+    await p.reload(); await esperarListo(p); await p.waitForSelector('#sa-espera .ag-card');
+  }
+  await tv.waitForSelector('#sa-pantalla[style*="flex"]');
+  await tv.waitForFunction(() => document.getElementById('sp-envivo').classList.contains('on'));
+  verificar(true, `${tag}: la pantalla indica "En vivo"`);
+  verificar((await tv.textContent('#sp-llamado')).includes('Espere a ser llamado'), `${tag}: la pantalla empieza sin nadie llamado`);
+  await tv.evaluate(() => { window.__sonidos = 0; const o = window.sonar; window.sonar = () => { window.__sonidos++; o(); }; });
+  const t0 = Date.now();
+  await rec.locator('#sa-espera .ag-card', { hasText: 'Ana María' }).locator('text=📢 Llamar').click();
+  await tv.waitForFunction(() => document.getElementById('sp-llamado').textContent.includes('Ana C.'), null, { timeout: 5000 });
+  const ms = Date.now() - t0;
+  verificar(ms < 5000, `${tag}: la otra pantalla muestra el llamado al instante (${ms} ms, sin esperar los 15 s)`);
+  const st = await tv.evaluate(() => ({ son: window.__sonidos, alerta: document.getElementById('sp-llamado').classList.contains('sp-alerta'),
+    lista: document.querySelector('#sp-lista .sp-item-llamado')?.textContent || '', texto: document.getElementById('sa-pantalla').textContent }));
+  verificar(st.son === 1, `${tag}: suena una vez al llamar (${st.son})`);
+  verificar(st.alerta && st.lista.includes('Ana C.'), `${tag}: se resalta a la persona llamada en la pantalla y en la lista`);
+  verificar(!st.texto.includes('Castillo'), `${tag}: la pantalla sigue mostrando solo nombre e inicial`);
+  await sinDesborde(tv, `${tag} pantalla en vivo`);
+  if (process.env.FOTOS) await tv.screenshot({ path: process.env.FOTOS + '/pantalla-envivo-' + tag + '.png' });
+  verificar(await rec.locator('#sa-espera .ag-card.sa-llamando', { hasText: 'Ana María' }).count() === 1, `${tag}: en la sala del personal también se resalta al llamado`);
+  // Otro llamado (volver a llamar) vuelve a sonar; recargar la pantalla no repite el sonido de lo ya llamado.
+  await rec.waitForTimeout(1100);
+  await rec.locator('#sa-espera .ag-card', { hasText: 'Ana María' }).locator('text=📢 Llamar').click();
+  await tv.waitForFunction(() => window.__sonidos === 2, null, { timeout: 5000 }).catch(() => {});
+  verificar(await tv.evaluate(() => window.__sonidos) === 2, `${tag}: volver a llamar suena otra vez`);
+  // El aviso entre equipos no lleva datos del paciente.
+  const avisos = await rec.evaluate(() => JSON.parse(sessionStorage.getItem('__LOG') || '[]').filter(l => l.op === 'aviso'));
+  verificar(avisos.length >= 2 && avisos.every(a => JSON.stringify(a.datos) === '{}' && a.tabla === 'clinica-sala-' + UID),
+    `${tag}: el aviso en vivo no lleva datos del paciente (${avisos.length} avisos)`);
+  verificar(rec.__errores.length === 0 && tv.__errores.length === 0, `${tag} en vivo: sin errores de JavaScript (${[...rec.__errores, ...tv.__errores].join(' | ')})`);
+  await ctx.close();
+}
+
 // Cuenta DEMO: no usa el multiusuario. El expediente se abre eligiendo el médico, sin código.
 async function pruebaDemo(browser, base) {
   console.log('\n▶ Cuenta demo (sin multiusuario)');
@@ -939,6 +983,8 @@ async function regresion(browser, base) {
     await pruebasFase5(browser, base, 360, 740);
     await pruebaCuadreFase5(browser, base);
     await pruebaDemo(browser, base);
+    await pruebaEnVivo(browser, base, 1280, 900);
+    await pruebaEnVivo(browser, base, 360, 740);
     await pruebasEquipo(browser, base);
     await regresion(browser, base);
     await regresionVentas(browser, process.env.RAIZ_MAIN);

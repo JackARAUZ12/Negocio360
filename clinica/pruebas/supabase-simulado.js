@@ -271,7 +271,18 @@
       },
       storage: { from: bucket => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: '' } }), createSignedUrl: async () => ({ data: null, error: null }),
         uploadToSignedUrl: async (ruta, tok, archivo) => { const l = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); l[bucket + '/' + ruta] = { tok, tamano: archivo.size, tipo: archivo.type }; sessionStorage.setItem('__ALMACEN', JSON.stringify(l)); return { data: { path: ruta }, error: null }; } }) },
-      channel: () => { const c = { on: () => c, subscribe: () => c, unsubscribe() {} }; return c; },
+      // Canal en vivo simulado: otra pestaña del mismo navegador hace de "otro equipo". Como la base simulada vive en
+      // cada pestaña, el aviso lleva una copia (solo en la simulación; el aviso real no lleva datos).
+      channel: (nombre) => {
+        const hs = []; let bc = null;
+        const c = { on: (tipo, f, cb) => { if (tipo === 'broadcast') hs.push({ ev: f.event, cb }); return c; },
+          subscribe: (cb) => { if (typeof BroadcastChannel !== 'undefined') { bc = new BroadcastChannel('mock-' + nombre);
+              bc.onmessage = e => { if (e.data.db) sessionStorage.setItem('__DB', e.data.db); hs.filter(h => h.ev === e.data.event).forEach(h => h.cb({ event: e.data.event, payload: e.data.payload })); }; }
+            setTimeout(() => cb && cb('SUBSCRIBED'), 0); return c; },
+          send: async (m) => { const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'aviso', tabla: nombre, datos: m.payload }); sessionStorage.setItem('__LOG', JSON.stringify(l));
+            if (bc) bc.postMessage({ event: m.event, payload: m.payload, db: sessionStorage.getItem('__DB') }); return 'ok'; },
+          unsubscribe() { if (bc) bc.close(); } };
+        return c; },
       removeChannel() {}, functions: { invoke: async (nombre, op) => {
         const b = (op && op.body) || {}; const db = leerDB(); const T = k => (db[k] = db[k] || []);
         const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'funcion', tabla: nombre, datos: { ...b, token: '***' } }); sessionStorage.setItem('__LOG', JSON.stringify(l));

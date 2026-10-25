@@ -307,3 +307,4 @@ Clínica apagada Ventas ignora estos cobros; regresión contra `main`.
 - 2026-10-24: Fase 4 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Fase 5 terminada, probada e integrada a `main`. Módulo completo; apagado por defecto. Demo "Clínica" publicada.
 - 2026-10-25: La demo "Clínica" ya no usa multiusuario: el expediente se abre eligiendo el médico (solo en cuentas demo).
+- 2026-10-25: Sala de espera **en vivo** (pedido de Jack): al oprimir "Llamar", la pantalla de la sala en otro equipo (TV, computadora o teléfono) lo muestra al instante, suena un "ding-dong" y resalta a la persona. Aviso por Supabase Realtime (broadcast) sin datos del paciente; cada equipo vuelve a leer la sala con su sesión. Respaldo cada 15 s. Sin cambios en la base de datos.

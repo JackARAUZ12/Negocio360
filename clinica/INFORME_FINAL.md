@@ -10,7 +10,7 @@ para todas las cuentas y se enciende en Configuración. Hay una cuenta demo púb
 |---|---|
 | 1 — Base | Pacientes y expediente con candado en el servidor, antecedentes y alergias, consulta de medicina general con signos e IMC, cerrar y firmar, adendas, anulación con motivo, bitácora de accesos, cobro por Ventas. |
 | 2 — Documentos | Recetas (a Farmacia o a la cuenta), órdenes de laboratorio e imágenes, constancias, certificados, referencias, consentimientos (hoja o ticket), diagnósticos CIE-10, archivos adjuntos privados. |
-| 3 — Operación diaria | Sala de espera con turnos y pantalla para TV, recordatorios por WhatsApp, honorarios por médico pagados por Salarios, reportes que cuadran con Ventas. |
+| 3 — Operación diaria | Sala de espera con turnos y pantalla para TV **en vivo** (el llamado aparece al instante en otros equipos, con sonido y resaltado), recordatorios por WhatsApp, honorarios por médico pagados por Salarios, reportes que cuadran con Ventas. |
 | Ajuste (pedido de Jack) | Sin agenda propia: se usa la **Agenda** del sistema. Los médicos son **usuarios del multiusuario** y abren el expediente con su mismo código. |
 | 4 — Especialidades | Plantilla propia de las 16 especialidades con cálculos automáticos (edad gestacional, Glasgow, PHQ-9/GAD-7, cintura, HbA1c, IPSS…) y **odontograma**. |
 | 5 — Crecimiento | **Observación y hospitalización** (ingreso, notas y signos con candado, cuenta por día, alta y cobro), **seguros y convenios** (el paciente paga su parte y lo cubierto se factura a la aseguradora por Ventas), **cuenta demo "Clínica"**, guía de uso (`GUIA.md`) y este informe. |

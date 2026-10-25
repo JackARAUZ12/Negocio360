@@ -37,8 +37,16 @@ paciente como cliente. La clínica no tiene una agenda aparte.
 **Clínica · Sala de espera** muestra las citas de hoy:
 
 - **🪑 Llegó** → el paciente pasa a "Esperando" y recibe su turno.
-- **📢 Llamar** → aparece en la **📺 pantalla de la sala** (para una TV). Muestra solo
-  el nombre y la inicial del apellido, nunca datos médicos.
+- **📢 Llamar** → aparece **al instante** en la **📺 pantalla de la sala** (una TV, otra
+  computadora o un teléfono), con un "ding-dong" y el nombre resaltado. Muestra solo el
+  nombre y la inicial del apellido, nunca datos médicos.
+
+**Pantalla de la sala en otro equipo (TV, computadora o teléfono):** entra con la misma
+cuenta, abre **Sala de espera → 📺 Modo pantalla** (o la dirección
+`clinica-sala.html?pantalla=1`). Arriba aparece **● En vivo**. Si sale el botón naranja
+**"🔊 Toca aquí para activar el sonido"**, tócalo una vez: los navegadores no dejan sonar
+nada hasta que alguien toca la pantalla. Todas las computadoras con la Sala abierta
+también se actualizan solas al instante.
 - **🩺 Atender** → abre el expediente. Si la cita aún no tiene expediente, lo buscas o
   lo creas ahí mismo con los datos de la cita.
 - **🚫 No asistió** / **↩ Aún no llega**.

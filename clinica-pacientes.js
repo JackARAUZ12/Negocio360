@@ -453,7 +453,8 @@ function abrirConsulta(id) {
   const alerg = CP.exp?.antecedentes?.alergias;
   $p('co-alergias').innerHTML = alerg ? `<div class="cl-alerta" style="margin:0 0 10px">⚠️ ALERGIAS: ${esc(alerg)}</div>` : '';
   openModal('modal-consulta');
-  setTimeout(() => $p('co-motivo').focus(), 50);
+  // El cursor va al motivo, salvo que ya se haya empezado a escribir en otro campo de la nota (no se le quita).
+  setTimeout(() => { if (!document.activeElement?.closest?.('#modal-consulta .modal-box')) $p('co-motivo').focus(); }, 50);
 }
 // Plantilla de la especialidad elegida (catálogo en clinica-comun.js; se guarda en consulta.datos con
 // el mismo candado y la misma firma que el resto de la nota). Los cálculos se actualizan al escribir.

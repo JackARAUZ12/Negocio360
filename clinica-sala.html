@@ -1104,7 +1104,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <link rel="stylesheet" href="clinica.css?v=20261025a" />
+  <link rel="stylesheet" href="clinica.css?v=20261025b" />
 </head>
 <body>
 
@@ -1319,7 +1319,7 @@
       <div class="hab-page-header">
         <div>
           <h1>🪑 Sala de espera</h1>
-          <p class="hab-page-subtitle">Las citas de hoy de la <a href="agenda.html" style="color:var(--accent)">Agenda</a>, con turnos por orden de llegada. Se actualiza sola.</p>
+          <p class="hab-page-subtitle">Las citas de hoy de la <a href="agenda.html" style="color:var(--accent)">Agenda</a>, con turnos por orden de llegada. Se actualiza al instante en todos los equipos.</p>
         </div>
         <div class="cl-hbtns">
           <button class="btn-accion-tabla btn-ghost" onclick="cargar()">🔄 Actualizar</button>
@@ -1346,10 +1346,10 @@
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261025a"></script>
-<script src="clinica-sesion.js?v=20261025a"></script>
-<script src="clinica-citas.js?v=20261025a"></script>
-<script src="clinica-sala.js?v=20261025a"></script>
+<script src="clinica-comun.js?v=20261025b"></script>
+<script src="clinica-sesion.js?v=20261025b"></script>
+<script src="clinica-citas.js?v=20261025b"></script>
+<script src="clinica-sala.js?v=20261025b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
@@ -1387,7 +1387,8 @@
 </div>
 
 <div id="sa-pantalla" class="sp" style="display:none" role="dialog" aria-label="Pantalla de la sala">
-  <div class="sp-cab"><span id="sp-negocio"></span><span id="sp-hora"></span><button class="sp-salir" onclick="cerrarPantalla()" aria-label="Salir de la pantalla">✕</button></div>
+  <div class="sp-cab"><span id="sp-negocio"></span><span class="sp-der"><span id="sp-envivo" class="sp-envivo" title="Los llamados llegan al instante">● En vivo</span><span id="sp-hora"></span></span><button class="sp-salir" onclick="cerrarPantalla()" aria-label="Salir de la pantalla">✕</button></div>
+  <button id="sp-sonido" class="sp-sonido" style="display:none" onclick="activarSonido()">🔊 Toca aquí para activar el sonido de los llamados</button>
   <div class="sp-cuerpo"><div class="sp-llamado" id="sp-llamado"></div><div class="sp-cola"><div class="sp-tit">En espera</div><div id="sp-lista"></div></div></div>
 </div>
 
@@ -1448,6 +1449,14 @@
 .sp-donde{font-size:clamp(20px,3.4vw,46px);margin-top:12px;opacity:.95}
 .sp-cola{background:#1e293b;border-radius:22px;padding:18px;overflow:hidden}.sp-tit{font-size:clamp(18px,2.4vw,30px);font-weight:800;margin-bottom:10px;opacity:.8}
 .sp-item{font-size:clamp(18px,2.6vw,34px);padding:8px 0;border-bottom:1px solid #334155}.sp-item b{display:inline-block;min-width:1.8em;color:#93c5fd}
+.sp-der{display:flex;align-items:center;gap:14px;margin-left:auto}
+.sp-envivo{font-size:clamp(12px,1.6vw,18px);font-weight:700;color:#4ade80;opacity:0;transition:opacity .3s}.sp-envivo.on{opacity:1}
+.sp-sonido{margin:10px 22px 0;padding:12px 16px;border:0;border-radius:14px;background:#f59e0b;color:#111827;font-size:clamp(15px,2vw,22px);font-weight:800;cursor:pointer;white-space:normal}
+.sp-llamado.sp-alerta{animation:spAlerta 1s ease-in-out 10}
+@keyframes spAlerta{0%,100%{background:#1d4ed8;transform:scale(1)}50%{background:#f59e0b;color:#111827;transform:scale(1.02)}}
+.sp-item.sp-item-llamado{background:#f59e0b;color:#111827;border-radius:10px;padding-left:10px}.sp-item.sp-item-llamado b{color:#111827}
+.ag-card.sa-llamando{box-shadow:0 0 0 3px #f59e0b}
+@media (prefers-reduced-motion:reduce){.sp-llamado.sp-alerta{animation:none;background:#b45309}}
 @media (max-width:700px){.sp-cuerpo{grid-template-columns:1fr}}
 </style>
 </body>

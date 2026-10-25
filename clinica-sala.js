@@ -78,7 +78,7 @@ function renderUserInfo(profile, email) {
 /* =====================================================
    SALA DE ESPERA
 ===================================================== */
-const SA = { citas: [], personal: [], consultorios: [], ultimoLlamado: null, pantalla: false, timer: null, recordar: [], citaCuenta: null, cuenta: [], prodCargo: null, vincular: null };
+const SA = { citas: [], personal: [], consultorios: [], ultimoLlamado: null, pantalla: false, timer: null, canal: null, enVivo: false, audio: null, cargando: null, otraVez: false, recordar: [], citaCuenta: null, cuenta: [], prodCargo: null, vincular: null };
 const $s = id => document.getElementById(id);
 
 async function init() {
@@ -96,7 +96,9 @@ async function init() {
     SA.consultorios = k || [];
     await cargar();
     if (new URLSearchParams(location.search).get('pantalla') === '1') abrirPantalla();
-    SA.timer = setInterval(() => { cargar(true); }, 20000);           // la sala se actualiza sola
+    conectarEnVivo();
+    SA.timer = setInterval(() => { cargar(true); }, 15000);           // respaldo: por si se pierde un aviso o cambian algo desde la Agenda
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) cargar(true); });
   } catch (e) {
     console.error('init clinica-sala:', e);
     document.getElementById('loader').classList.add('hidden');
@@ -108,7 +110,14 @@ document.addEventListener('DOMContentLoaded', () => { init(); if (window.lucide)
 const medico = id => SA.personal.find(p => p.id === id)?.nombre || '';
 const consultorio = id => SA.consultorios.find(k => k.id === id)?.nombre || '';
 const citaPorId = id => SA.citas.find(c => c.id === id) || SA.recordar.find(c => c.id === id) || null;
+// Evita cargas encimadas: si llega otro aviso mientras se carga, se vuelve a cargar al terminar.
 async function cargar(silencioso) {
+  if (SA.cargando) { SA.otraVez = true; return SA.cargando; }
+  SA.cargando = cargarYa(silencioso);
+  try { await SA.cargando; } finally { SA.cargando = null; }
+  if (SA.otraVez) { SA.otraVez = false; return cargar(true); }
+}
+async function cargarYa(silencioso) {
   try {
     const r = await ClinicaCitas.cargar(vetHoy(), vetHoy());
     SA.personal = r.medicos;
@@ -130,7 +139,8 @@ function render() {
   const sinExp = c => c.paciente_id ? '' : '<div class="cl-sub" style="color:var(--warning,#b45309)">⚠️ Sin expediente: al atender se elige o se crea.</div>';
   const cobrada = c => c.venta_id ? '<span class="cl-badge cl-badge-verde">Cobrada</span>' : '';
   const btnCuenta = c => c.venta_id ? '' : `<button class="btn-accion-tabla btn-ghost" onclick="abrirCuenta('${c.id}')">💳 Cuenta y cobro</button>`;
-  $s('sa-espera').innerHTML = espera.length ? espera.map(c => `<div class="ag-card est-en_espera">
+  const llamando = c => c.llamado_en && Date.now() - new Date(c.llamado_en).getTime() < 2 * 60000;
+  $s('sa-espera').innerHTML = espera.length ? espera.map(c => `<div class="ag-card est-en_espera${llamando(c) ? ' sa-llamando' : ''}">
       <div class="ag-fila"><span class="ag-hora">Turno ${c.turno}</span><span class="cl-badge ${c.espera_min >= 30 ? 'cl-badge-rojo' : 'cl-badge-ambar'}">⏱️ ${esc(clinicaTextoEspera(c.espera_min))}</span></div>
       <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">Cita ${esc(vetFormatoHora(c.hora))}${c.motivo ? ' · ' + esc(c.motivo) : ''}</div><div class="cl-sub">${donde(c) || 'Sin médico asignado'}</div>${sinExp(c)}
       ${c.llamado_en ? `<div class="cl-sub">📢 Llamado a las ${esc(new Date(c.llamado_en).toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
@@ -152,8 +162,26 @@ function render() {
     : '<div class="cl-info" style="grid-column:1/-1">Todavía nadie atendido hoy.</div>';
   if (SA.pantalla) renderPantalla(turnos);
 }
+
+/* ---------- En vivo: cuando alguien llama o cambia la sala, los demás equipos (otra computadora, la TV,
+   un teléfono) recargan al instante. El aviso NO lleva datos del paciente: solo dice "hubo un cambio" y
+   cada equipo vuelve a leer la sala con su propia sesión. ---------- */
+function conectarEnVivo() {
+  try {
+    SA.canal = sb.channel('clinica-sala-' + STATE.userId, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'cambio' }, () => cargar(true))
+      .subscribe(estado => {
+        const antes = SA.enVivo; SA.enVivo = estado === 'SUBSCRIBED';
+        $s('sp-envivo')?.classList.toggle('on', SA.enVivo);
+        if (SA.enVivo && !antes) cargar(true);                      // al (re)conectarse, ponerse al día
+      });
+  } catch (e) { console.warn('sala en vivo:', e); }
+}
+function avisarCambio() {
+  try { Promise.resolve(SA.canal?.send({ type: 'broadcast', event: 'cambio', payload: {} })).catch(e => console.warn('avisar cambio:', e)); } catch (e) { console.warn('avisar cambio:', e); }
+}
 async function accion(fn, msgError) {
-  try { await fn(); await cargar(); }
+  try { await fn(); avisarCambio(); await cargar(); }
   catch (e) { console.error(msgError, e); showToast(clinicaTextoError(e, msgError), 'error'); }
 }
 function llego(id) {
@@ -166,7 +194,8 @@ function noAsistio(id) { return accion(() => ClinicaCitas.cambiarEstado(id, 'no_
 async function llamar(id) {
   try {
     await ClinicaCitas.guardarInfo(id, { llamado_en: new Date().toISOString() });
-    showToast('Paciente llamado: aparece en la pantalla de la sala.');
+    avisarCambio();
+    showToast('Paciente llamado: aparece al instante en la pantalla de la sala.');
     await cargar();
   } catch (e) { console.error('llamar:', e); showToast('No se pudo llamar.', 'error'); }
 }
@@ -360,32 +389,55 @@ async function recordar(id) {
 /* ---------- Modo pantalla (televisor de la sala): solo nombre e inicial ---------- */
 function abrirPantalla() {
   SA.pantalla = true; $s('sa-pantalla').style.display = 'flex'; document.body.style.overflow = 'hidden';
-  try { document.documentElement.requestFullscreen?.(); } catch (_) {}
+  try { document.documentElement.requestFullscreen?.()?.catch?.(() => {}); } catch (_) {}   // sin un toque, el navegador no deja pantalla completa
+  // Lo que ya estaba llamado al abrir no suena: solo los llamados nuevos.
+  SA.ultimoLlamado = ultimoLlamado()?.llamado_en || null;
+  activarSonido();
   renderPantalla(clinicaTurnos(SA.citas));
 }
 function cerrarPantalla() {
   SA.pantalla = false; $s('sa-pantalla').style.display = 'none'; document.body.style.overflow = '';
-  try { if (document.fullscreenElement) document.exitFullscreen(); } catch (_) {}
+  try { if (document.fullscreenElement) document.exitFullscreen()?.catch?.(() => {}); } catch (_) {}
 }
+// El navegador no deja sonar nada hasta que alguien toca la pantalla una vez: si hace falta, se muestra un botón.
+function audio() {
+  if (!SA.audio) { try { SA.audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) {} }
+  return SA.audio;
+}
+function avisoSonido() { const a = audio(); $s('sp-sonido').style.display = SA.pantalla && a && a.state !== 'running' ? 'block' : 'none'; }
+function activarSonido() {
+  const a = audio(); if (!a) return;
+  Promise.resolve(a.state === 'running' || a.resume()).catch(() => {}).finally(avisoSonido);
+  setTimeout(avisoSonido, 400);
+}
+// "Ding-dong" dos veces.
 function sonar() {
+  const ctx = audio(); if (!ctx) return;
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [0, 0.35].forEach((t, i) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = i ? 660 : 880; o.connect(g); g.connect(ctx.destination);
-      g.gain.setValueAtTime(0.25, ctx.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.3); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.32); });
+    if (ctx.state !== 'running') ctx.resume().catch(() => {});
+    [[0, 988], [0.45, 784], [1.3, 988], [1.75, 784]].forEach(([t, f]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+      const t0 = ctx.currentTime + t; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.6); o.start(t0); o.stop(t0 + 0.62); });
   } catch (_) {}
 }
+function ultimoLlamado() {
+  return SA.citas.filter(c => c.llamado_en && c.estado === 'en_espera' && Date.now() - new Date(c.llamado_en).getTime() < 10 * 60000)
+    .sort((a, b) => String(b.llamado_en).localeCompare(String(a.llamado_en)))[0];
+}
 function renderPantalla(turnos) {
-  const recientes = SA.citas.filter(c => c.llamado_en && c.estado === 'en_espera' && Date.now() - new Date(c.llamado_en).getTime() < 10 * 60000)
-    .sort((a, b) => String(b.llamado_en).localeCompare(String(a.llamado_en)));
-  const ult = recientes[0];
-  if (ult && ult.llamado_en !== SA.ultimoLlamado) { SA.ultimoLlamado = ult.llamado_en; sonar(); }
+  const ult = ultimoLlamado();
+  if (ult && ult.llamado_en !== SA.ultimoLlamado) {         // llamado nuevo: suena y se resalta
+    SA.ultimoLlamado = ult.llamado_en; sonar();
+    const caja = $s('sp-llamado'); caja.classList.remove('sp-alerta'); void caja.offsetWidth; caja.classList.add('sp-alerta');
+  }
   const t = id => turnos.find(x => x.id === id)?.turno;
   $s('sp-llamado').innerHTML = ult
     ? `<div class="sp-turno">Turno ${esc(t(ult.id) || '')}</div><div class="sp-nombre">${esc(clinicaNombreCorto(ult.clinica_pacientes))}</div>
        <div class="sp-donde">${esc([consultorio(ult.consultorio_id), medico(ult.medico_id)].filter(Boolean).join(' · ') || 'Pase a consulta')}</div>`
     : '<div class="sp-nombre" style="opacity:.6">Bienvenido</div><div class="sp-donde">Espere a ser llamado</div>';
   const espera = turnos.filter(x => x.estado === 'en_espera');
-  $s('sp-lista').innerHTML = espera.length ? espera.map(x => `<div class="sp-item"><b>${x.turno}</b> ${esc(clinicaNombreCorto(x.clinica_pacientes))}</div>`).join('') : '<div class="sp-item" style="opacity:.6">—</div>';
+  $s('sp-lista').innerHTML = espera.length ? espera.map(x => `<div class="sp-item${ult && x.id === ult.id ? ' sp-item-llamado' : ''}"><b>${x.turno}</b> ${esc(clinicaNombreCorto(x.clinica_pacientes))}</div>`).join('') : '<div class="sp-item" style="opacity:.6">—</div>';
   $s('sp-hora').textContent = new Date().toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' });
   $s('sp-negocio').textContent = STATE.empresaConfig?.nombre_comercial || 'Sala de espera';
 }
