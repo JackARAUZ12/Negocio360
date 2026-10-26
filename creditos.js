@@ -2574,6 +2574,16 @@
     return `${fmtDateNum(fl.fecha)}${vencida ? ' (VENCIDA)' : ''}`;
   }
   // Observaciones del comprobante carta (PDF), con la fecha límite si aplica.
+  // Datos ordenados del comprobante de pago (tamaño carta): cuadrícula con crédito y saldo,
+  // recuadro de fecha límite y total del pago. Reemplaza al párrafo de observaciones de una sola línea.
+  function datosExtraCartaPago(c) {
+    const extra = {
+      infoCredito: [['Crédito', c.credito || ''], ['Saldo nuevo', fmt(c.saldoNuevo)]],
+      filasTotales: [{ label: 'Pago recibido:', valor: fmt(c.monto), big: true }],
+    };
+    if (c.fechaLimite) extra.destacado = { titulo: 'FECHA LÍMITE DE PAGO', valor: textoFechaLimite(c) };
+    return extra;
+  }
   function observacionesCartaPago(c) {
     const base = `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`;
     return c.fechaLimite ? `${base} — FECHA LÍMITE DE PAGO: ${textoFechaLimite(c)}` : base;
@@ -2591,7 +2601,7 @@
           const doc = await generarComprobanteCartaPDF('credito', {
             userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
             cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
-            metodo_pago: c.metodo, observaciones: observacionesCartaPago(c),
+            metodo_pago: c.metodo, ...datosExtraCartaPago(c),
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
             empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
@@ -2660,7 +2670,7 @@
           const doc = await generarComprobanteCartaPDF('credito', {
             userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
             cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
-            metodo_pago: c.metodo, observaciones: observacionesCartaPago(c),
+            metodo_pago: c.metodo, ...datosExtraCartaPago(c),
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
             empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
@@ -2856,7 +2866,12 @@
         impuesto: Number(credito.total_financiado||0) - Number(credito.capital_financiado||0),
         total: credito.total_financiado,
         metodo_pago: 'Crédito',
-        observaciones: `Saldo pendiente: ${fmt(credito.saldo_pendiente)}`,
+        filasTotales: [
+          { label: 'Monto financiado:', valor: fmt(credito.capital_financiado) },
+          ...(Number(credito.total_financiado||0) - Number(credito.capital_financiado||0) > 0 ? [{ label: 'Intereses e impuestos:', valor: fmt(Number(credito.total_financiado||0) - Number(credito.capital_financiado||0)) }] : []),
+          { label: 'TOTAL A PAGAR:', valor: fmt(credito.total_financiado), big: true, linea: true },
+          { label: 'SALDO PENDIENTE:', valor: fmt(credito.saldo_pendiente), big: true, linea: true },
+        ],
         empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
         empresaDireccion: CS.empresaConfig?.direccion || '',
         empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
@@ -2998,33 +3013,43 @@
 
   async function pdfComprobanteCredito(d) {
     const c = d.credito;
-    const lineas = [
-      `Fecha: ${fmtDateNum(d.fechaCredito)}${d.plazoDias != null ? `  ·  Plazo: ${d.plazoDias} día${d.plazoDias === 1 ? '' : 's'}` : ''}${d.vence ? `  ·  Vence: ${fmtDateNum(d.vence)}` : ''}`,
-      `Total a pagar: ${fmt(d.totalFinanciado)}  ·  Pagado a la fecha: ${fmt(d.pagado)}  ·  SALDO PENDIENTE: ${fmt(d.saldo)}`,
-    ];
-    if (d.prima > 0) lineas.push(`Prima / anticipo: ${fmt(d.prima)}  ·  Monto financiado: ${fmt(d.capital)}`);
+    // Datos del crédito en cuadrícula (antes iban en un párrafo largo de observaciones)
+    const infoCredito = [];
+    if (d.plazoDias != null) infoCredito.push(['Plazo', `${d.plazoDias} día${d.plazoDias === 1 ? '' : 's'}`]);
+    if (d.vence) infoCredito.push(['Vence', fmtDateNum(d.vence)]);
+    let cuotas = null;
     if (d.esFechaFija) {
       const vencida = d.saldo > 0 && d.fechaLimite && d.fechaLimite < todayISO();
-      if (d.saldo <= 0) lineas.push('Estado: Crédito pagado'); else if (vencida) lineas.push('Estado: Vencida');
+      if (d.saldo <= 0) infoCredito.push(['Estado', 'Crédito pagado']); else if (vencida) infoCredito.push(['Estado', 'Vencida']);
     } else {
-      lineas.push(d.proxima ? `PRÓXIMA CUOTA: ${fmtDateNum(d.proxima.fecha_vencimiento)} · ${fmt(pendienteDeCuota(d.proxima))}` : 'Sin cuotas pendientes');
+      infoCredito.push(['Próxima cuota', d.proxima ? `${fmtDateNum(d.proxima.fecha_vencimiento)} · ${fmt(pendienteDeCuota(d.proxima))}` : 'Sin cuotas pendientes']);
       if (d.pendientes.length > 1) {
-        lineas.push('Cuotas pendientes:');
-        d.pendientes.forEach(q => lineas.push(`   #${q.numero} — vence ${fmtDateNum(q.fecha_vencimiento)}${String(q.fecha_vencimiento) < todayISO() ? ' (vencida)' : ''} — ${fmt(pendienteDeCuota(q))}`));
+        cuotas = {
+          titulo: 'Cuotas pendientes', head: ['N°', 'Vence', 'Monto'],
+          body: d.pendientes.map(q => [`#${q.numero}`, `${fmtDateNum(q.fecha_vencimiento)}${String(q.fecha_vencimiento) < todayISO() ? ' (vencida)' : ''}`, fmt(pendienteDeCuota(q))]),
+        };
       }
     }
-    lineas.push('Esta factura no registra pagos ni movimientos de caja.');
+    const filasTotales = [{ label: 'Subtotal:', valor: fmt(d.montoOriginal) }];
+    if (d.prima > 0) { filasTotales.push({ label: 'Prima / anticipo:', valor: '-' + fmt(d.prima) }, { label: 'Monto financiado:', valor: fmt(d.capital) }); }
+    if (d.intereses > 0) filasTotales.push({ label: 'Intereses:', valor: fmt(d.intereses) });
+    if (d.impuestos > 0) filasTotales.push({ label: 'Impuestos:', valor: fmt(d.impuestos) });
+    filasTotales.push({ label: 'TOTAL A PAGAR:', valor: fmt(d.totalFinanciado), big: true, linea: true });
+    filasTotales.push({ label: 'Pagado a la fecha:', valor: fmt(d.pagado) });
+    filasTotales.push({ label: 'SALDO PENDIENTE:', valor: fmt(d.saldo), big: true, linea: true });
+
     const doc = await generarComprobanteCartaPDF('credito', {
       userId: CS.userId, numero: d.numeroTexto,
       fecha: fmtDate(c.fecha_inicio || String(c.created_at || '').slice(0, 10)),
       cliente_nombre: d.cliente ? `${d.cliente.nombre || ''} ${d.cliente.apellido || ''}`.trim() : 'Cliente',
       cliente_telefono: d.cliente?.telefono || '', cliente_direccion: d.cliente?.direccion || '',
       cliente_id: c.cliente_id || null,
-      // Mismos totales que el "Comprobante tamaño carta" de siempre (la prima va
-      // en las observaciones, no como descuento).
+      // Mismos totales de siempre (la prima va en los totales, no como descuento).
       subtotal: d.capital, descuento: 0,
       impuesto: round2(d.totalFinanciado - d.capital), total: d.totalFinanciado,
-      metodo_pago: 'Crédito', observaciones: lineas.join('\n'), titulo: 'Factura de Crédito',
+      metodo_pago: 'Crédito', titulo: 'Factura de Crédito',
+      infoCredito, filasTotales, cuotas,
+      observaciones: 'Esta factura no registra pagos ni movimientos de caja.',
       empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
       empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
       empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),

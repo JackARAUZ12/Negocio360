@@ -260,7 +260,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   ];
   infoCliente.forEach((linea, i) => doc.text(linea, W - M - 70, y + 5 + i*5));
 
-  y += Math.max(infoNegocio.length, infoCliente.length + 1) * 5 + 10;
+  y += Math.max(infoNegocio.length, infoCliente.length + 1) * 5 + (tipo === 'credito' ? 4 : 10);
   doc.setDrawColor(230,230,235);
   doc.line(M, y, W - M, y);
   y += 8;
@@ -269,6 +269,25 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     doc.setFontSize(9); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
     doc.text(`Método de pago: ${datos.metodo_pago}`, M, y);
     y += 10;
+  }
+
+  // Datos del crédito en cuadrícula (solo si quien llama manda datos.infoCredito = [[etiqueta, valor], ...]).
+  // Se ordenan en columnas parejas: etiqueta pequeña arriba, valor en negrita debajo.
+  if (Array.isArray(datos.infoCredito) && datos.infoCredito.length) {
+    const info = datos.infoCredito.filter(x => x && x[1] !== undefined && x[1] !== null && String(x[1]) !== '');
+    const porFila = info.length >= 3 ? 3 : Math.max(1, info.length);
+    const anchoCol = (W - M*2) / porFila;
+    for (let i = 0; i < info.length; i += porFila) {
+      info.slice(i, i + porFila).forEach((par, k) => {
+        const x = M + k * anchoCol;
+        doc.setFontSize(8); doc.setFont(undefined, 'normal'); doc.setTextColor(120,120,140);
+        doc.text(String(par[0]), x, y);
+        doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
+        doc.text(doc.splitTextToSize(String(par[1]), anchoCol - 4)[0], x, y + 5.5);
+      });
+      y += 13;
+    }
+    y += 2;
   }
 
   // Columnas SKU / Código de barras: opcionales, controladas desde
@@ -280,10 +299,17 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   const colSku = cfg.mostrar_sku === true;
   const colBarras = cfg.mostrar_codigo_barras === true;
 
+  // Solo en comprobantes de CRÉDITO: se oculta la columna Descuento cuando ningún ítem lo tiene
+  // (era una columna vacía que apretaba las demás) y los montos nunca se parten en dos líneas.
+  const esCreditoDoc = tipo === 'credito';
+  const sinColDescuento = esCreditoDoc && !(items || []).some(it => Number(it.descuento) > 0);
+
   const encabezado = ['Descripción'];
   if (colSku) encabezado.push('SKU');
   if (colBarras) encabezado.push('Código de barras');
-  encabezado.push('Cant.', 'Precio unit.', 'Descuento', 'Subtotal');
+  encabezado.push('Cant.', 'Precio unit.');
+  if (!sinColDescuento) encabezado.push('Descuento');
+  encabezado.push('Subtotal');
 
   const filas = (items||[]).map(it => {
     const fila = [it.nombre || 'Ítem'];
@@ -292,9 +318,9 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     fila.push(
       Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (it.unidad ? ' ' + it.unidad : ''),
       fmtM(it.precio),
-      Number(it.descuento) > 0 ? fmtM(it.descuento) : '—',
-      fmtM(it.subtotal),
     );
+    if (!sinColDescuento) fila.push(Number(it.descuento) > 0 ? fmtM(it.descuento) : '—');
+    fila.push(fmtM(it.subtotal));
     return fila;
   });
 
@@ -303,7 +329,8 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   // se hayan insertado antes.
   const totalColumnas = encabezado.length;
   const columnStyles = {};
-  for (let i = totalColumnas - 4; i < totalColumnas; i++) columnStyles[i] = { halign: 'right' };
+  const numericas = sinColDescuento ? 3 : 4;
+  for (let i = totalColumnas - numericas; i < totalColumnas; i++) columnStyles[i] = esCreditoDoc ? { halign: 'right', cellWidth: 'wrap' } : { halign: 'right' };
 
   const colorFondoTabla = _cc_hexARgb(cfg.color_tabla_usa_mismo !== false ? cfg.color_principal : cfg.color_tabla) || [108,99,255];
   const [rT, gT, bT] = colorFondoTabla;
@@ -316,7 +343,8 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     body: filas,
     theme: 'striped',
     headStyles: { fillColor: colorFondoTabla, textColor: colorTextoTabla },
-    styles: { fontSize: colSku || colBarras ? 8.5 : 9.5, cellPadding: 3.5, valign: 'top' },
+    didParseCell: esCreditoDoc ? (h) => { if (h.section === 'head' && h.column.index >= totalColumnas - numericas) h.cell.styles.halign = 'right'; } : undefined,
+    styles: { fontSize: colSku || colBarras ? 8.5 : 9.5, cellPadding: esCreditoDoc ? 2.8 : 3.5, valign: 'top' },
     columnStyles,
     margin: { left: M, right: M },
   });
@@ -332,15 +360,39 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     doc.text(val, xValor, finalY, { align: 'right' });
     finalY += big ? 8 : 6.5;
   };
-  filaTotal('Subtotal:', fmtM(datos.subtotal));
-  if (Number(datos.descuento) > 0) filaTotal('Descuento:', '-' + fmtM(datos.descuento));
-  if (Number(datos.impuesto) > 0) filaTotal(`Impuesto${datos.iva_porcentaje?` (${Number(datos.iva_porcentaje)}%)`:''}:`, fmtM(datos.impuesto));
-  doc.setDrawColor(230,230,235);
-  doc.line(xEtiqueta, finalY - 4, xValor, finalY - 4);
-  filaTotal('TOTAL:', fmtM(datos.total), true);
+  if (Array.isArray(datos.filasTotales) && datos.filasTotales.length) {
+    // Totales armados por quien llama (p. ej. crédito: financiado, intereses, total, pagado, saldo)
+    datos.filasTotales.forEach(f => {
+      if (f.linea) { doc.setDrawColor(230,230,235); doc.line(xEtiqueta, finalY - 4, xValor, finalY - 4); }
+      filaTotal(f.label, f.valor, !!f.big);
+    });
+  } else {
+    filaTotal('Subtotal:', fmtM(datos.subtotal));
+    if (Number(datos.descuento) > 0) filaTotal('Descuento:', '-' + fmtM(datos.descuento));
+    if (Number(datos.impuesto) > 0) filaTotal(`Impuesto${datos.iva_porcentaje?` (${Number(datos.iva_porcentaje)}%)`:''}:`, fmtM(datos.impuesto));
+    doc.setDrawColor(230,230,235);
+    doc.line(xEtiqueta, finalY - 4, xValor, finalY - 4);
+    filaTotal('TOTAL:', fmtM(datos.total), true);
+  }
 
   finalY += 6;
   doc.setTextColor(20,20,30);
+
+  // Cuotas pendientes en tabla ordenada (solo si quien llama manda datos.cuotas = { titulo, head, body })
+  if (datos.cuotas && Array.isArray(datos.cuotas.body) && datos.cuotas.body.length) {
+    doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(20,20,30);
+    if (finalY > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); finalY = 20; }
+    doc.text(String(datos.cuotas.titulo || 'Cuotas pendientes'), M, finalY);
+    doc.autoTable({
+      startY: finalY + 3, head: [datos.cuotas.head], body: datos.cuotas.body, theme: 'grid',
+      headStyles: { fillColor: [240,240,245], textColor: [60,60,80], lineColor: [225,225,232] },
+      styles: { fontSize: 9, cellPadding: 1.9, lineColor: [225,225,232] },
+      columnStyles: { 0: { cellWidth: 16 }, 2: { halign: 'right' } },
+      margin: { left: M, right: W - M - 120 },   // tabla angosta (≈120 mm), alineada a la izquierda
+    });
+    finalY = doc.lastAutoTable.finalY + 6;
+    doc.setFont(undefined, 'normal'); doc.setTextColor(20,20,30);
+  }
 
   // Recuadro resaltado opcional (p. ej. "FECHA LÍMITE DE PAGO"). Si quien
   // llama no manda datos.destacado, no se dibuja nada: todo queda igual.
