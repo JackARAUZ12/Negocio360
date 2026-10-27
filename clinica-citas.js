@@ -29,8 +29,21 @@ const ClinicaCitas = (() => {
     const demo = typeof ClinicaSesion !== 'undefined' && ClinicaSesion.esDemo ? await ClinicaSesion.esDemo() : false;
     return (data || []).filter(m => m.perfil_id || demo);
   }
+  // Solo en la demo de simulación: el servidor genera el día de hoy y lo hace avanzar con el reloj
+  // (en cualquier otra cuenta responde 'solo_demo' sin tocar nada). Como mucho cada 3 minutos.
+  let demoListo = null, demoEn = 0;
+  function prepararDemo() {
+    if (demoListo && Date.now() - demoEn < 180000) return demoListo;
+    demoEn = Date.now();
+    demoListo = (async () => {
+      const demo = typeof ClinicaSesion !== 'undefined' && ClinicaSesion.esDemo ? await ClinicaSesion.esDemo() : false;
+      if (demo) { try { await sb.rpc('clinica_demo_preparar'); } catch (_) {} }
+    })();
+    return demoListo;
+  }
   // Citas de la Agenda entre dos fechas, ya vistas por la clínica (ver clinicaCitaDeAgenda).
   async function cargar(desde, hasta, { soloEstados } = {}) {
+    await prepararDemo();
     const consulta = () => { let q = sb.from('agenda_citas').select('*, agenda_citas_servicios(*)').eq('auth_user_id', STATE.userId).gte('fecha', desde).lte('fecha', hasta);
       if (soloEstados) q = q.in('estado', soloEstados);
       return q.order('fecha').order('id'); };
@@ -164,5 +177,5 @@ const ClinicaCitas = (() => {
     const { data: k } = await sb.from('clinica_convenios').select('id, nombre, cobertura_pct, activo').eq('auth_user_id', STATE.userId).eq('id', pac.convenio_id).maybeSingle();
     return { paciente: pac, convenio: clinicaConvenioVigente(pac, k) ? k : null };
   }
-  return { cargar, una, delPaciente, medicos, guardarInfo, cambiarEstado, cargos, cobrar, seguroDeCita };
+  return { cargar, una, delPaciente, medicos, guardarInfo, cambiarEstado, cargos, cobrar, seguroDeCita, prepararDemo };
 })();

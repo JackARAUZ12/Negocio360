@@ -272,6 +272,7 @@
           guardarDB(db); return { data: { ok: true, cita_id: id }, error: null };
         }
         if (nombre === 'soy_cuenta_demo') return { data: window.__DEMO === true, error: null };
+        if (nombre === 'clinica_demo_preparar') { window.__demoPreparada = (window.__demoPreparada || 0) + 1; return { data: window.__DEMO === true ? { ok: true, creadas: 0 } : { ok: false, motivo: 'solo_demo' }, error: null }; }
         if (nombre === 'listar_perfiles_del_grupo_v2') { const db = leerDB(); return { data: (db.perfiles_acceso || []).map(p => ({ ...p, activo: p.activo !== false })), error: null }; }
         if (nombre === 'generar_numero_venta') { const db = leerDB(); const k = (db.ventas || []).length + 1; return { data: 'V-' + String(k).padStart(5, '0'), error: null }; }
         if (nombre === 'venta_registrar_atomica') {        // guarda la venta como lo haría el servidor (en una sola operación)

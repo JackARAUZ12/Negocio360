@@ -389,6 +389,13 @@ function clinicaTurnos(citas, ahoraMs) {
   return llegaron.map((c, i) => ({ ...c, turno: i + 1,
     espera_min: c.estado === 'en_espera' ? Math.max(0, Math.floor((ahora - new Date(c.llegada_en).getTime()) / 60000)) : null }));
 }
+// Fila de espera: los urgentes primero (por orden de llegada) y luego los demás por su turno.
+function clinicaOrdenEspera(turnos) {
+  return (turnos || []).filter(t => t.estado === 'en_espera').slice()
+    .sort((a, b) => ((b.prioridad === 'urgente') - (a.prioridad === 'urgente')) || (a.turno - b.turno));
+}
+// Hora actual "HH:MM" (para la visita de quien llega sin cita).
+function clinicaHoraAhora(d) { const x = d || new Date(); return `${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`; }
 function clinicaTextoEspera(min) {
   if (min == null) return '';
   if (min < 1) return 'recién llegó';
@@ -666,6 +673,7 @@ function clinicaCitaDeAgenda(a, { info, medicos, pacientes, clientes } = {}) {
     medico_id: med ? med.id : null, consultorio_id: i.consultorio_id || (med && med.consultorio_id) || null,
     llegada_en: i.llegada_en || null, llamado_en: i.llamado_en || null, atendida_en: i.atendida_en || null,
     recordatorio_enviado_en: i.recordatorio_enviado_en || null,
+    prioridad: i.prioridad === 'urgente' ? 'urgente' : 'normal', sin_cita: i.sin_cita === true,
     convenio_id: i.convenio_id || null, cobertura_pct: i.cobertura_pct != null ? Number(i.cobertura_pct) : null,
     monto_cubierto: Number(i.monto_cubierto) || 0, cubierto_servicios: Number(i.cubierto_servicios) || 0,
     servicios: lin.map(l => l.servicio_nombre), motivo: lin.map(l => l.servicio_nombre).join(', '),
@@ -991,5 +999,5 @@ if (typeof module !== 'undefined') module.exports = {
   clinicaSiguientesEstados, clinicaChoqueCita, clinicaSemana, clinicaMensajeCita, clinicaEdad, clinicaAnios, clinicaNombrePaciente,
   CLINICA_SIGNOS, clinicaValidarSignos, clinicaNumero, clinicaIMC, clinicaClasificarIMC, clinicaAlertasSignos, clinicaTextoPA,
   CLINICA_ESTADOS_NOTA, clinicaTextoError, clinicaTextoMotivo, CLINICA_ACCIONES_BITACORA,
-  clinicaNombreCorto, clinicaTurnos, clinicaTextoEspera, clinicaNetoVenta, clinicaCalcularHonorarios, clinicaResumenReporte, clinicaCSV,
+  clinicaNombreCorto, clinicaTurnos, clinicaOrdenEspera, clinicaHoraAhora, clinicaTextoEspera, clinicaNetoVenta, clinicaCalcularHonorarios, clinicaResumenReporte, clinicaCSV,
 };

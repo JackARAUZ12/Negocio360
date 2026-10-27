@@ -275,4 +275,20 @@ t('fase 5: honorario sobre el total cuando paga el seguro', () => {
   assert.strictEqual(r.total.cobrado, 100); assert.strictEqual(r.total.cubierto, 400);
 });
 t('CSV seguro para Excel', () => { const c = C.clinicaCSV([['a', '=1+1', 'x,y', 'di"jo']]); assert.ok(c.includes("'=1+1") && c.includes('"x,y"') && c.includes('"di""jo"')); });
+t('Fila de espera: urgentes primero, luego por turno', () => {
+  const tur = C.clinicaTurnos([
+    { id: 'a', estado: 'en_espera', llegada_en: '2026-10-27T08:00:00Z' }, { id: 'b', estado: 'en_espera', llegada_en: '2026-10-27T08:05:00Z', prioridad: 'urgente' },
+    { id: 'c', estado: 'en_consulta', llegada_en: '2026-10-27T07:50:00Z' }, { id: 'd', estado: 'en_espera', llegada_en: '2026-10-27T08:10:00Z' },
+    { id: 'e', estado: 'en_espera', llegada_en: '2026-10-27T08:12:00Z', prioridad: 'urgente' }], Date.parse('2026-10-27T08:20:00Z'));
+  const f = C.clinicaOrdenEspera(tur);
+  assert.strictEqual(f.map(x => x.id).join(''), 'bead');
+  assert.strictEqual(f.find(x => x.id === 'b').turno, 3);            // el turno sigue siendo por orden de llegada
+});
+t('Cita de la Agenda trae prioridad y si llegó sin cita', () => {
+  const c = C.clinicaCitaDeAgenda({ id: 'x', estado: 'confirmada', agenda_citas_servicios: [] }, { info: { llegada_en: '2026-10-27T08:00:00Z', prioridad: 'urgente', sin_cita: true } });
+  assert.strictEqual(c.prioridad, 'urgente'); assert.strictEqual(c.sin_cita, true); assert.strictEqual(c.estado, 'en_espera');
+  const d = C.clinicaCitaDeAgenda({ id: 'y', estado: 'confirmada', agenda_citas_servicios: [] }, {});
+  assert.strictEqual(d.prioridad, 'normal'); assert.strictEqual(d.sin_cita, false);
+  assert.strictEqual(C.clinicaHoraAhora(new Date(2026, 9, 27, 7, 5)), '07:05');
+});
 console.log(`${ok} pruebas unitarias correctas${process.exitCode ? ' (CON FALLAS)' : ''}`);

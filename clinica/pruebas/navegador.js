@@ -1229,6 +1229,64 @@ async function pruebaEnfermeria(browser, base) {
   }
 }
 
+// Paciente que llega SIN cita: se registra en la Sala, crea su visita de hoy en la Agenda y entra a la fila.
+async function pruebaSinCita(browser, base) {
+  console.log('\n▶ Paciente que llega sin cita');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clinica-sala.html');
+    await page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semillaFase3(UID, HOY) });
+    await page.reload(); await esperarListo(page); await page.waitForSelector('#sa-espera .ag-card');
+    const antes = await page.evaluate(() => ({ e: document.getElementById('sa-kpi-espera').textContent }));
+    // A) Paciente nuevo, urgente
+    await page.click('text=🚶 Llegó sin cita'); await page.waitForSelector('#modal-sincita.modal-open');
+    await modalesSinDesborde(page, `${tag} paciente sin cita`);
+    await page.click('#sc-btn');
+    verificar((await page.textContent('#sc-error')).includes('Busca al paciente'), `${tag}: pide quién llegó`);
+    await page.click('#sc-nuevo-btn');
+    await page.fill('#sc-nombres', 'Rosa <b>X</b>'); await page.fill('#sc-apellidos', 'Mena'); await page.fill('#sc-telefono', '8877-6655');
+    await page.selectOption('#sc-medico', 'per-med');
+    verificar(await page.inputValue('#sc-consultorio') === 'kons1', `${tag}: al elegir el médico se pone su consultorio`);
+    verificar((await page.textContent('#sc-precio')).includes('500.00'), `${tag}: muestra el precio del servicio del catálogo`);
+    await page.fill('#sc-motivo', 'Fiebre alta desde anoche'); await page.check('input[name="sc-prioridad"][value="urgente"]');
+    if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/sin-cita-' + tag + '.png' });
+    await page.click('#sc-btn'); await page.waitForSelector('#modal-sincita', { state: 'hidden', timeout: 15000 });
+    await page.waitForFunction(n => document.getElementById('sa-kpi-espera').textContent === String(Number(n) + 1), antes.e);
+    const db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const pac = db.clinica_pacientes.find(p => p.nombres === 'Rosa <b>X</b>'), cli = pac && db.clientes.find(c => c.id === pac.cliente_id);
+    const cita = db.agenda_citas.find(c => c.cliente_id === pac?.cliente_id), lin = db.agenda_citas_servicios.find(x => x.cita_id === cita?.id);
+    const inf = db.clinica_cita_info.find(x => x.agenda_cita_id === cita?.id);
+    verificar(!!pac && cli && cli.telefono === '8877-6655', `${tag}: se crea su expediente y su cliente (para cobrarle al final)`);
+    verificar(cita && cita.fecha === HOY && cita.notas === 'Fiebre alta desde anoche' && lin && lin.profesional_id === 'prof-ruiz' && lin.producto_id === 'prod-consulta' && lin.precio === 500,
+      `${tag}: su visita de hoy queda en la Agenda con el médico, el servicio y el motivo`);
+    verificar(inf && inf.llegada_en && inf.prioridad === 'urgente' && inf.sin_cita === true && inf.consultorio_id === 'kons1', `${tag}: entra a la fila marcado como urgente y sin cita`);
+    const primero = await page.textContent('#sa-espera .ag-card:first-child');
+    verificar(primero.includes('Rosa <b>X</b> Mena') && primero.includes('Urgente') && primero.includes('Sin cita'), `${tag}: el urgente va primero en la fila (y el nombre se muestra como texto)`);
+    verificar(!(await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).some(l => ['ventas', 'movimientos_financieros', 'venta_registrar_atomica'].includes(l.tabla)))), `${tag}: registrar la llegada no mueve dinero`);
+    // B) Paciente que ya tiene cita hoy: se ofrece marcar que llegó a SU cita (no se duplica)
+    const cuentaLuis = () => page.evaluate(h => JSON.parse(sessionStorage.getItem('__DB')).agenda_citas.filter(c => c.cliente_id === 'cli-luis' && c.fecha === h).length, HOY);
+    const nAntes = await cuentaLuis();
+    await page.click('text=🚶 Llegó sin cita'); await page.waitForSelector('#modal-sincita.modal-open');
+    await page.fill('#sc-buscar', 'Luis'); await page.waitForSelector('#sc-resultados [data-id]'); await page.click('#sc-resultados [data-tipo="p"]');
+    await page.waitForSelector('#sc-aviso .cl-aviso');
+    verificar((await page.textContent('#sc-aviso')).includes('Tiene cita hoy'), `${tag}: avisa que ya tiene cita hoy`);
+    await page.click('text=🪑 Marcar que llegó a su cita'); await page.waitForSelector('#modal-sincita', { state: 'hidden' });
+    await page.waitForFunction(() => document.getElementById('sa-espera').textContent.includes('Luis'));
+    const n = await cuentaLuis();
+    verificar(n === nAntes, `${tag}: no se duplicó la visita; llegó a su cita de hoy`);
+    // C) Un cliente que todavía no es paciente: se le abre el expediente al registrarlo
+    await page.click('text=🚶 Llegó sin cita'); await page.waitForSelector('#modal-sincita.modal-open');
+    await page.fill('#sc-buscar', 'Existente'); await page.waitForSelector('#sc-resultados [data-tipo="c"]'); await page.click('#sc-resultados [data-tipo="c"]');
+    await page.click('#sc-btn'); await page.waitForSelector('#modal-sincita', { state: 'hidden', timeout: 15000 });
+    const db2 = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db2.clinica_pacientes.some(p => p.cliente_id === 'cli-1') && db2.agenda_citas.some(c => c.cliente_id === 'cli-1' && c.fecha === HOY), `${tag}: un cliente sin expediente se registra y queda ligado a su cliente`);
+    await sinDesborde(page, `${tag} sala con paciente sin cita`);
+    verificar(page.__errores.length === 0 && !(await page.evaluate(() => window.__xss)), `${tag} sin cita: sin errores ni XSS (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Cuenta DEMO: no usa el multiusuario. El expediente se abre eligiendo el médico, sin código.
 async function pruebaDemo(browser, base) {
   console.log('\n▶ Cuenta demo (sin multiusuario)');
@@ -1257,6 +1315,7 @@ async function pruebaDemo(browser, base) {
       sessionStorage.setItem('__DB', JSON.stringify(db)); }, { UID, HOY });
     await page.reload(); await esperarListo(page); await page.waitForSelector('#sa-llegar .ag-card');
     verificar((await page.textContent('#sa-llegar')).includes('Dra. Ruiz'), `${tag} demo: la sala muestra al médico de ejemplo`);
+    verificar((await page.evaluate(() => window.__demoPreparada || 0)) >= 1, `${tag} demo: la sala pide preparar el día de la demo de simulación`);
     await page.goto(base + '/clinica-equipo.html'); await esperarListo(page); await page.waitForSelector('#eq-personal-lista .cl-card');
     verificar(await page.isVisible('#eq-demo') && (await page.textContent('#eq-personal-lista')).includes('Médico de ejemplo (demo)'), `${tag} demo: Médicos explica que la demo no usa usuarios`);
     verificar(page.__errores.length === 0, `${tag} demo: sin errores de JavaScript (${page.__errores.join(' | ')})`);
@@ -1267,6 +1326,8 @@ async function pruebaDemo(browser, base) {
   await page.goto(base + '/clinica-pacientes.html'); await esperarListo(page);
   const r = await page.evaluate(async () => (await sb.rpc('clinica_iniciar_sesion_demo', { p_personal_id: 'per-med' })).data);
   verificar(r && r.ok === false && r.motivo === 'solo_demo', 'cuenta real: no se puede abrir el expediente sin código');
+  await page.goto(base + '/clinica-sala.html'); await esperarListo(page); await page.waitForTimeout(300);
+  verificar((await page.evaluate(() => window.__demoPreparada || 0)) === 0, 'cuenta real: la sala no pide preparar datos de demo');
   await ctx.close();
 }
 
@@ -1298,6 +1359,7 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
+    if (process.env.SOLO_SINCITA) { await pruebaSinCita(browser, base); throw 'fin'; }
     if (process.env.SOLO_NUEVO) { await pruebaPunto2(browser, base); await pruebaSeguros2(browser, base); await pruebaEnfermeria(browser, base); await pruebaEnVivo(browser, base, 360, 740); throw 'fin'; }
     if (process.env.SOLO_PANEL) { await pruebaPanel(browser, base, 1280, 900); await pruebaPanel(browser, base, 360, 740); await pruebaAgendaPacientes(browser, base); throw 'fin'; }
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 1280, 900);
@@ -1313,6 +1375,7 @@ async function regresion(browser, base) {
     await pruebasFase5(browser, base, 360, 740);
     await pruebaCuadreFase5(browser, base);
     await pruebaDemo(browser, base);
+    await pruebaSinCita(browser, base);
     await pruebaPunto2(browser, base);
     await pruebaSeguros2(browser, base);
     await pruebaEnfermeria(browser, base);

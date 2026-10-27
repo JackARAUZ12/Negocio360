@@ -128,7 +128,7 @@ async function cargarYa(silencioso) {
 function render() {
   const turnos = clinicaTurnos(SA.citas);
   const turnoDe = id => turnos.find(t => t.id === id)?.turno;
-  const espera = turnos.filter(t => t.estado === 'en_espera');
+  const espera = clinicaOrdenEspera(turnos);                  // urgentes primero, luego por turno
   const enConsulta = SA.citas.filter(c => c.estado === 'en_consulta');
   const porLlegar = SA.citas.filter(c => ['programada', 'confirmada'].includes(c.estado));
   const atendidos = SA.citas.filter(c => c.estado === 'atendida');
@@ -140,9 +140,10 @@ function render() {
   const cobrada = c => c.venta_id ? '<span class="cl-badge cl-badge-verde">Cobrada</span>' : '';
   const btnCuenta = c => c.venta_id ? '' : `<button class="btn-accion-tabla btn-ghost" onclick="abrirCuenta('${c.id}')">💳 Cuenta y cobro</button>`;
   const llamando = c => c.llamado_en && Date.now() - new Date(c.llamado_en).getTime() < 2 * 60000;
-  $s('sa-espera').innerHTML = espera.length ? espera.map(c => `<div class="ag-card est-en_espera${llamando(c) ? ' sa-llamando' : ''}">
-      <div class="ag-fila"><span class="ag-hora">Turno ${c.turno}</span><span class="cl-badge ${c.espera_min >= 30 ? 'cl-badge-rojo' : 'cl-badge-ambar'}">⏱️ ${esc(clinicaTextoEspera(c.espera_min))}</span></div>
-      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">Cita ${esc(vetFormatoHora(c.hora))}${c.motivo ? ' · ' + esc(c.motivo) : ''}</div><div class="cl-sub">${donde(c) || 'Sin médico asignado'}</div>${sinExp(c)}
+  const marcas = c => (c.prioridad === 'urgente' ? ' <span class="cl-badge cl-badge-rojo">🚨 Urgente</span>' : '') + (c.sin_cita ? ' <span class="cl-badge cl-badge-azul">🚶 Sin cita</span>' : '');
+  $s('sa-espera').innerHTML = espera.length ? espera.map(c => `<div class="ag-card est-en_espera${llamando(c) ? ' sa-llamando' : ''}${c.prioridad === 'urgente' ? ' sa-urgente' : ''}">
+      <div class="ag-fila"><span class="ag-hora">Turno ${c.turno}${marcas(c)}</span><span class="cl-badge ${c.espera_min >= 30 ? 'cl-badge-rojo' : 'cl-badge-ambar'}">⏱️ ${esc(clinicaTextoEspera(c.espera_min))}</span></div>
+      <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${c.sin_cita ? 'Llegó ' + esc(vetFormatoHora(c.hora)) : 'Cita ' + esc(vetFormatoHora(c.hora))}${c.motivo ? ' · ' + esc(c.motivo) : ''}</div>${c.sin_cita && c.notas ? `<div class="cl-sub">📝 ${esc(c.notas)}</div>` : ''}<div class="cl-sub">${donde(c) || 'Sin médico asignado'}</div>${sinExp(c)}
       ${c.llamado_en ? `<div class="cl-sub">📢 Llamado a las ${esc(new Date(c.llamado_en).toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
       <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="llamar('${c.id}')">📢 Llamar</button>
         <button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Atender</button>
@@ -198,6 +199,154 @@ async function llamar(id) {
     showToast('Paciente llamado: aparece al instante en la pantalla de la sala.');
     await cargar();
   } catch (e) { console.error('llamar:', e); showToast('No se pudo llamar.', 'error'); }
+}
+
+/* ---------- Paciente que llega SIN cita: se registra su visita de hoy en la Agenda (la misma función de
+   siempre, agenda_cita_guardar) y pasa directo a la fila. No se mueve dinero: se cobra igual que cualquier
+   visita, al final. ---------- */
+const SC = { paciente: null, nuevo: false, servicios: [], forzar: false, guardando: false };
+async function abrirSinCita() {
+  Object.assign(SC, { paciente: null, nuevo: false, forzar: false });
+  ['sc-buscar', 'sc-nombres', 'sc-apellidos', 'sc-telefono', 'sc-cedula', 'sc-nacimiento', 'sc-motivo'].forEach(k => { $s(k).value = ''; });
+  $s('sc-sexo').value = ''; $s('sc-resultados').style.display = 'none'; $s('sc-error').textContent = ''; $s('sc-aviso').innerHTML = '';
+  document.querySelector('input[name="sc-prioridad"][value="normal"]').checked = true;
+  sinCitaNuevo(false);
+  const meds = SA.personal.filter(m => m.activo !== false && m.rol !== 'enfermeria');
+  $s('sc-medico').innerHTML = '<option value="">— El primero que esté libre —</option>'
+    + meds.map(m => `<option value="${esc(m.id)}">${esc(m.nombre)}${m.especialidad ? ' · ' + esc(m.especialidad) : ''}</option>`).join('');
+  $s('sc-consultorio').innerHTML = '<option value="">— Sin consultorio —</option>' + SA.consultorios.map(k => `<option value="${esc(k.id)}">${esc(k.nombre)}</option>`).join('');
+  try {
+    const { data, error } = await sb.from('productos').select('id, nombre, precio').eq('auth_user_id', STATE.userId).eq('tipo', 'servicio').eq('activo', true).order('nombre');
+    if (error) throw error;
+    SC.servicios = (data || []).filter(x => !/cobertura de seguro/i.test(x.nombre));
+  } catch (e) { console.error('servicios:', e); SC.servicios = []; }
+  $s('sc-servicio').innerHTML = SC.servicios.length ? SC.servicios.map(x => `<option value="${esc(x.id)}">${esc(x.nombre)}</option>`).join('')
+    : '<option value="">No hay servicios: créalos en Productos/Servicios</option>';
+  const consulta = SC.servicios.find(x => /consulta/i.test(x.nombre)); if (consulta) $s('sc-servicio').value = consulta.id;
+  sinCitaServicio();
+  openModal('modal-sincita');
+  setTimeout(() => $s('sc-buscar').focus(), 50);
+}
+function sinCitaNuevo(si) {
+  SC.nuevo = !!si; if (si) SC.paciente = null;
+  $s('sc-quien').style.display = si || SC.paciente ? 'none' : '';
+  $s('sc-nuevo').style.display = si ? '' : 'none';
+  $s('sc-elegido').style.display = !si && SC.paciente ? '' : 'none';
+  $s('sc-aviso').innerHTML = ''; SC.forzar = false;
+  if (si) setTimeout(() => $s('sc-nombres').focus(), 50);
+}
+function sinCitaMedico() {
+  const m = SA.personal.find(x => x.id === $s('sc-medico').value);
+  if (m && m.consultorio_id) $s('sc-consultorio').value = m.consultorio_id;
+}
+function sinCitaServicio() {
+  const x = SC.servicios.find(v => v.id === $s('sc-servicio').value);
+  $s('sc-precio').textContent = x ? `Precio: ${fmt(x.precio)} (del catálogo). Se cobra al final de la visita, como siempre.` : '';
+}
+let _tSc = null;
+function buscarSinCita(q) {
+  clearTimeout(_tSc);
+  const cont = $s('sc-resultados'); q = (q || '').replace(/[,()%*\\]/g, ' ').trim();
+  if (q.length < 2) { cont.style.display = 'none'; return; }
+  _tSc = setTimeout(async () => {
+    try {
+      const [p, c] = await Promise.all([
+        sb.from('clinica_pacientes').select('id, nombres, apellidos, cedula, telefono, numero_expediente, cliente_id').eq('auth_user_id', STATE.userId).eq('activo', true)
+          .or(`nombres.ilike.%${q}%,apellidos.ilike.%${q}%,cedula.ilike.%${q}%,telefono.ilike.%${q}%,numero_expediente.ilike.%${q}%`).order('nombres').limit(8),
+        sb.from('clientes').select('id, nombre, apellido, telefono').eq('auth_user_id', STATE.userId)
+          .or(`nombre.ilike.%${q}%,apellido.ilike.%${q}%,telefono.ilike.%${q}%`).order('nombre').limit(8),
+      ]);
+      if (p.error) throw p.error;
+      const pacs = p.data || [], yaPac = new Set(pacs.map(x => x.cliente_id).filter(Boolean));
+      const clis = (c.data || []).filter(x => !yaPac.has(x.id)).slice(0, 5);
+      SC.resultados = { pacs, clis };
+      cont.innerHTML = (pacs.length || clis.length)
+        ? pacs.map(x => `<div class="cl-resultado" tabindex="0" data-tipo="p" data-id="${esc(x.id)}">🩺 ${esc(clinicaNombrePaciente(x))} <span class="cl-sub">· ${esc(x.numero_expediente || '')}${x.telefono ? ' · ' + esc(x.telefono) : ''}</span></div>`).join('')
+          + clis.map(x => `<div class="cl-resultado" tabindex="0" data-tipo="c" data-id="${esc(x.id)}">👤 ${esc([x.nombre, x.apellido].filter(Boolean).join(' '))} <span class="cl-sub">· cliente${x.telefono ? ' · ' + esc(x.telefono) : ''} (se le abre expediente)</span></div>`).join('')
+        : '<div class="cl-resultado" style="cursor:default;color:var(--text-muted)">Sin resultados. Si es la primera vez, regístralo como paciente nuevo.</div>';
+      cont.querySelectorAll('[data-id]').forEach(el => { const f = () => elegirSinCita(el.dataset.tipo, el.dataset.id); el.addEventListener('click', f); el.addEventListener('keydown', e => { if (e.key === 'Enter') f(); }); });
+      cont.style.display = '';
+    } catch (e) { console.error('buscarSinCita:', e); }
+  }, 250);
+}
+function elegirSinCita(tipo, id) {
+  const r = SC.resultados || { pacs: [], clis: [] };
+  const x = tipo === 'p' ? r.pacs.find(v => v.id === id) : r.clis.find(v => v.id === id); if (!x) return;
+  SC.paciente = tipo === 'p' ? { tipo: 'paciente', ...x } : { tipo: 'cliente', id: null, cliente_id: x.id, nombres: x.nombre, apellidos: x.apellido || '', telefono: x.telefono || '' };
+  $s('sc-elegido').innerHTML = `<div class="cl-item-cab"><div><div class="cl-item-tit">${tipo === 'p' ? '🩺' : '👤'} ${esc(clinicaNombrePaciente(SC.paciente))}</div>
+      <div class="cl-item-fecha">${tipo === 'p' ? esc(x.numero_expediente || '') : 'Cliente (se le abre su expediente)'}${SC.paciente.telefono ? ' · ' + esc(SC.paciente.telefono) : ''}</div></div>
+      <button type="button" class="btn-accion-tabla btn-ghost" onclick="SC.paciente = null; sinCitaNuevo(false); \$s('sc-buscar').focus()">Cambiar</button></div>`;
+  $s('sc-resultados').style.display = 'none';
+  sinCitaNuevo(false);
+  avisoCitaDeHoy();
+}
+// ¿Ya tiene una cita hoy? Entonces lo correcto es marcar que llegó a ESA cita (no crear otra visita).
+function citaDeHoyDe(p) {
+  if (!p) return null;
+  return SA.citas.find(c => !['cancelada', 'no_asistio', 'atendida'].includes(c.estado)
+    && ((p.id && c.paciente_id === p.id) || (p.cliente_id && c.cliente_id === p.cliente_id))) || null;
+}
+function avisoCitaDeHoy() {
+  const c = citaDeHoyDe(SC.paciente); SC.forzar = false;
+  if (!c) { $s('sc-aviso').innerHTML = ''; return null; }
+  const yaEsta = c.estado === 'en_espera' || c.estado === 'en_consulta';
+  $s('sc-aviso').innerHTML = `<div class="cl-aviso">${yaEsta ? `Ya está en la sala (${c.estado === 'en_consulta' ? 'en consulta' : 'esperando'}).`
+      : `Tiene cita hoy a las ${esc(vetFormatoHora(c.hora))}${medico(c.medico_id) ? ' con ' + esc(medico(c.medico_id)) : ''}.`}
+    <div class="cl-acciones" style="margin-top:8px">${yaEsta ? '' : `<button type="button" class="btn-accion-tabla btn-primary" onclick="llegoASuCita('${c.id}')">🪑 Marcar que llegó a su cita</button>`}
+    <button type="button" class="btn-accion-tabla btn-ghost" onclick="SC.forzar = true; this.closest('.cl-aviso').remove()">Registrar otra visita</button></div></div>`;
+  return c;
+}
+async function llegoASuCita(id) { closeModal('modal-sincita'); await llego(id); }
+async function guardarSinCita() {
+  if (SC.guardando) return;
+  const err = $s('sc-error'); err.textContent = '';
+  if (!SC.paciente && !SC.nuevo) { err.textContent = 'Busca al paciente o regístralo como nuevo.'; return; }
+  if (SC.nuevo && !$s('sc-nombres').value.trim()) { err.textContent = 'Escribe el nombre del paciente.'; $s('sc-nombres').focus(); return; }
+  const serv = SC.servicios.find(v => v.id === $s('sc-servicio').value);
+  if (!serv) { err.textContent = 'Elige el servicio.'; return; }
+  if (!SC.nuevo && !SC.forzar && citaDeHoyDe(SC.paciente)) { avisoCitaDeHoy(); err.textContent = 'Revisa el aviso: ya tiene una visita hoy.'; return; }
+  const med = SA.personal.find(x => x.id === $s('sc-medico').value) || null;
+  const prioridad = document.querySelector('input[name="sc-prioridad"]:checked')?.value === 'urgente' ? 'urgente' : 'normal';
+  const motivo = $s('sc-motivo').value.trim().slice(0, 500);
+  SC.guardando = true; const btn = $s('sc-btn'); btn.disabled = true; btn.textContent = 'Registrando…';
+  try {
+    // 1) El paciente (nuevo, o un cliente que aún no tenía expediente)
+    let pac = SC.paciente;
+    if (SC.nuevo || !pac.id) {
+      const datos = SC.nuevo ? { nombres: $s('sc-nombres').value.trim().slice(0, 80), apellidos: $s('sc-apellidos').value.trim().slice(0, 80) || null,
+          telefono: $s('sc-telefono').value.trim().slice(0, 30) || null, cedula: $s('sc-cedula').value.trim().slice(0, 30) || null,
+          fecha_nacimiento: $s('sc-nacimiento').value || null, sexo: $s('sc-sexo').value || null }
+        : { nombres: String(pac.nombres || 'Paciente').slice(0, 80), apellidos: String(pac.apellidos || '').slice(0, 80) || null, telefono: pac.telefono || null, cliente_id: pac.cliente_id };
+      const { data, error } = await sb.from('clinica_pacientes').insert({ auth_user_id: STATE.userId, ...datos }).select('id, nombres, apellidos, telefono, cliente_id, numero_expediente').single();
+      if (error) throw error;
+      pac = data;
+    }
+    // 2) Su cliente (para cobrarle al final, igual que siempre)
+    if (!pac.cliente_id) {
+      const { data: cli, error } = await sb.from('clientes').insert({ auth_user_id: STATE.userId, nombre: clinicaNombrePaciente(pac).slice(0, 100), telefono: pac.telefono || null }).select('id').single();
+      if (error) throw error;
+      await sb.from('clinica_pacientes').update({ cliente_id: cli.id }).eq('id', pac.id).eq('auth_user_id', STATE.userId).is('cliente_id', null);
+      pac.cliente_id = cli.id;
+    }
+    // 3) La visita de hoy en la Agenda (misma función que la Agenda), a esta hora, con el médico elegido
+    let quien = 'Recepción'; try { quien = JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null')?.nombre || quien; } catch (_) {}
+    const { data: r, error: eC } = await sb.rpc('agenda_cita_guardar', { p_cita_id: null, p_permitir_cruce: true,
+      p_datos: { fecha: vetHoy(), cliente_id: pac.cliente_id, cliente_nombre: clinicaNombrePaciente(pac).slice(0, 120), cliente_telefono: pac.telefono || '', estado: 'confirmada',
+        notas: motivo || null, creado_por: quien },
+      p_servicios: [{ producto_id: serv.id, servicio_nombre: serv.nombre, profesional_id: med?.agenda_profesional_id || null, hora_inicio: clinicaHoraAhora(), duracion_min: 30, precio: Number(serv.precio) || 0 }] });
+    if (eC) throw eC;
+    if (!r || !r.ok || !r.cita_id) throw new Error('No se pudo crear la visita en la Agenda.');
+    // 4) Llegó ahora: entra a la fila (con su prioridad)
+    await ClinicaCitas.guardarInfo(r.cita_id, { paciente_id: pac.id, llegada_en: new Date().toISOString(), consultorio_id: $s('sc-consultorio').value || (med && med.consultorio_id) || null, prioridad, sin_cita: true });
+    closeModal('modal-sincita');
+    avisarCambio();
+    await cargar();
+    const t = clinicaTurnos(SA.citas).find(x => x.id === r.cita_id);
+    showToast(`✅ ${clinicaNombrePaciente(pac)} está en la fila${t ? ' · Turno ' + t.turno : ''}${prioridad === 'urgente' ? ' (urgente)' : ''}.${r.cruces_aceptados ? ' Ojo: el médico tenía otra cita a esta hora.' : ''}`);
+  } catch (e) {
+    console.error('guardarSinCita:', e);
+    err.textContent = clinicaTextoError(e, 'No se pudo registrar. Intenta de nuevo.');
+  } finally { SC.guardando = false; btn.disabled = false; btn.textContent = '🪑 Registrar llegada'; }
 }
 
 /* ---------- Atender: abrir el expediente (si la cita no tiene expediente, se elige o se crea) ---------- */
@@ -465,8 +614,8 @@ function renderPantalla(turnos) {
     ? `<div class="sp-turno">Turno ${esc(t(ult.id) || '')}</div><div class="sp-nombre">${esc(clinicaNombreCorto(ult.clinica_pacientes))}</div>
        <div class="sp-donde">${esc([consultorio(ult.consultorio_id), medico(ult.medico_id)].filter(Boolean).join(' · ') || 'Pase a consulta')}</div>`
     : '<div class="sp-nombre" style="opacity:.6">Bienvenido</div><div class="sp-donde">Espere a ser llamado</div>';
-  const espera = turnos.filter(x => x.estado === 'en_espera');
-  $s('sp-lista').innerHTML = espera.length ? espera.map(x => `<div class="sp-item${ult && x.id === ult.id ? ' sp-item-llamado' : ''}"><b>${x.turno}</b> ${esc(clinicaNombreCorto(x.clinica_pacientes))}</div>`).join('') : '<div class="sp-item" style="opacity:.6">—</div>';
+  const espera = clinicaOrdenEspera(turnos);
+  $s('sp-lista').innerHTML = espera.length ? espera.map(x => `<div class="sp-item${ult && x.id === ult.id ? ' sp-item-llamado' : ''}"><b>${x.turno}</b> ${esc(clinicaNombreCorto(x.clinica_pacientes))}${x.prioridad === 'urgente' ? '<span class="sp-urg">● Urgente</span>' : ''}</div>`).join('') : '<div class="sp-item" style="opacity:.6">—</div>';
   $s('sp-hora').textContent = new Date().toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' });
   $s('sp-negocio').textContent = STATE.empresaConfig?.nombre_comercial || 'Sala de espera';
 }
