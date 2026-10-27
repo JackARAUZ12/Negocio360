@@ -891,6 +891,8 @@
         return;
       }
 
+      if (await avisarRelojAdelantado(data.session)) { setLoading(false); return; }
+
       // Authenticated → check onboarding
       showSuccess('¡Autenticado! Redirigiendo…');
       await redirectByOnboarding(data.user.id);
@@ -907,6 +909,33 @@
       showError(translateAuthError(e?.message));
       setLoading(false);
     }
+  }
+
+  // ─── RELOJ DEL EQUIPO ───────────────────────────────────────────
+  // Si la hora de la computadora está adelantada una hora o más (hora o zona
+  // horaria mal puestas), la sesión recién creada "parece vencida": el equipo la
+  // renueva sin parar, el servidor lo frena y la persona vuelve al login sin
+  // saber por qué. Se compara la hora en que el servidor creó la sesión (iat)
+  // con la hora del equipo. Solo avisa en ese caso; con la hora bien (o atrasada,
+  // que no causa el rebote) todo sigue IGUAL que siempre.
+  function minutosRelojAdelantado(session) {
+    try {
+      const b64 = session.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const iat = JSON.parse(atob(b64 + '==='.slice((b64.length + 3) % 4))).iat;
+      const min = Math.round((Date.now() / 1000 - iat) / 60);
+      return min >= 50 ? min : 0;
+    } catch (_) { return 0; }
+  }
+  async function avisarRelojAdelantado(session) {
+    const min = minutosRelojAdelantado(session);
+    if (!min) return false;
+    try { await sb.auth.signOut({ scope: 'local' }); } catch (_) {}
+    const horas = Math.floor(min / 60), resto = min % 60;
+    const cuanto = horas ? `${horas} hora${horas === 1 ? '' : 's'}${resto ? ` y ${resto} min` : ''}` : `${min} min`;
+    showError(`La hora de este equipo está adelantada unos ${cuanto} y por eso no se puede mantener la sesión. ` +
+      'En Windows: clic derecho en el reloj → "Ajustar fecha y hora" → activa "Establecer la hora automáticamente" y ' +
+      '"Establecer la zona horaria automáticamente" (o elige tu zona, p. ej. "(UTC-06:00) América Central"). Luego cierra el navegador, ábrelo e inicia sesión de nuevo.');
+    return true;
   }
 
   // ─── ERROR TRANSLATIONS ─────────────────────────────────────────
