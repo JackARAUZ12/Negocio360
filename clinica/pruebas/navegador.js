@@ -1287,6 +1287,76 @@ async function pruebaSinCita(browser, base) {
   }
 }
 
+// Ingreso a observación: buscador que filtra mientras se escribe (pacientes y clientes) y paciente nuevo.
+async function pruebaBuscadorIngreso(browser, base) {
+  console.log('\n▶ Observación: buscador del ingreso');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clinica-hospital.html');
+    await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: (() => {
+      const db = semilla();
+      db.clinica_pacientes.push(
+        { id: 'pac-jose', auth_user_id: UID, nombres: 'José', apellidos: 'Sánchez Úbeda', cedula: '001-010180-0001A', telefono: '8888-1111', numero_expediente: 'EXP-000002', activo: true, cliente_id: 'cli-jose' },
+        { id: 'pac-ana', auth_user_id: UID, nombres: 'Ana Lucía', apellidos: 'Silva Rivas', telefono: '8555-0000', numero_expediente: 'EXP-000003', activo: true, cliente_id: 'cli-ana' });
+      db.clientes.push({ id: 'cli-jose', auth_user_id: UID, nombre: 'José Sánchez Úbeda', activo: true }, { id: 'cli-ana', auth_user_id: UID, nombre: 'Ana Lucía Silva Rivas', activo: true },
+        { id: 'cli-maria', auth_user_id: UID, nombre: 'María', apellido: 'Téllez', telefono: '7777-2222', activo: true });
+      return db; })() });
+    await page.reload(); await esperarListo(page);
+    const busca = async (txt) => { await page.fill('#in-buscar', txt); await page.waitForFunction(t => { const r = document.getElementById('in-resultados'); return r.style.display !== 'none' && r.textContent.includes('Paciente nuevo') && (HO.resultados || {}).texto === t; }, txt); return page.textContent('#in-resultados'); };
+    await page.click('text=+ Ingreso'); await page.waitForSelector('#modal-ingreso.modal-open');
+    const rj = await busca('j');
+    verificar(rj.includes('José Sánchez'), `${tag} buscador: filtra desde la primera letra`);
+    verificar((await busca('sanchez')).includes('José Sánchez'), `${tag} buscador: encuentra sin acentos ("sanchez" → Sánchez)`);
+    const dos = await busca('ana silva');
+    verificar(dos.includes('Ana Lucía Silva') && !dos.includes('José'), `${tag} buscador: varias palabras (nombre + apellido)`);
+    verificar((await busca('1111')).includes('José Sánchez'), `${tag} buscador: por teléfono`);
+    verificar((await busca('001-010180')).includes('José Sánchez'), `${tag} buscador: por cédula`);
+    const cli = await busca('tellez');
+    verificar(cli.includes('María Téllez') && cli.includes('se le abre su expediente'), `${tag} buscador: encuentra clientes del sistema sin expediente (sin acento)`);
+    await sinDesborde(page, `${tag} buscador del ingreso`);
+    if (process.env.FOTOS) await page.waitForTimeout(500), await page.screenshot({ path: process.env.FOTOS + '/buscador-' + tag + '.png', fullPage: true });
+    // Teclado: flecha y Enter
+    await busca('pedro'); await page.press('#in-buscar', 'ArrowDown'); await page.press('#in-buscar', 'Enter');
+    verificar((await page.textContent('#in-elegido')).includes('Pedro'), `${tag} buscador: se elige con flechas y Enter`);
+    await page.click('#in-elegido >> text=cambiar');
+    // Cliente sin expediente → al ingresar se le abre (ligado a SU cliente, sin duplicarlo)
+    await busca('tellez'); await page.locator('#in-resultados [data-tipo="c"]').click();
+    await page.click('#in-btn'); await page.waitForSelector('#ho-lista .ag-card');
+    let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const maria = db.clinica_pacientes.find(p => p.nombres === 'María');
+    verificar(maria && maria.cliente_id === 'cli-maria' && db.clientes.filter(c => c.nombre === 'María' || /Téllez/.test(c.nombre)).length === 1 && db.clinica_estancias.some(e => e.paciente_id === maria.id),
+      `${tag} buscador: el cliente queda como paciente con su mismo cliente e ingresado`);
+    // Ya internado: aparece marcado y no se puede elegir otra vez
+    await page.click('text=+ Ingreso'); await page.waitForSelector('#modal-ingreso.modal-open');
+    await busca('tellez');
+    verificar((await page.textContent('#in-resultados')).includes('Ya internado') && await page.locator('#in-resultados [data-tipo="p"][aria-disabled]').count() === 1, `${tag} buscador: quien ya está internado aparece marcado y no se elige`);
+    // Paciente nuevo: lo escrito pasa al formulario
+    await busca('Carlos Pérez Ruiz'); await page.locator('#in-resultados [data-tipo="n"]').click();
+    verificar(await page.inputValue('#in-n-nombres') === 'Carlos' && await page.inputValue('#in-n-apellidos') === 'Pérez Ruiz', `${tag} buscador: "Paciente nuevo" usa lo que escribiste`);
+    await modalesSinDesborde(page, `${tag} paciente nuevo en el ingreso`);
+    await page.fill('#in-n-telefono', '8123-4567'); await page.click('#in-btn');
+    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_pacientes.some(p => p.nombres === 'Carlos'));
+    await page.waitForFunction(() => document.getElementById('ho-lista').textContent.includes('Carlos'));
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const carlos = db.clinica_pacientes.find(p => p.nombres === 'Carlos');
+    verificar(carlos.apellidos === 'Pérez Ruiz' && carlos.telefono === '8123-4567' && !!carlos.cliente_id && db.clientes.some(c => c.id === carlos.cliente_id) && db.clinica_estancias.some(e => e.paciente_id === carlos.id),
+      `${tag} buscador: paciente nuevo con expediente, cliente e ingreso`);
+    // Repetido: si ya existe, ofrece usar el que existe
+    await page.click('text=+ Ingreso'); await page.waitForSelector('#modal-ingreso.modal-open');
+    await busca('José Sánchez Úbeda'); await page.locator('#in-resultados [data-tipo="n"]').click();
+    page.removeAllListeners('dialog'); page.once('dialog', d => d.dismiss());
+    await page.click('#in-btn');
+    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_estancias.some(e => e.paciente_id === 'pac-jose'));
+    page.on('dialog', d => d.accept());
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.clinica_pacientes.filter(p => p.nombres === 'José').length === 1, `${tag} buscador: no duplica a un paciente que ya existe (usa el registrado)`);
+    verificar((db.ventas || []).length === 0, `${tag} buscador: ingresar no cobra ni mueve caja`);
+    verificar(page.__errores.length === 0, `${tag} buscador: sin errores de JavaScript (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Pacientes · "Atención de hoy": quién está en consulta y quién espera, con "Atender" directo; y de la consulta a observación.
 async function pruebaAtencionHoy(browser, base) {
   console.log('\n▶ Pacientes: atención de hoy y paso a observación');
@@ -1458,6 +1528,7 @@ async function regresion(browser, base) {
     if (process.env.SOLO_DEMO) { await pruebaDemo(browser, base); throw 'fin'; }
     if (process.env.SOLO_PASAR) { await pruebaPasarConsulta(browser, base); throw 'fin'; }
     if (process.env.SOLO_HOY) { await pruebaAtencionHoy(browser, base); throw 'fin'; }
+    if (process.env.SOLO_BUSCA) { await pruebaBuscadorIngreso(browser, base); throw 'fin'; }
     if (process.env.SOLO_NUEVO) { await pruebaPunto2(browser, base); await pruebaSeguros2(browser, base); await pruebaEnfermeria(browser, base); await pruebaEnVivo(browser, base, 360, 740); throw 'fin'; }
     if (process.env.SOLO_PANEL) { await pruebaPanel(browser, base, 1280, 900); await pruebaPanel(browser, base, 360, 740); await pruebaAgendaPacientes(browser, base); throw 'fin'; }
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 1280, 900);
@@ -1475,6 +1546,7 @@ async function regresion(browser, base) {
     await pruebaDemo(browser, base);
     await pruebaPasarConsulta(browser, base);
     await pruebaAtencionHoy(browser, base);
+    await pruebaBuscadorIngreso(browser, base);
     await pruebaSinCita(browser, base);
     await pruebaPunto2(browser, base);
     await pruebaSeguros2(browser, base);

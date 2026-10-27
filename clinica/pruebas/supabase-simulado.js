@@ -30,7 +30,7 @@
       case 'lt': return v != null && v < f.val; case 'lte': return v != null && v <= f.val;
       case 'in': return f.val.map(comoTexto).includes(comoTexto(v));
       case 'is': return f.val === null || f.val === 'null' ? v == null : v === (f.val === true || f.val === 'true');
-      case 'ilike': { const re = new RegExp('^' + String(f.val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i'); return re.test(comoTexto(v)); }
+      case 'ilike': { const re = new RegExp('^' + String(f.val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i'); return re.test(comoTexto(v)); }
       case 'or': return f.val.some(g => cumple(fila, g));
       case 'not': return !cumple(fila, f.val);
       default: return true;

@@ -152,7 +152,11 @@ Sirve para el paciente que **se queda**: unas horas en observación (por ejemplo
 o internado varios días. Desde la Sala, en "En consulta", **🛏️ Dejar en observación** abre el
 ingreso con el paciente y su médico ya elegidos.
 
-1. **+ Ingreso**: paciente, observación u hospitalización, cama, médico, el servicio
+1. **+ Ingreso**: en **Paciente** escribe nombre, apellido, cédula, teléfono o expediente y la
+   lista se va filtrando mientras escribes (sin importar acentos; flechas y Enter también
+   sirven). Salen los pacientes registrados y los clientes del sistema (a esos se les abre su
+   expediente). Si es la primera vez, **➕ Paciente nuevo** (si ya existe alguien igual, te
+   avisa para no duplicarlo). Luego: observación u hospitalización, cama, médico, el servicio
    que se cobra (por día en hospitalización) y la nota de ingreso.
 2. **📝 Notas y signos**: evolución, enfermería, indicaciones y alta, con signos
    vitales, con el código del médico. **Enfermería** (rol propio en Médicos y seguridad)

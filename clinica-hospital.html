@@ -1347,7 +1347,7 @@
 <script src="clinica-comun.js?v=20261027a"></script>
 <script src="clinica-sesion.js?v=20261027a"></script>
 <script src="clinica-citas.js?v=20261027a"></script>
-<script src="clinica-hospital.js?v=20261028a"></script>
+<script src="clinica-hospital.js?v=20261028b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
@@ -1389,9 +1389,21 @@
     <div class="modal-header"><span class="modal-title" id="in-titulo">🛏️ Ingreso</span><button class="modal-close" onclick="closeModal('modal-ingreso')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
     <div class="modal-body" style="max-height:72vh;overflow-y:auto">
       <div class="cl-field"><label for="in-buscar">Paciente *</label>
-        <div id="in-buscar-wrap"><input type="text" id="in-buscar" class="cl-in" placeholder="Nombre, cédula o N.º de expediente…" oninput="buscarPaciente(this.value)" autocomplete="off"/>
-          <div id="in-resultados" class="cl-resultados" style="display:none"></div></div>
-        <div id="in-elegido" class="cl-elegido" style="display:none"></div></div>
+        <div id="in-buscar-wrap"><input type="search" id="in-buscar" class="cl-in" placeholder="Escribe nombre, apellido, cédula, teléfono o expediente…" oninput="buscarPaciente(this.value)" onkeydown="teclaBuscador(event)" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="in-resultados" aria-expanded="false"/>
+          <div id="in-resultados" class="cl-resultados" style="display:none" role="listbox"></div>
+          <div class="cl-ayuda">Busca a pacientes registrados y a clientes del sistema. Si es la primera vez, elige <b>➕ Paciente nuevo</b>.</div></div>
+        <div id="in-elegido" class="cl-elegido" style="display:none"></div>
+        <div id="in-nuevo" style="display:none;margin-top:6px">
+          <div class="cl-grid2">
+            <div class="cl-field"><label for="in-n-nombres">Nombres *</label><input type="text" id="in-n-nombres" class="cl-in" maxlength="80"/></div>
+            <div class="cl-field"><label for="in-n-apellidos">Apellidos</label><input type="text" id="in-n-apellidos" class="cl-in" maxlength="80"/></div>
+            <div class="cl-field"><label for="in-n-telefono">Teléfono</label><input type="tel" id="in-n-telefono" class="cl-in" maxlength="30"/></div>
+            <div class="cl-field"><label for="in-n-cedula">Cédula</label><input type="text" id="in-n-cedula" class="cl-in" maxlength="30"/></div>
+            <div class="cl-field"><label for="in-n-nacimiento">Fecha de nacimiento</label><input type="date" id="in-n-nacimiento" class="cl-in"/></div>
+            <div class="cl-field"><label for="in-n-sexo">Sexo</label><select id="in-n-sexo" class="cl-in"><option value="">—</option><option value="femenino">Femenino</option><option value="masculino">Masculino</option></select></div>
+          </div>
+          <div class="cl-ayuda">Se crea su expediente y su ficha de cliente (para cobrarle al final). <button type="button" class="cl-link" onclick="quitarPaciente()">Buscar otra vez</button></div>
+        </div></div>
       <div class="cl-grid2">
         <div class="cl-field"><label for="in-tipo">Tipo</label><select id="in-tipo" class="cl-in" onchange="alCambiarTipo()"><option value="observacion">🛋️ Observación</option><option value="hospitalizacion">🛏️ Hospitalización</option></select></div>
         <div class="cl-field"><label for="in-cama">Cama / sala</label><input type="text" id="in-cama" class="cl-in" maxlength="40" placeholder="Ej: Cama 3"/></div>

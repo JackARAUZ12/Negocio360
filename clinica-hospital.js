@@ -160,8 +160,9 @@ function render() {
 
 /* ---------- Ingreso ---------- */
 function abrirIngreso() {
-  HO.ing = { paciente: null };
-  $h('in-buscar').value = ''; $h('in-resultados').style.display = 'none'; $h('in-elegido').style.display = 'none'; $h('in-buscar-wrap').style.display = '';
+  HO.ing = { paciente: null, nuevo: false };
+  $h('in-buscar').value = ''; $h('in-resultados').style.display = 'none'; $h('in-elegido').style.display = 'none'; $h('in-buscar-wrap').style.display = ''; $h('in-nuevo').style.display = 'none';
+  pacientesIngreso().catch(() => {});                       // se adelanta la lista para que el buscador responda al instante
   $h('in-tipo').value = 'observacion'; $h('in-cama').value = ''; $h('in-nota').value = ''; $h('in-error').textContent = '';
   $h('in-medico').innerHTML = '<option value="">— Sin médico —</option>' + HO.medicos.map(m => `<option value="${esc(m.id)}">${esc(m.nombre)}</option>`).join('');
   $h('in-servicio').innerHTML = '<option value="">— Ninguno (cobrar solo lo de la cuenta) —</option>' + HO.servicios.map(x => `<option value="${esc(x.id)}">${esc(x.nombre)} · ${esc(fmt(x.precio || 0))}</option>`).join('');
@@ -181,36 +182,157 @@ async function ingresoDesdeURL() {
   } catch (e) { console.warn('ingreso desde la Sala:', e); }
 }
 function alCambiarTipo() { $h('in-servicio-ayuda').textContent = $h('in-tipo').value === 'hospitalizacion' ? 'Se cobra por día (cada 24 horas o fracción).' : 'Se cobra una vez por la observación.'; }
-let _tP = null;
+/* ---------- Buscador del paciente: filtra mientras se escribe ----------
+   Por nombre, apellido, cédula, teléfono o N.º de expediente, sin importar acentos ni mayúsculas, y con
+   varias palabras ("ana silva"). Busca en los pacientes y también en los clientes del sistema (a esos se
+   les abre su expediente al ingresar). Si no aparece, "➕ Paciente nuevo". Solo lee: no cambia nada. */
+const sinAcento = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const soloDigitos = t => String(t || '').replace(/\D/g, '');
+function coincide(texto, tel, palabras) {
+  return palabras.every(w => texto.includes(w) || (soloDigitos(w).length >= 3 && soloDigitos(w) === w.replace(/[\s-]/g, '') && tel.includes(soloDigitos(w))));
+}
+async function pacientesIngreso() {
+  if (HO.listaPac) return HO.listaPac;
+  let todo = [];
+  for (let i = 0; i < 50; i++) {
+    const { data, error } = await sb.from('clinica_pacientes').select('id, nombres, apellidos, cedula, telefono, numero_expediente, cliente_id, fecha_nacimiento')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('id').range(i * 1000, i * 1000 + 999);
+    if (error) throw error;
+    todo = todo.concat(data || []);
+    if (!data || data.length < 1000) break;
+  }
+  HO.listaPac = todo.map(p => ({ ...p, _t: sinAcento([clinicaNombrePaciente(p), p.cedula, p.telefono, p.numero_expediente].join(' ')), _tel: soloDigitos(p.telefono) }));
+  return HO.listaPac;
+}
+let _tP = null, _bP = 0;
 function buscarPaciente(q) {
   clearTimeout(_tP);
-  const cont = $h('in-resultados'); q = (q || '').replace(/[,()%*\\]/g, ' ').trim();
-  if (q.length < 2) { cont.style.display = 'none'; return; }
+  const cont = $h('in-resultados'), texto = String(q || '').trim();
+  if (!texto) { cont.style.display = 'none'; $h('in-buscar').setAttribute('aria-expanded', 'false'); return; }
+  const n = ++_bP;
   _tP = setTimeout(async () => {
     try {
-      const { data, error } = await sb.from('clinica_pacientes').select('id, nombres, apellidos, numero_expediente, telefono')
-        .eq('auth_user_id', STATE.userId).eq('activo', true)
-        .or(`nombres.ilike.%${q}%,apellidos.ilike.%${q}%,cedula.ilike.%${q}%,numero_expediente.ilike.%${q}%`).order('nombres').limit(8);
-      if (error) throw error;
-      cont.innerHTML = (data && data.length) ? data.map(p => `<div class="cl-resultado" tabindex="0" data-id="${esc(p.id)}">${esc(clinicaNombrePaciente(p))} <span class="cl-sub">· ${esc(p.numero_expediente || '')}</span></div>`).join('')
-        : '<div class="cl-resultado" style="cursor:default;color:var(--text-muted)">Sin resultados. Regístralo primero en Pacientes.</div>';
-      cont.querySelectorAll('[data-id]').forEach(el => { const f = () => elegirPaciente(data.find(x => x.id === el.dataset.id)); el.addEventListener('click', f); el.addEventListener('keydown', e => { if (e.key === 'Enter') f(); }); });
-      cont.style.display = '';
+      const palabras = sinAcento(texto).split(/\s+/).filter(Boolean);
+      const pacs = (await pacientesIngreso()).filter(p => coincide(p._t, p._tel, palabras));
+      const nombreDe = p => sinAcento(clinicaNombrePaciente(p));
+      pacs.sort((a, b) => (nombreDe(b).startsWith(palabras[0]) - nombreDe(a).startsWith(palabras[0])) || nombreDe(a).localeCompare(nombreDe(b)));
+      // Clientes del sistema: se pide al servidor con la palabra más larga (vocales comodín, para no fallar por acentos) y se afina aquí.
+      let clis = [];
+      const larga = palabras.slice().sort((a, b) => b.length - a.length)[0].replace(/[^a-z0-9ñ]/g, '');
+      if (larga.length >= 2) {
+        const w = /^\d+$/.test(larga) ? larga : larga.replace(/[aeiouñn]/g, '_');
+        const { data } = await sb.from('clientes').select('id, nombre, apellido, telefono').eq('auth_user_id', STATE.userId)
+          .or(`nombre.ilike.%${w}%,apellido.ilike.%${w}%,telefono.ilike.%${w}%`).order('nombre').limit(40);
+        const yaPac = new Set(HO.listaPac.map(p => p.cliente_id).filter(Boolean));
+        clis = (data || []).filter(c => !yaPac.has(c.id) && coincide(sinAcento([c.nombre, c.apellido, c.telefono].join(' ')), soloDigitos(c.telefono), palabras)).slice(0, 5);
+      }
+      if (n !== _bP) return;                                   // ya escribió otra cosa: esta búsqueda quedó vieja
+      HO.resultados = { pacs: pacs.slice(0, 8), clis, texto };
+      pintarResultados(pacs.length);
     } catch (e) { console.error('buscarPaciente:', e); }
-  }, 250);
+  }, 150);
+}
+function pintarResultados(totalPacs) {
+  const cont = $h('in-resultados'), { pacs, clis, texto } = HO.resultados;
+  const internado = id => HO.estancias.some(e => e.estado === 'activa' && e.paciente_id === id);
+  const fila = (tipo, id, html, deshabilitado) => `<div class="cl-resultado" role="option" tabindex="-1" data-tipo="${tipo}" data-id="${esc(id)}"${deshabilitado ? ' aria-disabled="true" style="cursor:not-allowed;opacity:.6"' : ''}>${html}</div>`;
+  cont.innerHTML = pacs.map(p => fila('p', p.id, `🩺 <b>${esc(clinicaNombrePaciente(p))}</b>${internado(p.id) ? ' <span class="cl-badge cl-badge-morado">Ya internado</span>' : ''}
+      <div class="cl-sub">${[p.numero_expediente, p.fecha_nacimiento && clinicaEdad(p.fecha_nacimiento), p.cedula && '🪪 ' + p.cedula, p.telefono && '📞 ' + p.telefono].filter(Boolean).map(esc).join(' · ')}</div>`, internado(p.id))).join('')
+    + (totalPacs > pacs.length ? `<div class="cl-resultado" style="cursor:default;color:var(--text-muted)">…y ${totalPacs - pacs.length} más: escribe un poco más (apellido, cédula o teléfono).</div>` : '')
+    + clis.map(c => fila('c', c.id, `👤 <b>${esc([c.nombre, c.apellido].filter(Boolean).join(' '))}</b><div class="cl-sub">Cliente${c.telefono ? ' · 📞 ' + esc(c.telefono) : ''} · se le abre su expediente</div>`)).join('')
+    + (!pacs.length && !clis.length ? '<div class="cl-resultado" style="cursor:default;color:var(--text-muted)">No aparece nadie con ese dato.</div>' : '')
+    + fila('n', 'nuevo', `➕ <b>Paciente nuevo</b>${texto ? ': «' + esc(texto) + '»' : ''}<div class="cl-sub">Si es la primera vez que viene</div>`);
+  cont.querySelectorAll('[data-id]').forEach(el => {
+    if (el.getAttribute('aria-disabled')) return;
+    el.addEventListener('mousedown', ev => ev.preventDefault());
+    el.addEventListener('click', () => elegirResultado(el.dataset.tipo, el.dataset.id));
+  });
+  HO.activo = -1; cont.style.display = ''; $h('in-buscar').setAttribute('aria-expanded', 'true');
+}
+// Flechas para moverse, Enter para elegir, Esc para cerrar.
+function teclaBuscador(ev) {
+  const cont = $h('in-resultados'); if (cont.style.display === 'none') return;
+  const items = [...cont.querySelectorAll('[data-id]:not([aria-disabled])')]; if (!items.length) return;
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    HO.activo = ev.key === 'ArrowDown' ? Math.min(items.length - 1, HO.activo + 1) : Math.max(0, HO.activo - 1);
+    items.forEach((el, k) => { el.style.background = k === HO.activo ? 'var(--bg-app)' : ''; el.setAttribute('aria-selected', k === HO.activo ? 'true' : 'false'); });
+    items[HO.activo].scrollIntoView({ block: 'nearest' });
+  } else if (ev.key === 'Enter') {
+    ev.preventDefault();
+    const el = items[HO.activo >= 0 ? HO.activo : 0]; elegirResultado(el.dataset.tipo, el.dataset.id);
+  } else if (ev.key === 'Escape') { cont.style.display = 'none'; }
+}
+function elegirResultado(tipo, id) {
+  const r = HO.resultados || { pacs: [], clis: [] };
+  if (tipo === 'p') { const p = r.pacs.find(x => x.id === id); if (p) elegirPaciente(p); return; }
+  if (tipo === 'c') {
+    const c = r.clis.find(x => x.id === id); if (!c) return;
+    elegirPaciente({ id: null, cliente_id: c.id, nombres: c.nombre || 'Paciente', apellidos: c.apellido || '', telefono: c.telefono || '', esCliente: true });
+    return;
+  }
+  // Paciente nuevo: lo escrito pasa a nombres y apellidos (o al teléfono / cédula si son números)
+  const t = (r.texto || '').trim(), partes = t.split(/\s+/).filter(Boolean);
+  ['in-n-nombres', 'in-n-apellidos', 'in-n-telefono', 'in-n-cedula', 'in-n-nacimiento'].forEach(k => { $h(k).value = ''; }); $h('in-n-sexo').value = '';
+  if (/^[\d\s-]+$/.test(t)) $h('in-n-telefono').value = t;
+  else if (/\d/.test(t) && /-/.test(t)) $h('in-n-cedula').value = t;
+  else { $h('in-n-nombres').value = partes.slice(0, partes.length > 2 ? partes.length - 2 : 1).join(' '); $h('in-n-apellidos').value = partes.slice(partes.length > 2 ? partes.length - 2 : 1).join(' '); }
+  HO.ing.paciente = null; HO.ing.nuevo = true;
+  $h('in-resultados').style.display = 'none'; $h('in-buscar-wrap').style.display = 'none'; $h('in-nuevo').style.display = '';
+  setTimeout(() => $h($h('in-n-nombres').value ? 'in-n-telefono' : 'in-n-nombres').focus(), 50);
 }
 function elegirPaciente(p) {
-  HO.ing.paciente = p;
-  $h('in-resultados').style.display = 'none'; $h('in-buscar-wrap').style.display = 'none';
-  const el = $h('in-elegido'); el.innerHTML = `<span>✔ ${esc(clinicaNombrePaciente(p))} · ${esc(p.numero_expediente || '')}</span> <button type="button" class="cl-link" onclick="quitarPaciente()">cambiar</button>`; el.style.display = '';
+  HO.ing.paciente = p; HO.ing.nuevo = false;
+  $h('in-resultados').style.display = 'none'; $h('in-buscar-wrap').style.display = 'none'; $h('in-nuevo').style.display = 'none';
+  const el = $h('in-elegido');
+  el.innerHTML = `<span>✔ ${esc(clinicaNombrePaciente(p))} · ${p.esCliente ? 'cliente (se le abre su expediente)' : esc(p.numero_expediente || '')}</span> <button type="button" class="cl-link" onclick="quitarPaciente()">cambiar</button>`;
+  el.style.display = '';
 }
-function quitarPaciente() { HO.ing.paciente = null; $h('in-elegido').style.display = 'none'; $h('in-buscar-wrap').style.display = ''; $h('in-buscar').focus(); }
+function quitarPaciente() {
+  HO.ing.paciente = null; HO.ing.nuevo = false;
+  $h('in-elegido').style.display = 'none'; $h('in-nuevo').style.display = 'none'; $h('in-buscar-wrap').style.display = '';
+  $h('in-buscar').focus(); if ($h('in-buscar').value) buscarPaciente($h('in-buscar').value);
+}
+// Antes de ingresar: el paciente nuevo (o el cliente sin expediente) obtiene su expediente y su cliente, como en la Sala.
+async function asegurarPacienteIngreso() {
+  let p = HO.ing.paciente;
+  if (HO.ing.nuevo) {
+    const nombres = $h('in-n-nombres').value.trim(), cedula = $h('in-n-cedula').value.trim();
+    if (!nombres) throw Object.assign(new Error('Escribe el nombre del paciente nuevo.'), { aviso: true });
+    const lista = await pacientesIngreso();
+    const igual = lista.find(x => (cedula && sinAcento(x.cedula) === sinAcento(cedula))
+      || sinAcento(clinicaNombrePaciente(x)) === sinAcento(nombres + ' ' + $h('in-n-apellidos').value.trim()).trim());
+    if (igual && !confirm(`Ya existe "${clinicaNombrePaciente(igual)}" (${igual.numero_expediente || 'sin expediente'})${igual.cedula ? ' con cédula ' + igual.cedula : ''}.\n\n¿Es otra persona y quieres crearla de todos modos?\n(Cancelar = usar el paciente que ya existe)`)) {
+      elegirPaciente(igual); return igual;
+    }
+    p = { nombres: nombres.slice(0, 80), apellidos: $h('in-n-apellidos').value.trim().slice(0, 80) || null, telefono: $h('in-n-telefono').value.trim().slice(0, 30) || null,
+      cedula: cedula.slice(0, 30) || null, fecha_nacimiento: $h('in-n-nacimiento').value || null, sexo: $h('in-n-sexo').value || null };
+  }
+  if (!p) throw Object.assign(new Error('Busca y elige al paciente.'), { aviso: true });
+  if (!p.id) {
+    const datos = HO.ing.nuevo ? p : { nombres: String(p.nombres || 'Paciente').slice(0, 80), apellidos: String(p.apellidos || '').slice(0, 80) || null, telefono: p.telefono || null, cliente_id: p.cliente_id };
+    const { data, error } = await sb.from('clinica_pacientes').insert({ auth_user_id: STATE.userId, ...datos }).select('id, nombres, apellidos, telefono, cliente_id, numero_expediente').single();
+    if (error) throw error;
+    p = data; HO.listaPac = null;
+  }
+  if (!p.cliente_id) {
+    const { data: cli, error } = await sb.from('clientes').insert({ auth_user_id: STATE.userId, nombre: clinicaNombrePaciente(p).slice(0, 100), telefono: p.telefono || null }).select('id').single();
+    if (error) throw error;
+    await sb.from('clinica_pacientes').update({ cliente_id: cli.id }).eq('id', p.id).eq('auth_user_id', STATE.userId).is('cliente_id', null);
+    p.cliente_id = cli.id; HO.listaPac = null;
+  }
+  HO.ing.paciente = p; HO.ing.nuevo = false;
+  return p;
+}
 async function guardarIngreso() {
   const err = $h('in-error'); err.textContent = '';
-  if (!HO.ing.paciente) { err.textContent = 'Busca y elige al paciente.'; return; }
+  if (!HO.ing.paciente && !HO.ing.nuevo) { err.textContent = 'Busca y elige al paciente (o "➕ Paciente nuevo").'; $h('in-buscar').focus(); return; }
+  if (HO.ing.paciente?.id && HO.estancias.some(e => e.estado === 'activa' && e.paciente_id === HO.ing.paciente.id)) { err.textContent = 'Ese paciente ya está en observación u hospitalizado.'; return; }
   const nota = $h('in-nota').value.trim();
-  const btn = $h('in-btn'); btn.disabled = true;
+  const btn = $h('in-btn'); if (btn.disabled) return; btn.disabled = true;
   try {
+    try { await asegurarPacienteIngreso(); }
+    catch (e) { if (e.aviso) { err.textContent = e.message; return; } throw e; }
     const { data, error } = await sb.from('clinica_estancias').insert({ auth_user_id: STATE.userId, paciente_id: HO.ing.paciente.id, tipo: $h('in-tipo').value,
       cama: $h('in-cama').value.trim().slice(0, 40) || null, medico_id: $h('in-medico').value || null, servicio_id: $h('in-servicio').value || null }).select('id, numero').single();
     if (error) throw error;
