@@ -3007,7 +3007,6 @@
         ${d.saldo > 0 ? `<div style="margin-top:${espacioFirmaPx}px;text-align:center"><div style="border-top:1px solid #000;margin:0 4%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
         <hr/>
         ${cfg.mensaje_pie_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.mensaje_pie_ticket)}</div>` : ''}
-        <div style="text-align:center;font-size:10px;margin-top:4px">Esta factura no registra pagos ni movimientos de caja.</div>
       </div>`;
   }
 
@@ -3049,7 +3048,7 @@
       impuesto: round2(d.totalFinanciado - d.capital), total: d.totalFinanciado,
       metodo_pago: 'Crédito', titulo: 'Factura de Crédito',
       infoCredito, filasTotales, cuotas,
-      observaciones: 'Esta factura no registra pagos ni movimientos de caja.',
+      observaciones: '',
       empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
       empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
       empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
