@@ -45,7 +45,7 @@ hospitalización, Seguros y convenios, Reportes y honorarios, Médicos y segurid
 
 ## 3. Pruebas (todas en verde al cierre)
 
-- **Unitarias:** 70 (cálculos clínicos, honorarios, reparto del seguro al centavo,
+- **Unitarias:** 72 (cálculos clínicos, honorarios, reparto del seguro al centavo,
   odontograma, días de estancia, etc.).
 - **Navegador (Chromium, base simulada), computadora y celular de 360 px:** todas las
   pantallas, sin errores, sin desbordes y sin ejecución de texto escrito por usuarios (XSS).
@@ -55,14 +55,22 @@ hospitalización, Seguros y convenios, Reportes y honorarios, Médicos y segurid
 
 ## 4. Cuenta demo
 
-- Login → "Probar cuenta de demostración" → **🏥 Clínica**
-  (`demo-clinica@negocio360oficial.com`). Como todas las demos, **no usa el sistema
+- Login → "Probar cuenta de demostración" → **🏥 Clínica** abre el **Centro Médico San Rafael**
+  (`demo-clinica-sanrafael@negocio360oficial.com`). Como todas las demos, **no usa el sistema
   multiusuario**: el expediente se abre eligiendo el médico, sin código. El servidor solo
   permite esa entrada en cuentas demo (`clinica_iniciar_sesion_demo`); las clínicas reales
   siempre usan el código del usuario médico.
-- Datos de ejemplo: 3 médicos (medicina general, pediatría, odontología), 5 pacientes,
-  antecedentes, un seguro (80 %), citas de hoy y mañana, dos notas firmadas (una con
-  odontograma) y un paciente en observación. Sin ventas ni movimientos de caja.
+- Datos de simulación: 4 consultorios, 5 médicos (medicina general, pediatría, ginecología,
+  odontología) con honorarios, enfermería, 13 servicios, 12 medicamentos, 3 convenios
+  (Seguros América 80 %, MAPFRE 70 %, Textiles del Norte 50 %), 45 pacientes con antecedentes
+  y ~1 de cada 4 con seguro; un mes de visitas con nota firmada (CIE-10) y **cobradas con la
+  misma función de Ventas** (`venta_registrar_atomica`: caja, inventario y clientes cuadran),
+  pacientes internados (activos y dados de alta y cobrados) y una factura a Seguros América.
+- **Siempre viva:** `clinica_demo_preparar()` (solo en esta demo; en otra cuenta responde
+  `solo_demo` sin tocar nada) cierra los días pasados, genera hoy y los próximos 3 días, y
+  hace avanzar el día con el reloj: lo que ya pasó se atiende y cobra, y quien va llegando
+  entra a la sala. La Clínica la llama sola al cargar las citas (como mucho cada 3 minutos).
+- La demo anterior (`demo-clinica@negocio360oficial.com`) no se tocó; solo dejó de salir en el login.
 - Registrada en `cuentas_prueba` como demo pública (protegida como las demás demos).
 
 ## 5. Pendientes y límites conocidos (para decidir)

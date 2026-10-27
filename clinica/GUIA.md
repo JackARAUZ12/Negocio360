@@ -5,6 +5,8 @@ Esta guía explica, paso a paso y sin palabras técnicas, cómo usar el Módulo 
 > **Para probarlo sin tocar tu cuenta:** en la pantalla de inicio toca
 > "Probar cuenta de demostración" → **🏥 Clínica**. La demo no usa el sistema de usuarios:
 > para abrir un expediente solo eliges el médico (en una clínica real se pide su código).
+> Es el **Centro Médico San Rafael**: 45 pacientes, 5 médicos, enfermería, seguros, un mes
+> de visitas cobradas, internados y el día de hoy en movimiento (se renueva solo cada día).
 
 ---
 
@@ -74,6 +76,12 @@ cuenta, abre **Sala de espera → 📺 Modo pantalla** (o la dirección
 **"🔊 Toca aquí para activar el sonido"**, tócalo una vez: los navegadores no dejan sonar
 nada hasta que alguien toca la pantalla. Todas las computadoras con la Sala abierta
 también se actualizan solas al instante.
+- **🚶 Llegó sin cita** → para el paciente que llega sin reservar. Lo buscas por nombre,
+  teléfono o cédula (o lo registras si es nuevo), eliges médico, consultorio, servicio, el
+  motivo y si es **🚨 Urgente**. Queda en espera con su turno y su cita de hoy se crea sola
+  en la Agenda. Los urgentes pasan primero en la lista y en la pantalla de la sala. Si esa
+  persona ya tenía cita hoy, la Sala te lo avisa para no duplicarla. No cobra nada: se cobra
+  al final, como cualquier visita.
 - **🩺 Atender** → abre el expediente. Si la cita aún no tiene expediente, lo buscas o
   lo creas ahí mismo con los datos de la cita.
 - **🚫 No asistió** / **↩ Aún no llega**.
