@@ -682,7 +682,7 @@
     window.location.href = 'ventas.html';
   }
   // La pantalla de cobro de la Clínica vive en sus archivos: se cargan solo cuando hace falta (en orden).
-  const VER_CLINICA = '20261027a';
+  const VER_CLINICA = '20261028a';
   function cargarScript(src, listo) {
     if (listo()) return Promise.resolve(true);
     return new Promise(res => {

@@ -14,6 +14,7 @@
    cálculos automáticos [{ t: texto, clase: verde|azul|ambar|rojo }].
    Medicina general usa solo los campos base de toda consulta. */
 const _SINO = ['No', 'Sí'];
+const _ZONAS = ['Cervical (cuello)', 'Hombro', 'Codo', 'Muñeca y mano', 'Dorsal (espalda alta)', 'Lumbar (espalda baja)', 'Cadera', 'Rodilla', 'Tobillo y pie', 'Varias zonas', 'Neurológica (todo el cuerpo)'];
 const CLINICA_ESPECIALIDADES = {
   medicina_general:      { e: '🩺', n: 'Medicina general', campos: [] },
   medicina_interna:      { e: '🫀', n: 'Medicina interna', campos: [
@@ -125,16 +126,80 @@ const CLINICA_ESPECIALIDADES = {
     { k: 'dieta', n: 'Plan de alimentación', tipo: 'textarea' } ],
     calc: (d, x) => clinicaRiesgoCintura(d.cintura_cm, d.cadera_cm, x.sexo) },
   fisioterapia:          { e: '🏃', n: 'Fisioterapia', campos: [
+    { k: 'tipo_sesion', n: 'Tipo de sesión', tipo: 'select', opciones: ['Evaluación inicial', 'Sesión de tratamiento', 'Reevaluación', 'Alta'] },
+    { k: 'zona', n: 'Zona a tratar', tipo: 'select', opciones: _ZONAS },
+    { k: 'lado', n: 'Lado', tipo: 'select', opciones: ['Derecho', 'Izquierdo', 'Ambos', 'No aplica'] },
+    { k: 'diagnostico_funcional', n: 'Diagnóstico fisioterapéutico', tipo: 'textarea' },
     { k: 'sesion', n: 'Sesión n.º', tipo: 'number', min: 1, max: 1000 },
+    { k: 'sesiones_plan', n: 'Sesiones del plan', tipo: 'number', min: 1, max: 200 },
     { k: 'eva_antes', n: 'Dolor antes (0 a 10)', tipo: 'number', min: 0, max: 10 },
     { k: 'eva_despues', n: 'Dolor después (0 a 10)', tipo: 'number', min: 0, max: 10 },
+    { k: 'movilidad', n: 'Movilidad (arcos de movimiento)', tipo: 'textarea' },
+    { k: 'fuerza', n: 'Fuerza muscular', tipo: 'select', opciones: ['5/5 normal', '4/5 buena', '3/5 regular', '2/5 mala', '1/5 vestigios', '0/5 nula'] },
+    { k: 'pruebas', n: 'Pruebas especiales', tipo: 'textarea' },
+    { k: 'agentes', n: 'Agentes físicos', tipo: 'text' },
     { k: 'tecnicas', n: 'Técnicas aplicadas', tipo: 'textarea' }, { k: 'ejercicios', n: 'Ejercicios para la casa', tipo: 'textarea' },
     { k: 'evolucion', n: 'Evolución', tipo: 'select', opciones: ['Mejoría', 'Igual', 'Empeoró'] } ],
-    calc: d => {
-      const a = clinicaNumero(d.eva_antes), b = clinicaNumero(d.eva_despues);
-      if (a == null || b == null) return [];
-      return [{ t: b < a ? `El dolor bajó ${a - b} punto${a - b === 1 ? '' : 's'} en la sesión` : b > a ? `El dolor subió ${b - a} punto${b - a === 1 ? '' : 's'}` : 'El dolor no cambió', clase: b < a ? 'verde' : b > a ? 'rojo' : 'ambar' }];
-    } },
+    calc: d => clinicaCalcTerapia(d),
+    servicios: [{ n: 'Evaluación inicial de fisioterapia', p: 600, min: 60 }, { n: 'Sesión de fisioterapia', p: 500, min: 45 },
+      { n: 'Sesión con electroterapia y ultrasonido', p: 650, min: 45 }, { n: 'Rehabilitación postoperatoria', p: 700, min: 60 },
+      { n: 'Fisioterapia deportiva', p: 650, min: 60 }, { n: 'Vendaje neuromuscular (kinesiotape)', p: 250, min: 15 }, { n: 'Sesión a domicilio', p: 900, min: 60 }] },
+  quiropraxia:           { e: '🦴', n: 'Quiropraxia', campos: [
+    { k: 'zona', n: 'Zona', tipo: 'select', opciones: ['Cervical (cuello)', 'Dorsal (espalda alta)', 'Lumbar (espalda baja)', 'Sacro y pelvis', 'Varias zonas'] },
+    { k: 'segmentos', n: 'Segmentos ajustados', tipo: 'text' },
+    { k: 'tecnica', n: 'Técnica', tipo: 'select', opciones: ['Diversificada', 'Activador', 'Gonstead', 'Thompson (drop)', 'Flexión-distracción', 'Otra'] },
+    { k: 'postura', n: 'Postura', tipo: 'select', opciones: ['Adecuada', 'Hombros desnivelados', 'Pelvis desnivelada', 'Cabeza adelantada', 'Escoliosis', 'Otra'] },
+    { k: 'eva_antes', n: 'Dolor antes (0 a 10)', tipo: 'number', min: 0, max: 10 },
+    { k: 'eva_despues', n: 'Dolor después (0 a 10)', tipo: 'number', min: 0, max: 10 },
+    { k: 'sesion', n: 'Sesión n.º', tipo: 'number', min: 1, max: 1000 },
+    { k: 'sesiones_plan', n: 'Sesiones del plan', tipo: 'number', min: 1, max: 200 },
+    { k: 'recomendaciones', n: 'Recomendaciones', tipo: 'textarea' } ],
+    calc: d => clinicaCalcTerapia(d),
+    servicios: [{ n: 'Evaluación quiropráctica', p: 800, min: 45 }, { n: 'Ajuste quiropráctico', p: 700, min: 30 }, { n: 'Ajuste con terapia de tejido blando', p: 900, min: 45 }] },
+  masoterapia:           { e: '💆', n: 'Masoterapia (masajes)', campos: [
+    { k: 'tipo_masaje', n: 'Tipo de masaje', tipo: 'select', opciones: ['Terapéutico', 'Descontracturante', 'Relajante', 'Deportivo', 'Drenaje linfático', 'Piedras calientes', 'Prenatal', 'Reflexología'] },
+    { k: 'duracion', n: 'Duración', tipo: 'select', opciones: ['30 minutos', '45 minutos', '60 minutos', '90 minutos'] },
+    { k: 'zonas', n: 'Zonas trabajadas', tipo: 'text' },
+    { k: 'presion', n: 'Presión', tipo: 'select', opciones: ['Suave', 'Media', 'Fuerte'] },
+    { k: 'productos', n: 'Aceites o cremas usados', tipo: 'text' },
+    { k: 'contraindicaciones', n: '¿Revisó contraindicaciones (embarazo, várices, presión, heridas)?', tipo: 'select', opciones: ['Sí, ninguna', 'Sí, hay una (ver notas)', 'No'] },
+    { k: 'eva_antes', n: 'Dolor o tensión antes (0 a 10)', tipo: 'number', min: 0, max: 10 },
+    { k: 'eva_despues', n: 'Dolor o tensión después (0 a 10)', tipo: 'number', min: 0, max: 10 },
+    { k: 'observaciones', n: 'Observaciones', tipo: 'textarea' } ],
+    calc: d => { const r = clinicaCalcTerapia(d);
+      if (d.contraindicaciones === 'No') r.push({ t: 'Falta revisar contraindicaciones', clase: 'rojo' });
+      if (d.contraindicaciones === 'Sí, hay una (ver notas)') r.push({ t: 'Tiene una contraindicación: revisar antes de cada masaje', clase: 'ambar' });
+      return r; },
+    servicios: [{ n: 'Masaje terapéutico 60 min', p: 900, min: 60 }, { n: 'Masaje descontracturante 60 min', p: 900, min: 60 }, { n: 'Masaje relajante 60 min', p: 800, min: 60 },
+      { n: 'Masaje relajante 90 min', p: 1100, min: 90 }, { n: 'Masaje deportivo', p: 950, min: 60 }, { n: 'Drenaje linfático', p: 950, min: 60 },
+      { n: 'Masaje con piedras calientes', p: 1100, min: 75 }, { n: 'Reflexología podal', p: 600, min: 45 }] },
+  terapia_ocupacional:   { e: '🧩', n: 'Terapia ocupacional', campos: [
+    { k: 'area', n: 'Área trabajada', tipo: 'select', opciones: ['Motricidad fina', 'Actividades de la vida diaria', 'Integración sensorial', 'Cognitiva', 'Adaptación del hogar o trabajo'] },
+    { k: 'independencia', n: 'Nivel de independencia', tipo: 'select', opciones: ['Independiente', 'Ayuda mínima', 'Ayuda moderada', 'Ayuda total'] },
+    { k: 'sesion', n: 'Sesión n.º', tipo: 'number', min: 1, max: 1000 }, { k: 'sesiones_plan', n: 'Sesiones del plan', tipo: 'number', min: 1, max: 200 },
+    { k: 'actividades', n: 'Actividades realizadas', tipo: 'textarea' }, { k: 'tareas_casa', n: 'Tareas para la casa', tipo: 'textarea' } ],
+    calc: d => clinicaCalcTerapia(d),
+    servicios: [{ n: 'Evaluación de terapia ocupacional', p: 700, min: 60 }, { n: 'Sesión de terapia ocupacional', p: 550, min: 45 }] },
+  terapia_lenguaje:      { e: '🗣️', n: 'Terapia de lenguaje', campos: [
+    { k: 'area', n: 'Área trabajada', tipo: 'select', opciones: ['Articulación (pronunciación)', 'Lenguaje expresivo', 'Comprensión', 'Voz', 'Fluidez (tartamudez)', 'Deglución'] },
+    { k: 'sesion', n: 'Sesión n.º', tipo: 'number', min: 1, max: 1000 }, { k: 'sesiones_plan', n: 'Sesiones del plan', tipo: 'number', min: 1, max: 200 },
+    { k: 'logros', n: 'Logros de la sesión', tipo: 'textarea' }, { k: 'tareas_casa', n: 'Tareas para la casa', tipo: 'textarea' } ],
+    calc: d => clinicaCalcTerapia(d),
+    servicios: [{ n: 'Evaluación de lenguaje', p: 700, min: 60 }, { n: 'Sesión de terapia de lenguaje', p: 550, min: 45 }] },
+  acupuntura:            { e: '📍', n: 'Acupuntura', campos: [
+    { k: 'puntos', n: 'Puntos aplicados', tipo: 'textarea' },
+    { k: 'tecnica', n: 'Técnica', tipo: 'select', opciones: ['Agujas', 'Electroacupuntura', 'Moxibustión', 'Ventosas', 'Auriculoterapia'] },
+    { k: 'eva_antes', n: 'Dolor antes (0 a 10)', tipo: 'number', min: 0, max: 10 }, { k: 'eva_despues', n: 'Dolor después (0 a 10)', tipo: 'number', min: 0, max: 10 },
+    { k: 'sesion', n: 'Sesión n.º', tipo: 'number', min: 1, max: 1000 }, { k: 'sesiones_plan', n: 'Sesiones del plan', tipo: 'number', min: 1, max: 200 } ],
+    calc: d => clinicaCalcTerapia(d),
+    servicios: [{ n: 'Sesión de acupuntura', p: 700, min: 45 }, { n: 'Ventosas (terapia de copas)', p: 500, min: 30 }] },
+  podologia:             { e: '🦶', n: 'Podología', campos: [
+    { k: 'pie', n: 'Pie', tipo: 'select', opciones: ['Derecho', 'Izquierdo', 'Ambos'] },
+    { k: 'hallazgos', n: 'Hallazgos', tipo: 'select', opciones: ['Uña encarnada', 'Callosidades', 'Hongos en uñas', 'Pie diabético (control)', 'Juanete', 'Pie plano', 'Otro'] },
+    { k: 'diabetico', n: '¿Paciente diabético?', tipo: 'select', opciones: _SINO },
+    { k: 'procedimiento', n: 'Procedimiento realizado', tipo: 'textarea' }, { k: 'recomendaciones', n: 'Recomendaciones', tipo: 'textarea' } ],
+    calc: d => d.diabetico === 'Sí' ? [{ t: 'Pie diabético: revisar sensibilidad y circulación en cada visita', clase: 'ambar' }] : [],
+    servicios: [{ n: 'Consulta de podología', p: 600, min: 30 }, { n: 'Quiropodia (limpieza de pies)', p: 500, min: 45 }, { n: 'Tratamiento de uña encarnada', p: 800, min: 45 }] },
   odontologia:           { e: '🦷', n: 'Odontología', campos: [
     { k: 'denticion', n: 'Dentición', tipo: 'select', opciones: ['Permanente', 'Temporal', 'Mixta'] },
     { k: 'odontograma', n: 'Odontograma', tipo: 'odontograma' },
@@ -176,6 +241,17 @@ function clinicaEspecialidadesActivas(config) {
   const validas = lista.filter(k => CLINICA_ESPECIALIDADES[k]);
   return validas.length ? validas : Object.keys(CLINICA_ESPECIALIDADES);
 }
+// Servicios típicos de cada especialidad (para agregarlos al catálogo con un toque). Las terapias los
+// traen en su ficha; las especialidades médicas más comunes, aquí.
+const _CLINICA_SERVICIOS_MEDICOS = {
+  medicina_general: [{ n: 'Consulta general', p: 600 }, { n: 'Consulta de control', p: 400 }, { n: 'Curación', p: 350 }, { n: 'Inyección (aplicación)', p: 150 }, { n: 'Nebulización', p: 300 }],
+  pediatria: [{ n: 'Consulta pediátrica', p: 700 }, { n: 'Control de niño sano', p: 500 }],
+  ginecologia: [{ n: 'Consulta ginecológica', p: 850 }, { n: 'Control prenatal', p: 800 }, { n: 'Citología (PAP)', p: 600 }],
+  odontologia: [{ n: 'Consulta odontológica', p: 500 }, { n: 'Limpieza dental', p: 900 }, { n: 'Resina dental', p: 1200 }, { n: 'Extracción dental', p: 1000 }],
+  psicologia: [{ n: 'Consulta psicológica', p: 900 }, { n: 'Terapia de pareja', p: 1200 }],
+  nutricion: [{ n: 'Consulta nutricional', p: 700 }, { n: 'Control nutricional', p: 450 }],
+};
+function clinicaServiciosSugeridos(k) { return (CLINICA_ESPECIALIDADES[k] && CLINICA_ESPECIALIDADES[k].servicios) || _CLINICA_SERVICIOS_MEDICOS[k] || []; }
 function clinicaNombreEspecialidad(k) { const e = CLINICA_ESPECIALIDADES[k]; return e ? `${e.e} ${e.n}` : (k || '—'); }
 
 /* ---------- Agenda ---------- */
@@ -487,6 +563,18 @@ function clinicaGlasgow(o, v, m) {
   if (a == null || b == null || c == null || a < 1 || a > 4 || b < 1 || b > 5 || c < 1 || c > 6) return null;
   const t = a + b + c;
   return { t: `Glasgow ${t}/15 (O${a} V${b} M${c}): ${t >= 13 ? 'leve' : t >= 9 ? 'moderado' : 'grave'}`, clase: t >= 13 ? (t === 15 ? 'verde' : 'ambar') : 'rojo', total: t };
+}
+// Terapias (fisioterapia, quiropraxia, masajes…): cuánto bajó el dolor en la sesión y en qué va el plan.
+function clinicaCalcTerapia(d) {
+  const r = [];
+  const a = clinicaNumero(d.eva_antes), b = clinicaNumero(d.eva_despues);
+  if (a != null && b != null) r.push({ t: b < a ? `El dolor bajó ${a - b} punto${a - b === 1 ? '' : 's'} en la sesión` : b > a ? `El dolor subió ${b - a} punto${b - a === 1 ? '' : 's'}` : 'El dolor no cambió', clase: b < a ? 'verde' : b > a ? 'rojo' : 'ambar' });
+  const n = clinicaNumero(d.sesion), t = clinicaNumero(d.sesiones_plan);
+  if (n != null && t != null && t > 0) {
+    if (n >= t) r.push({ t: `Sesión ${n} de ${t}: plan completo (valorar el alta)`, clase: 'verde' });
+    else r.push({ t: `Sesión ${n} de ${t}: faltan ${t - n}`, clase: 'azul' });
+  }
+  return r;
 }
 function clinicaEscalaDolor(v) {
   const n = clinicaNumero(v);

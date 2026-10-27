@@ -71,6 +71,10 @@ hospitalización, Seguros y convenios, Reportes y honorarios, Médicos y segurid
   hace avanzar el día con el reloj: lo que ya pasó se atiende y cobra, y quien va llegando
   entra a la sala. La Clínica la llama sola al cargar las citas (como mucho cada 3 minutos).
 - La demo anterior (`demo-clinica@negocio360oficial.com`) no se tocó; solo dejó de salir en el login.
+- **Demo de fisioterapia** (`demo-fisioterapia@negocio360oficial.com`, tarjeta "🏃 Fisioterapia"): "Centro de
+  Fisioterapia y Rehabilitación Movimiento" con 4 terapeutas (fisioterapia, quiropraxia, masoterapia), 5 cubículos y
+  salas, 16 servicios, 8 productos, seguro y convenio con un club deportivo, 36 pacientes y un mes de sesiones
+  firmadas con su ficha ("sesión N de M", dolor antes y después) y cobradas por Ventas; también se renueva sola.
 - Registrada en `cuentas_prueba` como demo pública (protegida como las demás demos).
 
 ## 5. Pendientes y límites conocidos (para decidir)

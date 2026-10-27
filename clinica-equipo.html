@@ -1350,6 +1350,11 @@
         <div id="es-lista" class="cl-grid2" style="margin:8px 0"></div>
         <p id="es-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0" role="alert"></p>
         <button class="btn-accion-tabla btn-primary" onclick="guardarEspecialidades()">Guardar especialidades</button>
+        <div class="cl-seccion" style="margin-top:22px">🧾 Servicios sugeridos</div>
+        <p class="cl-sub" style="margin:-2px 0 10px">Los servicios típicos de las especialidades marcadas. Marca los que ofreces, ajusta el precio y agrégalos a tu catálogo (Productos / Servicios): así aparecen al agendar y al cobrar. Después los puedes cambiar ahí.</p>
+        <div id="es-servicios"></div>
+        <p id="es-serv-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0" role="alert"></p>
+        <button class="btn-accion-tabla btn-primary" id="es-serv-btn" onclick="agregarServiciosSugeridos()" style="display:none">➕ Agregar al catálogo</button>
       </div>
 
       <div id="eq-panel-bitacora" style="display:none">
@@ -1367,9 +1372,9 @@
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261027a"></script>
+<script src="clinica-comun.js?v=20261028a"></script>
 <script src="clinica-sesion.js?v=20261027a"></script>
-<script src="clinica-equipo.js?v=20261027a"></script>
+<script src="clinica-equipo.js?v=20261028a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>

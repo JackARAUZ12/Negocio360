@@ -27,6 +27,23 @@ En el menú, la sección **Clínica** tiene una sola entrada: **🏥 Panel**. Ah
 
 Un usuario con permisos limitados solo ve en el panel las partes que le diste.
 
+## 0b. Para fisioterapia, quiropraxia y masajes
+
+Clínica también sirve para **centros de terapias**. Al crear la cuenta elige el tipo de negocio
+**"Fisioterapia / Quiropraxia / Masajes terapéuticos"** (o, en una cuenta que ya existe, en
+**Médicos y seguridad › Especialidades** marca las que atiendes). Especialidades de terapias:
+**Fisioterapia, Quiropraxia, Masoterapia (masajes), Terapia ocupacional, Terapia de lenguaje,
+Acupuntura y Podología**, cada una con su ficha en la consulta (zona, técnica, dolor antes y después,
+"sesión 4 de 10", ejercicios para la casa…). El sistema calcula solo cuánto bajó el dolor y cuántas
+sesiones faltan del plan.
+
+- **Servicios sugeridos:** en **Especialidades**, debajo de la lista, aparecen los servicios típicos
+  de las especialidades marcadas (por ejemplo "Sesión de fisioterapia", "Masaje terapéutico 60 min").
+  Marca los que ofreces, ajusta el precio y toca **➕ Agregar al catálogo**. No duplica los que ya tienes.
+- Los "consultorios" son tus **cubículos o salas** (Cubículo 1, Gimnasio, Sala de masajes) y los
+  "médicos" son tus **terapeutas**, cada uno con su comisión.
+- Para probarlo: "Probar cuenta de demostración" → **🏃 Fisioterapia**.
+
 ## 1. Encenderlo (una sola vez)
 
 1. Entra a **Configuración** → tarjeta **🏥 Módulo de Clínica** → actívalo.

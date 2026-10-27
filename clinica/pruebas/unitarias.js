@@ -291,4 +291,19 @@ t('Cita de la Agenda trae prioridad y si llegó sin cita', () => {
   assert.strictEqual(d.prioridad, 'normal'); assert.strictEqual(d.sin_cita, false);
   assert.strictEqual(C.clinicaHoraAhora(new Date(2026, 9, 27, 7, 5)), '07:05');
 });
+t('Terapias: dolor que baja y sesión N de M', () => {
+  const r = C.clinicaCalculosEspecialidad('fisioterapia', { eva_antes: '7', eva_despues: '4', sesion: '4', sesiones_plan: '10' }, {});
+  assert.strictEqual(JSON.stringify(r.map(x => x.t)), JSON.stringify(['El dolor bajó 3 puntos en la sesión', 'Sesión 4 de 10: faltan 6']));
+  assert.strictEqual(C.clinicaCalculosEspecialidad('quiropraxia', { sesion: 8, sesiones_plan: 8 }, {})[0].t, 'Sesión 8 de 8: plan completo (valorar el alta)');
+  assert.strictEqual(C.clinicaCalculosEspecialidad('masoterapia', { contraindicaciones: 'No' }, {})[0].clase, 'rojo');
+  assert.strictEqual(C.clinicaCalculosEspecialidad('podologia', { diabetico: 'Sí' }, {}).length, 1);
+});
+t('Terapias: especialidades nuevas y servicios sugeridos', () => {
+  for (const k of ['fisioterapia', 'quiropraxia', 'masoterapia', 'terapia_ocupacional', 'terapia_lenguaje', 'acupuntura', 'podologia'])
+    assert.ok(C.CLINICA_ESPECIALIDADES[k] && C.clinicaServiciosSugeridos(k).length >= 2, k);
+  assert.strictEqual(C.CLINICA_ESPECIALIDADES.fisioterapia.n, 'Fisioterapia');           // el nombre guardado en el personal no cambia
+  assert.ok(C.clinicaServiciosSugeridos('medicina_general').some(x => x.n === 'Consulta general'));
+  assert.strictEqual(C.clinicaServiciosSugeridos('laboratorio').length, 0);
+  assert.strictEqual(C.clinicaValidarDatos('fisioterapia', { eva_antes: '11' }) !== '', true);
+});
 console.log(`${ok} pruebas unitarias correctas${process.exitCode ? ' (CON FALLAS)' : ''}`);

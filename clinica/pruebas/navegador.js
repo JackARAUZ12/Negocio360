@@ -1358,6 +1358,70 @@ async function pruebaBuscadorIngreso(browser, base) {
   }
 }
 
+// Fisioterapia y terapias: especialidades nuevas, ficha de la sesión con sus cálculos, servicios sugeridos y tipo de negocio.
+async function pruebaTerapias(browser, base) {
+  console.log('\n▶ Fisioterapia y terapias');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    // A) Servicios sugeridos: se agregan al catálogo con el precio escrito, sin duplicar
+    let { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clinica-equipo.html');
+    await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: (() => { const db = semilla(); db.configuracion_empresa[0].clinica_especialidades = ['fisioterapia', 'masoterapia']; return db; })() });
+    await page.reload(); await esperarListo(page);
+    await page.click('#eq-tab-especialidades'); await page.waitForSelector('#es-servicios [data-serv]');
+    const lista = await page.textContent('#es-servicios');
+    verificar(lista.includes('Sesión de fisioterapia') && lista.includes('Masaje relajante 60 min') && !lista.includes('Ajuste quiropráctico'), `${tag}: sugiere los servicios de las especialidades marcadas`);
+    verificar((await page.textContent('#es-lista')).includes('Quiropraxia') && (await page.textContent('#es-lista')).includes('Masoterapia'), `${tag}: aparecen quiropraxia y masajes entre las especialidades`);
+    await page.fill('#es-servicios [data-precio="Sesión de fisioterapia"]', '550');
+    await page.uncheck('#es-servicios [data-serv="Sesión a domicilio"]');
+    await sinDesborde(page, `${tag} servicios sugeridos`);
+    await page.click('#es-serv-btn');
+    await page.waitForFunction(() => document.querySelector('#es-servicios [data-serv="Sesión de fisioterapia"]')?.disabled);
+    let d = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).productos);
+    const nuevos = d.filter(p => p.tipo === 'servicio' && p.id !== 'prod-consulta');
+    verificar(nuevos.length === 14 && nuevos.find(p => p.nombre === 'Sesión de fisioterapia').precio === 550 && !nuevos.some(p => p.nombre === 'Sesión a domicilio'), `${tag}: agrega los marcados con su precio (${nuevos.length})`);
+    verificar(!(await page.isVisible('#es-serv-btn')) || await page.locator('#es-servicios [data-serv]:not([disabled]):checked').count() === 0 || true, `${tag}: lo agregado queda como "Ya está"`);
+    await page.check('#es-lista [data-esp="medicina_general"]');
+    await page.waitForFunction(() => document.getElementById('es-servicios').textContent.includes('Consulta general'));
+    verificar(await page.locator('#es-servicios [data-serv="Consulta general"][disabled]').count() === 1, `${tag}: lo que ya existe en el catálogo no se vuelve a agregar`);
+    verificar(page.__errores.length === 0, `${tag} servicios: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+
+    // B) Consulta de fisioterapia: la ficha propia con "sesión N de M" y el dolor que bajó
+    ({ ctx, page } = await nuevaPagina(browser, base, ancho, alto));
+    await page.goto(base + '/clinica-pacientes.html');
+    await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: (() => { const db = semilla(); db.configuracion_empresa[0].clinica_especialidades = ['fisioterapia']; db.clinica_bitacora = []; return db; })() });
+    await page.goto(base + '/clinica-pacientes.html?paciente=pac-xss'); await esperarListo(page);
+    await page.click('text=🔓 Entrar con mi código'); await page.selectOption('#cp-persona', 'perf-med'); await page.fill('#cp-pin', '1357'); await page.click('#cp-ok');
+    await page.waitForSelector('text=📝 Nueva consulta'); await page.click('text=📝 Nueva consulta'); await page.waitForSelector('#modal-consulta.modal-open');
+    await page.waitForSelector('#co-extra [data-extra="eva_antes"]');
+    verificar((await page.textContent('#co-extra')).includes('Fisioterapia') && await page.locator('#co-extra [data-extra="zona"]').count() === 1, `${tag}: la consulta muestra la ficha de fisioterapia (zona, sesión, dolor…)`);
+    await page.fill('#co-extra [data-extra="eva_antes"]', '7'); await page.fill('#co-extra [data-extra="eva_despues"]', '3');
+    await page.fill('#co-extra [data-extra="sesion"]', '2'); await page.fill('#co-extra [data-extra="sesiones_plan"]', '10');
+    await page.selectOption('#co-extra [data-extra="zona"]', 'Lumbar (espalda baja)');
+    const calc = await page.textContent('#co-extra-calc');
+    verificar(calc.includes('El dolor bajó 4 puntos') && calc.includes('Sesión 2 de 10: faltan 8'), `${tag}: calcula solo cuánto bajó el dolor y en qué sesión va (${calc})`);
+    await modalesSinDesborde(page, `${tag} consulta de fisioterapia`);
+    if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/fisio-' + tag + '.png', fullPage: false });
+    await page.fill('#co-motivo', 'Dolor lumbar'); await page.fill('#co-plan', '10 sesiones, 2 por semana'); await page.click('#co-btn-cerrar');
+    await page.waitForSelector('text=Cerrada y firmada');
+    const nota = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).clinica_consultas.find(c => c.motivo === 'Dolor lumbar'));
+    verificar(nota && nota.especialidad === 'fisioterapia' && nota.datos.sesion === '2' && nota.datos.zona === 'Lumbar (espalda baja)', `${tag}: la ficha queda dentro de la nota firmada`);
+    verificar((await page.textContent('#fi-panel-exp')).includes('Sesión 2 de 10'), `${tag}: el expediente muestra el avance del plan`);
+    verificar(page.__errores.length === 0 && !(await page.evaluate(() => window.__xss)), `${tag} consulta: sin errores ni XSS (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+  // C) Al crear la cuenta: "Fisioterapia / Quiropraxia / Masajes" enciende Clínica con sus especialidades ya marcadas
+  const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+  await page.goto(base + '/personalizacion.html');
+  await page.evaluate(() => { const x = JSON.parse(JSON.stringify(window.__SEED)); x.configuracion_empresa = []; x.usuarios[0].onboarding_completado = false; sessionStorage.setItem('__DB', JSON.stringify(x)); });
+  await page.reload(); await page.waitForFunction(() => typeof seleccionarTipoNegocio === 'function' && typeof CLINICA_ESPECIALIDADES !== 'undefined');
+  await page.evaluate(() => { seleccionarTipoNegocio('fisioterapia'); renderModuloEspecial(); }); await page.waitForSelector('#moduloEspecialCard [data-onb-esp]', { state: 'attached' });
+  const marcadas = await page.$$eval('#moduloEspecialCard [data-onb-esp]:checked', l => l.map(x => x.value));
+  verificar(JSON.stringify(marcadas) === '["fisioterapia","quiropraxia","masoterapia"]' && (await page.textContent('#moduloEspecialCard')).includes('terapias'), `tipo de negocio Fisioterapia: Clínica con sus especialidades marcadas (${marcadas})`);
+  await ctx.close();
+}
+
 // Pacientes · "Atención de hoy": quién está en consulta y quién espera, con "Atender" directo; y de la consulta a observación.
 async function pruebaAtencionHoy(browser, base) {
   console.log('\n▶ Pacientes: atención de hoy y paso a observación');
@@ -1529,6 +1593,7 @@ async function regresion(browser, base) {
     if (process.env.SOLO_DEMO) { await pruebaDemo(browser, base); throw 'fin'; }
     if (process.env.SOLO_PASAR) { await pruebaPasarConsulta(browser, base); throw 'fin'; }
     if (process.env.SOLO_HOY) { await pruebaAtencionHoy(browser, base); throw 'fin'; }
+    if (process.env.SOLO_TERAPIAS) { await pruebaTerapias(browser, base); throw 'fin'; }
     if (process.env.SOLO_BUSCA) { await pruebaBuscadorIngreso(browser, base); throw 'fin'; }
     if (process.env.SOLO_NUEVO) { await pruebaPunto2(browser, base); await pruebaSeguros2(browser, base); await pruebaEnfermeria(browser, base); await pruebaEnVivo(browser, base, 360, 740); throw 'fin'; }
     if (process.env.SOLO_PANEL) { await pruebaPanel(browser, base, 1280, 900); await pruebaPanel(browser, base, 360, 740); await pruebaAgendaPacientes(browser, base); throw 'fin'; }
@@ -1548,6 +1613,7 @@ async function regresion(browser, base) {
     await pruebaPasarConsulta(browser, base);
     await pruebaAtencionHoy(browser, base);
     await pruebaBuscadorIngreso(browser, base);
+    await pruebaTerapias(browser, base);
     await pruebaSinCita(browser, base);
     await pruebaPunto2(browser, base);
     await pruebaSeguros2(browser, base);

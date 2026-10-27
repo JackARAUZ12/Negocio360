@@ -279,10 +279,69 @@ function pintarEspecialidades() {
   $e('es-lista').innerHTML = Object.entries(CLINICA_ESPECIALIDADES).map(([k, v]) =>
     `<label class="cl-check"><input type="checkbox" data-esp="${esc(k)}" ${todas || cfg.includes(k) ? 'checked' : ''} ${todas ? 'disabled' : ''}/> ${v.e} ${esc(v.n)}</label>`).join('');
   $e('es-error').textContent = '';
+  document.querySelectorAll('#es-lista [data-esp]').forEach(el => el.addEventListener('change', pintarServiciosSugeridos));
+  pintarServiciosSugeridos();
 }
 function alMarcarTodas() {
   const t = $e('es-todas').checked;
   document.querySelectorAll('#es-lista [data-esp]').forEach(el => { el.disabled = t; if (t) el.checked = true; });
+  pintarServiciosSugeridos();
+}
+
+/* ---------- Servicios sugeridos por especialidad ----------
+   Agrega al catálogo (productos, tipo servicio) los servicios típicos de las especialidades marcadas, con
+   el precio que se escriba. Nunca cambia ni duplica lo que ya existe (se compara el nombre). */
+const _sinAcentoEq = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+async function pintarServiciosSugeridos() {
+  const cont = $e('es-servicios'); if (!cont) return;
+  const marcadas = $e('es-todas').checked ? Object.keys(CLINICA_ESPECIALIDADES)
+    : [...document.querySelectorAll('#es-lista [data-esp]')].filter(el => el.checked).map(el => el.dataset.esp);
+  const grupos = marcadas.map(k => ({ k, lista: clinicaServiciosSugeridos(k) })).filter(g => g.lista.length);
+  if (!grupos.length) { cont.innerHTML = '<p class="cl-sub">Marca una especialidad para ver sus servicios típicos.</p>'; $e('es-serv-btn').style.display = 'none'; return; }
+  try {
+    if (!EQ.catalogoServicios) {
+      const { data, error } = await sb.from('productos').select('id, nombre').eq('auth_user_id', STATE.userId).eq('tipo', 'servicio');
+      if (error) throw error;
+      EQ.catalogoServicios = new Set((data || []).map(x => _sinAcentoEq(x.nombre)));
+    }
+  } catch (e) { console.error('servicios del catálogo:', e); cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudo revisar tu catálogo.</p>'; return; }
+  const vistos = new Set(); let nuevos = 0;
+  cont.innerHTML = grupos.map(g => {
+    const esp = CLINICA_ESPECIALIDADES[g.k];
+    const filas = g.lista.filter(x => !vistos.has(_sinAcentoEq(x.n)) && vistos.add(_sinAcentoEq(x.n))).map(x => {
+      const ya = EQ.catalogoServicios.has(_sinAcentoEq(x.n)); if (!ya) nuevos++;
+      return `<div class="es-serv" style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border,#e5e7eb)">
+        <label class="cl-check" style="flex:1;min-width:0;margin:0"><input type="checkbox" data-serv="${esc(x.n)}" ${ya ? 'disabled' : 'checked'}/> <span style="overflow-wrap:anywhere">${esc(x.n)}</span></label>
+        ${ya ? '<span class="cl-badge cl-badge-verde" style="flex-shrink:0">✔ Ya está</span>'
+          : `<input type="number" class="cl-in" data-precio="${esc(x.n)}" min="0" step="any" value="${esc(String(x.p))}" aria-label="Precio de ${esc(x.n)}" style="width:96px;flex-shrink:0"/>`}</div>`;
+    }).join('');
+    return filas ? `<div style="margin-bottom:10px"><div style="font-weight:800;font-size:13px;margin:6px 0">${esp.e} ${esc(esp.n)}</div>${filas}</div>` : '';
+  }).join('');
+  $e('es-serv-btn').style.display = nuevos ? '' : 'none';
+  $e('es-serv-error').textContent = '';
+}
+async function agregarServiciosSugeridos() {
+  const err = $e('es-serv-error'); err.textContent = '';
+  const elegidos = [...document.querySelectorAll('#es-servicios [data-serv]')].filter(el => el.checked && !el.disabled).map(el => {
+    const nombre = el.dataset.serv, inp = [...document.querySelectorAll('#es-servicios [data-precio]')].find(x => x.dataset.precio === nombre);
+    return { nombre, precio: Number(inp && inp.value) };
+  });
+  if (!elegidos.length) { err.textContent = 'Marca al menos un servicio.'; return; }
+  const malo = elegidos.find(x => !(x.precio >= 0) || x.precio > 10000000);
+  if (malo) { err.textContent = `Revisa el precio de "${malo.nombre}".`; return; }
+  const btn = $e('es-serv-btn'); btn.disabled = true;
+  try {
+    EQ.catalogoServicios = null;
+    const { data, error: e1 } = await sb.from('productos').select('nombre').eq('auth_user_id', STATE.userId).eq('tipo', 'servicio');
+    if (e1) throw e1;
+    const ya = new Set((data || []).map(x => _sinAcentoEq(x.nombre)));
+    const filas = elegidos.filter(x => !ya.has(_sinAcentoEq(x.nombre)))
+      .map(x => ({ auth_user_id: STATE.userId, nombre: x.nombre.slice(0, 150), tipo: 'servicio', precio: Math.round(x.precio * 100) / 100, costo: 0, activo: true }));
+    if (filas.length) { const { error } = await sb.from('productos').insert(filas); if (error) throw error; }
+    showToast(filas.length ? `${filas.length} servicio${filas.length === 1 ? '' : 's'} agregado${filas.length === 1 ? '' : 's'} al catálogo.` : 'Esos servicios ya estaban en tu catálogo.');
+    await pintarServiciosSugeridos();
+  } catch (e) { console.error('agregarServiciosSugeridos:', e); err.textContent = 'No se pudieron agregar. Intenta de nuevo.'; }
+  finally { btn.disabled = false; }
 }
 async function guardarEspecialidades() {
   const todas = $e('es-todas').checked;
