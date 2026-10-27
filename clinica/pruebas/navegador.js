@@ -78,6 +78,7 @@ async function nuevaPagina(browser, base, ancho, alto, conSemilla = true) {
     const u = ruta.request().url();
     if (u.startsWith(base)) return ruta.continue();
     if (u.includes('supabase-js')) return ruta.fulfill({ contentType: 'application/javascript', body: MOCK });
+    if (u.includes('/storage/v1/object/public/')) return ruta.fulfill({ contentType: 'image/png', body: PNG_PRUEBA });   // fotos subidas: imagen real (si no, se ocultan al no cargar)
     if (u.endsWith('.js') || u.includes('lucide')) return ruta.fulfill({ contentType: 'application/javascript', body: '' });
     return ruta.fulfill({ contentType: 'text/css', body: '' });
   });
