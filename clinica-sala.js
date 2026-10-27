@@ -145,14 +145,18 @@ function render() {
       <div class="ag-fila"><span class="ag-hora">Turno ${c.turno}${marcas(c)}</span><span class="cl-badge ${c.espera_min >= 30 ? 'cl-badge-rojo' : 'cl-badge-ambar'}">⏱️ ${esc(clinicaTextoEspera(c.espera_min))}</span></div>
       <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${c.sin_cita ? 'Llegó ' + esc(vetFormatoHora(c.hora)) : 'Cita ' + esc(vetFormatoHora(c.hora))}${c.motivo ? ' · ' + esc(c.motivo) : ''}</div>${c.sin_cita && c.notas ? `<div class="cl-sub">📝 ${esc(c.notas)}</div>` : ''}<div class="cl-sub">${donde(c) || 'Sin médico asignado'}</div>${sinExp(c)}
       ${c.llamado_en ? `<div class="cl-sub">📢 Llamado a las ${esc(new Date(c.llamado_en).toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
-      <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="llamar('${c.id}')">📢 Llamar</button>
+      <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="pasarAConsulta('${c.id}')">▶️ Pasar a consulta</button>
+        <button class="btn-accion-tabla btn-ghost" onclick="llamar('${c.id}')">📢 Llamar</button>
         <button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Atender</button>
         <button class="btn-accion-tabla btn-ghost" onclick="aunNoLlega('${c.id}')">↩ Aún no llega</button></div></div>`).join('')
     : '<div class="cl-info" style="grid-column:1/-1">Nadie esperando en este momento.</div>';
   $s('sa-consulta').innerHTML = enConsulta.length ? enConsulta.map(c => `<div class="ag-card est-en_consulta"><div class="ag-fila"><span class="ag-hora">${turnoDe(c.id) ? 'Turno ' + turnoDe(c.id) : 'En consulta'}</span><span class="cl-badge cl-badge-morado">En consulta</span></div>
       <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${donde(c)}</div>
-      <div class="ag-btns"><button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Expediente</button>${btnCuenta(c)}</div></div>`).join('')
-    : '<div class="cl-info" style="grid-column:1/-1">Ningún paciente en consulta.</div>';
+      ${c.llamado_en ? `<div class="cl-sub">▶️ Entró a las ${esc(new Date(c.llamado_en).toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
+      <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="terminarConsulta('${c.id}')">✅ Terminó la consulta</button>
+        <button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Expediente</button>${btnCuenta(c)}
+        <button class="btn-accion-tabla btn-ghost" onclick="regresarAFila('${c.id}')">↩ Regresar a la fila</button></div></div>`).join('')
+    : '<div class="cl-info" style="grid-column:1/-1">Ningún paciente en consulta. Para que alguien entre, toca <b>▶️ Pasar a consulta</b> en su tarjeta de "Esperando".</div>';
   $s('sa-llegar').innerHTML = porLlegar.length ? porLlegar.map(c => `<div class="ag-card est-${esc(c.estado)}"><div class="ag-fila"><span class="ag-hora">${esc(vetFormatoHora(c.hora))}</span><span class="cl-badge cl-badge-${CLINICA_ESTADOS_CITA[c.estado].clase}">${esc(CLINICA_ESTADOS_CITA[c.estado].n)}</span></div>
       <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${c.motivo ? esc(c.motivo) : ''}</div><div class="cl-sub">${donde(c)}</div>
       <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="llego('${c.id}')">🪑 Llegó</button><button class="btn-accion-tabla btn-ghost" onclick="noAsistio('${c.id}')">🚫 No asistió</button></div></div>`).join('')
@@ -191,6 +195,27 @@ function llego(id) {
   return accion(() => ClinicaCitas.guardarInfo(id, { llegada_en: new Date().toISOString(), ...(c.paciente_id ? { paciente_id: c.paciente_id } : {}) }), 'No se pudo marcar la llegada.');
 }
 function aunNoLlega(id) { return accion(() => ClinicaCitas.guardarInfo(id, { llegada_en: null, llamado_en: null }), 'No se pudo cambiar.'); }
+// Recepción hace pasar al paciente: si no lo han llamado hace poco, se llama ahora (la pantalla de la sala
+// le dice a dónde pasar) y la cita queda "En atención" en la Agenda (lo mismo que hace el expediente al
+// empezar la nota). No mueve dinero.
+async function pasarAConsulta(id) {
+  const c = citaPorId(id); if (!c || SA.pasando) return;
+  SA.pasando = true;
+  try {
+    if (!c.llamado_en || Date.now() - new Date(c.llamado_en).getTime() > 10 * 60000) await ClinicaCitas.guardarInfo(id, { llamado_en: new Date().toISOString() });
+    await ClinicaCitas.cambiarEstado(id, 'en_atencion');
+    avisarCambio(); await cargar();
+    const donde = [consultorio(c.consultorio_id), medico(c.medico_id)].filter(Boolean).join(' · ');
+    showToast(`▶️ ${clinicaNombrePaciente(c.clinica_pacientes || {})} pasó a consulta${donde ? ' (' + donde + ')' : ''}.`);
+  } catch (e) { console.error('pasarAConsulta:', e); showToast(clinicaTextoError(e, 'No se pudo pasar a consulta.'), 'error'); }
+  finally { SA.pasando = false; }
+}
+// Terminó la consulta: pasa a "Atendidos" (falta cobrar). Al firmar la nota pasa solo; esto es para cuando
+// el médico no escribe nota en el sistema o para adelantar a recepción.
+function terminarConsulta(id) {
+  return accion(async () => { await ClinicaCitas.guardarInfo(id, { atendida_en: new Date().toISOString() }); showToast('✅ Consulta terminada. Ya puedes cobrarle en "Atendidos hoy".'); }, 'No se pudo terminar la consulta.');
+}
+function regresarAFila(id) { return accion(() => ClinicaCitas.cambiarEstado(id, 'confirmada'), 'No se pudo regresar a la fila.'); }
 function noAsistio(id) { return accion(() => ClinicaCitas.cambiarEstado(id, 'no_asistio'), 'No se pudo cambiar.'); }
 async function llamar(id) {
   try {
@@ -352,6 +377,7 @@ async function guardarSinCita() {
 /* ---------- Atender: abrir el expediente (si la cita no tiene expediente, se elige o se crea) ---------- */
 function atender(id) {
   const c = citaPorId(id); if (!c) return;
+  if (c.paciente_id && c.estado === 'atendida') { window.location.href = 'clinica-pacientes.html?paciente=' + encodeURIComponent(c.paciente_id); return; }
   if (c.paciente_id) { window.location.href = 'clinica-pacientes.html?cita=' + encodeURIComponent(id); return; }
   SA.vincular = c;
   $s('vi-ayuda').textContent = `La cita de "${c.cliente_nombre}" todavía no está ligada a un expediente.`;
@@ -599,7 +625,7 @@ function textoAnuncio(c, turno) {
   return `Turno ${turno || ''}. ${clinicaNombreCorto(c.clinica_pacientes) || ''}. ${donde ? 'Pase a ' + donde : 'Pase a consulta'}.`.replace(/\s+/g, ' ').trim();
 }
 function ultimoLlamado() {
-  return SA.citas.filter(c => c.llamado_en && c.estado === 'en_espera' && Date.now() - new Date(c.llamado_en).getTime() < 10 * 60000)
+  return SA.citas.filter(c => c.llamado_en && ['en_espera', 'en_consulta'].includes(c.estado) && Date.now() - new Date(c.llamado_en).getTime() < 10 * 60000)
     .sort((a, b) => String(b.llamado_en).localeCompare(String(a.llamado_en)))[0];
 }
 function renderPantalla(turnos) {

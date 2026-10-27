@@ -1287,6 +1287,45 @@ async function pruebaSinCita(browser, base) {
   }
 }
 
+// Pasar a consulta: el paso que mueve al paciente de "Esperando" a "En consulta" y luego a "Atendidos".
+async function pruebaPasarConsulta(browser, base) {
+  console.log('\n▶ Sala: pasar a consulta y terminar');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clinica-sala.html');
+    await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: (() => {
+      const db = conCitas(semilla(), [citaAgenda('ag-p1', { cliente_nombre: 'Rosa Pérez', hora: '09:00' }), citaAgenda('ag-p2', { cliente_nombre: 'Luis Mora', hora: '09:30' })]);
+      const ahora = new Date(Date.now() - 10 * 60000).toISOString();
+      db.clinica_cita_info = (db.clinica_cita_info || []).concat([{ agenda_cita_id: 'ag-p1', auth_user_id: UID, llegada_en: ahora }, { agenda_cita_id: 'ag-p2', auth_user_id: UID, llegada_en: ahora }]);
+      return db; })() });
+    await page.reload(); await esperarListo(page); await page.waitForSelector('#sa-espera .ag-card');
+    verificar(await page.isVisible('#sa-pasos') && (await page.textContent('#sa-pasos')).includes('Pasar a consulta'), `${tag} pasar: la sala explica los pasos`);
+    verificar((await page.textContent('#sa-consulta')).includes('Pasar a consulta'), `${tag} pasar: "En consulta" vacío dice cómo hacer pasar a alguien`);
+    await page.locator('#sa-espera .ag-card', { hasText: 'Rosa' }).locator('text=▶️ Pasar a consulta').click();
+    await page.waitForFunction(() => document.getElementById('sa-consulta').textContent.includes('Rosa'));
+    const d1 = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB'));
+      return { estado: db.agenda_citas.find(c => c.id === 'ag-p1').estado, info: db.clinica_cita_info.find(i => i.agenda_cita_id === 'ag-p1'), ventas: (db.ventas || []).length }; });
+    verificar(d1.estado === 'en_atencion' && !!d1.info.llamado_en && d1.ventas === 0, `${tag} pasar: queda "En atención" en la Agenda, se anuncia y no mueve dinero`);
+    verificar(!(await page.textContent('#sa-espera')).includes('Rosa') && (await page.textContent('#sa-kpi-consulta')).trim() === '1', `${tag} pasar: sale de "Esperando" y cuenta 1 en consulta`);
+    await sinDesborde(page, `${tag} sala con paciente en consulta`);
+    if (process.env.FOTOS) await page.waitForTimeout(800), await page.screenshot({ path: process.env.FOTOS + '/pasar-' + tag + '.png', fullPage: true });
+    // Regresar a la fila
+    await page.locator('#sa-espera .ag-card', { hasText: 'Luis' }).locator('text=▶️ Pasar a consulta').click();
+    await page.waitForFunction(() => document.getElementById('sa-consulta').textContent.includes('Luis'));
+    await page.locator('#sa-consulta .ag-card', { hasText: 'Luis' }).locator('text=↩ Regresar a la fila').click();
+    await page.waitForFunction(() => document.getElementById('sa-espera').textContent.includes('Luis'));
+    verificar(true, `${tag} pasar: "Regresar a la fila" lo devuelve a Esperando`);
+    // Terminó la consulta -> Atendidos, falta cobrar
+    await page.locator('#sa-consulta .ag-card', { hasText: 'Rosa' }).locator('text=✅ Terminó la consulta').click();
+    await page.waitForFunction(() => document.getElementById('sa-atendidos').textContent.includes('Rosa'));
+    verificar((await page.locator('#sa-atendidos .ag-card', { hasText: 'Rosa' }).textContent()).includes('Falta cobrar'), `${tag} pasar: al terminar pasa a Atendidos con "Falta cobrar"`);
+    verificar(await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__DB')).ventas || []).length) === 0, `${tag} pasar: terminar no cobra solo`);
+    verificar(page.__errores.length === 0, `${tag} pasar: sin errores de JavaScript (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Cuenta DEMO: no usa el multiusuario. El expediente se abre eligiendo el médico, sin código.
 async function pruebaDemo(browser, base) {
   console.log('\n▶ Cuenta demo (sin multiusuario)');
@@ -1361,6 +1400,7 @@ async function regresion(browser, base) {
   try {
     if (process.env.SOLO_SINCITA) { await pruebaSinCita(browser, base); throw 'fin'; }
     if (process.env.SOLO_DEMO) { await pruebaDemo(browser, base); throw 'fin'; }
+    if (process.env.SOLO_PASAR) { await pruebaPasarConsulta(browser, base); throw 'fin'; }
     if (process.env.SOLO_NUEVO) { await pruebaPunto2(browser, base); await pruebaSeguros2(browser, base); await pruebaEnfermeria(browser, base); await pruebaEnVivo(browser, base, 360, 740); throw 'fin'; }
     if (process.env.SOLO_PANEL) { await pruebaPanel(browser, base, 1280, 900); await pruebaPanel(browser, base, 360, 740); await pruebaAgendaPacientes(browser, base); throw 'fin'; }
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 1280, 900);
@@ -1376,6 +1416,7 @@ async function regresion(browser, base) {
     await pruebasFase5(browser, base, 360, 740);
     await pruebaCuadreFase5(browser, base);
     await pruebaDemo(browser, base);
+    await pruebaPasarConsulta(browser, base);
     await pruebaSinCita(browser, base);
     await pruebaPunto2(browser, base);
     await pruebaSeguros2(browser, base);

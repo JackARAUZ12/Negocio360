@@ -63,6 +63,11 @@ del médico. En "Cliente" puedes elegir:
 **Clínica · Sala de espera** muestra las citas de hoy:
 
 - **🪑 Llegó** → el paciente pasa a "Esperando" y recibe su turno.
+- **▶️ Pasar a consulta** → el paciente sale de "Esperando" y pasa a **En consulta** (en la
+  Agenda queda "En atención"). Si no lo habían llamado, la pantalla de la sala lo anuncia.
+  En "En consulta" tienes **✅ Terminó la consulta** (pasa a "Atendidos hoy" para cobrarle),
+  **🩺 Expediente**, **💳 Cuenta y cobro** y **↩ Regresar a la fila**. Si el médico escribe y
+  firma su nota en el expediente, el paciente pasa solo a cada paso.
 - **📢 Llamar** → aparece **al instante** en la **📺 pantalla de la sala** (una TV, otra
   computadora o un teléfono), con un "ding-dong" y el nombre resaltado. Muestra solo el
   nombre y la inicial del apellido, nunca datos médicos.
