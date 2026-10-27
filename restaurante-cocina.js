@@ -146,6 +146,15 @@ async function cargarCocina() {
       ...c,
       items: (c.restaurante_comanda_items || []).filter(i => i.estado === 'en_preparacion'),
     })).filter(c => c.items.length > 0);
+    // Lo que el mesero quitó en los últimos 20 min (con su motivo): cocina lo ve tachado para no prepararlo.
+    try {
+      const desde = new Date(Date.now() - 20 * 60000).toISOString();
+      const { data: canc } = await sb.from('restaurante_comanda_items')
+        .select('id, nombre_producto, cantidad, motivo_cancelacion, cancelado_por, updated_at, restaurante_comandas(restaurante_mesas(numero))')
+        .eq('auth_user_id', STATE.userId).eq('estado', 'cancelado').not('motivo_cancelacion', 'is', null).gte('updated_at', desde)
+        .order('updated_at', { ascending: false }).limit(20);
+      STATE.cancelados = canc || [];
+    } catch (eC) { STATE.cancelados = []; }
     actualizarKpisCocina();
     renderCocina();
   } catch (e) {
@@ -160,7 +169,20 @@ function actualizarKpisCocina() {
   document.getElementById('kpi-cocina-platillos').textContent = totalPlatillos;
 }
 
+function renderCancelados() {
+  let caja = document.getElementById('cocina-cancelados');
+  const grid = document.getElementById('cocina-grid');
+  if (!caja && grid) { caja = document.createElement('div'); caja.id = 'cocina-cancelados'; grid.parentNode.insertBefore(caja, grid); }
+  if (!caja) return;
+  const lista = STATE.cancelados || [];
+  caja.innerHTML = lista.length ? `<div style="border:1.5px solid var(--danger);background:var(--danger-soft);border-radius:12px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-weight:800;color:var(--danger);margin-bottom:6px">🚫 No preparar (los quitó el mesero)</div>
+      ${lista.map(i => `<div style="font-size:13.5px;padding:3px 0"><s>${esc(String(i.cantidad))}× ${esc(i.nombre_producto)}</s> · Mesa ${esc(i.restaurante_comandas?.restaurante_mesas?.numero || '—')}
+        <span style="color:var(--text-secondary)">— ${esc(i.motivo_cancelacion || '')}${i.cancelado_por ? ' (' + esc(i.cancelado_por) + ')' : ''}</span></div>`).join('')}</div>` : '';
+}
+
 function renderCocina() {
+  renderCancelados();
   const cont = document.getElementById('cocina-grid');
   const vacio = document.getElementById('cocina-vacio');
   if (!STATE.comandas.length) {
@@ -187,7 +209,7 @@ function renderCocina() {
       ${c.items.map(i => `
         <div class="kd-platillo">
           <div class="kd-platillo-info">
-            <div class="kd-platillo-nombre"><span class="kd-platillo-cant">${i.cantidad}×</span>${esc(i.nombre_producto)}</div>
+            <div class="kd-platillo-nombre"><span class="kd-platillo-cant">${esc(String(i.cantidad))}×</span>${esc(i.nombre_producto)}${Number(i.ronda) > 1 ? ` <span style="font-size:11px;font-weight:800;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 8px">${esc(String(i.ronda))}.ª ronda</span>` : ''}</div>
             ${i.modificadores ? `<div class="kd-platillo-mod">${esc(i.modificadores)}</div>` : ''}
           </div>
           <button class="kd-btn-listo" onclick="marcarPlatilloListo('${i.id}', '${c.id}')">✅ Listo</button>
@@ -203,7 +225,7 @@ function renderCocina() {
 async function marcarPlatilloListo(itemId, comandaId) {
   try {
     const { error: e1 } = await sb.from('restaurante_comanda_items')
-      .update({ estado: 'listo', updated_at: new Date().toISOString() }).eq('id', itemId);
+      .update({ estado: 'listo', updated_at: new Date().toISOString() }).eq('id', itemId).eq('auth_user_id', STATE.userId);
     if (e1) throw e1;
 
     // Se revisa el estado REAL en la base de datos (no solo el

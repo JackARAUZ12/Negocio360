@@ -905,9 +905,22 @@
     return panel || entry[0];
   }
 
+  // La venta OCULTA que usan las pantallas de cobro (mesa del Restaurante o Clínica: ventas.html?…&motor=1,
+  // siempre dentro de esa pantalla) se permite a quien tiene la pantalla que cobra, aunque no tenga Ventas.
+  function motorDeCobroPermitido(perfil, file) {
+    if (file !== 'ventas.html' || window.self === window.top) return false;
+    const q = new URLSearchParams(location.search);
+    if (q.get('motor') !== '1') return false;
+    const p = new Set(perfil.modulos || []);
+    if (q.get('rest_cobro') === '1') return p.has('restaurante_comandas');
+    if (q.get('clinica_cobro') === '1') return p.has('agenda') || [...p].some(k => String(k).startsWith('clinica_'));
+    return false;
+  }
+
   function redirigirSiHaceFalta(perfil) {
     if (perfil.tipo === 'admin') return;
     const file = currentFile();
+    if (motorDeCobroPermitido(perfil, file)) return;
     const mod  = MODULOS[file];
     const panelOk = window.NEGOCIO360_PANEL_PERMITIDO && window.NEGOCIO360_PANEL_PERMITIDO(file, new Set(perfil.modulos || []));
     if (mod && mod.key !== 'chat' && !(perfil.modulos || []).includes(mod.key) && !panelOk) {

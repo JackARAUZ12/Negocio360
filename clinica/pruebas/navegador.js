@@ -1257,6 +1257,7 @@ async function pruebaSinCita(browser, base) {
     const pac = db.clinica_pacientes.find(p => p.nombres === 'Rosa <b>X</b>'), cli = pac && db.clientes.find(c => c.id === pac.cliente_id);
     const cita = db.agenda_citas.find(c => c.cliente_id === pac?.cliente_id), lin = db.agenda_citas_servicios.find(x => x.cita_id === cita?.id);
     const inf = db.clinica_cita_info.find(x => x.agenda_cita_id === cita?.id);
+    if (!(pac && cli)) console.log('DIAGNÓSTICO (prueba intermitente) sin cita:', JSON.stringify({ pacs: db.clinica_pacientes.map(p => [p.nombres, p.cliente_id]), clis: db.clientes.map(c => [c.id, c.nombre]), err: await page.textContent('#sc-error').catch(() => ''), errores: page.__errores }));
     verificar(!!pac && cli && cli.telefono === '8877-6655', `${tag}: se crea su expediente y su cliente (para cobrarle al final)`);
     verificar(cita && cita.fecha === HOY && cita.notas === 'Fiebre alta desde anoche' && lin && lin.profesional_id === 'prof-ruiz' && lin.producto_id === 'prod-consulta' && lin.precio === 500,
       `${tag}: su visita de hoy queda en la Agenda con el médico, el servicio y el motivo`);

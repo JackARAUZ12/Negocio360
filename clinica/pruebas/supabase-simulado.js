@@ -12,8 +12,8 @@
   const guardarDB = db => sessionStorage.setItem('__DB', JSON.stringify(db));
   const log = (op, tabla, datos, filtros) => { const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op, tabla, datos, filtros }); sessionStorage.setItem('__LOG', JSON.stringify(l)); };
   let n = 0; const uuid = () => 'id-' + Date.now().toString(36) + '-' + (++n) + '-' + Math.random().toString(36).slice(2, 8);
-  const REL = { clinica_pacientes: 'paciente_id', ventas: 'venta_id', productos: 'producto_id', clientes: 'cliente_id', clinica_personal: 'medico_id' };
-  const HIJOS = { agenda_citas_servicios: 'cita_id' };          // relaciones uno-a-muchos: nombre(campos) -> lista
+  const REL = { clinica_pacientes: 'paciente_id', ventas: 'venta_id', productos: 'producto_id', clientes: 'cliente_id', clinica_personal: 'medico_id', restaurante_mesas: 'mesa_id', restaurante_comandas: 'comanda_id' };
+  const HIJOS = { agenda_citas_servicios: 'cita_id', restaurante_comanda_items: 'comanda_id' };          // relaciones uno-a-muchos: nombre(campos) -> lista
 
   function partirTope(s) {            // separa "a, b(c, d), e" respetando paréntesis
     const out = []; let nivel = 0, cur = '';
@@ -88,9 +88,13 @@
       const embebidos = partirTope(st.cols || '*').filter(c => c.includes('(')).map(c => c.slice(0, c.indexOf('(')).trim());
       if (embebidos.length && resultado) {
         const db2 = leerDB();
-        resultado = resultado.map(f => { const g = { ...f }; embebidos.forEach(rel => {
-          if (HIJOS[rel]) { g[rel] = (db2[rel] || []).filter(x => x.id && comoTexto(x[HIJOS[rel]]) === comoTexto(f.id)).map(x => ({ ...x })); return; }
-          const fk = REL[rel]; const otra = (db2[rel] || []).find(x => x.id === f[fk]); g[rel] = otra ? { ...otra } : null; }); return g; });
+        // también anidadas: restaurante_comandas(restaurante_mesas(numero))
+        const incrustar = (f, cols) => { const g = { ...f };
+          partirTope(cols || '*').filter(c => c.includes('(')).forEach(c => { const rel = c.slice(0, c.indexOf('(')).trim(), dentro = c.slice(c.indexOf('(') + 1, c.lastIndexOf(')'));
+            if (HIJOS[rel]) { g[rel] = (db2[rel] || []).filter(x => x.id && comoTexto(x[HIJOS[rel]]) === comoTexto(f.id)).map(x => incrustar(x, dentro)); return; }
+            const fk = REL[rel]; const otra = (db2[rel] || []).find(x => x.id === f[fk]); g[rel] = otra ? incrustar(otra, dentro) : null; });
+          return g; };
+        resultado = resultado.map(f => incrustar(f, st.cols));
       }
       let data = resultado;
       if (st.uno === 'single') { if (!data || data.length !== 1) { error = { message: 'JSON object requested, multiple (or no) rows returned' }; data = null; } else data = data[0]; }
@@ -119,6 +123,83 @@
     };
     const prox = new Proxy(api, { get: (t, k) => (k in t ? t[k] : (typeof k === 'string' ? () => prox : undefined)) });
     return prox;
+  }
+
+  // ---- funciones del servidor del Restaurante (misma lógica que supabase/migraciones/20261028_restaurante_fase1_cobro.sql) ----
+  function rpcRestaurante(nombre, a) {
+    const db = leerDB(); const T = k => (db[k] = db[k] || []);
+    const r2 = x => Math.round((Number(x) || 0) * 100) / 100;
+    const res = v => { guardarDB(db); return v; };
+    switch (nombre) {
+      case 'restaurante_cobro_reservar': {
+        const c = T('restaurante_comandas').find(x => x.id === a.p_comanda_id);
+        if (!c) return { ok: false, motivo: 'no_existe' };
+        if (!['abierta', 'enviada', 'lista'].includes(c.estado)) return { ok: false, motivo: 'cerrada' };
+        if (T('restaurante_cobros').some(k => k.comanda_id === c.id && k.estado === 'reservado')) return { ok: false, motivo: 'en_cobro' };
+        const items = T('restaurante_comanda_items');
+        items.filter(i => i.comanda_id === c.id && !i.venta_id).forEach(i => { i.cobro_id = null; });
+        const pedidos = Array.isArray(a.p_items) && a.p_items.length ? a.p_items
+          : items.filter(i => i.comanda_id === c.id && i.estado !== 'cancelado' && !i.venta_id).map(i => ({ item_id: i.id, cantidad: Number(i.cantidad) }));
+        const vistos = new Set();
+        for (const p of pedidos) {
+          const r = items.find(i => i.id === p.item_id && i.comanda_id === c.id);
+          if (!p.item_id || vistos.has(p.item_id)) return { ok: false, motivo: 'items_invalidos' }; vistos.add(p.item_id);
+          if (!r || r.estado === 'cancelado' || r.venta_id) return { ok: false, motivo: 'item_no_disponible' };
+          if (!r.producto_id) return { ok: false, motivo: 'sin_producto', nombre: r.nombre_producto };
+          if (!(p.cantidad > 0) || p.cantidad > Number(r.cantidad)) return { ok: false, motivo: 'cantidad_invalida', nombre: r.nombre_producto };
+        }
+        if (!pedidos.length) return { ok: false, motivo: 'nada_por_cobrar' };
+        const k = { id: uuid(), auth_user_id: UID, comanda_id: c.id, estado: 'reservado', items: [], subtotal: 0, venta_id: null, propina: 0, creado_por: a.p_quien || null, created_at: new Date().toISOString() };
+        T('restaurante_cobros').push(k);
+        let sub = 0;
+        for (const p of pedidos) {
+          const r = items.find(i => i.id === p.item_id); let id = r.id;
+          if (p.cantidad < Number(r.cantidad)) { r.cantidad = Number(r.cantidad) - p.cantidad; const n2 = { ...r, id: uuid(), cantidad: p.cantidad, cobro_id: k.id }; items.push(n2); id = n2.id; }
+          else r.cobro_id = k.id;
+          k.items.push({ item_id: id, producto_id: r.producto_id, nombre: r.nombre_producto, cantidad: p.cantidad, precio: Number(r.precio_unitario), total: r2(p.cantidad * r.precio_unitario) });
+          sub += r2(p.cantidad * r.precio_unitario);
+        }
+        k.subtotal = r2(sub);
+        const mesa = T('restaurante_mesas').find(m => m.id === c.mesa_id);
+        return res({ ok: true, cobro_id: k.id, lineas: k.items, subtotal: k.subtotal, mesa: mesa && mesa.numero });
+      }
+      case 'restaurante_cobro_confirmar': {
+        const k = T('restaurante_cobros').find(x => x.id === a.p_cobro_id); if (!k) return { ok: false, motivo: 'no_existe' };
+        const c = T('restaurante_comandas').find(x => x.id === k.comanda_id);
+        if (k.estado === 'cobrado') return { ok: k.venta_id === a.p_venta_id, ya: true, cerrada: c.estado === 'cerrada' };
+        const v = T('ventas').find(x => x.id === a.p_venta_id); if (!v || v.estado === 'anulada') return { ok: false, motivo: 'venta_invalida' };
+        const ids = k.items.map(x => x.item_id), items = T('restaurante_comanda_items');
+        if (items.some(i => ids.includes(i.id) && i.venta_id && i.venta_id !== a.p_venta_id)) return { ok: false, motivo: 'conflicto' };
+        items.filter(i => ids.includes(i.id) && !i.venta_id).forEach(i => { i.venta_id = a.p_venta_id; i.cobro_id = k.id; });
+        Object.assign(k, { estado: 'cobrado', venta_id: a.p_venta_id, cobrado_en: new Date().toISOString() });
+        let cerrada = false;
+        if (!items.some(i => i.comanda_id === c.id && i.estado !== 'cancelado' && !i.venta_id)) {
+          const ks = T('restaurante_cobros').filter(x => x.comanda_id === c.id && x.estado === 'cobrado');
+          const ventas = T('ventas').filter(x => ks.some(q => q.venta_id === x.id));
+          Object.assign(c, { estado: 'cerrada', cerrada_at: new Date().toISOString(), propina_monto: r2(ks.reduce((s, q) => s + q.propina, 0)),
+            total_cobrado: r2(ventas.reduce((s, x) => s + Number(x.total), 0) + ks.reduce((s, q) => s + q.propina, 0)),
+            metodo_pago: new Set(ventas.map(x => x.metodo_pago_nombre)).size > 1 ? 'Varios' : (ventas[0] || {}).metodo_pago_nombre });
+          const m = T('restaurante_mesas').find(x => x.id === c.mesa_id); if (m) Object.assign(m, { estado: 'limpieza', en_este_estado_desde: new Date().toISOString() });
+          cerrada = true;
+        }
+        return res({ ok: true, cerrada });
+      }
+      case 'restaurante_cobro_propina': {
+        const k = T('restaurante_cobros').find(x => x.id === a.p_cobro_id);
+        if (!k || k.estado !== 'cobrado') return { ok: false, motivo: 'no_cobrado' };
+        if (a.p_monto > 0 && k.propina > 0) return { ok: false, motivo: 'ya_tiene_propina' };
+        const c = T('restaurante_comandas').find(x => x.id === k.comanda_id);
+        if (c.estado === 'cerrada') c.total_cobrado = r2((c.total_cobrado || 0) - k.propina + Number(a.p_monto));
+        k.propina = r2(a.p_monto); k.propina_metodo = a.p_metodo || null;
+        c.propina_monto = r2(T('restaurante_cobros').filter(x => x.comanda_id === c.id && x.estado === 'cobrado').reduce((s, q) => s + q.propina, 0));
+        return res({ ok: true });
+      }
+      case 'restaurante_cobro_liberar': {
+        let n2 = 0; T('restaurante_cobros').forEach(k => { if (k.estado === 'reservado' && ((a.p_cobro_id && k.id === a.p_cobro_id) || (!a.p_cobro_id && k.comanda_id === a.p_comanda_id))) { k.estado = 'liberado'; n2++; } });
+        return res({ ok: true, liberados: n2 });
+      }
+    }
+    return null;
   }
 
   // ---- funciones del servidor de la Clínica (lógica mínima para la interfaz; la real se probó en SQL) ----
@@ -264,6 +345,7 @@
       rpc: async (nombre, args) => {
         const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'rpc', tabla: nombre, datos: args }); sessionStorage.setItem('__LOG', JSON.stringify(l));
         if (nombre === 'clinica_demo_preparar') { window.__demoPreparada = (window.__demoPreparada || 0) + 1; return { data: window.__DEMO === true ? { ok: true, creadas: 0 } : { ok: false, motivo: 'solo_demo' }, error: null }; }
+        if (nombre.startsWith('restaurante_cobro_')) { try { const r = rpcRestaurante(nombre, args || {}); return { data: r ?? null, error: null }; } catch (e) { return { data: null, error: e }; } }
         if (nombre.startsWith('clinica_')) { try { const r = rpcClinica(nombre, args || {}); return { data: r ?? null, error: null }; } catch (e) { return { data: null, error: e }; } }
         if (nombre === 'agenda_cita_guardar') {            // guarda la cita y sus servicios (sin revisar cruces de horario)
           const db = leerDB(); db.agenda_citas = db.agenda_citas || []; db.agenda_citas_servicios = db.agenda_citas_servicios || [];

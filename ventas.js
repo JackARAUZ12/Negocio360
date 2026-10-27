@@ -1809,6 +1809,7 @@ async function abrirNuevaVenta() {
   S._vetEstanciaId = null;
   S._agendaCitaId = null;
   S._clinicaCobro = null;
+  S._restCobro = null;
   S.certificado = null;          // certificado de regalo aplicado a esta venta (certificados-venta.js)
   S._certEmisionId = null;       // esta venta COBRA un certificado (modo "venta")
   S._recompensas  = undefined;
@@ -3139,6 +3140,45 @@ async function aplicarCobroClinica() {
   S._clinicaCobro = { tipo: d.tipo, id: d.id };
   showToast(d.tipo === 'reclamo' ? 'Factura a la aseguradora cargada: si te pagará después, elige "Fiado" como forma de pago.' : 'Cuenta de la estancia cargada en la venta.');
   if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock o ya no disponibles). Revísalos.`, 'warning');
+}
+
+// Cobro de una mesa del Restaurante (solo cuentas con el módulo): la pantalla de cobro del restaurante
+// ya apartó en el servidor los platillos que se cobran (restaurante_cobro_reservar). Aquí se arma la venta
+// con esos platillos a su precio; el cobro sigue el camino NORMAL de Ventas (Caja, inventario, IVA,
+// reportes) y al confirmar queda ligado (restaurante_cobro_confirmar). Si ya se cobró, no se carga.
+async function aplicarCobroRestaurante() {
+  if (S.empresaConfig?.usa_modulo_restaurante !== true) return;
+  const raw = sessionStorage.getItem('n360_rest_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_rest_cobro');         // una sola vez: no se repite al recargar
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { console.error('aplicarCobroRestaurante, dato corrupto:', e); return; }
+  if (!d || !d.cobroId || !Array.isArray(d.lineas) || !d.lineas.length) return;
+  try {
+    const { data: k } = await sb.from('restaurante_cobros').select('id, estado').eq('id', d.cobroId).eq('auth_user_id', S.userId).maybeSingle();
+    if (!k || k.estado !== 'reservado') { showToast('Ese cobro de la mesa ya no está pendiente.', 'warning'); return; }
+  } catch (e) { console.warn('aplicarCobroRestaurante, revisar:', e); return; }
+
+  await abrirNuevaVenta();                              // reinicia el estado: lo demás se arma DESPUÉS
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  else selectClienteOpcion('final');
+  let noAgregados = 0;
+  for (const it of d.lineas) {
+    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
+    if (!prod) { noAgregados++; continue; }
+    const yaEstaba = S.carrito.some(x => x.id === it.producto_id);
+    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'producto', null);
+    const linea = S.carrito.find(x => x.id === it.producto_id);
+    if (!linea) { noAgregados++; continue; }
+    const cant = Math.max(0.01, Number(it.cantidad) || 1);
+    const precio = Math.round((Number(it.precio) || 0) * 100) / 100;
+    if (yaEstaba && Math.round(linea.precio * 100) === Math.round(precio * 100)) linea.cantidad = Math.round((linea.cantidad - 1 + cant) * 1000) / 1000;
+    else { linea.cantidad = cant; linea.precio = precio; }
+    recalcItem(linea);
+  }
+  renderCarrito('servicio'); renderCarrito('producto'); calcularResumen();
+  if (noAgregados) { S._restCobro = null; showToast(`${noAgregados} platillo(s) ya no están en tu catálogo o no tienen existencia. Revísalos antes de cobrar.`, 'error'); return; }
+  S._restCobro = { id: d.cobroId };
 }
 
 // Cobro de un certificado de regalo "como venta" (certificados.html): abre la venta con el
@@ -5825,6 +5865,17 @@ async function _confirmarVentaInterno(conImpresion) {
     } catch (eClChk) { console.warn('Revisar cobro de la clínica:', eClChk); showToast('No se pudo comprobar si ya estaba cobrado. Revisa tu conexión e intenta de nuevo.', 'error'); return; }
   }
 
+  // Restaurante (solo cuentas con el módulo): candado para no cobrar dos veces los mismos platillos de una
+  // mesa (otro equipo, otra pestaña o la misma ventana abierta dos veces). El servidor aparta los platillos
+  // al empezar el cobro; si esa reserva ya no está vigente, no se registra la venta.
+  if (S.empresaConfig?.usa_modulo_restaurante === true && S._restCobro?.id) {
+    try {
+      const { data: k, error: eK } = await sb.from('restaurante_cobros').select('estado, venta_id').eq('id', S._restCobro.id).eq('auth_user_id', S.userId).maybeSingle();
+      if (eK) throw eK;
+      if (!k || k.estado !== 'reservado' || k.venta_id) { showToast('Esa cuenta de la mesa ya se cobró o se soltó. No se registró otra venta.', 'error'); return; }
+    } catch (eRc) { console.warn('Revisar cobro del restaurante:', eRc); showToast('No se pudo comprobar si la mesa ya estaba cobrada. Revisa tu conexión e intenta de nuevo.', 'error'); return; }
+  }
+
   // Aviso (no bloquea): productos con costo 0 o vendidos por debajo del costo
   // hacen que la ganancia de los reportes salga mal.
   try {
@@ -6179,6 +6230,17 @@ async function _confirmarVentaInterno(conImpresion) {
       }
       S._clinicaCobro = null;
     } catch (eCc) { console.warn('Vincular cobro de la clínica:', eCc); }
+
+    // Restaurante (solo cuentas con el módulo): los platillos cobrados quedan ligados a su venta y, si ya
+    // no queda nada por pagar, la mesa se cierra. Aislado: la venta YA se confirmó, nada de esto la revierte.
+    try {
+      if (S._restCobro?.id) {
+        const { data: rc, error: eRc } = await sb.rpc('restaurante_cobro_confirmar', { p_cobro_id: S._restCobro.id, p_venta_id: ventaId });
+        if (eRc || !rc?.ok) console.warn('Vincular cobro del restaurante:', eRc || rc);
+        S._restCobroHecho = { cobroId: S._restCobro.id, ventaId, cerrada: !!rc?.cerrada };
+      }
+      S._restCobro = null;
+    } catch (eRc) { console.warn('Vincular cobro del restaurante:', eRc); }
 
     // Facturacion de un viaje de Transporte: la orden queda ligada a la venta. Aislado.
     try {
@@ -8240,6 +8302,7 @@ async function initVentas() {
     await aplicarCobroTransporte();
     await aplicarCobroAgenda();
     await aplicarCobroClinica();
+    await aplicarCobroRestaurante();
     await aplicarCobroCertificado();
 
     // 5c. Configuración del módulo (¿este usuario puede ver las ventas de todo el negocio?)
@@ -8264,6 +8327,8 @@ async function initVentas() {
       for (let i = 0; S.clienteId && i < 6 && S.paso < 5; i++) { const antes = S.paso; pasoSiguiente(); if (S.paso === antes) break; }
     }
     if (params.get('clinica_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_clinica === true && window.self !== window.top) instalarMotorClinica();
+    // Cobro de una mesa del Restaurante: el mismo motor (la pantalla de cobro es la del restaurante).
+    if (params.get('rest_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_restaurante === true && window.self !== window.top) instalarMotorClinica();
     // Deep link desde el módulo de Rutas ("Vender aquí") — abre Nueva
     // Venta con ese cliente ya elegido, mismo flujo de siempre.
     const rutaClienteId = params.get('ruta_cliente');
