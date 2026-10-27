@@ -325,7 +325,7 @@ async function pruebasEquipo(browser, base) {
     await sinDesborde(page, `${tag} médicos`);
     verificar((await page.textContent('#eq-personal-lista')).includes('Agenda: Dra. Ruiz'), `${tag}: cada médico muestra su columna de la Agenda`);
     verificar(await page.locator('#pe-pin, #eq-tab-pin').count() === 0, `${tag}: ya no hay PIN propio de la clínica`);
-    await page.click('text=+ Marcar un usuario como médico'); await modalesSinDesborde(page, `${tag} marcar médico`);
+    await page.click('text=Usar un usuario que ya existe'); await modalesSinDesborde(page, `${tag} marcar médico`);
     if (process.env.FOTOS) await page.waitForTimeout(1200), await page.screenshot({ path: process.env.FOTOS + '/medico-' + tag + '.png' });
     const libres = await page.$$eval('#pe-usuario option', os => os.map(o => o.value).filter(Boolean));
     verificar(JSON.stringify(libres) === '["perf-caja"]', `${tag}: solo se ofrecen usuarios del sistema que aún no son médicos (${libres})`);
@@ -1195,7 +1195,7 @@ async function pruebaEnfermeria(browser, base) {
     await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: db0() });
     await page.reload(); await esperarListo(page); await page.waitForSelector('#eq-personal-lista .cl-card');
     verificar((await page.textContent('#eq-personal-lista')).includes('Enfermería'), `${tag}: Médicos y seguridad muestra el rol Enfermería`);
-    await page.click('text=+ Marcar un usuario como médico');
+    await page.click('text=Usar un usuario que ya existe');
     verificar(await page.$$eval('#pe-rol option', os => os.some(o => o.value === 'enfermeria')), `${tag}: se puede marcar a un usuario como Enfermería`);
     await page.selectOption('#pe-rol', 'enfermeria');
     verificar(!(await page.isVisible('#pe-profesional')) && !(await page.isVisible('#pe-hon-tipo')), `${tag}: enfermería no pide columna de Agenda ni honorarios`);
@@ -1601,6 +1601,70 @@ async function pruebaPasarConsulta(browser, base) {
 }
 
 // Cuenta DEMO: no usa el multiusuario. El expediente se abre eligiendo el médico, sin código.
+// Médicos y seguridad · "➕ Nuevo médico": crea su usuario del sistema, su columna en la Agenda y su ficha de una vez.
+async function pruebaNuevoMedico(browser, base) {
+  console.log('\n▶ Nuevo médico (usuario + columna de Agenda + ficha)');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    let { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clinica-equipo.html'); await esperarListo(page); await page.waitForSelector('#eq-personal-lista .cl-card');
+    await page.click('text=➕ Nuevo médico'); await page.waitForSelector('#modal-persona.modal-open');
+    verificar((await page.textContent('#pe-titulo')).includes('Nuevo médico') && await page.isVisible('#pe-nombre') && await page.isVisible('#pe-codigo')
+      && !(await page.isVisible('#pe-usuario')) && !(await page.isVisible('#pe-profesional')), `${tag}: el formulario pide nombre y código, sin elegir usuario ni columna`);
+    await modalesSinDesborde(page, `${tag} nuevo médico`);
+    if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/nuevo-medico-' + tag + '.png' });
+    await page.click('#pe-btn-guardar');
+    verificar((await page.textContent('#pe-error')).includes('nombre'), `${tag}: pide el nombre`);
+    await page.fill('#pe-nombre', 'Dr. Luis Pérez ' + XSS); await page.fill('#pe-codigo', '4321'); await page.fill('#pe-codigo2', '4322');
+    await page.click('#pe-btn-guardar');
+    verificar((await page.textContent('#pe-error')).includes('no son iguales'), `${tag}: avisa si los dos códigos no coinciden`);
+    await page.fill('#pe-codigo2', '4321'); await page.selectOption('#pe-especialidad', { index: 1 });
+    await page.selectOption('#pe-hon-tipo', 'porcentaje'); await page.fill('#pe-hon-valor', '40');
+    await page.click('#pe-btn-guardar'); await page.waitForSelector('#modal-admin.modal-open');
+    await page.fill('#ac-codigo', '2468'); await page.click('#modal-admin >> text=Continuar');
+    await page.waitForFunction(() => document.getElementById('modal-persona').style.display === 'none');
+    const db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const per = db.perfiles_acceso.find(x => x.nombre.startsWith('Dr. Luis')), prof = db.agenda_profesionales.find(x => x.nombre.startsWith('Dr. Luis')),
+      fic = db.clinica_personal.find(x => x.nombre.startsWith('Dr. Luis'));
+    verificar(per && per.codigo_simulado === '4321' && per.tipo === 'restringido' && per.modulos.includes('clinica_pacientes'), `${tag}: crea su usuario del sistema con su código y sus pantallas`);
+    verificar(prof && prof.perfil_id === per.id, `${tag}: crea su columna en la Agenda ligada a su usuario`);
+    verificar(fic && fic.perfil_id === per.id && fic.agenda_profesional_id === prof.id && fic.honorario_tipo === 'porcentaje' && fic.honorario_valor === 40, `${tag}: crea su ficha de médico con honorarios`);
+    await page.waitForSelector('#eq-personal-lista >> text=Dr. Luis');
+    verificar((await page.textContent('#eq-personal-lista')).includes('Agenda: Dr. Luis'), `${tag}: aparece en la lista con su columna`);
+    // Mismo nombre otra vez: no se duplica (el código de administrador ya quedó guardado en esta pantalla)
+    await page.click('text=➕ Nuevo médico'); await page.fill('#pe-nombre', 'dr. luis pérez ' + XSS); await page.fill('#pe-codigo', '5555'); await page.fill('#pe-codigo2', '5555');
+    await page.click('#pe-btn-guardar');
+    if (await page.isVisible('#modal-admin.modal-open')) { await page.fill('#ac-codigo', '2468'); await page.click('#modal-admin >> text=Continuar'); }
+    await page.waitForFunction(() => document.getElementById('pe-error').textContent.length > 0);
+    verificar((await page.textContent('#pe-error')).includes('Ya existe'), `${tag}: no deja crear dos usuarios con el mismo nombre`);
+    // Enfermería: sin columna de Agenda
+    await page.fill('#pe-nombre', 'Enf. Marta'); await page.selectOption('#pe-rol', 'enfermeria');
+    verificar(!(await page.isVisible('#pe-crear-col')) && !(await page.isVisible('#pe-hon-tipo')), `${tag}: enfermería no lleva columna ni honorarios`);
+    await page.click('#pe-btn-guardar');
+    if (await page.isVisible('#modal-admin.modal-open')) { await page.fill('#ac-codigo', '2468'); await page.click('#modal-admin >> text=Continuar'); }
+    await page.waitForFunction(() => document.getElementById('modal-persona').style.display === 'none');
+    const db2 = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db2.clinica_personal.some(x => x.nombre === 'Enf. Marta' && x.rol === 'enfermeria' && !x.agenda_profesional_id) && !db2.agenda_profesionales.some(x => x.nombre === 'Enf. Marta'), `${tag}: enfermería se crea sin columna en la Agenda`);
+    // "Usar un usuario que ya existe" sigue igual
+    await page.click('text=Usar un usuario que ya existe');
+    verificar(await page.isVisible('#pe-usuario') && !(await page.isVisible('#pe-nombre')), `${tag}: "Usar un usuario que ya existe" sigue pidiendo elegir el usuario`);
+    verificar(page.__errores.length === 0 && !(await page.evaluate(() => window.__xss)), `${tag} nuevo médico: sin errores ni XSS (${page.__errores.join(' | ')})`);
+    await ctx.close();
+    // Cuenta demo: no pide código; queda como médico de ejemplo
+    ({ ctx, page } = await nuevaPagina(browser, base, ancho, alto));
+    await ctx.addInitScript(() => { window.__DEMO = true; });
+    await page.goto(base + '/clinica-equipo.html'); await esperarListo(page); await page.waitForSelector('#eq-personal-lista .cl-card');
+    await page.click('text=➕ Nuevo médico');
+    verificar(!(await page.isVisible('#pe-codigo')) && (await page.textContent('#pe-codigo-ayuda')).includes('demo'), `${tag} demo: no pide código`);
+    await page.fill('#pe-nombre', 'Dra. Demo Nueva'); await page.click('#pe-btn-guardar');
+    await page.waitForFunction(() => document.getElementById('modal-persona').style.display === 'none');
+    const db3 = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db3.clinica_personal.some(x => x.nombre === 'Dra. Demo Nueva' && !x.perfil_id && x.agenda_profesional_id) && !db3.perfiles_acceso.some(x => x.nombre === 'Dra. Demo Nueva'), `${tag} demo: se crea como médico de ejemplo con columna, sin usuario`);
+    verificar(page.__errores.length === 0, `${tag} demo nuevo médico: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 async function pruebaDemo(browser, base) {
   console.log('\n▶ Cuenta demo (sin multiusuario)');
   for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
@@ -1672,6 +1736,7 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
+    if (process.env.SOLO_MEDICO) { await pruebaNuevoMedico(browser, base); throw 'fin'; }
     if (process.env.SOLO_SINCITA) { await pruebaSinCita(browser, base); throw 'fin'; }
     if (process.env.SOLO_DEMO) { await pruebaDemo(browser, base); throw 'fin'; }
     if (process.env.SOLO_PASAR) { await pruebaPasarConsulta(browser, base); throw 'fin'; }
@@ -1695,6 +1760,7 @@ async function regresion(browser, base) {
     await pruebasFase5(browser, base, 360, 740);
     await pruebaCuadreFase5(browser, base);
     await pruebaDemo(browser, base);
+    await pruebaNuevoMedico(browser, base);
     await pruebaPasarConsulta(browser, base);
     await pruebaAtencionHoy(browser, base);
     await pruebaBuscadorIngreso(browser, base);

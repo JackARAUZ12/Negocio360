@@ -53,12 +53,16 @@ sesiones faltan del plan.
 
 ## 2. Los médicos son usuarios del sistema
 
-1. Crea a cada médico como **usuario** en el menú de usuarios (arriba a la derecha),
-   con **su código** y los módulos que va a usar (Pacientes, Sala de espera, etc.).
-2. En la **Agenda**, toca **Profesionales** y crea la **columna** de cada médico.
-3. Ve a **Clínica · Médicos y seguridad** → **"+ Marcar un usuario como médico"**:
-   elige el usuario, su columna de la Agenda, especialidad, consultorio y, si cobra
-   honorarios, el porcentaje o monto fijo. Se pide el código de administrador.
+**Lo más fácil: "➕ Nuevo médico"** en **Clínica · Médicos y seguridad**. Escribe su
+nombre, **su código** (4 a 12 números, dos veces), rol, especialidad, consultorio y
+honorarios. Con el código de administrador se crea **todo de una vez**: su usuario del
+sistema (con las pantallas de Clínica de su rol y la Agenda), su **columna en la Agenda**
+(se puede desmarcar; enfermería no lleva) y su ficha de médico. Si algo falla, no queda
+nada a medias. No deja repetir un nombre de usuario y respeta el límite de usuarios del plan.
+En una **cuenta demo** no pide código: queda como médico de ejemplo.
+
+**Si ya tiene su usuario** (creado antes en el menú de usuarios), usa
+**"Usar un usuario que ya existe"**: eliges el usuario y su columna de la Agenda.
 
 Cuando un médico abre un expediente, escribe **su mismo código de usuario**.
 Los demás usuarios (caja, recepción) **no pueden ver** notas clínicas.

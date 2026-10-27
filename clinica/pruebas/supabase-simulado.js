@@ -286,6 +286,27 @@
           T('clinica_personal').push(f); guardar(); return { ok: true, id: f.id }; }
         const f = T('clinica_personal').find(x => x.id === a.p_id); Object.assign(f, d); guardar(); return { ok: true, id: f.id };
       }
+      case 'clinica_personal_nuevo': {      // como la del servidor: usuario + columna en la Agenda + ficha, todo o nada
+        const demo = window.__DEMO === true, d = a.p_datos || {}, rol = d.rol || 'medico', nombre = String(a.p_nombre || '').trim();
+        if (!['medico', 'admin', 'enfermeria'].includes(rol)) return { ok: false, motivo: 'rol' };
+        if (nombre.length < 3 || nombre.length > 80) return { ok: false, motivo: 'nombre' };
+        if (!demo) {
+          const auth = a.p_auth || {}; const ses = T('_sesiones').find(x => x.token === auth.token && !x.cerrada);
+          if (!((ses && persona(ses)?.rol === 'admin') || auth.admin_pin === '2468')) return { ok: false, motivo: auth.admin_pin ? 'incorrecto' : 'sin_permiso', restantes: 4 };
+          if (!/^[0-9]{4,12}$/.test(a.p_codigo || '')) return { ok: false, motivo: 'codigo' };
+          if (T('perfiles_acceso').some(x => String(x.nombre).trim().toLowerCase() === nombre.toLowerCase())) return { ok: false, motivo: 'nombre_repetido' };
+        }
+        if (d.honorario_tipo === 'porcentaje' && Number(d.honorario_valor) > 100) return { ok: false, motivo: 'honorario' };
+        let perfil = null, prof = null;
+        if (!demo) { perfil = { id: uuid(), auth_user_id: UID, nombre, tipo: 'restringido', activo: true, codigo_simulado: a.p_codigo,
+          modulos: rol === 'enfermeria' ? ['clinica_panel', 'clinica_sala', 'clinica_hospital'] : ['clinica_panel', 'clinica_sala', 'clinica_pacientes', 'clinica_hospital', 'agenda'] }; T('perfiles_acceso').push(perfil); }
+        if (a.p_columna_agenda !== false && rol !== 'enfermeria') { prof = { id: uuid(), auth_user_id: UID, nombre, color: '#3b82f6', orden: T('agenda_profesionales').length, activo: true, perfil_id: perfil && perfil.id }; T('agenda_profesionales').push(prof); }
+        const f = { id: uuid(), auth_user_id: UID, nombre, perfil_id: perfil && perfil.id, rol, especialidad: d.especialidad || null, registro_profesional: d.registro_profesional || null,
+          consultorio_id: d.consultorio_id || null, agenda_profesional_id: prof && prof.id, honorario_tipo: rol === 'enfermeria' ? 'ninguno' : (d.honorario_tipo || 'ninguno'),
+          honorario_valor: rol === 'enfermeria' ? 0 : Number(d.honorario_valor || 0), activo: true };
+        T('clinica_personal').push(f); guardar();
+        return { ok: true, id: f.id, perfil_id: f.perfil_id, agenda_profesional_id: f.agenda_profesional_id, demo };
+      }
       case 'clinica_bitacora_ver': {
         const auth = a.p_auth || {}; if (auth.admin_pin !== '2468' && !T('_sesiones').some(s => s.token === auth.token)) return { ok: false, motivo: 'incorrecto', restantes: 3 };
         return { ok: true, filas: T('clinica_bitacora').map(b => ({ fecha: new Date().toISOString(), quien: b.quien, accion: b.accion, paciente: '<b>Ana</b>', expediente: 'EXP-000001' })) };

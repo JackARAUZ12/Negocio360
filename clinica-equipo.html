@@ -1335,7 +1335,7 @@
       <div id="eq-panel-personal">
         <div class="cl-info" style="margin:0 0 12px">👤 Los médicos son <b>usuarios del sistema</b> (se crean en el menú de usuarios, arriba a la derecha, con su código y sus módulos). Aquí solo marcas cuáles son médicos. Para abrir un expediente usan <b>su mismo código de usuario</b>; los demás usuarios no pueden ver notas clínicas. Se pide el <b>código de administrador</b>.</div>
         <div class="cl-info" id="eq-demo" style="display:none;margin:0 0 12px">🧪 Cuenta de demostración: no usa el sistema de usuarios. Los médicos de ejemplo ya vienen listos y el expediente se abre eligiéndolos, sin código.</div>
-        <div class="cl-barra"><button class="btn-accion-tabla btn-primary" onclick="abrirPersona()">+ Marcar un usuario como médico</button></div>
+        <div class="cl-barra"><button class="btn-accion-tabla btn-primary" onclick="abrirNuevoMedico()">➕ Nuevo médico</button><button class="btn-accion-tabla btn-ghost" onclick="abrirPersona()">Usar un usuario que ya existe</button></div>
         <div id="eq-personal-lista" class="cl-lista"><p class="cl-sub">Cargando…</p></div>
       </div>
 
@@ -1374,7 +1374,7 @@
 <script src="vet-comun.js?v=20261004b"></script>
 <script src="clinica-comun.js?v=20261028a"></script>
 <script src="clinica-sesion.js?v=20261027a"></script>
-<script src="clinica-equipo.js?v=20261028a"></script>
+<script src="clinica-equipo.js?v=20261028b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
@@ -1415,10 +1415,19 @@
   <div class="modal-box" style="max-width:560px;width:100%" role="dialog" aria-labelledby="pe-titulo">
     <div class="modal-header"><span class="modal-title" id="pe-titulo">👤 Agregar persona</span><button class="modal-close" onclick="closeModal('modal-persona')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
     <div class="modal-body" style="max-height:72vh;overflow-y:auto">
-      <div class="cl-field"><label for="pe-usuario">Usuario del sistema *</label><select id="pe-usuario" class="cl-in"></select>
+      <div id="pe-nuevo-wrap" style="display:none">
+        <div class="cl-field"><label for="pe-nombre">Nombre completo *</label><input type="text" id="pe-nombre" class="cl-in" maxlength="80" placeholder="Ej: Dra. Ana Ruiz" autocomplete="off"/></div>
+        <div class="cl-grid2" id="pe-codigo-wrap">
+          <div class="cl-field"><label for="pe-codigo">Su código de acceso *</label><input type="password" id="pe-codigo" class="cl-in" inputmode="numeric" maxlength="12" autocomplete="new-password" placeholder="4 a 12 números"/></div>
+          <div class="cl-field"><label for="pe-codigo2">Repite el código *</label><input type="password" id="pe-codigo2" class="cl-in" inputmode="numeric" maxlength="12" autocomplete="new-password"/></div>
+        </div>
+        <div class="cl-ayuda" id="pe-codigo-ayuda" style="margin:-4px 0 8px">Se crea su usuario del sistema: con este código abre expedientes y entra a sus pantallas de Clínica y la Agenda (si el multiusuario está activo).</div>
+        <label class="cl-check pe-solo-medico" style="margin-bottom:8px"><input type="checkbox" id="pe-crear-col" checked/> Crear su columna en la Agenda (sus citas y su sala de espera)</label>
+      </div>
+      <div class="cl-field" id="pe-usuario-wrap"><label for="pe-usuario">Usuario del sistema *</label><select id="pe-usuario" class="cl-in"></select>
         <div class="cl-ayuda" id="pe-usuario-ayuda">¿No aparece? Créalo primero en el menú de usuarios (arriba a la derecha) con su código y los módulos que usará.</div></div>
       <div class="cl-field"><label for="pe-rol">Rol *</label><select id="pe-rol" class="cl-in" onchange="alCambiarRol()"><option value="medico">🩺 Médico</option><option value="admin">🛡️ Administración clínica</option><option value="enfermeria">💉 Enfermería</option></select><div class="cl-ayuda" id="pe-rol-ayuda"></div></div>
-      <div class="cl-field pe-solo-medico"><label for="pe-profesional">Su columna en la Agenda</label><select id="pe-profesional" class="cl-in"></select>
+      <div class="cl-field pe-solo-medico" id="pe-profesional-wrap"><label for="pe-profesional">Su columna en la Agenda</label><select id="pe-profesional" class="cl-in"></select>
         <div class="cl-ayuda">Las citas de esa columna son sus pacientes (sala de espera, reportes y honorarios). Las columnas se crean en Agenda › Profesionales.</div></div>
       <div class="cl-grid2">
         <div class="cl-field"><label for="pe-especialidad">Especialidad</label><select id="pe-especialidad" class="cl-in"><option value="">— Ninguna —</option></select></div>

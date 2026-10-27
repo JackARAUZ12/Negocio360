@@ -158,7 +158,7 @@ function revisarRechazo(r) { if (r && (r.motivo === 'incorrecto' || r.motivo ===
 /* ---------- Médicos (usuarios del sistema marcados como médicos) ---------- */
 function pintarPersonal() {
   const cont = $e('eq-personal-lista');
-  if (!EQ.personal.length) { cont.innerHTML = '<div class="cl-info" style="grid-column:1/-1">Todavía no hay médicos. Toca "+ Marcar un usuario como médico" y elige al usuario del sistema que atiende pacientes.</div>'; return; }
+  if (!EQ.personal.length) { cont.innerHTML = '<div class="cl-info" style="grid-column:1/-1">Todavía no hay médicos. Toca "➕ Nuevo médico" (o "Usar un usuario que ya existe" si ya tiene su usuario en el sistema).</div>'; return; }
   const cons = id => EQ.consultorios.find(k => k.id === id)?.nombre;
   const prof = id => EQ.profesionales.find(x => x.id === id)?.nombre;
   cont.innerHTML = EQ.personal.map(p => { const r = ROLES[p.rol] || ROLES.medico; const u = EQ.usuarios.find(x => x.id === p.perfil_id);
@@ -172,6 +172,8 @@ function pintarPersonal() {
 }
 function abrirPersona(id) {
   const p = id ? EQ.personal.find(x => x.id === id) : null;
+  EQ.modoNuevo = false;
+  $e('pe-nuevo-wrap').style.display = 'none'; $e('pe-usuario-wrap').style.display = ''; $e('pe-profesional-wrap').style.display = '';
   EQ.editId = p ? p.id : null;
   $e('pe-titulo').textContent = p ? '✏️ Editar médico' : '🩺 Marcar un usuario como médico';
   const libres = EQ.usuarios.filter(u => !EQ.personal.some(x => x.perfil_id === u.id));
@@ -211,9 +213,56 @@ function alCambiarRol() {
     : 'Todo lo del médico, más anular notas de otros, administrar médicos y ver la bitácora.';
   // Enfermería no tiene columna en la Agenda ni honorarios por consulta.
   document.querySelectorAll('.pe-solo-medico').forEach(el => { el.style.display = rol === 'enfermeria' ? 'none' : ''; });
+  if (EQ.modoNuevo) $e('pe-profesional-wrap').style.display = 'none';      // en "Nuevo médico" la columna se crea sola
   if (rol === 'enfermeria') { $e('pe-profesional').value = ''; $e('pe-hon-tipo').value = 'ninguno'; alCambiarHonorario(); }
 }
+/* ---------- ➕ Nuevo médico: crea su usuario, su columna en la Agenda y su ficha, en una sola operación ----------
+   (clinica_personal_nuevo: todo o nada). En una cuenta demo no se crea usuario ni se pide código. */
+function abrirNuevoMedico() {
+  abrirPersona(null);
+  EQ.modoNuevo = true;
+  $e('pe-titulo').textContent = '➕ Nuevo médico';
+  $e('pe-nuevo-wrap').style.display = ''; $e('pe-usuario-wrap').style.display = 'none'; $e('pe-profesional-wrap').style.display = 'none';
+  $e('pe-nombre').value = ''; $e('pe-codigo').value = ''; $e('pe-codigo2').value = ''; $e('pe-crear-col').checked = true;
+  $e('pe-codigo-wrap').style.display = EQ.demo ? 'none' : ''; $e('pe-codigo-ayuda').textContent = EQ.demo
+    ? 'Cuenta demo: queda como médico de ejemplo (para abrir expedientes se elige de la lista, sin código).'
+    : 'Se crea su usuario del sistema: con este código abre expedientes y entra a sus pantallas de Clínica y la Agenda (si el multiusuario está activo).';
+  alCambiarRol();
+  setTimeout(() => $e('pe-nombre').focus(), 50);
+}
+const MOTIVOS_NUEVO = {
+  nombre: 'Escribe el nombre completo (de 3 a 80 letras).', codigo: 'El código debe tener de 4 a 12 números.',
+  nombre_repetido: 'Ya existe un usuario del sistema con ese nombre. Usa "Usar un usuario que ya existe" o cambia el nombre.',
+  limite_perfiles: 'Llegaste al límite de usuarios de tu plan. Desactiva uno que ya no use o amplía tu plan.',
+  honorario: 'Revisa los honorarios (el porcentaje no puede pasar de 100).', consultorio: 'Ese consultorio ya no existe.',
+};
+async function guardarNuevoMedico() {
+  const err = $e('pe-error'); err.textContent = '';
+  const nombre = $e('pe-nombre').value.trim(), rol = $e('pe-rol').value, c1 = $e('pe-codigo').value.trim(), c2 = $e('pe-codigo2').value.trim();
+  if (nombre.length < 3) { err.textContent = MOTIVOS_NUEVO.nombre; $e('pe-nombre').focus(); return; }
+  if (!EQ.demo) {
+    if (!/^[0-9]{4,12}$/.test(c1)) { err.textContent = MOTIVOS_NUEVO.codigo; $e('pe-codigo').focus(); return; }
+    if (c1 !== c2) { err.textContent = 'Los dos códigos no son iguales.'; $e('pe-codigo2').focus(); return; }
+  }
+  const htipo = $e('pe-hon-tipo').value, hval = Number($e('pe-hon-valor').value || 0);
+  if (rol !== 'enfermeria' && htipo !== 'ninguno' && !(hval > 0)) return (err.textContent = 'Escribe el valor del honorario (mayor que 0).');
+  if (htipo === 'porcentaje' && hval > 100) return (err.textContent = 'El porcentaje no puede pasar de 100.');
+  const datos = { rol, especialidad: $e('pe-especialidad').value || null, registro_profesional: $e('pe-registro').value.trim() || null,
+    consultorio_id: $e('pe-consultorio').value || null, honorario_tipo: htipo, honorario_valor: htipo === 'ninguno' ? 0 : hval, empleado_id: $e('pe-empleado').value || null };
+  const auth = EQ.demo ? {} : await autorizacion();
+  if (!auth) return;
+  const btn = $e('pe-btn-guardar'); btn.disabled = true;
+  try {
+    const { data: r, error } = await sb.rpc('clinica_personal_nuevo', { p_auth: auth, p_nombre: nombre, p_codigo: EQ.demo ? null : c1, p_datos: datos, p_columna_agenda: rol !== 'enfermeria' && $e('pe-crear-col').checked });
+    if (error) throw error;
+    if (!r || !r.ok) { revisarRechazo(r); err.textContent = MOTIVOS_NUEVO[r && r.motivo] || clinicaTextoMotivo(r); return; }
+    showToast(r.agenda_profesional_id ? `Listo: ${nombre} ya está en el equipo y tiene su columna en la Agenda.` : `Listo: ${nombre} ya está en el equipo.`);
+    closeModal('modal-persona'); await cargar();
+  } catch (e) { console.error('guardarNuevoMedico:', e); err.textContent = 'No se pudo crear. Intenta de nuevo.'; }
+  finally { btn.disabled = false; }
+}
 async function guardarPersona() {
+  if (EQ.modoNuevo) return guardarNuevoMedico();
   const err = $e('pe-error'); err.textContent = '';
   const perfil = $e('pe-usuario').value, rol = $e('pe-rol').value;
   if (!EQ.editId && !perfil) return (err.textContent = 'Elige el usuario del sistema.');
