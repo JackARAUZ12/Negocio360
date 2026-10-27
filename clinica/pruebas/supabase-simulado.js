@@ -336,10 +336,11 @@
     const sesion = { user: { id: UID, email: 'prueba@clinica.test' }, access_token: 'x' };
     return {
       auth: {
-        getUser: async () => ({ data: { user: sesion.user }, error: null }),
-        getSession: async () => ({ data: { session: sesion }, error: null }),
+        // Cerrar sesión de verdad (en esta pestaña): después no hay usuario, como en el real.
+        getUser: async () => sessionStorage.getItem('__SALIO') ? ({ data: { user: null }, error: null }) : ({ data: { user: sesion.user }, error: null }),
+        getSession: async () => ({ data: { session: sessionStorage.getItem('__SALIO') ? null : sesion }, error: null }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-        signOut: async () => ({ error: null }), refreshSession: async () => ({ data: { session: sesion }, error: null }),
+        signOut: async () => { sessionStorage.setItem('__SALIO', '1'); return { error: null }; }, refreshSession: async () => ({ data: { session: sesion }, error: null }),
       },
       from: t => builder(t),
       rpc: async (nombre, args) => {

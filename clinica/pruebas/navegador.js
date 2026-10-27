@@ -1358,6 +1358,27 @@ async function pruebaBuscadorIngreso(browser, base) {
   }
 }
 
+// Catálogo360: "Cerrar sesión" en la cabecera, el menú y la pantalla de planes (cuenta sin el módulo).
+async function pruebaCatalogoSalir(browser, base) {
+  console.log('\n▶ Catálogo360: cerrar sesión');
+  for (const [ancho, alto, desbloqueado] of [[1280, 900, true], [360, 740, true], [360, 740, false]]) {
+    const tag = (ancho < 500 ? 'celular' : 'computadora') + (desbloqueado ? '' : ' sin el módulo');
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/catalogo360.html');
+    await page.evaluate(d => { const x = JSON.parse(JSON.stringify(window.__SEED)); x.configuracion_empresa[0].catalogo360_desbloqueado = d; x.configuracion_empresa[0].catalogo360_tutorial_visto = true; sessionStorage.setItem('__DB', JSON.stringify(x)); }, desbloqueado);
+    await page.reload();
+    const boton = desbloqueado ? '#c360-btn-salir' : '#c360-paywall-salir';
+    await page.waitForSelector(boton, { state: 'visible', timeout: 15000 });
+    if (desbloqueado) verificar(await page.locator('#sidebar .nav-item', { hasText: 'Cerrar sesión' }).count() === 1, `${tag}: el menú lateral tiene "Cerrar sesión"`);
+    await sinDesborde(page, `${tag} catálogo con cerrar sesión`);
+    await page.click(boton);
+    await page.waitForURL(/catalogo360-login\.html/, { timeout: 10000 }).catch(() => {});
+    verificar(/catalogo360-login\.html/.test(page.url()), `${tag}: "Cerrar sesión" sale y lleva al inicio de sesión de Catálogo360 (${page.url().split('/').pop()})`);
+    verificar(page.__errores.length === 0, `${tag}: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Agenda: fotos de los profesionales. El administrador pone la de cualquiera; cada usuario solo la suya.
 const PNG_PRUEBA = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAIAAAA7N+mxAAABbklEQVR4nAXBoRGAIBSAYQZgAAdwAAdwAAdwAMMfPfLLnJFgIhmIHvlljkhwAAZgEL/PGJqlTbSZttBW2kbbaQftpAntot20h/bSlFZpH63TBs0YiqVMlJmyUFbKRtkpB+WkCOWi3JSH8lKUUikfpVMGxRjUohM6owu6ohu6owd6ooJe6I0+6IsqWtEP7ehAjSFb8kSeyQt5JW/knXyQT7KQL/JNfsgvWcmV/JE7eZCNIVnSRJpJC2klbaSddJBOkpAu0k16SC9JSZX0kTppkIwhWuJEnIkLcSVuxJ14EE+iEC/iTXyIL1GJlfgRO3EQjSFYwkSYCQthJWyEnXAQToIQLsJNeAgvQQmV8BE6YRCMwVv8hJ/xC37Fb/gdf+BPvOAv/I1/8C9e8RX/4Tt+4I1BLDIhM7IgK7IhO3IgJyLIhdzIg7yIIhX5kI4MxBicxU24GbfgVtyG23EH7sQJ7sLduAf34hRXcR+u4wbuByFrIFjFiyPFAAAAAElFTkSuQmCC', 'base64');
 async function pruebaFotosAgenda(browser, base) {
@@ -1655,6 +1676,7 @@ async function regresion(browser, base) {
     if (process.env.SOLO_DEMO) { await pruebaDemo(browser, base); throw 'fin'; }
     if (process.env.SOLO_PASAR) { await pruebaPasarConsulta(browser, base); throw 'fin'; }
     if (process.env.SOLO_HOY) { await pruebaAtencionHoy(browser, base); throw 'fin'; }
+    if (process.env.SOLO_C360) { await pruebaCatalogoSalir(browser, base); throw 'fin'; }
     if (process.env.SOLO_FOTOS) { await pruebaFotosAgenda(browser, base); throw 'fin'; }
     if (process.env.SOLO_TERAPIAS) { await pruebaTerapias(browser, base); throw 'fin'; }
     if (process.env.SOLO_BUSCA) { await pruebaBuscadorIngreso(browser, base); throw 'fin'; }
@@ -1678,6 +1700,7 @@ async function regresion(browser, base) {
     await pruebaBuscadorIngreso(browser, base);
     await pruebaTerapias(browser, base);
     await pruebaFotosAgenda(browser, base);
+    await pruebaCatalogoSalir(browser, base);
     await pruebaSinCita(browser, base);
     await pruebaPunto2(browser, base);
     await pruebaSeguros2(browser, base);
