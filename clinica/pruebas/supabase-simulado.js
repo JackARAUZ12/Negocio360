@@ -365,7 +365,11 @@
         if (window.__RPC && window.__RPC[nombre]) return { data: window.__RPC[nombre](args), error: null };
         return { data: null, error: null };
       },
-      storage: { from: bucket => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: '' } }), createSignedUrl: async () => ({ data: null, error: null }),
+      storage: { from: bucket => ({
+        // Guarda lo subido (bucket/ruta → tipo y tamaño) para poder revisarlo; la dirección pública imita la real.
+        upload: async (ruta, archivo, op) => { const l = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); l[bucket + '/' + ruta] = { tamano: archivo && archivo.size, tipo: (op && op.contentType) || (archivo && archivo.type) }; sessionStorage.setItem('__ALMACEN', JSON.stringify(l)); return { data: { path: ruta }, error: null }; },
+        remove: async rutas => { const l = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); (rutas || []).forEach(r => { delete l[bucket + '/' + r]; }); sessionStorage.setItem('__ALMACEN', JSON.stringify(l)); return { data: null, error: null }; },
+        getPublicUrl: ruta => ({ data: { publicUrl: ruta ? `https://simulado.supabase.co/storage/v1/object/public/${bucket}/${ruta}` : '' } }), createSignedUrl: async () => ({ data: null, error: null }),
         uploadToSignedUrl: async (ruta, tok, archivo) => { const l = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); l[bucket + '/' + ruta] = { tok, tamano: archivo.size, tipo: archivo.type }; sessionStorage.setItem('__ALMACEN', JSON.stringify(l)); return { data: { path: ruta }, error: null }; } }) },
       // Canal en vivo simulado: otra pestaña del mismo navegador hace de "otro equipo". Como la base simulada vive en
       // cada pestaña, el aviso lleva una copia (solo en la simulación; el aviso real no lleva datos).

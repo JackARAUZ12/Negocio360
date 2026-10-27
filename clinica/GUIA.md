@@ -75,6 +75,14 @@ del médico. En "Cliente" puedes elegir:
   guardada para las próximas veces (si ya hay un cliente con ese nombre, te avisa para no
   repetirlo). Sin la casilla, queda solo "de paso", como antes.
 
+### Fotos de los profesionales en la Agenda
+En la Agenda, vista **Día**, cada columna tiene la foto del profesional (o su inicial si no tiene).
+- El **administrador** pone o cambia la foto de cualquiera: tocando su círculo (📷) en la columna, o en
+  **👥 Profesionales** ("📷 Poner foto" / "Cambiar foto", ✕ para quitarla). Ahí mismo elige qué **usuario del
+  sistema** es cada profesional.
+- Cada **usuario** puede cambiar **solo su propia foto** (la del profesional ligado a su usuario; en Clínica,
+  su médico ya está ligado). La foto se recorta en cuadrado y se achica sola (liviana).
+
 ## 4. El día a día: Sala de espera
 
 **Clínica · Sala de espera** muestra las citas de hoy:

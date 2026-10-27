@@ -1358,6 +1358,68 @@ async function pruebaBuscadorIngreso(browser, base) {
   }
 }
 
+// Agenda: fotos de los profesionales. El administrador pone la de cualquiera; cada usuario solo la suya.
+const PNG_PRUEBA = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABQAAAAKCAIAAAA7N+mxAAABbklEQVR4nAXBoRGAIBSAYQZgAAdwAAdwAAdwAMMfPfLLnJFgIhmIHvlljkhwAAZgEL/PGJqlTbSZttBW2kbbaQftpAntot20h/bSlFZpH63TBs0YiqVMlJmyUFbKRtkpB+WkCOWi3JSH8lKUUikfpVMGxRjUohM6owu6ohu6owd6ooJe6I0+6IsqWtEP7ehAjSFb8kSeyQt5JW/knXyQT7KQL/JNfsgvWcmV/JE7eZCNIVnSRJpJC2klbaSddJBOkpAu0k16SC9JSZX0kTppkIwhWuJEnIkLcSVuxJ14EE+iEC/iTXyIL1GJlfgRO3EQjSFYwkSYCQthJWyEnXAQToIQLsJNeAgvQQmV8BE6YRCMwVv8hJ/xC37Fb/gdf+BPvOAv/I1/8C9e8RX/4Tt+4I1BLDIhM7IgK7IhO3IgJyLIhdzIg7yIIhX5kI4MxBicxU24GbfgVtyG23EH7sQJ7sLduAf34hRXcR+u4wbuByFrIFjFiyPFAAAAAElFTkSuQmCC', 'base64');
+async function pruebaFotosAgenda(browser, base) {
+  console.log('\n▶ Agenda: fotos de los profesionales');
+  const abrirDia = page => page.evaluate(h => N360Citas.renderDia(document.getElementById('calendario-contenedor'), h, []), HOY);
+  const subir = async (page, accion) => { const [fc] = await Promise.all([page.waitForEvent('filechooser'), accion()]); await fc.setFiles({ name: 'foto.png', mimeType: 'image/png', buffer: PNG_PRUEBA }); };
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    // A) Administrador (dueño de la cuenta)
+    let { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/agenda.html'); await esperarListo(page);
+    await page.waitForFunction(() => window.N360Citas && STATE.empresaConfig && STATE.empresaConfig.auth_user_id, null, { timeout: 15000 });
+    await abrirDia(page); await page.waitForSelector('.ac-col-cab');
+    verificar(await page.locator('.ac-col-cab .ac-avatar-btn').count() === 2, `${tag}: el administrador puede cambiar la foto de todos (botón en cada columna)`);
+    await subir(page, () => page.click('.ac-col-cab .ac-avatar-btn[aria-label*="Dra. Ruiz"]'));
+    await page.waitForSelector('.ac-col-cab img.ac-avatar-foto');
+    let d = await page.evaluate(() => ({ prof: JSON.parse(sessionStorage.getItem('__DB')).agenda_profesionales, alm: JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}') }));
+    const ruiz = d.prof.find(p => p.id === 'prof-ruiz'), llaves = Object.keys(d.alm);
+    verificar(/^https:\/\//.test(ruiz.foto_url) && llaves.length === 1 && llaves[0].startsWith('inventario_fotos/' + 'u-prueba-0000-0000-000000000001/agenda/profesionales/prof-ruiz_') && d.alm[llaves[0]].tipo === 'image/webp',
+      `${tag}: la foto se guarda achicada (webp) en la carpeta de la cuenta y aparece en la columna`);
+    await subir(page, () => page.click('.ac-col-cab .ac-avatar-btn[aria-label*="Dra. Ruiz"]'));
+    await page.waitForFunction(u => JSON.parse(sessionStorage.getItem('__DB')).agenda_profesionales.find(p => p.id === 'prof-ruiz').foto_url !== u, ruiz.foto_url);
+    d = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'));
+    verificar(Object.keys(d).length === 1, `${tag}: al cambiar la foto se borra la anterior (no se acumulan)`);
+    await sinDesborde(page, `${tag} día con fotos`);
+    if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/agenda-fotos-' + tag + '.png' });
+    // Profesionales: foto y a qué usuario corresponde cada uno
+    await page.evaluate(() => N360Citas.abrirProfesionales()); await page.waitForSelector('#modal-ac-prof.modal-open');
+    await page.waitForSelector('#acp-lista .pf-perfil');
+    verificar((await page.textContent('#acp-lista')).includes('Cambiar foto') && (await page.textContent('#acp-lista')).includes('Poner foto'), `${tag}: en Profesionales se pone o cambia la foto`);
+    await page.selectOption('#acp-lista .ac-prof-fila[data-id="prof-otro"] .pf-perfil', 'perf-caja');
+    await modalesSinDesborde(page, `${tag} profesionales con fotos`);
+    await page.click('#acp-btn'); await page.waitForFunction(() => !document.getElementById('modal-ac-prof').classList.contains('modal-open'));
+    d = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).agenda_profesionales);
+    verificar(d.find(p => p.id === 'prof-otro').perfil_id === 'perf-caja', `${tag}: el administrador liga cada profesional con su usuario`);
+    verificar(page.__errores.length === 0, `${tag} fotos (admin): sin errores (${page.__errores.join(' | ')})`);
+    const dbFinal = await page.evaluate(() => sessionStorage.getItem('__DB'));
+    await ctx.close();
+
+    // B) La Dra. Ruiz (usuario limitado): solo su propia foto
+    ({ ctx, page } = await nuevaPagina(browser, base, ancho, alto));
+    await page.goto(base + '/agenda.html');
+    await page.evaluate(({ dbFinal, UID }) => { const x = JSON.parse(dbFinal); x.usuarios[0].multiusuario_activo = true; x.perfiles_acceso.find(p => p.id === 'perf-med').modulos = ['agenda'];
+      sessionStorage.setItem('__DB', JSON.stringify(x));
+      sessionStorage.setItem('n360_perfil_activo', JSON.stringify({ id: 'perf-med', nombre: 'Dra. Ruiz', tipo: 'restringido', modulos: ['agenda'], authUserId: UID })); }, { dbFinal, UID });
+    await page.reload(); await esperarListo(page);
+    await page.waitForFunction(() => window.N360Citas && STATE.empresaConfig && STATE.empresaConfig.auth_user_id, null, { timeout: 15000 });
+    await abrirDia(page); await page.waitForSelector('.ac-col-cab');
+    const botones = await page.$$eval('.ac-col-cab .ac-avatar-btn', l => l.map(b => b.getAttribute('aria-label')));
+    verificar(botones.length === 1 && botones[0].includes('Dra. Ruiz'), `${tag}: la doctora solo puede cambiar SU foto (${botones})`);
+    verificar(await page.locator('.ac-col-cab img.ac-avatar-foto').count() === 1, `${tag}: todos ven la foto de la doctora`);
+    let abrio = false; page.once('filechooser', () => { abrio = true; });
+    await page.evaluate(() => N360Citas.cambiarFoto('prof-otro')); await page.waitForTimeout(400);
+    verificar(!abrio, `${tag}: no puede cambiar la foto de otro profesional`);
+    await subir(page, () => page.click('.ac-col-cab .ac-avatar-btn'));
+    await page.waitForFunction(() => Object.keys(JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}')).length >= 1);
+    verificar(true, `${tag}: la doctora cambia su propia foto`);
+    verificar(page.__errores.length === 0, `${tag} fotos (doctora): sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Fisioterapia y terapias: especialidades nuevas, ficha de la sesión con sus cálculos, servicios sugeridos y tipo de negocio.
 async function pruebaTerapias(browser, base) {
   console.log('\n▶ Fisioterapia y terapias');
@@ -1593,6 +1655,7 @@ async function regresion(browser, base) {
     if (process.env.SOLO_DEMO) { await pruebaDemo(browser, base); throw 'fin'; }
     if (process.env.SOLO_PASAR) { await pruebaPasarConsulta(browser, base); throw 'fin'; }
     if (process.env.SOLO_HOY) { await pruebaAtencionHoy(browser, base); throw 'fin'; }
+    if (process.env.SOLO_FOTOS) { await pruebaFotosAgenda(browser, base); throw 'fin'; }
     if (process.env.SOLO_TERAPIAS) { await pruebaTerapias(browser, base); throw 'fin'; }
     if (process.env.SOLO_BUSCA) { await pruebaBuscadorIngreso(browser, base); throw 'fin'; }
     if (process.env.SOLO_NUEVO) { await pruebaPunto2(browser, base); await pruebaSeguros2(browser, base); await pruebaEnfermeria(browser, base); await pruebaEnVivo(browser, base, 360, 740); throw 'fin'; }
@@ -1614,6 +1677,7 @@ async function regresion(browser, base) {
     await pruebaAtencionHoy(browser, base);
     await pruebaBuscadorIngreso(browser, base);
     await pruebaTerapias(browser, base);
+    await pruebaFotosAgenda(browser, base);
     await pruebaSinCita(browser, base);
     await pruebaPunto2(browser, base);
     await pruebaSeguros2(browser, base);

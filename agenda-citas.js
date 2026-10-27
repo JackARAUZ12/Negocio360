@@ -62,7 +62,118 @@
     C.servicios = sv.data || [];
     C.empleados = (em.data || []).filter(e => e.estado !== 'inactivo');
     if (cf.data) C.config = { hora_inicio: String(cf.data.hora_inicio).slice(0, 5), hora_fin: String(cf.data.hora_fin).slice(0, 5), intervalo_min: cf.data.intervalo_min || 15 };
+    // Con Clínica, cada médico ya está ligado a su usuario: sirve para que cada uno cambie su propia foto.
+    C.perfilDeProf = {};
+    if (STATE.empresaConfig?.usa_modulo_clinica === true) {
+      try { const { data: cp } = await sb.from('clinica_personal').select('perfil_id, agenda_profesional_id').eq('auth_user_id', uid);
+        (cp || []).forEach(x => { if (x.perfil_id && x.agenda_profesional_id) C.perfilDeProf[x.agenda_profesional_id] = x.perfil_id; }); } catch (_) {}
+    }
     C.cargado = true;
+  }
+
+  /* ---------------- FOTOS DE LOS PROFESIONALES ----------------
+     El administrador pone o cambia la foto de cualquiera; cada usuario, solo la de su propio profesional
+     (el que tiene ligado en "Profesionales", o su médico en Clínica). La foto se achica y recorta en
+     cuadrado en el equipo (400 px, liviana) y se guarda en la carpeta de la cuenta. */
+  const perfilSesion = () => { try { return JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null'); } catch (_) { return null; } };
+  const esAdministrador = () => { const p = perfilSesion(); return !p || p.tipo === 'admin'; };
+  const perfilDe = p => p.perfil_id || (C.perfilDeProf || {})[p.id] || null;
+  function puedeCambiarFoto(p) {
+    if (!p || p.id === '_sin' || p.id === '_gen') return false;
+    if (esAdministrador()) return true;
+    const yo = perfilSesion(); return !!yo && perfilDe(p) === yo.id;
+  }
+  function avatarHTML(p) {
+    const foto = p.foto_url && /^https:\/\//.test(p.foto_url) ? p.foto_url : '';
+    const inicial = `<span class="ac-avatar" style="background:${esc(p.color || '#94a3b8')}${foto ? ';display:none' : ''}">${esc((p.nombre || '?').trim()[0] || '?').toUpperCase()}</span>`;
+    // Si la foto no carga (sin internet, borrada), se ve la inicial de siempre en vez de una imagen rota.
+    return foto ? `<img class="ac-avatar ac-avatar-foto" src="${esc(foto)}" alt="${esc(p.nombre)}" loading="lazy" onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='flex'"/>${inicial}` : inicial;
+  }
+  function estilosFotos() {
+    if (document.getElementById('ac-fotos-css')) return;
+    const st = document.createElement('style'); st.id = 'ac-fotos-css';
+    st.textContent = `.ac-avatar-foto{object-fit:cover;background:var(--bg-hover,#e5e7eb);display:block}
+      .ac-avatar-btn{position:relative;border:none;background:none;padding:0;cursor:pointer;border-radius:50%;line-height:0}
+      .ac-avatar-btn:focus-visible{outline:2px solid var(--accent,#4f46e5);outline-offset:2px}
+      .ac-avatar-btn .ac-cam{position:absolute;right:-4px;bottom:-4px;width:18px;height:18px;border-radius:50%;background:var(--bg-surface,#fff);border:1px solid var(--border,#e5e7eb);font-size:10px;line-height:16px;text-align:center}
+      .ac-col-cab .ac-avatar{width:40px;height:40px}
+      .ac-prof-foto{display:flex;align-items:center;gap:6px;grid-column:1/-1;flex-wrap:wrap;min-width:0}
+      .ac-prof-foto .ac-avatar{width:44px;height:44px;flex-shrink:0}
+      .ac-prof-foto select{max-width:100%;min-width:0;flex:1 1 160px}
+      #modal-ac-prof .form-row>div{min-width:0} #modal-ac-prof .form-row input,#modal-ac-prof .form-row select{width:100%;min-width:0;box-sizing:border-box}`;
+    document.head.appendChild(st);
+  }
+  function comprimirFoto(archivo) {
+    return new Promise((resolve, reject) => {
+      const img = new Image(), url = URL.createObjectURL(archivo);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const lado = Math.min(img.width, img.height), sx = (img.width - lado) / 2, sy = (img.height - lado) / 2, T = 400;
+        const c = document.createElement('canvas'); c.width = T; c.height = T;
+        c.getContext('2d').drawImage(img, sx, sy, lado, lado, 0, 0, T, T);
+        c.toBlob(b => b ? resolve(b) : reject(new Error('No se pudo procesar la foto')), 'image/webp', 0.85);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la foto')); };
+      img.src = url;
+    });
+  }
+  const rutaFoto = url => { const m = String(url || '').match(/\/inventario_fotos\/(.+)$/); const r = m ? decodeURIComponent(m[1]) : '';
+    return r.startsWith(STATE.userId + '/agenda/profesionales/') ? r : null; };
+  function cambiarFoto(profId) {
+    const p = profPorId(profId);
+    if (!puedeCambiarFoto(p)) { showToast('Solo el administrador o el propio profesional pueden cambiar esta foto.', 'error'); return; }
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/jpeg,image/png,image/webp';
+    inp.addEventListener('change', async () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { showToast('Elige una foto (JPG, PNG o WEBP).', 'error'); return; }
+      if (f.size > 15 * 1024 * 1024) { showToast('La foto es muy pesada (máximo 15 MB).', 'error'); return; }
+      showToast('Subiendo la foto…');
+      try {
+        const blob = await comprimirFoto(f);
+        const ruta = `${STATE.userId}/agenda/profesionales/${profId}_${Date.now()}.webp`;
+        const { error: eUp } = await sb.storage.from('inventario_fotos').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
+        if (eUp) throw eUp;
+        const url = sb.storage.from('inventario_fotos').getPublicUrl(ruta).data.publicUrl;
+        const anterior = rutaFoto(p.foto_url);
+        const { error } = await sb.from('agenda_profesionales').update({ foto_url: url, updated_at: new Date().toISOString() }).eq('id', profId).eq('auth_user_id', STATE.userId);
+        if (error) throw error;
+        if (anterior) { try { await sb.storage.from('inventario_fotos').remove([anterior]); } catch (_) {} }
+        p.foto_url = url;
+        showToast('Foto actualizada.');
+        repintarFotos();
+      } catch (e) { console.error('cambiarFoto:', e); showToast('No se pudo subir la foto. Intenta de nuevo.', 'error'); }
+    });
+    inp.click();
+  }
+  async function quitarFoto(profId) {
+    const p = profPorId(profId);
+    if (!p || !p.foto_url || !puedeCambiarFoto(p)) return;
+    if (!confirm(`¿Quitar la foto de ${p.nombre}?`)) return;
+    try {
+      const anterior = rutaFoto(p.foto_url);
+      const { error } = await sb.from('agenda_profesionales').update({ foto_url: null, updated_at: new Date().toISOString() }).eq('id', profId).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+      if (anterior) { try { await sb.storage.from('inventario_fotos').remove([anterior]); } catch (_) {} }
+      p.foto_url = null; showToast('Foto quitada.'); repintarFotos();
+    } catch (e) { console.error('quitarFoto:', e); showToast('No se pudo quitar la foto.', 'error'); }
+  }
+  function repintarFotos() {
+    const dia = document.getElementById('calendario-contenedor');
+    if (C.diaIso && dia && dia.querySelector('.ac-col-cab')) pintarDia(dia);
+    const modal = document.getElementById('modal-ac-prof');
+    if (modal && modal.classList.contains('modal-open')) {
+      document.querySelectorAll('#acp-lista .ac-prof-fila').forEach(f => { const p = profPorId(f.dataset.id); const a = f.querySelector('.ac-prof-avatar'); if (p && a) a.innerHTML = avatarHTML(p); });
+      document.querySelectorAll('#acp-lista [data-quitar-foto]').forEach(b => { const p = profPorId(b.dataset.quitarFoto); b.style.display = p && p.foto_url ? '' : 'none'; });
+    }
+  }
+  async function cargarPerfiles() {
+    if (C.perfiles) return C.perfiles;
+    try {
+      let { data, error } = await sb.rpc('listar_perfiles_del_grupo_v2');
+      if (error) ({ data, error } = await sb.rpc('listar_perfiles_del_grupo'));
+      C.perfiles = error ? [] : (data || []).filter(u => u.activo !== false).map(u => ({ id: u.id, nombre: u.nombre, tipo: u.tipo }));
+    } catch (_) { C.perfiles = []; }
+    return C.perfiles;
   }
   const profesionalesActivos = () => C.profesionales.filter(p => p.activo);
 
@@ -201,9 +312,11 @@
     let lineas = '';
     for (let m = ini; m <= fin; m += 15) lineas += `<div class="ac-linea ${m % 60 === 0 ? 'ac-linea-hora' : ''}" style="top:${(m - ini) * PX_MIN}px"></div>`;
 
-    const cabeceras = columnas.map(c => `<div class="ac-col-cab" style="--c:${c.color}">
-        <span class="ac-avatar" style="background:${c.color}">${esc((c.nombre || '?').trim()[0] || '?').toUpperCase()}</span>
-        <span class="ac-col-nombre">${esc(c.nombre)}</span></div>`).join('');
+    estilosFotos();
+    const cabeceras = columnas.map(c => { const p = profPorId(c.id) || c; const puede = puedeCambiarFoto(profPorId(c.id));
+      return `<div class="ac-col-cab" style="--c:${c.color}">
+        ${puede ? `<button type="button" class="ac-avatar-btn" onclick="event.stopPropagation();N360Citas.cambiarFoto('${c.id}')" title="Cambiar la foto de ${esc(c.nombre)}" aria-label="Cambiar la foto de ${esc(c.nombre)}">${avatarHTML(p)}<span class="ac-cam" aria-hidden="true">📷</span></button>` : avatarHTML(p)}
+        <span class="ac-col-nombre">${esc(c.nombre)}</span></div>`; }).join('');
 
     const cuerpos = columnas.map(col => {
       let dentro = lineas;
@@ -322,7 +435,7 @@
         <div class="modal-header"><span class="modal-title">Profesionales y horario de la agenda</span>
           <button class="modal-close" onclick="closeModal('modal-ac-prof')">✕</button></div>
         <div class="modal-body">
-          <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="form-row" style="grid-template-columns:repeat(auto-fit,minmax(92px,1fr))">
             <div><label>La agenda empieza</label><input type="time" id="acp-ini"/></div>
             <div><label>La agenda termina</label><input type="time" id="acp-fin"/></div>
             <div><label>Saltos al tocar</label><select id="acp-int">${[5, 10, 15, 20, 30, 60].map(n => `<option value="${n}">${n} min</option>`).join('')}</select></div>
@@ -703,7 +816,8 @@
 
   /* ---------------- PROFESIONALES ---------------- */
   async function abrirProfesionales() {
-    await cargarBase(true); asegurarModales();
+    await cargarBase(true); asegurarModales(); estilosFotos();
+    if (esAdministrador()) await cargarPerfiles();
     $('acp-ini').value = C.config.hora_inicio; $('acp-fin').value = C.config.hora_fin; $('acp-int').value = String(C.config.intervalo_min);
     llenarEmpleadosSel();
     pintarProfesionales();
@@ -721,6 +835,11 @@
     if (!C.profesionales.length) { cont.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted)">Todavía no hay profesionales.</p>'; return; }
     cont.innerHTML = C.profesionales.map((p, i) => `
       <div class="ac-prof-fila" data-id="${p.id}">
+        <div class="ac-prof-foto"><span class="ac-prof-avatar">${avatarHTML(p)}</span>
+          ${puedeCambiarFoto(p) ? `<button type="button" class="btn-secondary btn-sm" onclick="N360Citas.cambiarFoto('${p.id}')">📷 ${p.foto_url ? 'Cambiar foto' : 'Poner foto'}</button>
+            <button type="button" class="btn-ghost btn-sm" data-quitar-foto="${p.id}" style="${p.foto_url ? '' : 'display:none'}" onclick="N360Citas.quitarFoto('${p.id}')" title="Quitar foto">✕</button>` : ''}
+          ${esAdministrador() && (C.perfiles || []).length ? `<select class="pf-perfil" title="Usuario del sistema que es este profesional (puede cambiar su propia foto)" aria-label="Usuario del sistema">
+            <option value="">— Usuario del sistema —</option>${C.perfiles.map(u => `<option value="${esc(u.id)}" ${p.perfil_id === u.id ? 'selected' : ''}>${esc(u.nombre)}${u.tipo === 'admin' ? ' (administrador)' : ''}</option>`).join('')}</select>` : ''}</div>
         <input type="color" class="pf-color" value="${esc(p.color || '#a855f7')}" title="Color"/>
         <input type="text" class="pf-nombre" value="${esc(p.nombre)}"/>
         <input type="number" class="pf-orden" value="${p.orden || i}" title="Orden en la agenda" style="width:60px"/>
@@ -764,6 +883,7 @@
           nombre, color: f.querySelector('.pf-color').value, orden: parseInt(f.querySelector('.pf-orden').value, 10) || 0,
           activo: f.querySelector('.pf-activo').checked,
           servicios: [...f.querySelectorAll('.pf-serv:checked')].map(x => x.value),
+          ...(f.querySelector('.pf-perfil') ? { perfil_id: f.querySelector('.pf-perfil').value || null } : {}),
           updated_at: new Date().toISOString(),
         }).eq('id', f.dataset.id).eq('auth_user_id', STATE.userId);
         if (error) throw error;
@@ -860,7 +980,7 @@
   window.N360Citas = {
     itemsParaCalendario, renderDia, filtrar, clicEnColumna,
     nuevaCita, abrirCita, guardar, cambiarEstado, cobrar, total, agregarLinea, quitarLinea, alCambiarServicio,
-    abrirProfesionales, agregarProfesional, guardarProfesionales,
+    abrirProfesionales, agregarProfesional, guardarProfesionales, cambiarFoto, quitarFoto,
     abrirBloqueo, verBloqueo, guardarBloqueo, quitarBloqueo, abrirBuscarHora, buscarHora,
     _C: C,
   };
