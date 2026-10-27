@@ -94,6 +94,12 @@ también se actualizan solas al instante.
 
 ## 5. La consulta (expediente)
 
+**Dónde atiende el médico:** en **Pacientes**, arriba, la sección **🩺 Atención de hoy**
+muestra quién está **en consulta** y quién **espera** (con su tiempo de espera), sin buscar.
+Con su código puesto, el médico ve **Mis pacientes** (o **Todos**). **🩺 Atender** lo llama
+en la pantalla de la sala, lo pasa a "En consulta" y abre la nota de esa cita. Al **cerrar y
+firmar**, pasa solo a "Atendidos hoy" en la Sala para cobrarle.
+
 1. **📝 Nueva consulta**: motivo, signos vitales (el IMC sale solo), examen,
    diagnóstico (busca por nombre o código CIE-10), plan e indicaciones.
 2. Según la **especialidad** aparecen sus datos y cálculos automáticos. Por ejemplo:
@@ -141,6 +147,10 @@ paciente o descargar el **📄 recibo PDF**.
 ## 7. Observación y hospitalización
 
 **Clínica · Observación y hospitalización**:
+
+Sirve para el paciente que **se queda**: unas horas en observación (por ejemplo, con suero)
+o internado varios días. Desde la Sala, en "En consulta", **🛏️ Dejar en observación** abre el
+ingreso con el paciente y su médico ya elegidos.
 
 1. **+ Ingreso**: paciente, observación u hospitalización, cama, médico, el servicio
    que se cobra (por día en hospitalización) y la nota de ingreso.

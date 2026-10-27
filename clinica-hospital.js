@@ -99,6 +99,7 @@ async function init() {
     ]);
     HO.medicos = meds.filter(m => m.activo && m.rol !== 'enfermeria'); HO.servicios = sv.data || [];
     await cargar();
+    await ingresoDesdeURL();
   } catch (e) {
     console.error('init clinica-hospital:', e);
     document.getElementById('loader').classList.add('hidden');
@@ -166,6 +167,18 @@ function abrirIngreso() {
   $h('in-servicio').innerHTML = '<option value="">— Ninguno (cobrar solo lo de la cuenta) —</option>' + HO.servicios.map(x => `<option value="${esc(x.id)}">${esc(x.nombre)} · ${esc(fmt(x.precio || 0))}</option>`).join('');
   alCambiarTipo();
   openModal('modal-ingreso'); setTimeout(() => $h('in-buscar').focus(), 50);
+}
+// Desde la Sala ("🛏️ Dejar en observación"): el ingreso se abre con el paciente y su médico ya elegidos.
+async function ingresoDesdeURL() {
+  const q = new URLSearchParams(location.search), id = q.get('ingreso'); if (!id) return;
+  try {
+    const { data: p } = await sb.from('clinica_pacientes').select('id, nombres, apellidos, numero_expediente, telefono').eq('auth_user_id', STATE.userId).eq('id', id).maybeSingle();
+    if (!p) return;
+    if (HO.estancias.some(e => e.estado === 'activa' && e.paciente_id === p.id)) { showToast(`${clinicaNombrePaciente(p)} ya está en observación u hospitalizado.`, 'error'); return; }
+    abrirIngreso(); elegirPaciente(p);
+    const m = q.get('medico'); if (m && HO.medicos.some(x => x.id === m)) $h('in-medico').value = m;
+    setTimeout(() => $h('in-cama').focus(), 60);
+  } catch (e) { console.warn('ingreso desde la Sala:', e); }
 }
 function alCambiarTipo() { $h('in-servicio-ayuda').textContent = $h('in-tipo').value === 'hospitalizacion' ? 'Se cobra por día (cada 24 horas o fracción).' : 'Se cobra una vez por la observación.'; }
 let _tP = null;

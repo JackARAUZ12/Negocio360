@@ -992,7 +992,7 @@ async function pruebaPanel(browser, base, ancho, alto) {
   await page.evaluate(() => toggleTheme());
   if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/panel-sala-' + tag + '.png' });
   // Desde adentro se pasa a otra pantalla (Atender → expediente) y el panel la sigue
-  await marco().click('#sa-consulta >> text=🩺 Expediente');
+  await marco().click('#sa-consulta >> text=🩺 Atender (médico)');
   await page.waitForFunction(() => location.hash === '#pacientes', null, { timeout: 15000 });
   verificar((await page.textContent('#cpn-tabs .cpn-tab.activa')).includes('Pacientes'), `${tag}: al pasar al expediente, el panel marca Pacientes`);
   verificar(page.url().includes('clinica-panel.html'), `${tag}: nunca se sale del panel`);
@@ -1287,6 +1287,62 @@ async function pruebaSinCita(browser, base) {
   }
 }
 
+// Pacientes · "Atención de hoy": quién está en consulta y quién espera, con "Atender" directo; y de la consulta a observación.
+async function pruebaAtencionHoy(browser, base) {
+  console.log('\n▶ Pacientes: atención de hoy y paso a observación');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clinica-pacientes.html');
+    await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: (() => {
+      const db = semilla();
+      db.clientes.push({ id: 'cli-pedro', auth_user_id: UID, nombre: 'Pedro', apellido: 'Gómez', activo: true });
+      db.clinica_pacientes[0].cliente_id = 'cli-pedro';
+      conCitas(db, [citaAgenda('ag-h1', { cliente_id: 'cli-pedro', cliente_nombre: 'Pedro Gómez', hora: '09:00', notas: 'Tos' }), citaAgenda('ag-h2', { cliente_nombre: 'Ana Sinexp', hora: '09:30' }),
+        citaAgenda('ag-h3', { cliente_nombre: 'Lejos Mañana', hora: '10:00' })]);
+      const t = new Date(Date.now() - 15 * 60000).toISOString();
+      db.clinica_cita_info = [{ agenda_cita_id: 'ag-h1', auth_user_id: UID, llegada_en: t }, { agenda_cita_id: 'ag-h2', auth_user_id: UID, llegada_en: t }];
+      return db; })() });
+    await page.reload(); await esperarListo(page); await page.waitForSelector('#cp-hoy .ag-card');
+    const hoy = await page.textContent('#cp-hoy');
+    verificar(await page.locator('#cp-hoy .ag-card').count() === 2 && hoy.includes('Pedro') && hoy.includes('Ana Sinexp') && !hoy.includes('Lejos'), `${tag} hoy: Pacientes muestra arriba a quienes esperan (no a los que no han llegado)`);
+    verificar(hoy.includes('Sin expediente') && hoy.includes('Espera'), `${tag} hoy: indica tiempo de espera y si falta el expediente`);
+    verificar((await page.textContent('#cp-hoy-filtro')).trim() === '', `${tag} hoy: sin acceso médico no hay filtro "Mis pacientes"`);
+    await sinDesborde(page, `${tag} pacientes con atención de hoy`);
+    if (process.env.FOTOS) await page.waitForTimeout(600), await page.screenshot({ path: process.env.FOTOS + '/hoy-' + tag + '.png', fullPage: true });
+    // Atender: pide el código, abre la consulta y el paciente pasa a "En consulta"
+    await page.locator('#cp-hoy .ag-card', { hasText: 'Pedro' }).locator('text=🩺 Atender').click();
+    await page.waitForSelector('#modal-clinica-pin.modal-open');
+    await page.selectOption('#cp-persona', 'perf-med'); await page.fill('#cp-pin', '1357'); await page.click('#cp-ok');
+    await page.waitForSelector('#modal-consulta.modal-open');
+    verificar(await page.inputValue('#co-motivo') === 'Tos', `${tag} hoy: "Atender" abre la consulta de esa cita`);
+    const d = await page.evaluate(() => { const db = JSON.parse(sessionStorage.getItem('__DB')); return { e: db.agenda_citas.find(c => c.id === 'ag-h1').estado, i: db.clinica_cita_info.find(x => x.agenda_cita_id === 'ag-h1') }; });
+    verificar(d.e === 'en_atencion' && !!d.i.llamado_en, `${tag} hoy: al atender pasa a "En consulta" y se llama en la pantalla`);
+    await page.evaluate(() => { closeModal('modal-consulta'); cerrarFicha(); });
+    await page.waitForFunction(() => document.querySelector('#cp-hoy .est-en_consulta')?.textContent.includes('Pedro'));
+    verificar((await page.textContent('#cp-hoy-filtro')).includes('Mis pacientes'), `${tag} hoy: con el médico dentro aparece "Mis pacientes / Todos"`);
+    // Sin expediente: lleva a la Sala a elegirlo o crearlo
+    await page.locator('#cp-hoy .ag-card', { hasText: 'Ana Sinexp' }).locator('text=🩺 Atender').click();
+    await page.waitForURL(/clinica-sala\.html\?atender=ag-h2/); await esperarListo(page);
+    await page.waitForSelector('#modal-vincular.modal-open');
+    verificar(true, `${tag} hoy: sin expediente, "Atender" abre en la Sala la ventana para elegirlo o crearlo`);
+    await page.evaluate(() => closeModal('modal-vincular'));
+    // En consulta -> dejar en observación: el ingreso se abre con el paciente ya elegido
+    await page.waitForSelector('#sa-consulta .ag-card');
+    verificar((await page.textContent('#sa-consulta')).includes('Atender (médico)'), `${tag} hoy: en la Sala el botón dice "Atender (médico)"`);
+    await page.locator('#sa-consulta .ag-card', { hasText: 'Pedro' }).locator('text=🛏️ Dejar en observación').click();
+    await page.waitForURL(/clinica-hospital\.html\?ingreso=pac-xss/); await esperarListo(page);
+    await page.waitForSelector('#modal-ingreso.modal-open');
+    verificar((await page.textContent('#in-elegido')).includes('Pedro') && await page.inputValue('#in-medico') === 'per-med', `${tag} hoy: "Dejar en observación" abre el ingreso con el paciente y su médico`);
+    await modalesSinDesborde(page, `${tag} ingreso desde la sala`);
+    await page.evaluate(() => closeModal('modal-ingreso'));
+    verificar(await page.isVisible('#ho-pasos') && (await page.textContent('#ho-pasos')).includes('Dar de alta'), `${tag} hoy: Observación explica cómo funciona`);
+    await sinDesborde(page, `${tag} observación con ayuda`);
+    verificar(page.__errores.length === 0, `${tag} hoy: sin errores de JavaScript (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Pasar a consulta: el paso que mueve al paciente de "Esperando" a "En consulta" y luego a "Atendidos".
 async function pruebaPasarConsulta(browser, base) {
   console.log('\n▶ Sala: pasar a consulta y terminar');
@@ -1401,6 +1457,7 @@ async function regresion(browser, base) {
     if (process.env.SOLO_SINCITA) { await pruebaSinCita(browser, base); throw 'fin'; }
     if (process.env.SOLO_DEMO) { await pruebaDemo(browser, base); throw 'fin'; }
     if (process.env.SOLO_PASAR) { await pruebaPasarConsulta(browser, base); throw 'fin'; }
+    if (process.env.SOLO_HOY) { await pruebaAtencionHoy(browser, base); throw 'fin'; }
     if (process.env.SOLO_NUEVO) { await pruebaPunto2(browser, base); await pruebaSeguros2(browser, base); await pruebaEnfermeria(browser, base); await pruebaEnVivo(browser, base, 360, 740); throw 'fin'; }
     if (process.env.SOLO_PANEL) { await pruebaPanel(browser, base, 1280, 900); await pruebaPanel(browser, base, 360, 740); await pruebaAgendaPacientes(browser, base); throw 'fin'; }
     if (!process.env.SOLO_CUADRE) await flujoCompleto(browser, base, 1280, 900);
@@ -1417,6 +1474,7 @@ async function regresion(browser, base) {
     await pruebaCuadreFase5(browser, base);
     await pruebaDemo(browser, base);
     await pruebaPasarConsulta(browser, base);
+    await pruebaAtencionHoy(browser, base);
     await pruebaSinCita(browser, base);
     await pruebaPunto2(browser, base);
     await pruebaSeguros2(browser, base);

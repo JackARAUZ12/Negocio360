@@ -96,6 +96,7 @@ async function init() {
     try { const { data: kv } = await sb.from('clinica_convenios').select('id, nombre, cobertura_pct, activo').eq('auth_user_id', STATE.userId).order('nombre'); CP.convenios = kv || []; }
     catch (_) { CP.convenios = []; }
     await cargarPacientes();
+    cargarHoy(); conectarHoy();
     await procesarURL();
     mostrarTutorial(false);
   } catch (e) {
@@ -247,7 +248,7 @@ async function abrirFicha(id, tab) {
   openModal('modal-ficha');
   await cambiarTab(tab || 'exp');
 }
-function cerrarFicha() { closeModal('modal-ficha'); CP.ficha = null; CP.exp = null; CP.citaActiva = null; $p('fi-panel-exp').innerHTML = ''; }
+function cerrarFicha() { closeModal('modal-ficha'); CP.ficha = null; CP.exp = null; CP.citaActiva = null; $p('fi-panel-exp').innerHTML = ''; cargarHoy(); }
 function pintarCabecera() {
   const p = CP.ficha;
   $p('fi-titulo').textContent = `📋 ${clinicaNombrePaciente(p)}`;
@@ -312,6 +313,7 @@ async function alternarArchivado() {
 
 /* ---------- Expediente clínico (solo con sesión médica) ---------- */
 function alCambiarSesion(s) {
+  pintarHoy();
   if (!s) { CP.exp = null; }                       // al bloquear, se borra de la memoria y de la pantalla
   if (CP.ficha && CP.tab === 'exp') pintarExpediente();
 }
@@ -607,7 +609,8 @@ async function guardarYCerrar() {
     const r = await ClinicaSesion.rpc('clinica_consulta_cerrar', { p_id: id });
     if (!r || !r.ok) { $p('co-error').textContent = clinicaTextoMotivo(r); await pintarExpediente(); return; }
     closeModal('modal-consulta');
-    showToast('Consulta cerrada y firmada.');
+    showToast('Consulta cerrada y firmada. El paciente pasa a "Atendidos" en la Sala.');
+    avisarHoy(); cargarHoy();
     await pintarExpediente();
     if (d.proximo_control && confirm(`El próximo control es el ${vetFechaLarga(d.proximo_control)}. ¿Agendar la cita ahora?`)) agendarCita(d.proximo_control);
   } catch (e) { if (!e.cancelado) { console.error('guardarYCerrar:', e); $p('co-error').textContent = clinicaTextoError(e, 'No se pudo cerrar la nota.'); } }
@@ -649,7 +652,12 @@ async function procesarURL() {
   try {
     const q = new URLSearchParams(window.location.search);
     const citaId = q.get('cita'), pacId = q.get('paciente');
-    if (citaId) {
+    if (citaId) { await atenderCita(citaId); return; }
+    if (pacId && CP.pacientes.some(p => p.id === pacId)) await abrirFicha(pacId);
+  } catch (e) { console.warn('procesarURL:', e); }
+}
+// Abre el expediente del paciente de una cita de hoy y empieza (o continúa) su nota.
+async function atenderCita(citaId) {
       const cita = await ClinicaCitas.una(citaId);
       if (!cita || ['cancelada', 'no_asistio', 'atendida'].includes(cita.estado) || !CP.pacientes.some(p => p.id === cita.paciente_id)) {
         showToast('Esa cita ya no está disponible para atender.', 'error');
@@ -664,10 +672,65 @@ async function procesarURL() {
       const yaNota = (CP.exp.consultas || []).find(c => c.agenda_cita_id === cita.id && c.estado !== 'anulada');
       if (yaNota) { CP.citaActiva = null; if (yaNota.estado === 'borrador' && yaNota.medico_id === CP.exp.yo?.id) abrirConsulta(yaNota.id); return; }
       abrirConsulta();
-      return;
-    }
-    if (pacId && CP.pacientes.some(p => p.id === pacId)) await abrirFicha(pacId);
-  } catch (e) { console.warn('procesarURL:', e); }
+}
+
+/* ---------- Atención de hoy: quién está en consulta y quién espera, sin tener que buscarlo ----------
+   Mismas citas que la Sala de espera; se actualiza al instante con el mismo aviso en vivo de la Sala. */
+const HOY = { listo: false, citas: [], medicos: [], consultorios: [], soloMios: true, canal: null, cargando: null, otraVez: false };
+async function cargarHoy() {
+  if (HOY.cargando) { HOY.otraVez = true; return HOY.cargando; }
+  HOY.cargando = (async () => {
+    try {
+      if (!HOY.consultorios.length) { const { data: k } = await sb.from('clinica_consultorios').select('id, nombre').eq('auth_user_id', STATE.userId); HOY.consultorios = k || []; }
+      const r = await ClinicaCitas.cargar(vetHoy(), vetHoy());
+      HOY.citas = r.citas; HOY.medicos = r.medicos; HOY.listo = true;
+      pintarHoy();
+    } catch (e) { console.warn('atención de hoy:', e); $p('cp-hoy').innerHTML = '<div class="cl-info" style="grid-column:1/-1">No se pudo cargar la atención de hoy.</div>'; }
+  })();
+  try { await HOY.cargando; } finally { HOY.cargando = null; }
+  if (HOY.otraVez) { HOY.otraVez = false; return cargarHoy(); }
+}
+function filtroHoy(mios) { HOY.soloMios = mios; pintarHoy(); }
+function pintarHoy() {
+  const cont = $p('cp-hoy'); if (!cont || !HOY.listo) return;
+  const yo = ClinicaSesion.leer()?.personal_id || null;
+  const turnos = clinicaTurnos(HOY.citas), turnoDe = id => turnos.find(t => t.id === id)?.turno;
+  let enConsulta = HOY.citas.filter(c => c.estado === 'en_consulta'), espera = clinicaOrdenEspera(turnos);
+  const mio = c => !!yo && c.medico_id === yo;
+  const conFiltro = !!yo && HOY.soloMios;
+  $p('cp-hoy-filtro').innerHTML = yo ? `<button type="button" class="btn-accion-tabla ${conFiltro ? 'btn-primary' : 'btn-ghost'}" onclick="filtroHoy(true)">Mis pacientes</button><button type="button" class="btn-accion-tabla ${conFiltro ? 'btn-ghost' : 'btn-primary'}" onclick="filtroHoy(false)">Todos</button>` : '';
+  if (conFiltro) { enConsulta = enConsulta.filter(mio); espera = espera.filter(mio); }
+  const nombre = c => clinicaNombrePaciente(c.clinica_pacientes || {});
+  const med = id => HOY.medicos.find(m => m.id === id)?.nombre || '', kon = id => HOY.consultorios.find(k => k.id === id)?.nombre || '';
+  const donde = c => [med(c.medico_id) && '👨‍⚕️ ' + med(c.medico_id), kon(c.consultorio_id) && '🚪 ' + kon(c.consultorio_id)].filter(Boolean).map(esc).join(' · ');
+  const sinExp = c => c.paciente_id ? '' : '<div class="cl-sub" style="color:var(--warning,#b45309)">⚠️ Sin expediente: al atender se elige o se crea.</div>';
+  const tarjeta = (c, consulta) => `<div class="ag-card ${consulta ? 'est-en_consulta' : 'est-en_espera'}${c.prioridad === 'urgente' ? ' sa-urgente' : ''}" data-hoy="${esc(c.id)}">
+      <div class="ag-fila"><span class="ag-hora">${turnoDe(c.id) ? 'Turno ' + turnoDe(c.id) : esc(vetFormatoHora(c.hora))}${c.prioridad === 'urgente' ? ' <span class="cl-badge cl-badge-rojo">🚨 Urgente</span>' : ''}</span>
+        ${consulta ? '<span class="cl-badge cl-badge-morado">En consulta</span>' : `<span class="cl-badge ${c.espera_min >= 30 ? 'cl-badge-rojo' : 'cl-badge-ambar'}">⏱️ Espera ${esc(clinicaTextoEspera(c.espera_min))}</span>`}</div>
+      <div class="cl-nombre">${esc(nombre(c))}</div>${c.motivo ? `<div class="cl-sub">${esc(c.motivo)}</div>` : ''}<div class="cl-sub">${donde(c) || 'Sin médico asignado'}</div>${sinExp(c)}
+      <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="atenderHoy('${c.id}')">🩺 Atender</button>${c.paciente_id ? `<button class="btn-accion-tabla btn-ghost" onclick="abrirFicha('${c.paciente_id}')">👤 Ficha</button>` : ''}</div></div>`;
+  const total = enConsulta.length + espera.length;
+  cont.innerHTML = total ? enConsulta.map(c => tarjeta(c, true)).join('') + espera.map(c => tarjeta(c, false)).join('')
+    : `<div class="cl-info" style="grid-column:1/-1">${conFiltro ? 'No tienes pacientes en consulta ni esperando. Toca "Todos" para ver a los de los demás médicos.' : 'Nadie en consulta ni esperando ahora. Cuando recepción marque "🪑 Llegó" en la Sala de espera, aparecen aquí.'}</div>`;
+}
+// Atender desde aquí: si estaba esperando, se le llama (la pantalla de la sala lo anuncia) y pasa a "En consulta".
+async function atenderHoy(id) {
+  const c = HOY.citas.find(x => x.id === id); if (!c) return;
+  if (!c.paciente_id) { window.location.href = 'clinica-sala.html?atender=' + encodeURIComponent(id); return; }
+  if (c.estado === 'en_espera') {
+    try {
+      if (!c.llamado_en || Date.now() - new Date(c.llamado_en).getTime() > 10 * 60000) await ClinicaCitas.guardarInfo(id, { llamado_en: new Date().toISOString() });
+      await ClinicaCitas.cambiarEstado(id, 'en_atencion');
+      avisarHoy(); cargarHoy();
+    } catch (e) { console.warn('pasar a consulta:', e); }
+  }
+  await atenderCita(id);
+}
+function avisarHoy() { try { Promise.resolve(HOY.canal?.send({ type: 'broadcast', event: 'cambio', payload: {} })).catch(() => {}); } catch (_) {} }
+function conectarHoy() {
+  try { HOY.canal = sb.channel('clinica-sala-' + STATE.userId, { config: { broadcast: { self: false } } }).on('broadcast', { event: 'cambio' }, () => cargarHoy()).subscribe(); }
+  catch (e) { console.warn('atención de hoy en vivo:', e); }
+  setInterval(() => { if (!document.hidden) cargarHoy(); }, 30000);
 }
 
 /* ---------- Tutorial ---------- */

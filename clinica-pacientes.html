@@ -1334,6 +1334,10 @@
         <div class="kpi-card"><div class="kpi-icon" style="background:#FEF3C7">📅</div><div class="kpi-body"><div class="kpi-value" id="cp-kpi-citas">—</div><div class="kpi-label">Citas hoy</div></div></div>
       </div>
 
+      <div class="cl-seccion" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>🩺 Atención de hoy</span><span id="cp-hoy-filtro" style="display:flex;gap:6px;text-transform:none;letter-spacing:0"></span></div>
+      <p class="cl-sub" style="margin:-4px 0 10px">Quién está en consulta y quién espera, sin buscarlo. Toca <b>🩺 Atender</b> para abrir su expediente y escribir la consulta; al <b>cerrar y firmar</b> la nota, pasa solo a "Atendidos" en la Sala.</p>
+      <div id="cp-hoy" class="cl-lista"><p class="cl-sub">Cargando…</p></div>
+      <div class="cl-seccion">👥 Todos los pacientes</div>
       <div class="cl-barra">
         <div class="cl-buscador"><span class="cl-buscador-icono">🔎</span><input type="search" id="cp-buscar" placeholder="Nombre, cédula, teléfono o N.º de expediente…" oninput="filtrar()" aria-label="Buscar paciente"/></div>
         <select id="cp-estado" class="cl-select" onchange="filtrar()" aria-label="Estado"><option value="activos">Activos</option><option value="archivados">Archivados</option><option value="todos">Todos</option></select>
@@ -1351,7 +1355,7 @@
 <script src="clinica-cie10.js?v=20261027a"></script>
 <script src="clinica-documentos.js?v=20261027a"></script>
 <script src="clinica-expediente-docs.js?v=20261027a"></script>
-<script src="clinica-pacientes.js?v=20261027a"></script>
+<script src="clinica-pacientes.js?v=20261028a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>

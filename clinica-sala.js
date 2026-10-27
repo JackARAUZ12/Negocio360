@@ -96,6 +96,8 @@ async function init() {
     SA.consultorios = k || [];
     await cargar();
     if (new URLSearchParams(location.search).get('pantalla') === '1') abrirPantalla();
+    const porAtender = new URLSearchParams(location.search).get('atender');      // desde Pacientes, una cita sin expediente
+    if (porAtender && citaPorId(porAtender)) atender(porAtender);
     conectarEnVivo();
     SA.timer = setInterval(() => { cargar(true); }, 15000);           // respaldo: por si se pierde un aviso o cambian algo desde la Agenda
     document.addEventListener('visibilitychange', () => { if (!document.hidden) cargar(true); });
@@ -154,7 +156,8 @@ function render() {
       <div class="cl-nombre">${esc(nombre(c))}</div><div class="cl-sub">${donde(c)}</div>
       ${c.llamado_en ? `<div class="cl-sub">▶️ Entró a las ${esc(new Date(c.llamado_en).toLocaleTimeString('es-NI', { hour: 'numeric', minute: '2-digit' }))}</div>` : ''}
       <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="terminarConsulta('${c.id}')">✅ Terminó la consulta</button>
-        <button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Expediente</button>${btnCuenta(c)}
+        <button class="btn-accion-tabla btn-ghost" onclick="atender('${c.id}')">🩺 Atender (médico)</button>${btnCuenta(c)}
+        ${c.paciente_id ? `<button class="btn-accion-tabla btn-ghost" onclick="dejarEnObservacion('${c.id}')">🛏️ Dejar en observación</button>` : ''}
         <button class="btn-accion-tabla btn-ghost" onclick="regresarAFila('${c.id}')">↩ Regresar a la fila</button></div></div>`).join('')
     : '<div class="cl-info" style="grid-column:1/-1">Ningún paciente en consulta. Para que alguien entre, toca <b>▶️ Pasar a consulta</b> en su tarjeta de "Esperando".</div>';
   $s('sa-llegar').innerHTML = porLlegar.length ? porLlegar.map(c => `<div class="ag-card est-${esc(c.estado)}"><div class="ag-fila"><span class="ag-hora">${esc(vetFormatoHora(c.hora))}</span><span class="cl-badge cl-badge-${CLINICA_ESTADOS_CITA[c.estado].clase}">${esc(CLINICA_ESTADOS_CITA[c.estado].n)}</span></div>
@@ -214,6 +217,11 @@ async function pasarAConsulta(id) {
 // el médico no escribe nota en el sistema o para adelantar a recepción.
 function terminarConsulta(id) {
   return accion(async () => { await ClinicaCitas.guardarInfo(id, { atendida_en: new Date().toISOString() }); showToast('✅ Consulta terminada. Ya puedes cobrarle en "Atendidos hoy".'); }, 'No se pudo terminar la consulta.');
+}
+// El médico decide dejarlo en observación u hospitalizarlo: se abre el ingreso con el paciente ya elegido.
+function dejarEnObservacion(id) {
+  const c = citaPorId(id); if (!c?.paciente_id) return;
+  window.location.href = 'clinica-hospital.html?ingreso=' + encodeURIComponent(c.paciente_id) + (c.medico_id ? '&medico=' + encodeURIComponent(c.medico_id) : '');
 }
 function regresarAFila(id) { return accion(() => ClinicaCitas.cambiarEstado(id, 'confirmada'), 'No se pudo regresar a la fila.'); }
 function noAsistio(id) { return accion(() => ClinicaCitas.cambiarEstado(id, 'no_asistio'), 'No se pudo cambiar.'); }
