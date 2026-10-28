@@ -220,19 +220,10 @@
 
   function error(msg) { var e = document.getElementById('n360-sel-err'); if (e) e.textContent = msg; if (msg) document.querySelectorAll('.n360-sel-item.cargando').forEach(function (b) { b.classList.remove('cargando'); }); }
 
-  async function cambiar(sucursalId, boton) {
-    var s = lista.find(function (x) { return x.id === sucursalId; });
-    if (!s) return;
-    // Volver a la Central: el mismo acceso con código de siempre.
-    if (s.es_central) {
-      if (!esHija) return;
-      if (perfilActual() && perfilActual().tipo === 'admin' && await volverSinCodigo()) return;
-      var cfg = window.PerfilesGuardConfig;
-      if (cfg && cfg.volverACentral) { var mm = document.getElementById('n360-sel-modal'); if (mm) mm.remove(); cfg.volverACentral(s.nombre); }
-      else error('No se pudo abrir el acceso a la Central.');
-      return;
-    }
-    boton.disabled = true; error('');
+  // Núcleo del cambio. Devuelve { ok:true } (ya navegando) o
+  // { ok:false, msg, fallback }: fallback=true cuando falló por algo técnico
+  // (sin respuesta del servidor), para que el flujo antiguo pueda intentarlo.
+  async function hacerCambio(s) {
     try {
       // Si soy un perfil con PIN (no administrador), se respeta su permiso por sucursal.
       var modulos = null;
@@ -241,7 +232,7 @@
         var perfil = JSON.parse(raw);
         if (perfil && perfil.tipo !== 'admin') {
           var p = await sb.from('sucursal_permisos').select('modulos_permitidos').eq('sucursal_id', s.id).eq('perfil_id', perfil.id).maybeSingle();
-          if (!p || !p.data) { boton.disabled = false; return error('Tu perfil no tiene acceso a "' + s.nombre + '".'); }
+          if (!p || !p.data) return { ok: false, msg: 'Tu perfil no tiene acceso a "' + s.nombre + '".', fallback: false };
           modulos = p.data.modulos_permitidos || [];
         }
       }
@@ -250,7 +241,7 @@
       if (resp.error || !resp.data || !resp.data.token_hash) {
         var msg = resp.data && resp.data.error;
         try { if (!msg && resp.error && resp.error.context) msg = (await resp.error.context.json()).error; } catch (_) {}
-        boton.disabled = false; return error(msg || 'No se pudo abrir esa cuenta.');
+        return { ok: false, msg: msg || 'No se pudo abrir esa cuenta.', fallback: !msg };
       }
       // Desde la Central se guarda su sesión para poder volver (igual que Sucursales).
       var ses = await sb.auth.getSession();
@@ -265,8 +256,8 @@
       if (v.error || !v.data || !v.data.session || v.data.session.user.id !== resp.data.destino_auth_id) {
         // Seguridad: se vuelve a comprobar de quién es la sesión real.
         var chk = await sb.auth.getSession();
-        if (!chk.data || !chk.data.session || chk.data.session.user.id !== yo.id) { location.href = 'login.html'; return; }
-        boton.disabled = false; return error('No se pudo abrir esa cuenta.');
+        if (!chk.data || !chk.data.session || chk.data.session.user.id !== yo.id) { location.href = 'login.html'; return { ok: true }; }
+        return { ok: false, msg: 'No se pudo abrir esa cuenta.', fallback: true };
       }
       // Copia que sobrevive si se cierra la pestaña (solo desde la Central), para ESTA cuenta.
       try {
@@ -285,11 +276,40 @@
       if (modulos) sessionStorage.setItem('n360_sucursal_modulos', JSON.stringify(modulos));
       else sessionStorage.removeItem('n360_sucursal_modulos');
       location.href = (resp.data.tipo === 'bodega') ? 'bodega.html' : 'dashboard.html';
+      return { ok: true };
     } catch (e) {
-      boton.disabled = false; error('No se pudo cambiar de cuenta. Revisa tu internet e intenta de nuevo.');
+      return { ok: false, msg: 'No se pudo cambiar de cuenta. Revisa tu internet e intenta de nuevo.', fallback: true };
     }
   }
 
-  window.N360SelectorCuenta = { abrir: abrir, listo: function () { return !!lista; } };
+  // Ir a la Central: sin código si el perfil activo es administrador; si no, el código de siempre.
+  async function irACentral(nombre) {
+    if (!esHija) return true;
+    if (perfilActual() && perfilActual().tipo === 'admin' && await volverSinCodigo()) return true;
+    var cfg = window.PerfilesGuardConfig;
+    if (cfg && cfg.volverACentral) { var mm = document.getElementById('n360-sel-modal'); if (mm) mm.remove(); cfg.volverACentral(nombre || 'tu cuenta principal'); return true; }
+    return false;
+  }
+
+  async function cambiar(sucursalId, boton) {
+    var s = lista.find(function (x) { return x.id === sucursalId; });
+    if (!s) return;
+    if (s.es_central) {
+      if (!(await irACentral(s.nombre))) error('No se pudo abrir el acceso a la Central.');
+      return;
+    }
+    boton.disabled = true; error('');
+    var r = await hacerCambio(s);
+    if (!r.ok) { boton.disabled = false; error(r.msg); }
+  }
+
+  // Para otros módulos (Sucursales): entra a una cuenta por su id de fila.
+  async function entrar(sucursalId) {
+    var s = lista && lista.find(function (x) { return x.id === sucursalId; });
+    if (!s || s.es_central) return { ok: false, msg: 'Cuenta no disponible', fallback: true };
+    return hacerCambio(s);
+  }
+
+  window.N360SelectorCuenta = { abrir: abrir, entrar: entrar, irACentral: irACentral, listo: function () { return !!lista; } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
 })();

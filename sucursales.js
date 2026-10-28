@@ -414,12 +414,24 @@ async function entrarASucursal(sucursalId) {
   // existe una contraseña interna guardada para la cuenta real).
   if (s.es_central) {
     if (STATE.esCentral) { navigate('dashboard.html'); return; }
+    // Mismo cambio fácil que el selector de cuenta (sin código si el perfil es administrador).
+    if (window.N360SelectorCuenta?.irACentral && window.N360SelectorCuenta.listo()) {
+      try { if (await window.N360SelectorCuenta.irACentral(s.nombre)) return; } catch (_) {}
+    }
     if (window.PerfilesGuardConfig?.volverACentral) {
       window.PerfilesGuardConfig.volverACentral(s.nombre);
     } else {
       showToast('No se pudo abrir el acceso a Central', 'error');
     }
     return;
+  }
+
+  // Cambio fácil y seguro (pase de un solo uso, sin contraseñas, con permisos por perfil
+  // y bitácora). Si algo técnico falla, se cae al flujo de siempre más abajo.
+  if (window.N360SelectorCuenta?.entrar && window.N360SelectorCuenta.listo()) {
+    const r = await window.N360SelectorCuenta.entrar(s.id);
+    if (r.ok) return;
+    if (!r.fallback) { showToast(r.msg || 'No se pudo entrar a esa cuenta', 'error'); return; }
   }
 
   // Si quien está usando el sistema en este momento es un PERFIL con PIN
