@@ -2004,7 +2004,7 @@ async function pruebaCRM(browser, base) {
     const cid = await page.evaluate(() => CS.clientes[0].id);
     await page.evaluate(id => abrirPerfil(id), cid);
     await page.waitForSelector('#perfil-crm .crm-accion');
-    verificar(await page.locator('#perfil-crm .crm-accion').count() === 5, `${tag}: la ficha tiene Llamé, WhatsApp, Nota, Visita y Recordatorio`);
+    verificar(await page.locator('#perfil-crm .crm-accion').count() === 6, `${tag}: la ficha tiene Llamé, WhatsApp, Nota, Visita, Recordatorio y Oportunidad`);
     await page.waitForSelector('#perfil-crm [data-crm-pend] .crm-tarea');
     verificar((await page.textContent('#perfil-crm [data-crm-pend]')).includes('Cobrar saldo pendiente') && (await page.textContent('#perfil-crm .crm-vence')).includes('Hace 2 días'), `${tag}: la ficha muestra lo pendiente con el cliente, marcado como atrasado`);
     // Llamé + volver a contactar en 3 días
