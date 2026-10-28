@@ -74,7 +74,7 @@
       if (error) throw error;
       const clientes = [];
       for (let desde = 0; ; desde += 1000) {
-        const { data, error: e2 } = await G.sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,empresa').eq('auth_user_id', G.userId).eq('activo', true).order('nombre').range(desde, desde + 999);
+        const { data, error: e2 } = await G.sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,empresa,fecha_aniversario').eq('auth_user_id', G.userId).eq('activo', true).order('nombre').range(desde, desde + 999);
         if (e2) throw e2;
         clientes.push(...(data || []).map(c => ({ ...c, nombre: [c.nombre, c.apellido].filter(Boolean).join(' ') })));
         if (!data || data.length < 1000) break;
@@ -200,5 +200,6 @@
   window.N360Grupos = {
     init({ sb, userId, fmt }) { G.sb = sb; G.userId = userId; if (fmt) G.fmt = fmt; G.datos = null; },
     montar, insignia, calcular, GRUPOS, refrescar: () => { G.datos = null; },
+    datos: forzar => cargar(forzar),
   };
 })();

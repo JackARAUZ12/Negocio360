@@ -50,7 +50,8 @@
       let resultado = null, error = null;
       if (st.modo === 'upsert') {             // si ya existe (misma llave), solo cambia lo que se manda
         const lista = (Array.isArray(st.datos) ? st.datos : [st.datos]).map(d => {
-          const ya = db[tabla].find(f => comoTexto(f[st.conflicto]) === comoTexto(d[st.conflicto]));
+          const llaves = String(st.conflicto).split(',').map(x => x.trim());   // llave de una o varias columnas
+          const ya = db[tabla].find(f => llaves.every(k => comoTexto(f[k]) === comoTexto(d[k])));
           if (ya) { Object.assign(ya, d); return ya; }
           const fila = { created_at: new Date().toISOString(), ...d }; db[tabla].push(fila); return fila;
         });

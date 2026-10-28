@@ -2238,6 +2238,91 @@ async function pruebaGrupos(browser, base) {
   }
 }
 
+// CRM Fase 4: campañas por WhatsApp gratis (mensajes del sistema editables, envío uno por uno).
+async function pruebaCampanas(browser, base) {
+  console.log('\n▶ CRM: campañas por WhatsApp');
+  const simResumen = () => {
+    window.__RPC = Object.assign(window.__RPC || {}, { crm_resumen_clientes: () => {
+      const db = JSON.parse(sessionStorage.getItem('__DB')), por = {};
+      (db.ventas || []).filter(v => v.cliente_id && v.estado !== 'anulada').forEach(v => { const d = String(v.fecha).slice(0, 10);
+        const r = por[v.cliente_id] = por[v.cliente_id] || { cliente_id: v.cliente_id, compras: 0, monto: 0, compras_12m: 0, monto_12m: 0, primera: d, ultima: d };
+        r.compras++; r.monto += v.total; r.compras_12m++; r.monto_12m += v.total; if (d < r.primera) r.primera = d; if (d > r.ultima) r.ultima = d; });
+      return Object.values(por); } });
+  };
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    let { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await ctx.addInitScript(simResumen);
+    await page.goto(base + '/clientes.html');
+    await page.evaluate(() => { const x = JSON.parse(JSON.stringify(window.__SEED)); const U = x.clientes[0].auth_user_id;
+      x.tutoriales_vistos.push({ auth_user_id: U, modulo_key: 'clientes' });
+      const dia = n => { const f = new Date(Date.now() - n * 864e5); return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`; };
+      const mk = (id, nombre, tel, extra) => ({ id, auth_user_id: U, nombre, telefono: tel, activo: true, created_at: new Date().toISOString(), ...extra });
+      x.clientes = [mk('c-carla', 'Carla Cumple', '88880001', { fecha_aniversario: '1990-' + dia(0).slice(5) }), mk('c-rosa', 'Rosa Ausente', '88880002'), mk('c-nico', 'Nico Sinfono', null)];
+      x.ventas = [{ id: 'v1', auth_user_id: U, cliente_id: 'c-carla', total: 300, estado: 'completada', fecha: dia(2) }, { id: 'v2', auth_user_id: U, cliente_id: 'c-rosa', total: 500, estado: 'completada', fecha: dia(45) },
+        { id: 'v3', auth_user_id: U, cliente_id: 'c-nico', total: 100, estado: 'completada', fecha: dia(50) }];
+      x.cliente_interacciones = []; x.crm_mensajes_sistema = []; x.crm_tareas = [];
+      sessionStorage.setItem('__DB', JSON.stringify(x)); });
+    const ventasAntes = await page.evaluate(() => JSON.stringify(JSON.parse(sessionStorage.getItem('__DB')).ventas));
+    await page.goto(base + '/clientes.html?tab=campanas'); await esperarListo(page);
+    await page.waitForSelector('#crm-campanas .cp-tipos', { timeout: 15000 });
+    verificar(await page.locator('#crm-campanas .cp-tipo').count() === 8, `${tag}: hay 8 tipos de mensaje listos (cumpleaños, te extrañamos, gracias, promoción…)`);
+    verificar((await page.textContent('[data-cp-tipo="cumple"]')).includes('1 cliente hoy') && (await page.textContent('[data-cp-tipo="extranamos"]')).includes('2 clientes'), `${tag}: cada tipo dice a cuántos clientes les toca hoy`);
+    // Cumpleaños: enviar
+    await page.click('[data-cp-tipo="cumple"]');
+    await page.waitForSelector('#cp-lista .cp-fila');
+    verificar((await page.textContent('#cp-lista')).includes('¡Feliz cumpleaños, Carla!'), `${tag}: el mensaje sale con el nombre del cliente`);
+    const [wa] = await Promise.all([ctx.waitForEvent('page'), page.click('[data-cp-enviar="c-carla"]')]);
+    const u = decodeURIComponent(wa.url());
+    verificar(u.includes('wa.me/50588880001') && u.includes('Feliz cumpleaños, Carla'), `${tag}: "Enviar" abre WhatsApp al número del cliente con el mensaje listo (gratis, sin Meta)`);
+    await wa.close(); await page.waitForTimeout(400);
+    verificar((await page.textContent('#cp-lista')).includes('1 de 1 enviados') && (await page.textContent('#cp-lista')).includes('¡Listo, a todos!'), `${tag}: marca "Enviado" y lleva la cuenta`);
+    let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.cliente_interacciones.some(i => i.cliente_id === 'c-carla' && i.titulo === 'Campaña: Cumpleaños / aniversario' && i.tipo === 'mensaje'), `${tag}: el envío queda anotado en el cliente`);
+    // Te extrañamos: {dias}, cliente sin teléfono
+    await page.click('[data-cp-volver]'); await page.click('[data-cp-tipo="extranamos"]');
+    await page.waitForSelector('#cp-lista .cp-fila');
+    const tx = await page.textContent('#cp-lista');
+    verificar(tx.includes('Hace 45 días no te vemos') && tx.includes('1 sin teléfono') && tx.includes('Nico Sinfono'), `${tag}: "Te extrañamos" pone los días sin comprar y avisa quién no tiene teléfono`);
+    // Editar y guardar como mío
+    await page.fill('#cp-texto', 'Hola {nombre}, te guardamos un descuento en {negocio} 😉');
+    verificar((await page.textContent('#cp-lista')).includes('Hola Rosa, te guardamos un descuento'), `${tag}: al editar, la vista previa cambia al instante`);
+    await page.click('#cp-guardar'); await page.waitForTimeout(400);
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.crm_mensajes_sistema.length === 1 && db.crm_mensajes_sistema[0].tipo === 'extranamos', `${tag}: "Guardar como mi mensaje" lo guarda para la próxima vez`);
+    await page.reload(); await esperarListo(page); await page.waitForSelector('#crm-campanas .cp-tipos', { timeout: 15000 });
+    verificar((await page.textContent('[data-cp-tipo="extranamos"]')).includes('editado'), `${tag}: el tipo editado se marca "✏️ editado"`);
+    verificar((await page.textContent('[data-cp-tipo="cumple"]')).includes('1 cliente hoy'), `${tag}: al volver a entrar se mantiene todo`);
+    await page.click('[data-cp-tipo="cumple"]'); await page.waitForSelector('#cp-lista .cp-fila');
+    verificar((await page.textContent('#cp-lista')).includes('✅ Enviado'), `${tag}: lo ya enviado hoy sigue marcado (no se repite por error)`);
+    await page.click('[data-cp-volver]'); await page.click('[data-cp-tipo="extranamos"]');
+    verificar((await page.inputValue('#cp-texto')).startsWith('Hola {nombre}, te guardamos'), `${tag}: el mensaje editado sale en lugar del original`);
+    await page.click('#cp-original');
+    await page.waitForFunction(() => document.getElementById('cp-texto').value.startsWith('Hola {nombre}, ¡te extrañamos'), null, { timeout: 5000 }).catch(() => {});
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.crm_mensajes_sistema.length === 0 && (await page.inputValue('#cp-texto')).includes('¡te extrañamos'), `${tag}: "Volver al original" recupera el mensaje del sistema`);
+    // Promoción: no deja enviar con [ ] sin completar
+    await page.click('[data-cp-volver]'); await page.click('[data-cp-tipo="promocion"]');
+    await page.waitForSelector('#cp-lista .cp-fila');
+    verificar(await page.isVisible('#cp-falta') && await page.isDisabled('[data-cp-enviar="c-rosa"]'), `${tag}: la promoción no se envía hasta completar la parte entre [ ]`);
+    await page.fill('#cp-texto', '¡Hola {nombre}! 2x1 en todo este sábado en {negocio}.');
+    verificar(!(await page.isVisible('#cp-falta')) && !(await page.isDisabled('[data-cp-enviar="c-rosa"]')), `${tag}: al completarla ya se puede enviar`);
+    const [wa2] = await Promise.all([ctx.waitForEvent('page'), page.click('[data-cp-siguiente]')]);
+    verificar(decodeURIComponent(wa2.url()).includes('2x1 en todo este sábado'), `${tag}: "Enviar al siguiente" va uno por uno`);
+    await wa2.close();
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag}: Campañas sin desbordarse`);
+    const ventasDesp = await page.evaluate(() => JSON.stringify(JSON.parse(sessionStorage.getItem('__DB')).ventas));
+    verificar(ventasAntes === ventasDesp, `${tag}: las campañas no tocan ventas`);
+    verificar(page.__errores.length === 0, `${tag} Campañas: sin errores (${page.__errores.join(' | ')})`);
+    // Panel principal: aviso de cumpleaños
+    await page.goto(base + '/dashboard.html');
+    await page.waitForSelector('#dash-cumple .crm-aviso', { timeout: 15000 }).catch(() => {});
+    verificar((await page.locator('#dash-cumple').textContent().catch(() => '')).includes('Hoy es el cumpleaños o aniversario de 1 cliente'), `${tag}: el Panel avisa los cumpleaños de hoy`);
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1) && page.__errores.length === 0, `${tag}: Panel sin errores ni desbordes (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2267,6 +2352,7 @@ async function regresion(browser, base) {
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
+    if (process.env.SOLO_CAMP) { await pruebaCampanas(browser, base); throw 'fin'; }
     if (process.env.SOLO_GRUPOS) { await pruebaGrupos(browser, base); throw 'fin'; }
     if (process.env.SOLO_OPOR) { await pruebaOportunidades(browser, base); throw 'fin'; }
     if (process.env.SOLO_PROD) { await pruebaProduccion(browser, base); await pruebaVentaPreparados(browser, base); throw 'fin'; }
@@ -2300,6 +2386,7 @@ async function regresion(browser, base) {
     await pruebaCRM(browser, base);
     await pruebaOportunidades(browser, base);
     await pruebaGrupos(browser, base);
+    await pruebaCampanas(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

@@ -817,6 +817,9 @@
         <div class="section-tab" data-tab="inactivos" onclick="cambiarTab('inactivos')">
           💤 Inactivos
         </div>
+        <div class="section-tab" data-tab="campanas" onclick="cambiarTab('campanas')">
+          📣 Campañas
+        </div>
         <div class="section-tab" data-tab="grupos" onclick="cambiarTab('grupos')">
           🧩 Grupos
         </div>
@@ -950,6 +953,14 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- ======= PANEL: CAMPAÑAS (CRM) ======= -->
+      <div id="panel-campanas" style="display:none">
+        <div class="panel-card fade-in">
+          <div class="panel-header"><div class="panel-title">📣 Campañas por WhatsApp</div></div>
+          <div id="crm-campanas" style="padding:4px 16px 16px"></div>
         </div>
       </div>
 
@@ -1528,8 +1539,9 @@
 
 <script src="crm-seguimiento.js?v=20261028b"></script>
 <script src="crm-oportunidades.js?v=20261028a"></script>
-<script src="crm-grupos.js?v=20261028a"></script>
-<script src="clientes.js?v=20261028c"></script>
+<script src="crm-grupos.js?v=20261028b"></script>
+<script src="crm-campanas.js?v=20261028a"></script>
+<script src="clientes.js?v=20261028d"></script>
 <script src="clientes-importar.js"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261028a"></script>
