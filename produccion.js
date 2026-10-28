@@ -1004,6 +1004,29 @@ async function procesarConsumoYSalidasDespiece(ordenId, necesidades, salidasConC
   }
 }
 
+/* Completar producción: UNA sola operación en el servidor (todo o nada). Descuenta la
+   materia prima, suma el producto terminado, ACTUALIZA SU COSTO (promedio) y cierra la
+   orden; una orden ya completada no se completa dos veces. Producir no toca Caja. */
+let PRODUCIENDO = false;
+function textoMotivoProduccion(r) {
+  const m = r && r.motivo;
+  if (m === 'falta_materia' && Array.isArray(r.faltantes) && r.faltantes.length)
+    return 'No alcanza la materia prima: ' + r.faltantes.map(f => `${f.nombre} (necesitas ${fmtNum(f.necesario)}, hay ${fmtNum(f.disponible)})`).join(', ') + '.';
+  return ({
+    ya_completada: 'Esta producción ya estaba completada (no se descontó nada otra vez).',
+    cancelada: 'Esta orden está cancelada.', sin_receta: 'No se encontró la receta de esta orden.',
+    cantidad: 'La cantidad a producir debe ser mayor a cero.', cantidad_buena: 'Las unidades buenas deben ser más de 0 y no más de lo planificado.',
+    materia_no_existe: 'Una materia prima de la receta ya no existe. Revisa la receta.',
+    salida_no_existe: 'Un corte de la receta ya no existe. Revisa la receta.',
+    terminado_no_existe: 'El producto terminado de la receta ya no existe. Revisa la receta.',
+    no_existe: 'No se encontró la orden.', receta: 'La receta tiene una cantidad inválida.',
+  })[m] || 'No se pudo completar. Intenta de nuevo.';
+}
+function textoCostoNuevo(r) {
+  return r && r.costo_nuevo != null && Number(r.costo_nuevo) !== Number(r.costo_anterior)
+    ? ` · costo del producto: ${fmt(r.costo_anterior)} → ${fmt(r.costo_nuevo)}` : '';
+}
+
 async function guardarOrden(estadoDeseado) {
   const errEl = document.getElementById('op-error');
   errEl.textContent = '';
@@ -1023,6 +1046,28 @@ async function guardarOrden(estadoDeseado) {
 
   if (estadoDeseado === 'completada' && !todoSuficiente) {
     errEl.textContent = 'No hay suficiente materia prima para completar esta producción ahora. Guárdala como pendiente, o ajusta la cantidad.';
+    return;
+  }
+
+  if (estadoDeseado === 'completada') {
+    if (PRODUCIENDO) return;
+    PRODUCIENDO = true;
+    try {
+      const { data: r, error } = await sb.rpc('produccion_crear_y_completar', { p_datos: {
+        receta_id: recetaId, cantidad_planificada: cantidad, fecha_entrega: fechaEntrega,
+        costo_mano_obra: manoObra, costo_indirecto: indirecto,
+        merma_cantidad: receta.tipo === 'despiece' ? 0 : mermaCantidad, merma_motivo: mermaMotivo,
+        usuario_nombre: STATE.currentUser?.nombre || 'Usuario' } });
+      if (error) throw error;
+      if (!r || !r.ok) { errEl.textContent = textoMotivoProduccion(r); return; }
+      showToast((receta.tipo === 'despiece' ? '🍗 Despiece completado' : '🏭 Producción completada') + textoCostoNuevo(r));
+      closeModal('modal-orden');
+      await Promise.all([cargarOrdenes(), cargarProductosCache()]);
+      actualizarKPIsProduccion();
+    } catch (e) {
+      console.error('guardarOrden:', e);
+      errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+    } finally { PRODUCIENDO = false; }
     return;
   }
 
@@ -1142,18 +1187,12 @@ function completarOrdenPlanificada(ordenId) {
 }
 
 async function completarOrdenDespieceDirecto(orden, receta) {
+  if (PRODUCIENDO) return;
+  PRODUCIENDO = true;
   try {
-    const { necesidades, costoMateriales } = calcularNecesidadesOrden(receta, orden.cantidad_planificada);
-    const costoTotal = round2(costoMateriales + Number(orden.costo_mano_obra||0) + Number(orden.costo_indirecto||0));
-    const salidas = calcularSalidasDespiece(receta, orden.cantidad_planificada);
-    const salidasConCosto = asignarCostoSalidasDespiece(salidas, costoTotal);
-
-    await procesarConsumoYSalidasDespiece(orden.id, necesidades, salidasConCosto);
-
-    await sb.from('ordenes_produccion').update({
-      estado: 'completada', costo_materiales: costoMateriales, costo_total: costoTotal,
-      fecha_completada: new Date().toISOString(), updated_at: new Date().toISOString(),
-    }).eq('id', orden.id).eq('auth_user_id', STATE.userId);
+    const { data: r, error } = await sb.rpc('produccion_completar_orden', { p_orden_id: orden.id });
+    if (error) throw error;
+    if (!r || !r.ok) { showToast(textoMotivoProduccion(r), 'error'); await cargarOrdenes(); return; }
 
     showToast('🍗 Despiece completado');
     await Promise.all([cargarOrdenes(), cargarProductosCache()]);
@@ -1161,7 +1200,7 @@ async function completarOrdenDespieceDirecto(orden, receta) {
   } catch (e) {
     console.error('completarOrdenDespieceDirecto:', e);
     showToast('No se pudo completar el despiece', 'error');
-  }
+  } finally { PRODUCIENDO = false; }
 }
 
 function onCambiarCantidadBuenaCompletar() {
@@ -1191,30 +1230,22 @@ async function confirmarCompletarOrden() {
   const mermaCantidad = Math.max(0, round2(orden.cantidad_planificada - cantidadBuenaRaw));
   const mermaMotivo = document.getElementById('co-merma-motivo').value.trim() || null;
 
-  const { necesidades, costoMateriales } = calcularNecesidadesOrden(receta, orden.cantidad_planificada);
-
+  if (cantidadBuenaRaw <= 0) { errEl.textContent = 'Las unidades buenas deben ser más de 0.'; return; }
+  if (PRODUCIENDO) return;
+  PRODUCIENDO = true;
   try {
-    const costoTotal = round2(costoMateriales + Number(orden.costo_mano_obra||0) + Number(orden.costo_indirecto||0));
-    const costoUnitario = round2(costoTotal / cantidadBuena);
+    const { data: r, error } = await sb.rpc('produccion_completar_orden', { p_orden_id: ordenId, p_cantidad_buena: cantidadBuena, p_merma_motivo: mermaCantidad > 0 ? mermaMotivo : null });
+    if (error) throw error;
+    if (!r || !r.ok) { errEl.textContent = textoMotivoProduccion(r); if (r && r.motivo === 'ya_completada') { await cargarOrdenes(); } return; }
 
-    await procesarConsumoYProduccion(ordenId, receta, necesidades, cantidadBuena, orden.producto_terminado_id);
-
-    await sb.from('ordenes_produccion').update({
-      estado: 'completada', cantidad_producida: cantidadBuena,
-      costo_materiales: costoMateriales, costo_total: costoTotal, costo_unitario: costoUnitario,
-      merma_cantidad: mermaCantidad, merma_motivo: mermaCantidad > 0 ? mermaMotivo : null,
-      fecha_completada: new Date().toISOString(), updated_at: new Date().toISOString(),
-    }).eq('id', ordenId).eq('auth_user_id', STATE.userId);
-
-    showToast('🏭 Producción completada');
+    showToast('🏭 Producción completada' + textoCostoNuevo(r));
     closeModal('modal-completar-orden');
     await Promise.all([cargarOrdenes(), cargarProductosCache()]);
     actualizarKPIsProduccion();
   } catch (e) {
     console.error('confirmarCompletarOrden:', e);
     errEl.textContent = 'No se pudo completar. Intenta de nuevo.';
-
-  }
+  } finally { PRODUCIENDO = false; }
 }
 
 async function cancelarOrden(ordenId) {

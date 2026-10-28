@@ -13,7 +13,7 @@
   const log = (op, tabla, datos, filtros) => { const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op, tabla, datos, filtros }); sessionStorage.setItem('__LOG', JSON.stringify(l)); };
   let n = 0; const uuid = () => 'id-' + Date.now().toString(36) + '-' + (++n) + '-' + Math.random().toString(36).slice(2, 8);
   const REL = { clinica_pacientes: 'paciente_id', ventas: 'venta_id', productos: 'producto_id', clientes: 'cliente_id', clinica_personal: 'medico_id', restaurante_mesas: 'mesa_id', restaurante_comandas: 'comanda_id' };
-  const HIJOS = { agenda_citas_servicios: 'cita_id', restaurante_comanda_items: 'comanda_id' };          // relaciones uno-a-muchos: nombre(campos) -> lista
+  const HIJOS = { agenda_citas_servicios: 'cita_id', restaurante_comanda_items: 'comanda_id', receta_componentes: 'receta_id', receta_despiece_salidas: 'receta_id' };          // relaciones uno-a-muchos: nombre(campos) -> lista
 
   function partirTope(s) {            // separa "a, b(c, d), e" respetando paréntesis
     const out = []; let nivel = 0, cur = '';

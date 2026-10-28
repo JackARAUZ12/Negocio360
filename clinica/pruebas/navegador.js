@@ -1683,6 +1683,83 @@ async function pruebaSinRegalo(browser, base) {
   }
 }
 
+// Producción · Fase 1: completar es UNA operación del servidor (todo o nada), sin doble descuento,
+// y el costo del producto terminado se actualiza. El servidor real se probó aparte (transacción revertida);
+// aquí se revisa que la pantalla lo use bien y lo explique.
+async function pruebaProduccion(browser, base) {
+  console.log('\n▶ Producción: completar todo o nada y costo del producto');
+  const simServidor = () => {
+    const DB = () => JSON.parse(sessionStorage.getItem('__DB')), G = d => sessionStorage.setItem('__DB', JSON.stringify(d));
+    const r2 = n => Math.round(n * 100) / 100;
+    function completar(db, o, buena) {
+      const rec = db.recetas_produccion.find(r => r.id === o.receta_id), f = o.cantidad_planificada / rec.cantidad_producida;
+      const comps = db.receta_componentes.filter(c => c.receta_id === rec.id), falt = [];
+      comps.forEach(c => { const p = db.productos.find(x => x.id === c.producto_id); if (p.stock_actual < r2(c.cantidad * f)) falt.push({ nombre: p.nombre, necesario: r2(c.cantidad * f), disponible: p.stock_actual }); });
+      if (falt.length) return { ok: false, motivo: 'falta_materia', faltantes: falt };
+      let mat = 0; comps.forEach(c => { const p = db.productos.find(x => x.id === c.producto_id), n = r2(c.cantidad * f); p.stock_actual = r2(p.stock_actual - n); mat += r2(n * p.costo); });
+      const total = r2(mat + (o.costo_mano_obra || 0)), unit = r2(total / buena), pt = db.productos.find(x => x.id === rec.producto_terminado_id), ant = pt.costo;
+      pt.costo = pt.stock_actual > 0 ? r2((pt.stock_actual * ant + buena * unit) / (pt.stock_actual + buena)) : unit; pt.stock_actual = r2(pt.stock_actual + buena);
+      Object.assign(o, { estado: 'completada', cantidad_producida: buena, costo_total: total, costo_unitario: unit, merma_cantidad: r2(o.cantidad_planificada - buena), actualizo_costo_producto: true });
+      return { ok: true, tipo: 'normal', cantidad_producida: buena, costo_total: total, costo_unitario: unit, costo_anterior: ant, costo_nuevo: pt.costo };
+    }
+    window.__llamadasProd = 0;
+    window.__RPC = {
+      produccion_crear_y_completar: a => { window.__llamadasProd++; const db = DB(), d = a.p_datos; db.ordenes_produccion = db.ordenes_produccion || [];
+        const o = { id: 'op-' + Date.now(), auth_user_id: db.usuarios[0].auth_user_id, numero: 'OP-' + (db.ordenes_produccion.length + 1), receta_id: d.receta_id, producto_terminado_id: db.recetas_produccion.find(r => r.id === d.receta_id).producto_terminado_id,
+          cantidad_planificada: d.cantidad_planificada, costo_mano_obra: d.costo_mano_obra || 0, estado: 'pendiente', created_at: new Date().toISOString() };
+        const r = completar(db, o, d.cantidad_planificada - (d.merma_cantidad || 0)); if (r.ok) { db.ordenes_produccion.push(o); G(db); } return r; },
+      produccion_completar_orden: a => { window.__llamadasProd++; const db = DB(), o = db.ordenes_produccion.find(x => x.id === a.p_orden_id);
+        if (o.estado === 'completada') return { ok: false, motivo: 'ya_completada' };
+        const r = completar(db, o, a.p_cantidad_buena ?? o.cantidad_planificada); if (r.ok) G(db); return r; },
+    };
+  };
+  const semillaProd = () => { const db = semilla(); const U = UID;
+    db.productos.push({ id: 'mp-harina', auth_user_id: U, tipo: 'producto', nombre: 'Harina', costo: 20, precio: 0, stock_actual: 10, es_materia_prima: true, activo: true },
+      { id: 'pt-pan', auth_user_id: U, tipo: 'producto', nombre: 'Pan simple', costo: 3, precio: 5, stock_actual: 10, activo: true });
+    db.recetas_produccion = [{ id: 'rec-pan', auth_user_id: U, producto_terminado_id: 'pt-pan', nombre: 'Pan', cantidad_producida: 100, activa: true, tipo: 'normal', created_at: '2026-10-01T00:00:00Z' }];
+    db.receta_componentes = [{ id: 'rc1', auth_user_id: U, receta_id: 'rec-pan', producto_id: 'mp-harina', cantidad: 2 }];
+    db.receta_despiece_salidas = []; db.ordenes_produccion = []; db.orden_produccion_consumos = []; return db; };
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await ctx.addInitScript(simServidor);
+    await page.goto(base + '/produccion.html');
+    await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: semillaProd() });
+    await page.reload(); await page.waitForFunction(() => typeof abrirModalOrden === 'function' && STATE.recetas.length === 1 && STATE.productos.length > 0, null, { timeout: 15000 });
+    // A) Producir ahora: 200 panes, 10 malos, con doble clic
+    await page.evaluate(() => abrirModalOrden()); await page.waitForSelector('#modal-orden.modal-open');
+    await page.selectOption('#op-receta', 'rec-pan'); await page.fill('#op-cantidad', '200'); await page.fill('#op-merma-cantidad', '10');
+    await page.dispatchEvent('#op-cantidad', 'input'); await page.fill('#op-costo-mano-obra', '10');
+    await modalesSinDesborde(page, `${tag} nueva producción`);
+    await page.evaluate(() => { guardarOrden('completada'); guardarOrden('completada'); });   // doble clic
+    await page.waitForFunction(() => document.getElementById('modal-orden').style.display === 'none', null, { timeout: 10000 });
+    let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const pan = db.productos.find(p => p.id === 'pt-pan'), har = db.productos.find(p => p.id === 'mp-harina');
+    verificar(await page.evaluate(() => window.__llamadasProd) === 1, `${tag}: con doble clic se produce una sola vez`);
+    verificar(har.stock_actual === 6 && pan.stock_actual === 200, `${tag}: descuenta la harina y suma los panes buenos (harina ${har.stock_actual}, pan ${pan.stock_actual})`);
+    verificar(pan.costo === 0.6, `${tag}: el costo del pan se actualiza con el promedio (${pan.costo})`);
+    verificar((await page.textContent('#toast')).includes('costo del producto'), `${tag}: avisa el costo nuevo del producto`);
+    // B) Falta materia prima: explica qué falta y no produce
+    await page.evaluate(() => abrirModalOrden()); await page.selectOption('#op-receta', 'rec-pan'); await page.fill('#op-cantidad', '1000');
+    await page.evaluate(() => { STATE.productos.find(p => p.id === 'mp-harina').stock_actual = 999; });   // la pantalla cree que alcanza; el servidor revisa
+    await page.evaluate(() => guardarOrden('completada')); await page.waitForFunction(() => document.getElementById('op-error').textContent.length > 0);
+    verificar((await page.textContent('#op-error')).includes('No alcanza la materia prima: Harina'), `${tag}: si no alcanza, dice qué falta (${await page.textContent('#op-error')})`);
+    await page.evaluate(() => closeModal('modal-orden'));
+    // C) Orden ya completada: no se descuenta otra vez
+    const oid = db.ordenes_produccion[0].id;
+    await page.evaluate(id => { STATE.ordenes.find(o => o.id === id).estado = 'pendiente'; completarOrdenPlanificada(id); }, oid);
+    await page.waitForSelector('#modal-completar-orden.modal-open'); await modalesSinDesborde(page, `${tag} completar producción`);
+    await page.click('#modal-completar-orden >> text=✅ Completar producción');
+    await page.waitForFunction(() => document.getElementById('co-error').textContent.length > 0);
+    verificar((await page.textContent('#co-error')).includes('ya estaba completada'), `${tag}: una producción completada no se descuenta dos veces`);
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.productos.find(p => p.id === 'mp-harina').stock_actual === 6, `${tag}: la harina sigue igual tras el intento repetido`);
+    verificar(!(await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).some(l => ['movimientos_financieros', 'incrementar_stock_producto'].includes(l.tabla)))), `${tag}: producir no toca la Caja ni usa los pasos sueltos de antes`);
+    verificar(page.__errores.length === 0, `${tag} producción: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 async function pruebaDemo(browser, base) {
   console.log('\n▶ Cuenta demo (sin multiusuario)');
   for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
@@ -1754,6 +1831,7 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
+    if (process.env.SOLO_PROD) { await pruebaProduccion(browser, base); throw 'fin'; }
     if (process.env.SOLO_REGALO) { await pruebaSinRegalo(browser, base); throw 'fin'; }
     if (process.env.SOLO_MEDICO) { await pruebaNuevoMedico(browser, base); throw 'fin'; }
     if (process.env.SOLO_SINCITA) { await pruebaSinCita(browser, base); throw 'fin'; }
@@ -1781,6 +1859,7 @@ async function regresion(browser, base) {
     await pruebaDemo(browser, base);
     await pruebaNuevoMedico(browser, base);
     await pruebaSinRegalo(browser, base);
+    await pruebaProduccion(browser, base);
     await pruebaPasarConsulta(browser, base);
     await pruebaAtencionHoy(browser, base);
     await pruebaBuscadorIngreso(browser, base);
