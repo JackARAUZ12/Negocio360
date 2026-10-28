@@ -2893,6 +2893,18 @@ async function initDashboard() {
         }
       }
     } catch (e) { /* el resumen del embudo nunca debe afectar al Dashboard */ }
+    // CRM: "Hoy tienes N seguimientos" (si no hay, no se muestra nada)
+    try {
+      if (window.N360CRM) {
+        const grid = document.querySelector('.kpi-grid');
+        if (grid && !document.getElementById('dash-crm')) {
+          const box = document.createElement('div'); box.id = 'dash-crm';
+          grid.insertAdjacentElement('beforebegin', box);
+          N360CRM.init({ sb: sbClient, userId });
+          N360CRM.montarAvisoPanel(box);
+        }
+      }
+    } catch (e) { /* el aviso nunca debe afectar al Dashboard */ }
     document.getElementById('app').style.display = 'flex';
 
     verificarAnuncioSistema(userId);
@@ -3098,6 +3110,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <script src="bienvenida-negocio360.js?v=10"></script>
 <script src="ventas-config.js?v=20261021a"></script>
 <script src="embudo-ventas.js?v=20261010a"></script>
+<script src="crm-seguimiento.js?v=20261028a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261028a"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>

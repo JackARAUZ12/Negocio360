@@ -67,6 +67,12 @@
       tareas.push(TX.paginar(() => sb.from('creditos').select('*').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('created_at', { ascending: false }))
         .then(c => { CH.creditos = c; }));
     }
+    // CRM: notas/llamadas/mensajes, cotizaciones y citas (solo se muestran en la línea de tiempo; si falla, no se muestran)
+    const opcional = (consulta, k) => TX.paginar(consulta).then(r => { CH[k] = r; }).catch(() => { CH[k] = []; });
+    tareas.push(
+      opcional(() => sb.from('cliente_interacciones').select('id,tipo,fecha,titulo,descripcion,created_at').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('fecha', { ascending: false }), 'interacciones'),
+      opcional(() => sb.from('proformas').select('id,numero_proforma,fecha,created_at,total,estado').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('created_at', { ascending: false }), 'proformas'),
+      opcional(() => sb.from('agenda_citas').select('id,fecha,estado,notas,created_at').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('fecha', { ascending: false }), 'citas'));
     await Promise.all(tareas);
     const idsCred = CH.creditos.map(c => c.id);
     const idsFiado = CH.fiados.map(f => f.id);
@@ -268,6 +274,11 @@
     }
     CH.fiados.forEach(f => ev.push({ f: f.created_at || f.fecha, ico: '📒', t: `Fiado: ${f.descripcion || ''}`, m: f.monto_total }));
     CH.fiadoPagos.forEach(p => ev.push({ f: p.created_at, ico: '✅', t: 'Abono a fiado', m: p.monto, cls: 'verde' }));
+    const ICO_INT = { llamada: '📞', visita: '🚗', reunion: '🤝', mensaje: '💬', correo: '✉️', cotizacion: '📄', reclamo: '⚠️', otro: '📝' };
+    (CH.interacciones || []).forEach(i => ev.push({ f: i.fecha || i.created_at, ico: ICO_INT[i.tipo] || '📝', t: [i.titulo || 'Nota', i.descripcion].filter(Boolean).join(': ').slice(0, 160) }));
+    const EST_PRO = { aceptada: 'aceptada', convertida: 'convertida en venta', rechazada: 'rechazada', perdida: 'perdida', vencida: 'vencida' };
+    (CH.proformas || []).forEach(p => ev.push({ f: p.created_at || p.fecha, ico: '📄', t: `Cotización ${p.numero_proforma || ''}${EST_PRO[p.estado] ? ' (' + EST_PRO[p.estado] + ')' : ''}`, m: p.total, cls: ['rechazada', 'perdida', 'anulada'].includes(p.estado) ? 'gris' : '' }));
+    (CH.citas || []).forEach(c => ev.push({ f: c.fecha || c.created_at, ico: '📅', t: `Cita${c.estado ? ' (' + String(c.estado).replace(/_/g, ' ') + ')' : ''}${c.notas ? ': ' + String(c.notas).slice(0, 80) : ''}`, cls: ['cancelada', 'no_asistio'].includes(c.estado) ? 'gris' : '' }));
     CH.devoluciones.forEach(d => ev.push({ f: d.created_at || d.fecha, ico: '↩️', t: `Devolución ${d.numero || ''}${d.motivo ? ': ' + d.motivo : ''}`, m: d.total }));
     return ev.filter(e => e.f).sort((a, b) => String(b.f).localeCompare(String(a.f)));
   }

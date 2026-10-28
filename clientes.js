@@ -1253,6 +1253,7 @@ async function abrirPerfil(clienteId) {
   // Historial de ventas
   await cargarHistorialVentas(cl.id);
   await cargarInteraccionesCliente(cl.id);
+  montarCrmFicha(cl);
 
   openModal('modal-perfil');
 }
@@ -1600,7 +1601,7 @@ function cambiarTab(tab) {
   document.querySelectorAll('.section-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab));
 
-  const paneles = { lista:'panel-lista', top:'panel-top', frecuentes:'panel-frecuentes', inactivos:'panel-inactivos' };
+  const paneles = { lista:'panel-lista', top:'panel-top', frecuentes:'panel-frecuentes', inactivos:'panel-inactivos', seguimientos:'panel-seguimientos' };
   Object.entries(paneles).forEach(([k, id]) => {
     const el = document.getElementById(id);
     if (el) el.style.display = k === tab ? '' : 'none';
@@ -1609,6 +1610,33 @@ function cambiarTab(tab) {
   if (tab === 'top')        loadTopClientes();
   if (tab === 'frecuentes') loadFrecuentes();
   if (tab === 'inactivos')  loadInactivos();
+  if (tab === 'seguimientos') cargarSeguimientosCrm();
+}
+
+/* ---- CRM: seguimientos (crm-seguimiento.js) ---- */
+function iniciarCrm() {
+  if (!window.N360CRM || !CS.userId) return false;
+  N360CRM.init({ sb, userId: CS.userId,
+    usuario: document.getElementById('header-name')?.textContent?.trim() || CS.userEmail || null,
+    negocio: CS.empresaConfig?.nombre_comercial || CS.empresaConfig?.nombre_negocio || null });
+  return true;
+}
+async function actualizarCuentaCrm() {
+  const el = document.getElementById('crm-tab-cuenta');
+  if (!el || !window.N360CRM) return;
+  try { const n = await N360CRM.contarPendientesHoy(); el.textContent = n; el.style.display = n ? '' : 'none'; }
+  catch (e) { el.style.display = 'none'; }
+}
+function cargarSeguimientosCrm() {
+  if (!window.N360CRM) return;
+  N360CRM.montarSeguimientos(document.getElementById('crm-seguimientos'), {
+    alAbrirCliente: id => abrirPerfil(id), alCambiar: actualizarCuentaCrm });
+}
+function montarCrmFicha(cl) {
+  if (!window.N360CRM) return;
+  const cli = { ...cl, nombre: [cl.nombre, cl.apellido].filter(Boolean).join(' ') || cl.nombre };
+  N360CRM.montarFicha(document.getElementById('perfil-crm'), cli, {
+    alCambiar: () => { cargarInteraccionesCliente(cl.id); actualizarCuentaCrm(); if (tabActiva === 'seguimientos') cargarSeguimientosCrm(); } });
 }
 
 /* ---- TOP 10 CLIENTES ---- */
@@ -1874,6 +1902,10 @@ async function initClientes() {
     document.getElementById('app').style.display = 'flex';
 
     await Promise.allSettled([loadKPIs(), loadClientes()]);
+    if (iniciarCrm()) {
+      actualizarCuentaCrm();
+      if (new URLSearchParams(location.search).get('tab') === 'seguimientos') cambiarTab('seguimientos');
+    }
 
     if (window.Negocio360Tutorial) {
       const pasosClientes = [

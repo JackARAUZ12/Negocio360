@@ -1982,6 +1982,98 @@ async function pruebaDemo(browser, base) {
   await ctx.close();
 }
 
+// CRM Fase 1: acciones rápidas en la ficha, recordatorios, WhatsApp con mensajes guardados,
+// pestaña Seguimientos, aviso en el Panel e historial completo. No toca ventas ni Caja.
+async function pruebaCRM(browser, base) {
+  console.log('\n▶ CRM: seguimiento de clientes');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    let { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clientes.html');
+    await page.evaluate(() => { const x = JSON.parse(JSON.stringify(window.__SEED)); x.clientes[0].telefono = '8888-1234';
+      const d = n => { const f = new Date(); f.setDate(f.getDate() + n); return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`; };
+      x.crm_tareas = [{ id: 't-atr', auth_user_id: x.clientes[0].auth_user_id, cliente_id: x.clientes[0].id, titulo: 'Cobrar saldo pendiente', tipo: 'cobrar', vence_en: d(-2), hecha: false, created_at: new Date().toISOString() },
+        { id: 't-otro', auth_user_id: 'otro-negocio', cliente_id: null, titulo: 'No es mía', tipo: 'otro', vence_en: d(0), hecha: false, created_at: new Date().toISOString() }];
+      x.tutoriales_vistos.push({ auth_user_id: x.clientes[0].auth_user_id, modulo_key: 'clientes' });
+      x.crm_plantillas = []; x.cliente_interacciones = []; sessionStorage.setItem('__DB', JSON.stringify(x)); });
+    await page.reload(); await esperarListo(page);
+    await page.waitForFunction(() => window.N360CRM && CS.userId, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.getElementById('crm-tab-cuenta')?.textContent === '1', null, { timeout: 8000 }).catch(() => {});
+    verificar(await page.textContent('#crm-tab-cuenta') === '1', `${tag}: la pestaña Seguimientos muestra 1 pendiente (solo los de este negocio)`);
+    // Ficha del cliente: acciones rápidas
+    const cid = await page.evaluate(() => CS.clientes[0].id);
+    await page.evaluate(id => abrirPerfil(id), cid);
+    await page.waitForSelector('#perfil-crm .crm-accion');
+    verificar(await page.locator('#perfil-crm .crm-accion').count() === 5, `${tag}: la ficha tiene Llamé, WhatsApp, Nota, Visita y Recordatorio`);
+    await page.waitForSelector('#perfil-crm [data-crm-pend] .crm-tarea');
+    verificar((await page.textContent('#perfil-crm [data-crm-pend]')).includes('Cobrar saldo pendiente') && (await page.textContent('#perfil-crm .crm-vence')).includes('Hace 2 días'), `${tag}: la ficha muestra lo pendiente con el cliente, marcado como atrasado`);
+    // Llamé + volver a contactar en 3 días
+    await page.click('#perfil-crm [data-crm-accion="llamada"]');
+    await page.fill('#crm-r-texto', 'Pasa el viernes por su pedido');
+    await page.click('#crm-r-cuando [data-d="3"]'); await page.click('#crm-r-ok');
+    await page.waitForFunction(() => !document.getElementById('crm-v-rapido').classList.contains('abierto'));
+    await page.waitForTimeout(400);
+    let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.cliente_interacciones.some(i => i.tipo === 'llamada' && i.descripcion === 'Pasa el viernes por su pedido' && i.cliente_id === cid), `${tag}: "Llamé" queda anotado en las interacciones del cliente`);
+    verificar(db.crm_tareas.some(t => t.cliente_id === cid && /Volver a contactar/.test(t.titulo) && !t.hecha), `${tag}: "Llamé" con "En 3 días" crea el recordatorio`);
+    verificar((await page.textContent('#interacciones-lista')).includes('Pasa el viernes'), `${tag}: la lista de interacciones se actualiza sola`);
+    // Recordatorio nuevo
+    await page.click('#perfil-crm [data-crm-accion="tarea"]');
+    await page.fill('#crm-t-titulo', ''); await page.click('#crm-t-ok');
+    verificar((await page.textContent('#crm-t-err')).includes('Escribe'), `${tag}: el recordatorio sin texto no se guarda y lo explica`);
+    await page.fill('#crm-t-titulo', 'Enviar catálogo nuevo'); await page.click('#crm-t-cuando [data-d="0"]'); await page.click('#crm-t-ok');
+    await page.waitForFunction(() => !document.getElementById('crm-v-tarea').classList.contains('abierto'));
+    // WhatsApp con mensaje guardado de ejemplo
+    await page.click('#perfil-crm [data-crm-accion="whatsapp"]');
+    await page.waitForSelector('#crm-w-pl .crm-chip');
+    await page.click('#crm-w-pl [data-i="0"]');
+    verificar((await page.inputValue('#crm-w-texto')).startsWith('Hola Cliente'), `${tag}: el mensaje guardado pone el nombre del cliente`);
+    const anchoCaja = await page.evaluate(() => { const c = document.querySelector('#crm-v-wa .crm-caja').getBoundingClientRect(); return c.right <= innerWidth + 1 && c.left >= -1; });
+    verificar(anchoCaja, `${tag}: la ventana de WhatsApp cabe en la pantalla`);
+    const [wa] = await Promise.all([ctx.waitForEvent('page'), page.click('#crm-w-ok')]);
+    verificar(decodeURIComponent(wa.url()).includes('wa.me/50588881234') && decodeURIComponent(wa.url()).includes('Hola Cliente'), `${tag}: abre WhatsApp al número del cliente (con 505) y el mensaje listo`);
+    await wa.close(); await page.waitForTimeout(400);
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.cliente_interacciones.some(i => i.tipo === 'mensaje' && i.titulo === 'WhatsApp'), `${tag}: el WhatsApp enviado queda anotado en el cliente`);
+    // Marcar hecha desde la ficha
+    await page.click('#perfil-crm [data-crm-hecha="t-atr"]'); await page.waitForTimeout(700);
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.crm_tareas.find(t => t.id === 't-atr').hecha === true && !!db.crm_tareas.find(t => t.id === 't-atr').hecha_en, `${tag}: marcar la casilla deja la tarea como hecha`);
+    verificar(await page.evaluate(() => document.getElementById('modal-perfil').scrollWidth <= document.getElementById('modal-perfil').clientWidth + 1), `${tag}: la ficha no se sale de la pantalla`);
+    // Pestaña Seguimientos
+    await page.evaluate(() => closeModal ? closeModal('modal-perfil') : null).catch(() => {});
+    await page.goto(base + '/clientes.html?tab=seguimientos'); await esperarListo(page);
+    await page.waitForSelector('#panel-seguimientos .crm-tarea', { timeout: 10000 });
+    const txt = await page.textContent('#crm-seguimientos');
+    verificar(txt.includes('Hoy') && txt.includes('Enviar catálogo nuevo') && txt.includes('Próximos 7 días') && !txt.includes('No es mía') && !txt.includes('Cobrar saldo'), `${tag}: Seguimientos agrupa por Hoy / Próximos, sin lo ya hecho ni lo de otro negocio`);
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag}: Seguimientos sin desbordarse`);
+    await page.click('#crm-seguimientos [data-crm-nueva]'); await page.fill('#crm-t-titulo', 'Revisar pedidos de la semana'); await page.click('#crm-t-ok');
+    await page.waitForFunction(() => document.getElementById('crm-seguimientos').textContent.includes('Revisar pedidos'), null, { timeout: 5000 }).catch(() => {});
+    verificar((await page.textContent('#crm-seguimientos')).includes('Revisar pedidos'), `${tag}: se puede crear un recordatorio sin cliente desde Seguimientos`);
+    // Mensajes guardados propios
+    await page.click('#crm-seguimientos [data-crm-pl]'); await page.click('#crm-pl-base');
+    await page.waitForFunction(() => document.querySelectorAll('#crm-pl-lista .crm-pl').length === 4, null, { timeout: 5000 }).catch(() => {});
+    verificar(await page.locator('#crm-pl-lista .crm-pl').count() === 4, `${tag}: se pueden guardar los mensajes de ejemplo como propios`);
+    await page.click('#crm-pl-listo');
+    verificar(page.__errores.length === 0, `${tag} Clientes CRM: sin errores (${page.__errores.join(' | ')})`);
+    // Panel principal: aviso del día
+    const dbFinal = await page.evaluate(() => sessionStorage.getItem('__DB'));
+    await page.goto(base + '/dashboard.html');
+    await page.waitForSelector('#dash-crm .crm-aviso', { timeout: 15000 }).catch(() => {});
+    verificar((await page.locator('#dash-crm').textContent().catch(() => '')).includes('Hoy tienes 1 seguimiento'), `${tag}: el Panel avisa "Hoy tienes 1 seguimiento"`);
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag}: el aviso del Panel no desborda`);
+    // Historial completo: aparecen llamada y WhatsApp, sin cambiar los montos
+    await page.goto(base + '/cliente-historial.html?id=' + cid);
+    await page.waitForTimeout(2500);
+    const linea = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-ch-tab]')].find(x => /línea|tiempo|movim/i.test(x.textContent)); if (b) b.click(); return !!b; });
+    await page.waitForTimeout(500);
+    const cuerpo = await page.textContent('body');
+    verificar(linea && cuerpo.includes('Llamada') && cuerpo.includes('WhatsApp'), `${tag}: el historial completo muestra llamadas y WhatsApp`);
+    verificar(page.__errores.length === 0, `${tag} Panel / historial: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2010,6 +2102,7 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
+    if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); throw 'fin'; }
     if (process.env.SOLO_PROD) { await pruebaProduccion(browser, base); await pruebaVentaPreparados(browser, base); throw 'fin'; }
     if (process.env.SOLO_REGALO) { await pruebaSinRegalo(browser, base); throw 'fin'; }
     if (process.env.SOLO_MEDICO) { await pruebaNuevoMedico(browser, base); throw 'fin'; }
@@ -2038,6 +2131,7 @@ async function regresion(browser, base) {
     await pruebaDemo(browser, base);
     await pruebaNuevoMedico(browser, base);
     await pruebaSinRegalo(browser, base);
+    await pruebaCRM(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);
