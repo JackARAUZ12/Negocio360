@@ -988,6 +988,10 @@ async function abrirDetalle(ventaId) {
           <div class="detalle-label">Descuento</div>
           <div class="detalle-value">${fmt(venta.descuento)}</div>
         </div>
+        ${Number(venta.descuento_general) > 0 ? `<div class="detalle-item">
+          <div class="detalle-label">Incluye descuento general</div>
+          <div class="detalle-value">${fmt(venta.descuento_general)} <span style="font-size:12px;color:var(--text-muted)">(${venta.descuento_general_modo === 'porcentaje' ? Number(venta.descuento_general_valor) + '%' : 'monto fijo'}${venta.descuento_general_motivo ? ' · ' + esc(venta.descuento_general_motivo) : ''})</span></div>
+        </div>` : ''}
         <div class="detalle-item">
           <div class="detalle-label">Impuestos${venta.iva_porcentaje ? ` (${Number(venta.iva_porcentaje)}%)` : ''}</div>
           <div class="detalle-value">${fmt(venta.impuesto)}</div>
@@ -1844,6 +1848,8 @@ async function abrirNuevaVenta() {
   S.clienteObjeto = null;
   S.carrito       = [];
   S.canje         = null;
+  S._totalRevisado = null;
+  S.descGeneral   = null;        // descuento general de la factura { modo:'porcentaje'|'monto', valor, motivo }
   S._vetConsultaId = null;
   S._txOrdenId = null;
   S._vetEstanciaId = null;
@@ -4735,7 +4741,32 @@ function calcularResumen() {
   // una columna ni un concepto nuevo en la venta.
   const resultadoPromos = calcularDescuentosPromociones(S.carrito, S.promociones);
   const descuentoPromociones = resultadoPromos.total;
-  const descuentoBase = round2(descuentoManual + descuentoPromociones);
+  // Descuento general de la factura: se calcula sobre lo que queda después de los
+  // descuentos por producto y las promociones. Nunca puede pasar de esa base (ni del tope
+  // configurado), así el total jamás queda negativo ni se descuenta dos veces lo mismo.
+  const baseGeneral = Math.max(round2(subtotal - round2(descuentoManual + descuentoPromociones)), 0);
+  let descuentoGeneral = 0, descuentoGeneralTopado = false;
+  if (S.descGeneral) {
+    const dgCfg = descuentoGeneralConfig();
+    const maxPct = dgCfg.permitido ? dgCfg.maxPct : 0;
+    const v = Math.max(Number(S.descGeneral.valor) || 0, 0);
+    const bruto = S.descGeneral.modo === 'porcentaje' ? round2(baseGeneral * Math.min(v, 100) / 100) : round2(v);
+    const tope = round2(baseGeneral * maxPct / 100);
+    if (!dgCfg.permitido || !(bruto > 0)) {
+      S.descGeneral = null;                      // sin permiso o sin valor: no se aplica nada
+    } else if (S.descGeneral.modo === 'monto' && bruto > baseGeneral + 0.004) {
+      // Un monto fijo que ya no cabe en la factura (se quitaron productos): NO se recorta hasta
+      // dejarla en cero en silencio; se quita y se avisa para que la persona lo vuelva a poner.
+      S.descGeneral = null;
+      showToast('El descuento general se quitó porque ya no cabe en la factura. Vuelve a aplicarlo si lo necesitas.', 'warning');
+    } else {
+      if (S.descGeneral.modo === 'porcentaje') S.descGeneral.valor = Math.min(v, 100, maxPct);   // lo guardado = lo realmente aplicado
+      descuentoGeneral = Math.min(bruto, baseGeneral, tope);
+      descuentoGeneralTopado = bruto > descuentoGeneral + 0.004;
+      if (!(descuentoGeneral > 0)) { descuentoGeneral = 0; S.descGeneral = null; }
+    }
+  }
+  const descuentoBase = round2(descuentoManual + descuentoPromociones + descuentoGeneral);
   // Canje de puntos: se suma al mismo descuento. Si ya no aplica (cambio de
   // cliente, se quito el producto regalado, o el descuento es 0), se quita solo.
   let descuentoPuntos = 0;
@@ -4768,11 +4799,11 @@ function calcularResumen() {
   const certPago = (S.certificado && S.certificado.modo === 'anticipo')
     ? round2(Math.min(Number(S.certificado.saldo) || 0, Math.max(cobrarSinCert, 0))) : 0;
   const cobrar = round2(cobrarSinCert - certPago);
-  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoPuntos - descuentoCert;
+  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoGeneral - descuentoPuntos - descuentoCert;
   const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
-  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle,
+  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, descuentoGeneral, descuentoGeneralTopado, baseGeneral, promocionesAplicadas: resultadoPromos.detalle,
                  descuentoCert, certPago, certAplicado: round2(descuentoCert + certPago) };
   if (window.N360CertVenta) { try { N360CertVenta.pintar(); } catch (_) {} }
 
@@ -4815,6 +4846,7 @@ function calcularResumen() {
 
   setEl2('res-subtotal',  fmt(subtotal));
   setEl2('res-descuento', descuento>0 ? `-${fmt(descuento)}` : fmt(0));
+  pintarDescuentoGeneral();
   setEl2('res-impuestos', fmt(impuestos));
   setEl2('res-total',     fmt(total));
   const rowRet = document.getElementById('res-ret-row');
@@ -4824,6 +4856,131 @@ function calcularResumen() {
   setEl2('res-cobrar', fmt(cobrar));
   setEl2('res-ganancia',  fmt(ganancia));
   actualizarPuntosEstimados();
+}
+
+/* ============================================================
+   DESCUENTO GENERAL DE LA FACTURA
+   ------------------------------------------------------------
+   Un descuento al total (en % o en monto) además de los descuentos
+   por producto. Se suma al MISMO "descuento" de la venta (junto con
+   promociones, puntos y certificados), así Caja, impuestos,
+   devoluciones, anulaciones y contabilidad leen lo mismo de siempre.
+   Candados: nunca más que la base ni que el tope configurado, se
+   recalcula con cada cambio del carrito, se vuelve a calcular justo
+   antes de guardar, y la base de datos valida que los montos cuadren.
+   ============================================================ */
+function descuentoGeneralConfig() {
+  try { if (window.N360VentasConfig && N360VentasConfig.descuentoGeneral) return N360VentasConfig.descuentoGeneral(); } catch (_) {}
+  return { permitido: true, maxPct: 100 };
+}
+
+function pintarDescuentoGeneral() {
+  const box = document.getElementById('res-dg');
+  if (!box) return;
+  const cfg = descuentoGeneralConfig();
+  const r = S._resumen || {};
+  const hay = (r.descuentoGeneral || 0) > 0;
+  if (!cfg.permitido && !hay) { box.innerHTML = ''; return; }
+  if (!S.carrito.length) { box.innerHTML = ''; return; }
+  if (hay) {
+    const g = S.descGeneral || {};
+    const detalle = g.modo === 'porcentaje' ? `${Number(g.valor) || 0}%` : 'monto fijo';
+    box.innerHTML = `<div class="resumen-row" style="align-items:center">
+        <span class="label">Descuento general <span style="color:var(--text-muted);font-weight:400">(${esc(detalle)}${g.motivo ? ' · ' + esc(g.motivo) : ''})</span></span>
+        <span class="value" style="color:var(--warning)">-${fmt(r.descuentoGeneral)}</span>
+      </div>
+      ${r.descuentoGeneralTopado ? `<div style="font-size:12px;color:var(--danger);margin:-4px 0 6px">Se limitó al máximo permitido.</div>` : ''}
+      <div style="display:flex;gap:8px;margin:-2px 0 8px">
+        <button type="button" class="btn-ghost btn-sm" onclick="abrirDescuentoGeneral()">Cambiar</button>
+        <button type="button" class="btn-ghost btn-sm" onclick="quitarDescuentoGeneral()">Quitar</button>
+      </div>`;
+  } else {
+    box.innerHTML = `<div style="margin:2px 0 10px"><button type="button" class="btn-ghost btn-sm" onclick="abrirDescuentoGeneral()">🏷️ Descuento general</button></div>`;
+  }
+}
+
+function quitarDescuentoGeneral() {
+  S.descGeneral = null;
+  calcularResumen();
+}
+
+function abrirDescuentoGeneral() {
+  const cfg = descuentoGeneralConfig();
+  if (!cfg.permitido) { showToast('No tienes permiso para aplicar descuento general', 'error'); return; }
+  if (!S.carrito.length) { showToast('Agrega productos antes de aplicar un descuento', 'warning'); return; }
+  const prev = S.descGeneral || { modo: 'porcentaje', valor: '', motivo: '' };
+  document.getElementById('dg-overlay')?.remove();
+  const o = document.createElement('div');
+  o.id = 'dg-overlay';
+  o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,18,30,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  o.innerHTML = `<div style="background:var(--bg-surface,#fff);color:var(--text-primary,#111);width:100%;max-width:400px;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:18px" role="dialog" aria-modal="true">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong style="font-size:16px">🏷️ Descuento general</strong>
+      <button type="button" id="dg-x" style="border:none;background:none;font-size:20px;cursor:pointer;color:inherit" aria-label="Cerrar">✕</button>
+    </div>
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">Se aplica al total de la factura, después de los descuentos por producto.</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <button type="button" id="dg-modo" style="flex:none;width:44px;height:44px;border-radius:10px;border:1px solid var(--border);background:var(--bg-hover,#f0f0f5);cursor:pointer;font-weight:700;color:inherit"></button>
+      <input type="number" id="dg-valor" min="0" step="0.01" inputmode="decimal" style="flex:1;min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;font-size:16px;background:var(--bg-surface,#fff);color:inherit">
+    </div>
+    <input type="text" id="dg-motivo" maxlength="80" placeholder="Motivo (opcional): cliente frecuente, pago de contado…" style="width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;margin-bottom:12px;background:var(--bg-surface,#fff);color:inherit">
+    <div id="dg-vista" style="padding:10px 12px;background:var(--bg-app,#f5f5fa);border-radius:10px;font-size:13px;line-height:1.7;margin-bottom:8px"></div>
+    <div id="dg-error" style="color:var(--danger);font-size:12.5px;min-height:18px;margin-bottom:6px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn-secondary" id="dg-cancelar">Cancelar</button>
+      <button type="button" class="btn-primary" id="dg-aplicar">Aplicar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(o);
+  let modo = prev.modo === 'monto' ? 'monto' : 'porcentaje';
+  const $v = o.querySelector('#dg-valor'), $m = o.querySelector('#dg-modo');
+  $v.value = prev.valor === '' ? '' : String(prev.valor);
+  o.querySelector('#dg-motivo').value = prev.motivo || '';
+  const r0 = S._resumen || {};
+  // Base sobre la que se calcula (sin contar el descuento general que ya tenía puesto)
+  const sub = Number(r0.subtotal) || 0;
+  const conOtros = Math.max(sub - (Number(r0.descuento) || 0) + (Number(r0.descuentoGeneral) || 0) - (Number(r0.descuentoPuntos) || 0) - (Number(r0.descuentoCert) || 0), 0);
+  const base = Number(r0.baseGeneral) > 0 ? Number(r0.baseGeneral) : round2(conOtros);
+  const calcular = () => {
+    const v = Math.max(parseFloat($v.value) || 0, 0);
+    const bruto = modo === 'porcentaje' ? round2(base * Math.min(v, 100) / 100) : round2(v);
+    const tope = round2(base * cfg.maxPct / 100);
+    let err = '';
+    if (modo === 'porcentaje' && v > cfg.maxPct) err = `El máximo permitido es ${cfg.maxPct}%.`;
+    else if (modo === 'monto' && bruto > tope + 0.004) err = `El máximo permitido es ${fmt(tope)}.`;
+    else if (bruto > base + 0.004) err = `No puede pasar de ${fmt(base)}.`;
+    return { v, desc: Math.min(bruto, base, tope), err };
+  };
+  const pintar = () => {
+    $m.textContent = modo === 'porcentaje' ? '%' : 'C$';
+    $m.title = modo === 'porcentaje' ? 'Cambiar a monto' : 'Cambiar a porcentaje';
+    $v.placeholder = modo === 'porcentaje' ? '0 %' : '0.00';
+    const c = calcular();
+    const nuevoDesc = round2((Number(r0.descuento) || 0) - (Number(r0.descuentoGeneral) || 0) + c.desc);
+    o.querySelector('#dg-vista').innerHTML = `<div style="display:flex;justify-content:space-between"><span>Base</span><span>${fmt(base)}</span></div>
+      <div style="display:flex;justify-content:space-between"><span>Descuento general</span><b style="color:var(--warning)">-${fmt(c.desc)}</b></div>
+      <div style="display:flex;justify-content:space-between"><span>Descuento total de la factura</span><span>-${fmt(nuevoDesc)}</span></div>`;
+    o.querySelector('#dg-error').textContent = c.err;
+  };
+  $m.onclick = () => { modo = modo === 'porcentaje' ? 'monto' : 'porcentaje'; $v.value = ''; pintar(); };
+  $v.oninput = pintar;
+  const cerrar = () => { o.remove(); document.removeEventListener('keydown', esc2); };
+  const esc2 = (e) => { if (e.key === 'Escape') cerrar(); };
+  document.addEventListener('keydown', esc2);
+  o.addEventListener('mousedown', (e) => { if (e.target === o) cerrar(); });
+  o.querySelector('#dg-x').onclick = cerrar; o.querySelector('#dg-cancelar').onclick = cerrar;
+  o.querySelector('#dg-aplicar').onclick = () => {
+    const c = calcular();
+    if (c.err) { o.querySelector('#dg-error').textContent = c.err; return; }
+    if (!(c.v > 0) || !(c.desc > 0)) { o.querySelector('#dg-error').textContent = 'Escribe un descuento mayor que cero (o usa "Quitar").'; return; }
+    // Descuentos grandes (la mitad o más de la factura): se pide confirmar para evitar un error de dedo.
+    if (base > 0 && c.desc >= base * 0.5 && !confirm(`El descuento es de ${fmt(c.desc)} (${Math.round(c.desc / base * 100)}% de la factura). ¿Confirmas?`)) return;
+    S.descGeneral = { modo, valor: c.v, motivo: (o.querySelector('#dg-motivo').value || '').trim().slice(0, 80) };
+    cerrar();
+    calcularResumen();
+  };
+  pintar();
+  setTimeout(() => $v.focus(), 50);
 }
 
 function setEl2(id, val) {
@@ -5082,6 +5239,7 @@ function validarPagoSeparado() {
 function renderResumenFinal() {
   S.observaciones = document.getElementById('venta-observaciones')?.value || '';
   const r = S._resumen || {};
+  S._totalRevisado = Number(r.total) || 0;   // el total que la persona ve antes de confirmar
   const el = document.getElementById('resumen-final-contenido');
   if (!el) return;
   el.innerHTML = `
@@ -5096,7 +5254,7 @@ function renderResumenFinal() {
         <span>Subtotal</span><strong>${fmt(r.subtotal||0)}</strong>
       </div>
       ${(r.descuento||0)>0 ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <span>Descuento</span><strong style="color:var(--warning)">-${fmt(r.descuento)}</strong>
+        <span>Descuento${(r.descuentoGeneral||0)>0 ? ` <span style="color:var(--text-muted);font-weight:400">(incluye descuento general ${fmt(r.descuentoGeneral)})</span>` : ''}</span><strong style="color:var(--warning)">-${fmt(r.descuento)}</strong>
       </div>` : ''}
       ${S.ivaActivo ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
         <span>IVA (${S.ivaPorcentaje}%)</span><strong>${fmt(r.ivaMonto != null ? r.ivaMonto : (r.impuestos||0))}</strong>
@@ -5981,6 +6139,15 @@ async function _confirmarVentaInterno(conImpresion) {
 
   try {
     S.observaciones = document.getElementById('venta-observaciones')?.value.trim() || '';
+    // Con descuento general: se recalcula todo justo antes de guardar y se compara con el total
+    // que la persona revisó en pantalla. Si algo cambió (carrito, tope, etc.), no se guarda nada.
+    if (S.descGeneral) {
+      calcularResumen();
+      const rr = S._resumen;
+      if (!rr || (S._totalRevisado != null && Math.abs((Number(rr.total) || 0) - S._totalRevisado) > 0.005)) {
+        throw new Error('El total cambió mientras se preparaba la venta. Revisa el resumen y confirma de nuevo.');
+      }
+    }
     const r = S._resumen;
 
     // "Corregir venta": primero se anula la original (misma rutina de
@@ -6066,6 +6233,10 @@ async function _confirmarVentaInterno(conImpresion) {
       // Certificado de regalo: la base valida el saldo y lo descuenta EN LA MISMA operación que guarda la venta.
       ...((S.certificado && certAplicado > 0) ? { certificados_aplicados: [{ certificado_id: S.certificado.id, monto: certAplicado }] } : {}),
       ...(S._certEmisionId ? { certificado_emision_id: S._certEmisionId } : {}),
+      // Descuento general: queda constancia de cuánto fue y cómo se puso (el total ya lo incluye en "descuento").
+      ...((Number(r.descuentoGeneral) || 0) > 0 && S.descGeneral
+        ? { descuento_general: r.descuentoGeneral, descuento_general_modo: S.descGeneral.modo,
+            descuento_general_valor: Number(S.descGeneral.valor) || 0, descuento_general_motivo: S.descGeneral.motivo || null } : {}),
       // Canje de puntos: va en el payload BASE para que el reintento sin
       // columnas de IVA tambien lo lleve (nunca debe haber descuento sin canje).
       ...((S.canje && S.canje.clienteId === S.clienteId && (r.descuentoPuntos || 0) > 0)
