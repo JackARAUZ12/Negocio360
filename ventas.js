@@ -1203,6 +1203,7 @@ async function loadProductosCache() {
 
     S.productosCache = [...productos, ...combosCache];
     try { await window.N360Unidades?.cargarPersonalizadas(sb, S.userId); } catch (_) {}
+    await marcarPreparadosAlVender(productos);
   } catch(e) { S.productosCache = []; }
   // Con Stock Compartido activo, el stock del grupo tambien se refresca
   // (ej. despues de una venta), para que la busqueda no muestre
@@ -1217,6 +1218,45 @@ async function loadClientesCache() {
     S.clientesCache = data || [];
   } catch(e) { S.clientesCache = []; }
 }
+
+/* Platos que se preparan al vender (Producción: receta "se prepara al vender").
+   No llevan inventario propio: no se frenan por existencia, no se manda el plato a
+   descontar (el servidor descuenta sus ingredientes en la misma operación de la venta)
+   y su costo es el de sus ingredientes ahora mismo (como el costo en vivo de los combos).
+   Los ingredientes "que se van gastando" (aceite, gas…) no entran por plato.
+   Sin recetas así, nada cambia. */
+const UNIDAD_BASE_RECETA = { gramo:['peso',1], kilogramo:['peso',1000], libra:['peso',453.59237], onza:['peso',28.349523125], quintal:['peso',45359.237], tonelada:['peso',1000000],
+  mililitro:['volumen',1], litro:['volumen',1000], galon:['volumen',3785.411784], centimetro:['longitud',1], metro:['longitud',100], pulgada:['longitud',2.54],
+  pie:['longitud',30.48], yarda:['longitud',91.44], vara:['longitud',83.59], unidad:['conteo',1], docena:['conteo',12], par:['conteo',2] };
+function factorUnidadReceta(desde, prod) {                    // misma regla que el servidor (_unidad_factor)
+  const u = prod?.unidad_codigo || '';
+  if (!desde || desde === u) return 1;
+  if (desde === prod?.unidad_compra_codigo && Number(prod?.factor_compra) > 0) return Number(prod.factor_compra);
+  const a = UNIDAD_BASE_RECETA[desde], b = UNIDAD_BASE_RECETA[u];
+  return a && b && a[0] === b[0] ? a[1] / b[1] : null;
+}
+async function marcarPreparadosAlVender(productos) {
+  try {
+    const { data: recs, error } = await sb.from('recetas_produccion')
+      .select('producto_terminado_id, cantidad_producida, receta_componentes(producto_id, cantidad, unidad_codigo, uso_continuo)')
+      .eq('auth_user_id', S.userId).eq('al_vender', true).eq('activa', true);
+    if (error || !recs || !recs.length) return;
+    const ids = [...new Set(recs.flatMap(r => (r.receta_componentes || []).map(c => c.producto_id)))];
+    const { data: ings } = ids.length ? await sb.from('productos').select('id,costo,unidad_codigo,unidad_compra_codigo,factor_compra').in('id', ids) : { data: [] };
+    const porId = new Map((ings || []).map(p => [p.id, p]));
+    recs.forEach(r => {
+      const p = productos.find(x => x.id === r.producto_terminado_id);
+      if (!p) return;
+      const costo = (r.receta_componentes || []).filter(c => !c.uso_continuo).reduce((t, c) => {
+        const ing = porId.get(c.producto_id), f = factorUnidadReceta(c.unidad_codigo, ing);
+        return t + (f == null ? 0 : Number(c.cantidad || 0) * f * Number(ing?.costo || 0));
+      }, 0) / (Number(r.cantidad_producida) || 1);
+      p.preparadoAlVender = true;
+      p.costo = Math.round(costo * 100) / 100;
+    });
+  } catch (e) { console.warn('Platos que se preparan al vender (se sigue normal):', e); }
+}
+function esPreparadoAlVender(id) { return !!S.productosCache?.find(p => p.id === id && p.preparadoAlVender); }
 
 async function loadEscalasCache() {
   try {
@@ -2178,6 +2218,8 @@ function buscarProductosParaVenta(q, tipo) {
     let stockLabel, stockCls;
     if (tipo==='servicio') {
       stockLabel = 'Sin límite'; stockCls = 'stock-ok';
+    } else if (p.preparadoAlVender) {
+      stockLabel = '🍳 Se prepara al vender'; stockCls = 'stock-ok';
     } else if (stockNum <= 0) {
       // Con "Vender sin stock" activo, se avisa igual pero se aclara
       // que sí se puede continuar — nunca se oculta el estado real.
@@ -2189,7 +2231,7 @@ function buscarProductosParaVenta(q, tipo) {
     }
     // Con Stock Compartido O Vender-sin-stock activos, nunca se
     // deshabilita por falta de stock local.
-    const disabled = tipo==='producto' && stockNum<=0 && !S.stockCompartidoActivo && !S.venderSinStockActivo;
+    const disabled = tipo==='producto' && stockNum<=0 && !p.preparadoAlVender && !S.stockCompartidoActivo && !S.venderSinStockActivo;
     const esEscala = p.tipo_precio === 'escala';
     const precioLabel = esEscala
       ? (() => {
@@ -3228,7 +3270,7 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   // de siempre (stock de esta misma cuenta).
   const origen = S.origenStockElegido; S.origenStockElegido = null;
   const esRemoto = !!(origen && !origen.esLocal);
-  const stockReal = esRemoto ? origen.stockDisponible : parseFloat(prod.stock_actual||0);
+  const stockReal = esRemoto ? origen.stockDisponible : (prod.preparadoAlVender ? Infinity : parseFloat(prod.stock_actual||0));
 
   // Precio a usar: el de la escala elegida, o el precio fijo del producto
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(prod.precio||0);
@@ -3343,7 +3385,7 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
 
   const origen = S.origenStockElegido; S.origenStockElegido = null;
   const esRemoto = !!(origen && !origen.esLocal);
-  const stockReal = esRemoto ? origen.stockDisponible : (Number(prod.stock_actual) || 0);
+  const stockReal = esRemoto ? origen.stockDisponible : (prod.preparadoAlVender ? Infinity : (Number(prod.stock_actual) || 0));
 
   const precioUsar = parseFloat(escalaElegida.precio || 0);
   const existente   = VR.carrito.find(i => i.id === productoId && (i.escalaId || null) === escalaElegida.id && (i.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
@@ -3628,6 +3670,7 @@ function construirStockDeVenta(carrito) {
       continue;
     }
     if (item.tipo !== 'producto') continue;
+    if (!item.origenStockId && esPreparadoAlVender(item.id)) continue;   // el servidor descuenta sus ingredientes
     if (item.origenStockId) { out.push({ tipo: 'remoto', sucursal_id: item.origenStockId, nombre: item.nombre, cantidad: unidadesInventario(item) }); continue; }
     out.push({ tipo: 'producto', producto_id: item.id, cantidad: unidadesInventario(item) });
   }
@@ -3942,7 +3985,7 @@ function construirItemCarritoDesdeProducto(prod, cantidad) {
     id: prod.id, nombre: prod.nombre, sku: prod.sku || '', tipo: prod.tipo,
     cantidad, precio, costo, descuento: 0,
     subtotal: round2(cantidad * precio), ganancia: round2(cantidad * (precio - costo)),
-    stockMax: prod.tipo === 'producto' ? Number(prod.stock_actual || 0) : Infinity,
+    stockMax: prod.tipo === 'producto' && !prod.preparadoAlVender ? Number(prod.stock_actual || 0) : Infinity,
     esCombo: !!prod.esCombo, escalaId, escalaNombre, origenStockId: null, origenStockNombre: null,
   };
 }
@@ -6056,6 +6099,7 @@ async function _confirmarVentaInterno(conImpresion) {
       producto_id:    (item.esCombo || item.esPromocion) ? null : item.id,
       combo_id:       item.esCombo ? item.id : null,
       promocion_id:   item.esPromocion ? item.id : null,
+      ...(item.esPromocion && item.componentesPromo?.length ? { componentes_promo: item.componentesPromo } : {}),
       producto_nombre:item.nombre,
       producto_sku:   item.sku || null,
       tipo_item:      (item.esCombo || item.esPromocion) ? 'producto' : item.tipo,
@@ -6921,7 +6965,7 @@ function continuarEscaneoConProducto(prod) {
     return;
   }
 
-  if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0 && !S.venderSinStockActivo) {
+  if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0 && !prod.preparadoAlVender && !S.venderSinStockActivo) {
     showToast(`⚠️ "${prod.nombre}" no tiene stock disponible`, 'error');
     if (status) status.textContent = '📡 Listo para escanear';
     enfocarScannerVR();
@@ -7031,7 +7075,7 @@ async function procesarCodigoEscaneado(codigo) {
 function agregarAlCarritoVR(prod) {
   const origen = S.origenStockElegido; S.origenStockElegido = null;
   const esRemoto = !!(origen && !origen.esLocal);
-  const stockReal = esRemoto ? origen.stockDisponible : (Number(prod.stock_actual) || 0);
+  const stockReal = esRemoto ? origen.stockDisponible : (prod.preparadoAlVender ? Infinity : (Number(prod.stock_actual) || 0));
 
   const existente = VR.carrito.find(i => i.id === prod.id && (i.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
   if (existente) {
@@ -7491,6 +7535,7 @@ async function _confirmarVentaRapidaInterno() {
       producto_id:     (item.esCombo || item.esPromocion) ? null : item.id,
       combo_id:        item.esCombo ? item.id : null,
       promocion_id:    item.esPromocion ? item.id : null,
+      ...(item.esPromocion && item.componentesPromo?.length ? { componentes_promo: item.componentesPromo } : {}),
       producto_nombre: item.nombre,
       producto_sku:    item.sku || null,
       tipo_item:       (item.esCombo || item.esPromocion) ? 'producto' : item.tipo,

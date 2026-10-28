@@ -1231,6 +1231,13 @@
         <div id="ph-hoy" style="margin-top:10px"></div>
       </div>
 
+      <!-- INSUMOS QUE SE VAN GASTANDO (aceite, gas, sal…) -->
+      <div class="panel-card fade-in" id="prod-insumos" style="margin-bottom:16px;display:none">
+        <div style="font-weight:800;font-size:15px">🫙 Insumos que se van gastando</div>
+        <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">No se descuentan por plato: cuando se termine uno y abras otro, toca "Abrí uno nuevo". El sistema aprende cuánto rinde.</div>
+        <div id="in-lista" class="in-grid"></div>
+      </div>
+
       <!-- COSTOS Y MERMA DEL MES -->
       <div class="panel-card fade-in" id="prod-reporte" style="margin-bottom:16px">
         <div style="font-weight:800;font-size:15px;margin-bottom:8px">📊 Costos y merma del mes</div>
@@ -1522,6 +1529,8 @@
               <div class="form-row">
                 <div><label>¿Cuánto produce esta receta? *</label><input type="number" id="rc-cantidad-produce" min="0.01" step="0.01" value="1"/></div>
               </div>
+              <label class="rc-check"><input type="checkbox" id="rc-al-vender" onchange="alCambiarAlVender()"/>
+                <span><b>🍳 Se prepara al vender</b> (hamburguesas, platos, bebidas preparadas): no se produce por tandas; cada vez que se vende, se descuentan sus ingredientes.</span></label>
             </div>
 
             <!-- SECCIÓN: DESPIECE -->
@@ -1710,6 +1719,23 @@
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-insumo" role="dialog" aria-labelledby="in-titulo">
+  <div class="modal-box" style="max-width:420px;width:100%">
+    <div class="modal-header"><span class="modal-title" id="in-titulo">Abrí uno nuevo</span>
+      <button class="modal-close" onclick="closeModal('modal-insumo')" aria-label="Cerrar">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label for="in-cantidad" id="in-cantidad-label">¿Cuántos abriste?</label>
+        <input type="number" id="in-cantidad" min="0.001" step="0.001" inputmode="decimal" value="1" oninput="recalcularInsumo()"/></div>
+      <div class="form-group"><label for="in-nota">Nota (opcional)</label><input type="text" id="in-nota" maxlength="300" placeholder="Ej: galón nuevo de la freidora"/></div>
+      <p id="in-valor" style="font-size:12.5px;font-weight:700;margin:4px 0 0"></p>
+      <p id="in-error" role="alert" style="color:var(--danger);font-size:12.5px;margin:6px 0 0"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-insumo')">Cancelar</button>
+      <button class="btn-primary" id="in-btn" onclick="guardarInsumo()">✅ Registrar</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-merma" role="dialog" aria-labelledby="mm-titulo">
   <div class="modal-box" style="max-width:440px;width:100%">
     <div class="modal-header"><span class="modal-title" id="mm-titulo">🗑️ Registrar merma</span>
@@ -1730,6 +1756,17 @@
   </div>
 </div>
 <style>
+  .rc-check { display:flex; gap:8px; align-items:flex-start; font-size:12.5px; margin:8px 0 4px; cursor:pointer; }
+  .rc-check input { margin-top:3px; flex:none; width:auto; }
+  .rc-check > span { flex:1; min-width:0; }
+  .rc-continuo { display:flex; align-items:flex-start; gap:4px; font-size:11px; color:var(--text-muted); white-space:normal; overflow-wrap:anywhere; min-width:0; cursor:pointer; }
+  .rc-continuo input { margin-top:2px; flex:none; width:auto; }
+  .in-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; }
+  .in-card { border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .in-card .in-nombre { font-weight:800; font-size:14px; overflow-wrap:anywhere; }
+  .in-card .in-dato { font-size:12px; color:var(--text-muted); }
+  .in-card .in-alerta { font-size:12px; color:#d97706; font-weight:700; }
+  .ph-preparados { font-size:12px; color:var(--text-muted); margin-top:8px; }
   .mm-motivos { display:flex; flex-wrap:wrap; gap:6px; }
   .mm-motivo { display:inline-flex; align-items:center; gap:5px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; font-size:12.5px; cursor:pointer; }
   .ph-peso { width:84px; }
@@ -1759,7 +1796,7 @@
   @media (max-width:420px) { .ph-grid { grid-template-columns:1fr 1fr; } }
 </style>
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="produccion.js?v=20261028c"></script>
+<script src="produccion.js?v=20261028d"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261028a"></script>
 <script src="modulos-guard.js?v=20261025c"></script>

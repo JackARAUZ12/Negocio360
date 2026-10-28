@@ -1706,6 +1706,11 @@ async function pruebaProduccion(browser, base) {
     }
     window.__llamadasProd = 0;
     window.__RPC = {
+      produccion_insumo_abrir: a => { const db = DB(), p = db.productos.find(x => x.id === a.p_producto_id);
+        if (p.stock_actual < a.p_cantidad) return { ok: false, motivo: 'sin_existencia', disponible: p.stock_actual };
+        p.stock_actual = r2(p.stock_actual - a.p_cantidad);
+        db.insumo_aperturas.push({ id: 'ia-' + Date.now(), auth_user_id: db.usuarios[0].auth_user_id, producto_id: p.id, cantidad: a.p_cantidad, costo_total: r2(a.p_cantidad * p.costo), created_at: new Date().toISOString() });
+        G(db); return { ok: true, costo_total: r2(a.p_cantidad * p.costo) }; },
       produccion_merma_registrar: a => { const db = DB(), p = db.productos.find(x => x.id === a.p_producto_id);
         if (p.stock_actual < a.p_cantidad) return { ok: false, motivo: 'sin_existencia', disponible: p.stock_actual };
         db.movimientos_inventario = db.movimientos_inventario || [];
@@ -1744,6 +1749,19 @@ async function pruebaProduccion(browser, base) {
     db.receta_despiece_salidas = [{ id: 'ds1', auth_user_id: U, receta_id: 'rec-cerdo', producto_id: 'pt-pierna', cantidad_rendimiento: 40, es_merma: false },
       { id: 'ds2', auth_user_id: U, receta_id: 'rec-cerdo', producto_id: 'pt-costilla', cantidad_rendimiento: 25, es_merma: false },
       { id: 'ds3', auth_user_id: U, receta_id: 'rec-cerdo', producto_id: 'pt-hueso', cantidad_rendimiento: 15, es_merma: true }];
+    db.productos.push({ id: 'mp-aceite', auth_user_id: U, tipo: 'producto', nombre: 'Aceite', costo: 300, precio: 0, stock_actual: 3, es_materia_prima: true, activo: true, unidad_codigo: 'galon' },
+      { id: 'pt-hamb', auth_user_id: U, tipo: 'producto', nombre: 'Hamburguesa', costo: 0, precio: 120, stock_actual: 0, activo: true });
+    db.recetas_produccion.push({ id: 'rec-hamb', auth_user_id: U, producto_terminado_id: 'pt-hamb', nombre: 'Hamburguesa', cantidad_producida: 1, costo_extra_tanda: 0, activa: true, tipo: 'normal', al_vender: true, created_at: '2026-08-01T00:00:00Z' });
+    db.receta_componentes.push({ id: 'rc4', auth_user_id: U, receta_id: 'rec-hamb', producto_id: 'mp-levadura', cantidad: 0.01 },
+      { id: 'rc5', auth_user_id: U, receta_id: 'rec-hamb', producto_id: 'mp-aceite', cantidad: 0.01, uso_continuo: true });
+    const dia = n => new Date(Date.now() - n * 86400000).toISOString();
+    db.insumo_aperturas = [{ id: 'ia1', auth_user_id: U, producto_id: 'mp-aceite', cantidad: 1, costo_total: 300, created_at: dia(10) },
+      { id: 'ia2', auth_user_id: U, producto_id: 'mp-aceite', cantidad: 1, costo_total: 300, created_at: dia(3) }];
+    db.ventas = db.ventas || []; db.venta_detalles = db.venta_detalles || [];
+    db.ventas.push({ id: 'v-h1', auth_user_id: U, numero_venta: 'V-H1', estado: 'completada', total: 0 }, { id: 'v-h2', auth_user_id: U, numero_venta: 'V-H2', estado: 'completada', total: 0 }, { id: 'v-h3', auth_user_id: U, numero_venta: 'V-H3', estado: 'anulada', total: 0 });
+    db.venta_detalles.push({ id: 'vd-h1', auth_user_id: U, venta_id: 'v-h1', producto_id: 'pt-hamb', cantidad: 90, created_at: dia(6) },
+      { id: 'vd-h2', auth_user_id: U, venta_id: 'v-h2', producto_id: 'pt-hamb', cantidad: 30, created_at: dia(1) },
+      { id: 'vd-h3', auth_user_id: U, venta_id: 'v-h3', producto_id: 'pt-hamb', cantidad: 50, created_at: dia(1) });
     db.ordenes_produccion = []; db.orden_produccion_consumos = []; db.movimientos_inventario = []; return db; };
   const leer = page => page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
   for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
@@ -1846,10 +1864,72 @@ async function pruebaProduccion(browser, base) {
     const rep = await page.textContent("#rp-mes");
     verificar(rep.includes('Pan simple') && rep.includes('9.30') && rep.includes('Cerdo (despiece)'), `${tag}: el reporte del mes suma lo producido y lo perdido (10 malos + 5 vencidos = 9.30)`);
     await sinDesborde(page, `${tag} reporte del mes`);
+    // I) Platos que se preparan al vender y aceite que se va gastando
+    verificar(!(await page.$('#ph-tarjetas .ph-card[data-receta="rec-hamb"]')) && (await page.textContent('#ph-tarjetas')).includes('Se preparan al vender') && (await page.textContent('#ph-tarjetas')).includes('Hamburguesa'),
+      `${tag}: los platos que se preparan al vender no son tarjetas de "Producir hoy" (se nombran aparte)`);
+    await page.waitForSelector('#prod-insumos .in-card');
+    const ins = await page.textContent('#prod-insumos');
+    verificar(ins.includes('Aceite') && ins.includes('Rinde aprox. 90') && ins.includes('le quedan unos 60') && ins.includes('3.33'), `${tag}: el aceite muestra cuánto rinde (90 hamburguesas por galón, sin contar la venta anulada) y cuánto le queda`);
+    await page.click('#prod-insumos .in-card >> text=Abrí uno nuevo'); await page.waitForSelector('#modal-insumo.modal-open');
+    verificar((await page.textContent('#in-valor')).includes('300.00') && (await page.textContent('#in-valor')).includes('No sale dinero de la Caja'), `${tag}: abrir uno nuevo dice su costo y que no toca la Caja`);
+    await modalesSinDesborde(page, `${tag} abrí uno nuevo`);
+    await page.click('#in-btn'); await page.waitForFunction(() => document.getElementById('modal-insumo').style.display === 'none');
+    db = await leer(page);
+    verificar(db.productos.find(p => p.id === 'mp-aceite').stock_actual === 2 && db.insumo_aperturas.length === 3, `${tag}: "Abrí uno nuevo" baja 1 galón y lo anota`);
+    await sinDesborde(page, `${tag} insumos`);
+    // J) Editor: "se prepara al vender" y "se va gastando"
+    await page.evaluate(() => abrirModalReceta('rec-hamb')); await page.waitForSelector('#modal-receta.modal-open');
+    verificar(await page.isChecked('#rc-al-vender') && await page.isChecked('#rc-lista-componentes input[data-continuo="1"]') && !(await page.isChecked('#rc-lista-componentes input[data-continuo="0"]')), `${tag}: la receta muestra "se prepara al vender" y qué se va gastando`);
+    await modalesSinDesborde(page, `${tag} receta al vender`);
+    await page.uncheck('#rc-lista-componentes input[data-continuo="1"]'); await page.check('#rc-lista-componentes input[data-continuo="1"]');
+    await page.click('#btn-guardar-receta'); await page.waitForFunction(() => document.getElementById('modal-receta').style.display === 'none');
+    db = await leer(page);
+    verificar(db.recetas_produccion.find(r => r.id === 'rec-hamb').al_vender === true && db.receta_componentes.some(c => c.receta_id === 'rec-hamb' && c.producto_id === 'mp-aceite' && c.uso_continuo === true), `${tag}: la receta guarda "al vender" y "se va gastando"`);
     verificar(!(await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).some(l => ['movimientos_financieros', 'incrementar_stock_producto', 'gastos'].includes(l.tabla)))), `${tag}: producir y la merma no tocan la Caja`);
     verificar(page.__errores.length === 0, `${tag} producción: sin errores (${page.__errores.join(' | ')})`);
     await ctx.close();
   }
+}
+
+// Ventas · platos que se preparan al vender: se pueden vender sin existencia propia, llevan el costo
+// de su receta y el plato no se manda a descontar (el servidor descuenta sus ingredientes).
+async function pruebaVentaPreparados(browser, base) {
+  console.log('\n▶ Ventas: platos que se preparan al vender');
+  const semillaV = () => { const db = semilla(); const U = UID;
+    db.productos.push({ id: 'mp-pan', auth_user_id: U, tipo: 'producto', nombre: 'Pan de hamburguesa', costo: 5, precio: 0, stock_actual: 50, es_materia_prima: true, activo: true },
+      { id: 'mp-carne', auth_user_id: U, tipo: 'producto', nombre: 'Carne molida', costo: 40, precio: 0, stock_actual: 20, es_materia_prima: true, activo: true, unidad_codigo: 'libra' },
+      { id: 'mp-aceite', auth_user_id: U, tipo: 'producto', nombre: 'Aceite', costo: 300, precio: 0, stock_actual: 3, es_materia_prima: true, activo: true, unidad_codigo: 'galon' },
+      { id: 'pt-hamb', auth_user_id: U, tipo: 'producto', nombre: 'Hamburguesa', costo: 99, precio: 120, stock_actual: 0, activo: true });
+    db.recetas_produccion = [{ id: 'rec-hamb', auth_user_id: U, producto_terminado_id: 'pt-hamb', nombre: 'Hamburguesa', cantidad_producida: 1, activa: true, tipo: 'normal', al_vender: true }];
+    db.receta_componentes = [{ id: 'c1', auth_user_id: U, receta_id: 'rec-hamb', producto_id: 'mp-pan', cantidad: 1 },
+      { id: 'c2', auth_user_id: U, receta_id: 'rec-hamb', producto_id: 'mp-carne', cantidad: 4, unidad_codigo: 'onza' },
+      { id: 'c3', auth_user_id: U, receta_id: 'rec-hamb', producto_id: 'mp-aceite', cantidad: 0.01, uso_continuo: true }];
+    return db; };
+  const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+  await page.goto(base + '/ventas.html');
+  await page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semillaV() });
+  await page.reload(); await esperarListo(page);
+  await page.waitForFunction(() => typeof S !== 'undefined' && Array.isArray(S.productosCache) && S.productosCache.some(p => p.id === 'pt-hamb' && p.preparadoAlVender), null, { timeout: 15000 });
+  const costo = await page.evaluate(() => S.productosCache.find(p => p.id === 'pt-hamb').costo);
+  verificar(costo === 15, `la hamburguesa lleva el costo de su receta: 1 pan (5) + 4 onzas de carne (10) = 15, sin el aceite que se va gastando (${costo})`);
+  await page.evaluate(async () => { await abrirNuevaVenta(); selectClienteOpcion('existente'); seleccionarCliente('cli-1'); window.__avisos = []; const o = window.showToast; window.showToast = (m, t) => { window.__avisos.push(m); return o && o(m, t); }; });
+  await page.evaluate(async () => { await agregarAlCarritoConPrecio('pt-hamb', 'producto', null); await agregarAlCarritoConPrecio('pt-hamb', 'producto', null); });
+  const item = await page.evaluate(() => { const i = S.carrito.find(x => x.id === 'pt-hamb'); return i && { cantidad: i.cantidad, costo: i.costo, sinStock: i.sinStock }; });
+  verificar(item && item.cantidad === 2 && item.costo === 15 && !item.sinStock && !(await page.evaluate(() => window.__avisos.some(m => /stock/i.test(m)))), `se venden 2 hamburguesas aunque no haya existencia del plato (${JSON.stringify(item)})`);
+  await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
+  await page.evaluate(async () => { for (let i = 0; i < 8 && S.paso < 5; i++) { const a = S.paso; if (S.paso === 4 || S.paso === 5) seleccionarMetodoPago('mp-efectivo', 'Efectivo'); pasoSiguiente(); await new Promise(r => setTimeout(r, 150)); if (S.paso === a) break; } });
+  await page.evaluate(() => { if (!S.metodoPagoId) seleccionarMetodoPago('mp-efectivo', 'Efectivo'); });
+  await page.evaluate(async () => { await confirmarVenta(false); });
+  await page.waitForTimeout(800);
+  const reg = await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).find(l => l.tabla === 'venta_registrar_atomica'));
+  verificar(!!reg, 'la venta se registra');
+  if (reg) {
+    const det = reg.datos.p_detalles.find(d => d.producto_id === 'pt-hamb');
+    verificar(det && det.costo === 15 && det.cantidad === 2, `la línea guarda el costo de la receta (${det && det.costo})`);
+    verificar(!(reg.datos.p_stock || []).some(x => x.producto_id === 'pt-hamb'), 'el plato no se manda a descontar del inventario (lo hace el servidor con sus ingredientes)');
+  }
+  verificar(page.__errores.length === 0, `venta de platos preparados: sin errores (${page.__errores.join(' | ')})`);
+  await ctx.close();
 }
 
 async function pruebaDemo(browser, base) {
@@ -1923,7 +2003,7 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
-    if (process.env.SOLO_PROD) { await pruebaProduccion(browser, base); throw 'fin'; }
+    if (process.env.SOLO_PROD) { await pruebaProduccion(browser, base); await pruebaVentaPreparados(browser, base); throw 'fin'; }
     if (process.env.SOLO_REGALO) { await pruebaSinRegalo(browser, base); throw 'fin'; }
     if (process.env.SOLO_MEDICO) { await pruebaNuevoMedico(browser, base); throw 'fin'; }
     if (process.env.SOLO_SINCITA) { await pruebaSinCita(browser, base); throw 'fin'; }
@@ -1952,6 +2032,7 @@ async function regresion(browser, base) {
     await pruebaNuevoMedico(browser, base);
     await pruebaSinRegalo(browser, base);
     await pruebaProduccion(browser, base);
+    await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);
     await pruebaAtencionHoy(browser, base);
     await pruebaBuscadorIngreso(browser, base);

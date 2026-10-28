@@ -435,7 +435,7 @@ function cambiarVistaRecetasCompleta() {
 async function cargarRecetas() {
   try {
     const { data } = await sb.from('recetas_produccion')
-      .select('*, receta_componentes(id, producto_id, cantidad, unidad_codigo), receta_despiece_salidas(id, producto_id, cantidad_rendimiento, es_merma)')
+      .select('*, receta_componentes(id, producto_id, cantidad, unidad_codigo, uso_continuo), receta_despiece_salidas(id, producto_id, cantidad_rendimiento, es_merma)')
       .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
     STATE.recetas = data || [];
     renderTablaRecetas();
@@ -526,6 +526,11 @@ function llenarSelectProductosTerminados() {
   if (sel) sel.innerHTML = opciones;
 }
 
+function alCambiarAlVender() {
+  const si = document.getElementById('rc-al-vender').checked;
+  const cant = document.getElementById('rc-cantidad-produce');
+  if (si && (!cant.value || Number(cant.value) !== 1)) cant.value = 1;          // un plato = una receta
+}
 function cambiarTipoReceta(tipo) {
   STATE.tipoRecetaActual = tipo;
   document.querySelectorAll('.prod-tipo-receta-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
@@ -562,14 +567,16 @@ function abrirModalReceta(id) {
       document.getElementById('rc-cantidad-produce').value = r.cantidad_producida;
     }
     STATE.componentesRecetaActual = (r.receta_componentes||[]).map(c => ({
-      producto_id: c.producto_id, nombre: nombreProducto(c.producto_id), cantidad: c.cantidad, unidad_codigo: c.unidad_codigo || '',
+      producto_id: c.producto_id, nombre: nombreProducto(c.producto_id), cantidad: c.cantidad, unidad_codigo: c.unidad_codigo || '', uso_continuo: !!c.uso_continuo,
     }));
+    document.getElementById('rc-al-vender').checked = !!r.al_vender;
     document.getElementById('rc-costo-extra').value = Number(r.costo_extra_tanda || 0) || '';
   } else {
     document.getElementById('receta-titulo-modal').textContent = '🧪 Nueva receta';
     document.getElementById('rc-nombre').value = 'Receta estándar';
     document.getElementById('rc-cantidad-produce').value = 1;
     document.getElementById('rc-costo-extra').value = '';
+    document.getElementById('rc-al-vender').checked = false;
     cambiarTipoReceta('normal');
   }
   renderListaComponentesReceta();
@@ -649,6 +656,7 @@ function renderListaComponentesReceta() {
         </select>` : `<span style="font-size:12px;color:var(--text-muted)">${esc(textoUnidadInventario(prod))}</span>`}
         <button type="button" class="row-action-btn" title="Quitar" onclick="quitarComponenteReceta(${i})" style="color:var(--danger)">✕</button>
       </div>
+      <label class="rc-continuo" style="flex-basis:100%"><input type="checkbox" data-continuo="${i}" ${c.uso_continuo ? 'checked' : ''} onchange="STATE.componentesRecetaActual[${i}].uso_continuo = this.checked"/> Se va gastando con el tiempo (aceite, gas, sal…): no se descuenta por ${STATE.tipoRecetaActual === 'despiece' ? 'lote' : 'tanda ni por plato'}</label>
     </div>`; }).join('');
 }
 function cambiarUnidadComponente(idx, valor) {
@@ -666,7 +674,7 @@ function quitarComponenteReceta(idx) {
 }
 function agregarComponenteReceta(productoId, nombre) {
   if (STATE.componentesRecetaActual.some(c => c.producto_id === productoId)) return;
-  STATE.componentesRecetaActual.push({ producto_id: productoId, nombre, cantidad: 1, unidad_codigo: '' });
+  STATE.componentesRecetaActual.push({ producto_id: productoId, nombre, cantidad: 1, unidad_codigo: '', uso_continuo: false });
   document.getElementById('rc-buscar-componente').value = '';
   document.getElementById('rc-buscar-resultados').innerHTML = '';
   renderListaComponentesReceta();
@@ -702,6 +710,7 @@ async function guardarReceta() {
 
   if (!nombre) { errEl.textContent = 'El nombre de la receta es obligatorio.'; return; }
   if (!STATE.componentesRecetaActual.length) { errEl.textContent = 'Agrega al menos una materia prima.'; return; }
+  if (STATE.componentesRecetaActual.every(c => c.uso_continuo)) { errEl.textContent = 'Al menos un ingrediente debe descontarse siempre (no todos pueden ser "se va gastando").'; return; }
   const costoExtra = parseFloat(document.getElementById('rc-costo-extra').value) || 0;
   if (costoExtra < 0) { errEl.textContent = 'El costo extra no puede ser negativo.'; return; }
   const malaUnidad = STATE.componentesRecetaActual.find(c => factorUnidad(c.unidad_codigo, STATE.productos.find(p => p.id === c.producto_id)) == null);
@@ -724,6 +733,7 @@ async function guardarReceta() {
       producto_terminado_id: tipo === 'normal' ? productoTerminadoId : null,
       nombre, cantidad_producida: tipo === 'normal' ? cantidadProduce : 1,
       costo_extra_tanda: round2(costoExtra),
+      al_vender: tipo === 'normal' && document.getElementById('rc-al-vender').checked,
       updated_at: new Date().toISOString(),
     };
     let recetaId = id;
@@ -740,7 +750,7 @@ async function guardarReceta() {
 
     const filas = STATE.componentesRecetaActual.map(c => ({
       auth_user_id: STATE.userId, receta_id: recetaId, producto_id: c.producto_id, cantidad: c.cantidad,
-      unidad_codigo: c.unidad_codigo || null,
+      unidad_codigo: c.unidad_codigo || null, uso_continuo: !!c.uso_continuo,
     }));
     const { error: errComp } = await sb.from('receta_componentes').insert(filas);
     if (errComp) throw errComp;
@@ -756,7 +766,7 @@ async function guardarReceta() {
 
     showToast(id ? 'Receta actualizada' : 'Receta creada');
     closeModal('modal-receta');
-    await cargarRecetas();
+    await cargarRecetas(); await cargarInsumos();
     actualizarKPIsProduccion();
   } catch (e) {
     console.error('guardarReceta:', e);
@@ -873,7 +883,7 @@ async function guardarProgresoOrden() {
 }
 
 function llenarSelectRecetasOrden() {
-  const opciones = STATE.recetas.filter(r => r.activa).map(r =>
+  const opciones = STATE.recetas.filter(r => r.activa && !r.al_vender).map(r =>      // las "al vender" se descuentan solas en Ventas
     `<option value="${r.id}">${esc(r.nombre)} — ${esc(nombreProducto(r.producto_terminado_id))}</option>`).join('');
   const sel = document.getElementById('op-receta');
   if (sel) sel.innerHTML = opciones || '<option value="">— No hay recetas activas —</option>';
@@ -939,7 +949,7 @@ function asignarCostoSalidasDespiece(salidas, costoTotal) {
 // esto es lo que el cajero VE antes de decidir producir.
 function calcularNecesidadesOrden(receta, cantidadProducir) {
   const factor = cantidadProducir / Number(receta.cantidad_producida || 1);
-  const necesidades = (receta.receta_componentes || []).map(c => {
+  const necesidades = (receta.receta_componentes || []).filter(c => !c.uso_continuo).map(c => {
     const prod = STATE.productos.find(p => p.id === c.producto_id);
     const fu = factorUnidad(c.unidad_codigo, prod);
     const necesario = c.unidad_codigo ? Math.round(c.cantidad * (fu ?? 0) * factor * 1000) / 1000 : round2(c.cantidad * factor);
@@ -1426,8 +1436,12 @@ function tituloReceta(r) { return r.tipo === 'despiece' ? (r.nombre || 'Despiece
 function renderProducirHoy() {
   const cont = document.getElementById('ph-tarjetas');
   if (!cont) return;
-  const activas = STATE.recetas.filter(r => r.activa !== false);
-  if (!activas.length) {
+  const todas = STATE.recetas.filter(r => r.activa !== false);
+  const activas = todas.filter(r => !r.al_vender);
+  const alVender = todas.filter(r => r.al_vender);
+  if (!activas.length && alVender.length) {
+    cont.innerHTML = '';
+  } else if (!activas.length) {
     cont.innerHTML = `<div class="ph-vacio">Todavía no tienes recetas. <button type="button" class="btn-secondary" onclick="abrirModalReceta()">🧪 Crear mi primera receta</button></div>`;
   } else {
     cont.innerHTML = activas.map(r => {
@@ -1445,6 +1459,7 @@ function renderProducirHoy() {
       </button>`;
     }).join('');
   }
+  if (alVender.length) cont.insertAdjacentHTML('beforeend', `<div class="ph-preparados" style="grid-column:1/-1">🍳 Se preparan al vender (se descuentan solos en Ventas): ${alVender.map(r => esc(tituloReceta(r))).join(', ')}</div>`);
   const hoy = STATE.ordenes.filter(o => o.estado === 'completada' && esHoy(o.fecha_completada));
   const lista = document.getElementById('ph-hoy');
   if (lista) lista.innerHTML = hoy.length ? '<div class="ph-hoy-titulo">Hoy produjiste</div>' + hoy.map(o => {
@@ -1646,6 +1661,105 @@ async function guardarMerma() {
 }
 
 /* =====================================================
+   INSUMOS QUE SE VAN GASTANDO (aceite, gas, sal…)
+   No se descuentan por plato ni por tanda. Al abrir uno nuevo se descuenta del
+   inventario como ajuste (gasto de cocina) con su costo; no toca Caja.
+   Rendimiento: platos vendidos / unidades producidas entre una apertura y la siguiente.
+===================================================== */
+async function cargarInsumos() {
+  const ids = new Set();
+  STATE.recetas.forEach(r => (r.receta_componentes || []).forEach(c => { if (c.uso_continuo) ids.add(c.producto_id); }));
+  STATE.insumoIds = [...ids];
+  STATE.aperturas = []; STATE.usosInsumo = [];
+  if (!ids.size) return;
+  try {
+    const { data } = await sb.from('insumo_aperturas').select('producto_id, cantidad, costo_total, created_at')
+      .eq('auth_user_id', STATE.userId).in('producto_id', [...ids]).order('created_at');
+    STATE.aperturas = data || [];
+    const desde = STATE.aperturas.length ? STATE.aperturas[0].created_at : null;
+    const platos = [...new Set(STATE.recetas.filter(r => r.al_vender && (r.receta_componentes || []).some(c => c.uso_continuo)).map(r => r.producto_terminado_id))];
+    if (desde && platos.length) {
+      const { data: vd } = await sb.from('venta_detalles').select('producto_id, cantidad, created_at, ventas(estado)')
+        .eq('auth_user_id', STATE.userId).in('producto_id', platos).gte('created_at', desde);
+      STATE.usosInsumo = (vd || []).filter(x => x.ventas?.estado !== 'anulada').map(x => ({ producto_id: x.producto_id, cantidad: Number(x.cantidad || 0), fecha: x.created_at }));
+    }
+  } catch (e) { console.warn('cargarInsumos:', e); }
+}
+// Cuántos platos/unidades usaron este insumo entre dos fechas.
+function usosDeInsumo(insumoId, desde, hasta) {
+  const recetas = STATE.recetas.filter(r => (r.receta_componentes || []).some(c => c.producto_id === insumoId && c.uso_continuo));
+  const platos = new Set(recetas.filter(r => r.al_vender).map(r => r.producto_terminado_id));
+  const tandas = new Set(recetas.filter(r => !r.al_vender).map(r => r.id));
+  const enRango = f => f && new Date(f) >= new Date(desde) && (!hasta || new Date(f) < new Date(hasta));
+  const vendidos = (STATE.usosInsumo || []).filter(u => platos.has(u.producto_id) && enRango(u.fecha)).reduce((t, u) => t + u.cantidad, 0);
+  const producidos = STATE.ordenes.filter(o => o.estado === 'completada' && tandas.has(o.receta_id) && enRango(o.fecha_completada))
+    .reduce((t, o) => t + Number(o.tipo === 'despiece' ? o.cantidad_planificada : o.cantidad_producida || 0), 0);
+  return vendidos + producidos;
+}
+function renderInsumos() {
+  const panel = document.getElementById('prod-insumos'); if (!panel) return;
+  const ids = STATE.insumoIds || [];
+  panel.style.display = ids.length ? '' : 'none';
+  if (!ids.length) return;
+  document.getElementById('in-lista').innerHTML = ids.map(id => {
+    const p = STATE.productos.find(x => x.id === id); if (!p) return '';
+    const ab = (STATE.aperturas || []).filter(a => a.producto_id === id);
+    const u = textoUnidadInventario(p);
+    let rinde = null;
+    const ciclos = [];
+    for (let i = 0; i + 1 < ab.length; i++) { const n = usosDeInsumo(id, ab[i].created_at, ab[i + 1].created_at); if (n > 0) ciclos.push(n / Number(ab[i].cantidad || 1)); }
+    if (ciclos.length) rinde = ciclos.reduce((t, x) => t + x, 0) / ciclos.length;
+    const ult = ab[ab.length - 1];
+    const desdeUlt = ult ? usosDeInsumo(id, ult.created_at, null) : 0;
+    const quedan = rinde && ult ? Math.round(rinde * Number(ult.cantidad || 1) - desdeUlt) : null;
+    const dias = ult ? Math.floor((Date.now() - new Date(ult.created_at)) / 86400000) : null;
+    return `<div class="in-card">
+      <span class="in-nombre">${esc(p.nombre)}</span>
+      <span class="in-dato">Guardados sin abrir: <b>${fmtNum(p.stock_actual)}</b> ${esc(u)}</span>
+      ${ult ? `<span class="in-dato">Último abierto ${dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`} · desde entonces: ${fmtNum(desdeUlt)} usados</span>` : '<span class="in-dato">Todavía no has registrado ninguno abierto.</span>'}
+      ${rinde ? `<span class="in-dato">Rinde aprox. <b>${fmtNum(Math.round(rinde))}</b> por ${esc(nombreUnidad(p.unidad_codigo) || 'unidad')} · ${fmt(round2(Number(p.costo || 0) / rinde))} c/u</span>` : ult ? '<span class="in-dato">Cuando abras el siguiente, te diré cuánto rinde.</span>' : ''}
+      ${quedan != null ? (quedan <= Math.max(5, rinde * 0.15) ? `<span class="in-alerta">⚠️ Se está por acabar: quedan unos ${fmtNum(Math.max(0, quedan))}</span>` : `<span class="in-dato">Al abierto le quedan unos ${fmtNum(quedan)}</span>`) : ''}
+      ${Number(p.stock_actual) <= 0 ? '<span class="in-alerta">⚠️ No te queda ninguno guardado</span>' : ''}
+      <button type="button" class="btn-secondary" style="margin-top:4px" onclick="abrirInsumo('${esc(id)}')">🫙 Abrí uno nuevo</button>
+    </div>`;
+  }).join('');
+}
+function abrirInsumo(id) {
+  const p = STATE.productos.find(x => x.id === id); if (!p) return;
+  STATE.insumoActual = p;
+  document.getElementById('in-titulo').textContent = `🫙 Abrí ${p.nombre}`;
+  document.getElementById('in-cantidad-label').textContent = `¿Cuántos ${textoUnidadInventario(p)} abriste?`;
+  document.getElementById('in-cantidad').value = 1;
+  document.getElementById('in-nota').value = '';
+  document.getElementById('in-error').textContent = '';
+  recalcularInsumo();
+  openModal('modal-insumo');
+}
+function recalcularInsumo() {
+  const p = STATE.insumoActual, c = parseFloat(document.getElementById('in-cantidad').value) || 0;
+  document.getElementById('in-valor').textContent = p && c > 0 ? `Pasa a gasto de cocina: ${fmt(round2(c * Number(p.costo || 0)))}. No sale dinero de la Caja.` : '';
+}
+let ABRIENDO_INSUMO = false;
+async function guardarInsumo() {
+  const err = document.getElementById('in-error'); err.textContent = '';
+  const p = STATE.insumoActual, c = parseFloat(document.getElementById('in-cantidad').value);
+  if (!p) return;
+  if (!(c > 0)) { err.textContent = 'Escribe cuántos abriste.'; return; }
+  if (ABRIENDO_INSUMO) return;
+  ABRIENDO_INSUMO = true;
+  const btn = document.getElementById('in-btn'); btn.disabled = true;
+  try {
+    const { data: r, error } = await sb.rpc('produccion_insumo_abrir', { p_producto_id: p.id, p_cantidad: c, p_nota: document.getElementById('in-nota').value.trim() || null });
+    if (error) throw error;
+    if (!r || !r.ok) { err.textContent = r && r.motivo === 'sin_existencia' ? `No tienes tantos guardados: hay ${fmtNum(r.disponible)}. Ingresa la compra primero.` : 'No se pudo registrar.'; return; }
+    showToast(`🫙 Registrado: ${p.nombre} (${fmt(r.costo_total)} a gasto de cocina)`);
+    closeModal('modal-insumo');
+    await cargarProductosCache(); await cargarInsumos(); renderInsumos();
+  } catch (e) { console.error('guardarInsumo:', e); err.textContent = 'No se pudo registrar. Intenta de nuevo.'; }
+  finally { ABRIENDO_INSUMO = false; btn.disabled = false; }
+}
+
+/* =====================================================
    COSTOS Y MERMA DEL MES (solo lectura)
 ===================================================== */
 function inicioMes() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); }
@@ -1689,6 +1803,7 @@ function renderReporteMes() {
 
 function actualizarKPIsProduccion() {
   try { renderReporteMes(); } catch (e) { console.error('renderReporteMes:', e); }
+  try { renderInsumos(); } catch (e) { console.error('renderInsumos:', e); }
   try { renderProducirHoy(); } catch (e) { console.error('renderProducirHoy:', e); }
   const pendientes = STATE.ordenes.filter(o => o.estado === 'pendiente');
   const enProceso = STATE.ordenes.filter(o => o.estado === 'en_proceso');
@@ -1854,6 +1969,7 @@ async function init() {
     if (window.N360Unidades) await window.N360Unidades.cargarPersonalizadas(sb, user.id);
     await cargarProductosCache();
     await Promise.all([cargarRecetas(), cargarOrdenes(), cargarMermasMes()]);
+    await cargarInsumos();
     actualizarKPIsProduccion();
 
     // Llegada directa desde "+ Nueva materia prima" en Productos/Servicios
