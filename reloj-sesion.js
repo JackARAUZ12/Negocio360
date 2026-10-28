@@ -21,17 +21,99 @@
 
   // Momento (hora del equipo) en que llegó la última sesión nueva del servidor.
   var ultimaEntrega = 0;
+
+  // Clientes de Supabase de la página (para renovar la sesión con la propia librería).
+  var clientes = [];
+  if (window.supabase && typeof window.supabase.createClient === 'function') {
+    var crearOrig = window.supabase.createClient;
+    window.supabase.createClient = function (url, clave, opciones) {
+      var c = crearOrig.apply(this, arguments);
+      try { if (!(opciones && opciones.auth && opciones.auth.persistSession === false)) clientes.push(c); } catch (e) {}
+      return c;
+    };
+  }
+
+  // Si la hora del equipo cambia, la diferencia medida ya no sirve: se olvida y la
+  // sesión se marca para renovarse (al renovarla se vuelve a medir con la hora nueva).
+  function olvidarDesfase() {
+    try {
+      setOrig.call(localStorage, DESFASE, JSON.stringify({ seg: 0, medido: 0 }));
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (!CLAVE.test(k)) continue;
+        var ses = JSON.parse(getOrig.call(localStorage, k) || 'null');
+        if (ses && ses.expires_at) { ses.expires_at = Math.round(Date.now() / 1000) - 1; setOrig.call(localStorage, k, JSON.stringify(ses)); }
+      }
+    } catch (e) {}
+  }
+
+  function sesionGuardada() {
+    try {
+      for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (CLAVE.test(k)) { var s = JSON.parse(getOrig.call(localStorage, k) || 'null'); if (s && s.access_token) return s.access_token; } }
+    } catch (e) {}
+    return null;
+  }
+  // Sesión para repetir una acción rechazada: si ya hay una más nueva guardada se usa
+  // esa; si no, se renueva UNA vez aunque fallen varias acciones a la vez.
+  var renovando = null;
+  function sesionNueva(vencido) {
+    var g = sesionGuardada();
+    if (g && g !== vencido) return Promise.resolve(g);
+    if (renovando) return renovando;
+    var c = clientes[clientes.length - 1];
+    if (!c) return Promise.resolve(null);
+    renovando = c.auth.refreshSession().then(function (r) { return r && r.data && r.data.session ? r.data.session.access_token : null; }, function () { return null; })
+      .then(function (t) { renovando = null; return t; });
+    return renovando;
+  }
+
   if (typeof window.fetch === 'function') {
     var fetchOrig = window.fetch;
-    window.fetch = function (entrada) {
+    window.fetch = function (entrada, init) {
       var p = fetchOrig.apply(this, arguments);
       try {
         var url = typeof entrada === 'string' ? entrada : (entrada && entrada.url) || '';
         if (url.indexOf('/auth/v1/token') !== -1) p.then(function (r) { if (r && r.ok) ultimaEntrega = Date.now(); }, function () {});
+        // Acción rechazada porque la sesión ya venció ("JWT expired"): se renueva la
+        // sesión y se repite la MISMA acción una sola vez, sin mostrar error a la persona.
+        else if (typeof entrada === 'string' && /\.supabase\.co\//.test(url) && init && init.headers) {
+          var h = new Headers(init.headers), aut = h.get('Authorization') || '';
+          var cl = claims(aut.replace(/^Bearer\s+/i, ''));
+          if (cl && cl.role === 'authenticated') {
+            var self = this;
+            p = p.then(function (r) {
+              if (!r || r.status !== 401) return r;
+              return r.clone().text().then(function (txt) {
+                if (!/jwt expired/i.test(txt)) return r;
+                var vencido = aut.replace(/^Bearer\s+/i, '');
+                // La diferencia guardada ya no sirve (la hora cambió); la renovación la vuelve a medir.
+                try { setOrig.call(localStorage, DESFASE, JSON.stringify({ seg: 0, medido: 0 })); } catch (e) {}
+                return sesionNueva(vencido).then(function (nuevo) {
+                  if (!nuevo || nuevo === vencido) return r;
+                  var h2 = new Headers(init.headers); h2.set('Authorization', 'Bearer ' + nuevo);
+                  var init2 = {}; for (var x in init) init2[x] = init[x]; init2.headers = h2;
+                  return fetchOrig.call(self, entrada, init2);
+                });
+              }, function () { return r; });
+            });
+          }
+        }
       } catch (e) {}
       return p;
     };
   }
+
+  // Cambio de hora con el sistema abierto: el reloj del equipo salta y el contador
+  // interno del navegador no; si se separan más de 2 minutos, se vuelve a medir.
+  try {
+    if (window.performance && performance.now) {
+      var base0 = Date.now() - performance.now();
+      setInterval(function () {
+        var base = Date.now() - performance.now();
+        if (Math.abs(base - base0) > MIN_SEG * 1000) { base0 = base; olvidarDesfase(); }
+      }, 20000);
+    }
+  } catch (e) {}
 
   function claims(tok) {
     try {
