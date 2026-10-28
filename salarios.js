@@ -676,8 +676,8 @@ async function loadKPIsSal() {
     const pendientesHoy = STATE.empleados.filter(e => e.proximo_pago && e.proximo_pago <= hoy).length;
 
     const inicioMes = hoy.slice(0,7)+'-01';
-    const { data: pagosMes } = await sbClient.from('empleados_pagos').select('total_pagado')
-      .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').gte('fecha', inicioMes);
+    const { data: pagosMes } = await N360Leer.todo(() => sbClient.from('empleados_pagos').select('total_pagado')
+      .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').gte('fecha', inicioMes), 'pagos');
     const totalMes = (pagosMes||[]).reduce((s,p)=>s+Number(p.total_pagado||0),0);
 
     const { data: adelantosPend } = await sbClient.from('empleados_adelantos').select('monto')
@@ -1709,11 +1709,11 @@ async function buscarVentasParaSeleccionManual() {
   if (desde > hasta) { errEl.textContent = 'La fecha "Desde" no puede ser después de "Hasta".'; return; }
 
   try {
-    const { data: ventas, error } = await sbClient.from('ventas')
+    const { data: ventas, error } = await N360Leer.todo(() => sbClient.from('ventas')
       .select('id,numero_venta,fecha,cliente_nombre,subtotal')
       .eq('auth_user_id', STATE.userId).eq('estado', 'completada')
       .gte('fecha', desde).lte('fecha', hasta)
-      .order('fecha', { ascending: false });
+      .order('fecha', { ascending: false }), 'ventas');
     if (error) throw error;
 
     // Ventas ya usadas en CUALQUIER pago anterior (de cualquier
@@ -1792,12 +1792,12 @@ async function calcularComisionFreelancer() {
   if (desde > hasta) { errEl.textContent = 'La fecha "Desde" no puede ser después de "Hasta".'; return; }
 
   try {
-    const { data, error } = await sbClient.from('ventas')
+    const { data, error } = await N360Leer.todo(() => sbClient.from('ventas')
       .select('subtotal')
       .eq('auth_user_id', STATE.userId)
       .eq('estado', 'completada')
       .eq('creado_por_nombre', f.perfil_vendedor_nombre)
-      .gte('fecha', desde).lte('fecha', hasta);
+      .gte('fecha', desde).lte('fecha', hasta), 'ventas');
     if (error) throw error;
 
     const ventas = data || [];
@@ -2646,8 +2646,8 @@ async function cargarReportesNomina() {
   try {
     const desde = new Date(); desde.setMonth(desde.getMonth() - 6);
     const desdeISO = ymd(desde);
-    const { data: pagos } = await sbClient.from('empleados_pagos').select('fecha, total_pagado, empleado_id')
-      .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').gte('fecha', desdeISO);
+    const { data: pagos } = await N360Leer.todo(() => sbClient.from('empleados_pagos').select('fecha, total_pagado, empleado_id')
+      .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').gte('fecha', desdeISO), 'pagos');
     const lista = pagos || [];
     if (!lista.length) { cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay pagos en los últimos 6 meses.</p>'; return; }
 

@@ -1772,10 +1772,13 @@ function saldoBancoDe(b, movsDelBanco, monedaBase) {
   return round2(Number(b.saldo_inicial || 0) + movsDelBanco.reduce((t, m) => t + (m.tipo_flujo === 'INGRESO' ? montoDe(m) : -montoDe(m)), 0));
 }
 async function calcularSaldoBanco(bancoId) {
-  const [{ data: b }, { data: movs }] = await Promise.all([
+  // Se leen TODOS los movimientos del banco (sin el tope de 1000 filas del
+  // servidor): un saldo calculado con filas de menos sería un saldo falso.
+  // Si la lectura falla se lanza el error (nunca se devuelve un saldo a medias).
+  const [{ data: b }, movs] = await Promise.all([
     sbClient.from('bancos').select('*').eq('id', bancoId).eq('auth_user_id', STATE.userId).maybeSingle(),
-    sbClient.from('movimientos_financieros').select('tipo_flujo, monto, monto_moneda_banco, metodo_pago_nombre, banco_id, tipo_movimiento')
-      .eq('auth_user_id', STATE.userId).eq('estado', 'completado').eq('banco_id', bancoId),
+    traerTodasLasFilas(() => sbClient.from('movimientos_financieros').select('tipo_flujo, monto, monto_moneda_banco, metodo_pago_nombre, banco_id, tipo_movimiento')
+      .eq('auth_user_id', STATE.userId).eq('estado', 'completado').eq('banco_id', bancoId).order('created_at').order('id')),
   ]);
   if (!b) return 0;
   return saldoBancoDe(b, (movs || []).filter(esMovDeBanco), monedaBaseNegocio());
@@ -1818,7 +1821,11 @@ async function abrirNuevaTransferencia() {
   // asi se ve de una vez cuanto hay disponible antes de transferir,
   // sin tener que ir a revisar Bancos o Caja Chica por separado.
   const cuentasConSaldo = await Promise.all(cuentas.map(async c => ({
-    ...c, saldo: await obtenerSaldoActualCuenta(c.origen_caja, c.banco_id),
+    ...c, saldo: await obtenerSaldoActualCuenta(c.origen_caja, c.banco_id).catch(e => {
+      console.error('saldo de cuenta:', e);
+      showToast('No se pudo leer el saldo de una cuenta. Revisa tu conexión y vuelve a abrir.', 'error');
+      return 0;
+    }),
   })));
   STATE._cuentasTransferenciaCache = cuentasConSaldo;
   const opciones = cuentasConSaldo.map(c => `<option value="${c.valor}">${c.label} — ${fmt(c.saldo)}</option>`).join('');
@@ -2334,8 +2341,8 @@ async function abrirConciliarBanco(bancoId, bancoNombre) {
     CONC.saldoReconciliadoPrevio = round2(Number(srv.saldo_conciliado));
     CONC.saldoSistema = round2(Number(srv.saldo));
   } else {
-    const { data: previos } = await sbClient.from('movimientos_financieros')
-      .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado');
+    const previos = await traerTodasLasFilas(() => sbClient.from('movimientos_financieros')
+      .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado').order('created_at').order('id'));
     const montoDe = (m) => CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto);
     const sumaConciliadoPrevio = (previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0);
     CONC.saldoReconciliadoPrevio = round2(saldoInicial + sumaConciliadoPrevio);

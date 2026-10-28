@@ -159,8 +159,8 @@ async function paginar(construir) {
 }
 
 async function cargarClientes() {
-  const { data } = await sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,limite_credito')
-    .eq('auth_user_id', FD.userId).eq('activo', true).order('nombre');
+  const { data } = await N360Leer.todo(() => sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,limite_credito')
+    .eq('auth_user_id', FD.userId).eq('activo', true).order('nombre'), 'clientes');
   FD.clientes = data || [];
 }
 async function cargarMetodos() {
@@ -174,9 +174,9 @@ async function cargarMetodos() {
   } catch (_) { FD.bancos = []; }
 }
 async function cargarProductos() {
-  const { data } = await sb.from('productos')
+  const { data } = await N360Leer.todo(() => sb.from('productos')
     .select('id,tipo,nombre,sku,precio,costo,stock_actual,tipo_precio,unidad_codigo,permite_fraccion')
-    .eq('auth_user_id', FD.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
+    .eq('auth_user_id', FD.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre'), 'productos');
   FD.productos = (data || []).filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
   FD.escalas = {};
   try {

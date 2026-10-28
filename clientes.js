@@ -521,9 +521,9 @@ async function loadKPIs() {
     }
 
     // Fallback: calcular directamente desde clientes
-    const { data: clientes } = await sb.from('clientes')
+    const { data: clientes } = await N360Leer.todo(() => sb.from('clientes')
       .select('id,nombre,total_compras,num_compras,ultima_compra,estado,created_at')
-      .eq('auth_user_id', CS.userId).eq('activo', true);
+      .eq('auth_user_id', CS.userId).eq('activo', true), 'clientes');
 
     const mesStart = startOfMonthISO();
     const ahora    = new Date();
@@ -1696,11 +1696,11 @@ async function loadFrecuentes() {
   if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="5">Cargando…</td></tr>';
 
   try {
-    const { data } = await sb.from('clientes')
+    const { data } = await N360Leer.todo(() => sb.from('clientes')
       .select('id,nombre,telefono,num_compras,total_compras,ultima_compra')
       .eq('auth_user_id', CS.userId).eq('activo', true)
       .gte('num_compras', 5)
-      .order('num_compras', { ascending: false });
+      .order('num_compras', { ascending: false }), 'clientes');
 
     if (!tbody) return;
 
@@ -1738,12 +1738,12 @@ async function loadInactivos() {
   const corte = ymd(new Date(Date.now() - dias * 86400000));
 
   try {
-    const { data } = await sb.from('clientes')
+    const { data } = await N360Leer.todo(() => sb.from('clientes')
       .select('id,nombre,telefono,num_compras,total_compras,ultima_compra')
       .eq('auth_user_id', CS.userId).eq('activo', true)
       .gt('num_compras', 0)
       .lt('ultima_compra', corte)
-      .order('ultima_compra', { ascending: true });
+      .order('ultima_compra', { ascending: true }), 'clientes');
 
     if (!tbody) return;
 
@@ -1833,8 +1833,8 @@ async function sincronizarStats() {
     await Promise.allSettled([loadClientes(), loadKPIs()]);
   } catch(e) {
     // Sincronización manual como fallback
-    const { data: clientes } = await sb.from('clientes')
-      .select('id').eq('auth_user_id', CS.userId).eq('activo', true);
+    const { data: clientes } = await N360Leer.todo(() => sb.from('clientes')
+      .select('id').eq('auth_user_id', CS.userId).eq('activo', true), 'clientes');
 
     for (const c of (clientes || [])) {
       await cargarStatsCliente(c.id);

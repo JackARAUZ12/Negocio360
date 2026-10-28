@@ -265,19 +265,19 @@ async function cargarTodo() {
     capital, saldoReciente, productos, clientes,
     movImpuestos,
   ] = await Promise.all([
-    sb.from('ventas').select('*').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to + 'T23:59:59'),
+    N360Leer.todo(() => sb.from('ventas').select('*').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to + 'T23:59:59'), 'ventas'),
     // FIX: se agregan impuesto y costo_total del período anterior — antes
     // solo se traía "total" (con IVA incluido), así que la comparación de
     // tendencia de ingresos no era manzanas-con-manzanas frente al período
     // actual (que sí descuenta el IVA más abajo).
-    sb.from('ventas').select('total,impuesto,costo_total,fecha').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', anterior.from).lte('fecha', anterior.to + 'T23:59:59'),
-    sb.from('compras').select('*').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to),
-    sb.from('gastos').select('*').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', from).lte('fecha', to),
-    sb.from('gastos').select('monto').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', anterior.from).lte('fecha', anterior.to),
-    sb.from('creditos').select('*').eq('auth_user_id', uid),
-    sb.from('creditos_cuotas').select('*, creditos!inner(cliente_id, tipo, numero_credito)').eq('auth_user_id', uid).in('estado', ['vencida', 'pendiente', 'parcial']),
-    sb.from('movimientos_financieros').select('*').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', from).lte('fecha', to).order('fecha', { ascending: true }),
-    sb.from('movimientos_financieros').select('tipo_flujo, monto, tipo_movimiento').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', anterior.from).lte('fecha', anterior.to),
+    N360Leer.todo(() => sb.from('ventas').select('total,impuesto,costo_total,fecha').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', anterior.from).lte('fecha', anterior.to + 'T23:59:59'), 'ventas período anterior'),
+    N360Leer.todo(() => sb.from('compras').select('*').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to), 'compras'),
+    N360Leer.todo(() => sb.from('gastos').select('*').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', from).lte('fecha', to), 'gastos'),
+    N360Leer.todo(() => sb.from('gastos').select('monto').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', anterior.from).lte('fecha', anterior.to), 'gastos período anterior'),
+    N360Leer.todo(() => sb.from('creditos').select('*').eq('auth_user_id', uid), 'créditos'),
+    N360Leer.todo(() => sb.from('creditos_cuotas').select('*, creditos!inner(cliente_id, tipo, numero_credito)').eq('auth_user_id', uid).in('estado', ['vencida', 'pendiente', 'parcial']), 'cuotas de créditos'),
+    N360Leer.todo(() => sb.from('movimientos_financieros').select('*').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', from).lte('fecha', to).order('fecha', { ascending: true }), 'movimientos de caja'),
+    N360Leer.todo(() => sb.from('movimientos_financieros').select('tipo_flujo, monto, tipo_movimiento').eq('auth_user_id', uid).eq('estado', 'completado').gte('fecha', anterior.from).lte('fecha', anterior.to), 'movimientos período anterior'),
     sb.from('capital_negocio').select('*').eq('auth_user_id', uid).eq('is_current', true).maybeSingle(),
     // FIX: saldo de caja REAL más reciente — igual criterio que Reportes y
     // el Dashboard. NO se limita al período de análisis seleccionado arriba,
@@ -285,9 +285,9 @@ async function cargarTodo() {
     // fechas estés mirando (antes sí dependía, y podía mostrar un saldo
     // viejo o en 0 si no había movimientos dentro del período elegido).
     sb.from('movimientos_financieros').select('saldo_resultante').eq('auth_user_id', uid).eq('estado', 'completado').order('created_at', { ascending: false }).limit(1).maybeSingle(),
-    sb.from('productos').select('*').eq('auth_user_id', uid).eq('activo', true),
-    sb.from('clientes').select('*').eq('auth_user_id', uid).eq('activo', true),
-    sb.from('movimientos_impuestos').select('*').eq('auth_user_id', uid).gte('fecha', from).lte('fecha', to),
+    N360Leer.todo(() => sb.from('productos').select('*').eq('auth_user_id', uid).eq('activo', true), 'productos'),
+    N360Leer.todo(() => sb.from('clientes').select('*').eq('auth_user_id', uid).eq('activo', true), 'clientes'),
+    N360Leer.todo(() => sb.from('movimientos_impuestos').select('*').eq('auth_user_id', uid).gte('fecha', from).lte('fecha', to), 'impuestos'),
   ]);
 
   // FIX: los detalles de venta se traen a partir de los venta_id que ya
@@ -298,7 +298,7 @@ async function cargarTodo() {
   const ventaIds = (ventas.data || []).map(v => v.id);
   let ventaDetalles = [];
   if (ventaIds.length) {
-    const { data } = await sb.from('venta_detalles').select('*').eq('auth_user_id', uid).in('venta_id', ventaIds);
+    const { data } = await N360Leer.porIds(ventaIds, ch => sb.from('venta_detalles').select('*').eq('auth_user_id', uid).in('venta_id', ch), 'detalle de ventas');
     ventaDetalles = data || [];
   }
 
@@ -729,8 +729,8 @@ function renderMetodosPago() {
 async function cargarAbonosPeriodoEst() {
   try {
     const { from, to } = rangoPeriodo();
-    const { data } = await sb.from('creditos_pagos').select('monto, estado')
-      .eq('auth_user_id', EST.userId).gte('fecha', from).lte('fecha', to);
+    const { data } = await N360Leer.todo(() => sb.from('creditos_pagos').select('monto, estado')
+      .eq('auth_user_id', EST.userId).gte('fecha', from).lte('fecha', to), 'abonos');
     const tot = (data || []).filter(a => a.estado !== 'anulado').reduce((s, a) => s + parseFloat(a.monto || 0), 0);
     const el = document.getElementById('est-abonos-periodo');
     if (el && tot > 0.004) el.innerHTML = `💳 Abonos de créditos cobrados <strong>${fmt(tot)}</strong>`;
@@ -1140,9 +1140,9 @@ async function cargarYRenderPrediccion() {
 
     const datosPorMes = await Promise.all(meses.map(async m => {
       const [ventasM, comprasM, gastosM] = await Promise.all([
-        sb.from('ventas').select('total,impuesto').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', m.from).lte('fecha', m.to),
-        sb.from('compras').select('total').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', m.from).lte('fecha', m.to),
-        sb.from('gastos').select('monto').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', m.from).lte('fecha', m.to),
+        N360Leer.todo(() => sb.from('ventas').select('total,impuesto').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', m.from).lte('fecha', m.to), 'ventas mensuales'),
+        N360Leer.todo(() => sb.from('compras').select('total').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', m.from).lte('fecha', m.to), 'compras mensuales'),
+        N360Leer.todo(() => sb.from('gastos').select('monto').eq('auth_user_id', uid).eq('estado', 'activo').gte('fecha', m.from).lte('fecha', m.to), 'gastos mensuales'),
       ]);
       const devM = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, uid, m.from, m.to) : [];
       const ingresos = (ventasM.data || []).concat(devM).reduce((s, v) => s + parseFloat(v.total || 0) - parseFloat(v.impuesto || 0), 0);
@@ -1284,10 +1284,10 @@ function renderRecomendacionesPrediccion() {
 // anterior, producto por producto, para detectar cuáles van subiendo o
 // bajando (útil para decidir qué reabastecer o qué promocionar).
 async function obtenerCantidadesPorProducto(uid, from, to) {
-  const { data: ventas } = await sb.from('ventas').select('id').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to);
+  const { data: ventas } = await N360Leer.todo(() => sb.from('ventas').select('id').eq('auth_user_id', uid).eq('estado', 'completada').gte('fecha', from).lte('fecha', to), 'ventas');
   const ids = (ventas || []).map(v => v.id);
   if (!ids.length) return {};
-  const { data: detalles } = await sb.from('venta_detalles').select('producto_nombre,cantidad').eq('auth_user_id', uid).in('venta_id', ids);
+  const { data: detalles } = await N360Leer.porIds(ids, ch => sb.from('venta_detalles').select('producto_nombre,cantidad').eq('auth_user_id', uid).in('venta_id', ch), 'detalle de ventas');
   const map = {};
   (detalles || []).forEach(d => { map[d.producto_nombre] = (map[d.producto_nombre] || 0) + Number(d.cantidad || 0); });
   return map;

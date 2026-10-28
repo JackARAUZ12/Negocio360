@@ -287,8 +287,8 @@
      CATÁLOGOS: clientes, productos/servicios, financieros, métodos, impuestos
   =================================================== */
   async function loadClientes() {
-    const { data } = await _sb.from('clientes').select('id,nombre,apellido,telefono')
-      .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => _sb.from('clientes').select('id,nombre,apellido,telefono')
+      .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre'), 'clientes');
     CS.clientes = data || [];
     const opts = '<option value="">Selecciona un cliente…</option>' +
       CS.clientes.map(c => `<option value="${c.id}" data-buscar="${esc(c.telefono||'')}">${esc(c.nombre)} ${esc(c.apellido||'')}</option>`).join('');
@@ -302,8 +302,8 @@
   }
 
   async function loadProductosYServicios() {
-    const { data } = await _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', CS.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
+    const { data } = await N360Leer.todo(() => _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
+      .eq('auth_user_id', CS.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre'), 'productos');
     const todos = data || [];
     CS.productos = todos.filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
     // Los "productos financieros" ya no se seleccionan de un catálogo aparte: el usuario
@@ -3798,9 +3798,9 @@
       // "no hay resultados"). Ahora busca tambien los clientes cuyo
       // nombre/apellido coincida, y trae los creditos de cualquiera
       // de los dos casos.
-      const { data: clientesCoinciden } = await _sb.from('clientes')
+      const { data: clientesCoinciden } = await N360Leer.todo(() => _sb.from('clientes')
         .select('id').eq('auth_user_id', CS.userId)
-        .or(`nombre.ilike.%${CS.creditosSearch}%,apellido.ilike.%${CS.creditosSearch}%`);
+        .or(`nombre.ilike.%${CS.creditosSearch}%,apellido.ilike.%${CS.creditosSearch}%`), 'clientes');
       const idsClientes = (clientesCoinciden||[]).map(c=>c.id);
       // También busca en Observaciones (ahí se anota, por ejemplo, el número
       // de factura manual). Las comas y paréntesis romperían el filtro, así

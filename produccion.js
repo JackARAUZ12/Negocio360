@@ -192,10 +192,10 @@ async function cargarMateriasPrimasParaSelector() {
   const sel = document.getElementById('mp-existente-select');
   sel.innerHTML = '<option value="">Cargando…</option>';
   try {
-    const { data } = await sb.from('productos')
+    const { data } = await N360Leer.todo(() => sb.from('productos')
       .select('id,nombre,sku,costo,stock_actual')
       .eq('auth_user_id', STATE.userId).eq('es_materia_prima', true).eq('activo', true)
-      .order('nombre');
+      .order('nombre'), 'productos');
     STATE.materiasPrimasDisponibles = data || [];
     poblarSelectorMateriaPrimaExistente(STATE.materiasPrimasDisponibles);
   } catch (e) {
@@ -397,8 +397,8 @@ async function guardarStockMateriaPrimaExistente() {
 
 async function cargarProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku,tipo,costo,precio,stock_actual,activo,es_materia_prima,unidad_codigo,unidad_compra_codigo,factor_compra')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('productos').select('id,nombre,sku,tipo,costo,precio,stock_actual,activo,es_materia_prima,unidad_codigo,unidad_compra_codigo,factor_compra')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre'), 'productos');
     STATE.productos = data || [];
   } catch (e) { STATE.productos = []; }
   try { if (STATE.recetas.length) renderProducirHoy(); } catch (e) {}
@@ -1679,8 +1679,8 @@ async function cargarInsumos() {
     const desde = STATE.aperturas.length ? STATE.aperturas[0].created_at : null;
     const platos = [...new Set(STATE.recetas.filter(r => r.al_vender && (r.receta_componentes || []).some(c => c.uso_continuo)).map(r => r.producto_terminado_id))];
     if (desde && platos.length) {
-      const { data: vd } = await sb.from('venta_detalles').select('producto_id, cantidad, created_at, ventas(estado)')
-        .eq('auth_user_id', STATE.userId).in('producto_id', platos).gte('created_at', desde);
+      const { data: vd } = await N360Leer.todo(() => sb.from('venta_detalles').select('producto_id, cantidad, created_at, ventas(estado)')
+        .eq('auth_user_id', STATE.userId).in('producto_id', platos).gte('created_at', desde), 'ventas');
       STATE.usosInsumo = (vd || []).filter(x => x.ventas?.estado !== 'anulada').map(x => ({ producto_id: x.producto_id, cantidad: Number(x.cantidad || 0), fecha: x.created_at }));
     }
   } catch (e) { console.warn('cargarInsumos:', e); }

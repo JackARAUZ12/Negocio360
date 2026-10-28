@@ -385,11 +385,13 @@ async function loadKPIs() {
     // FIX: se pide también "impuesto" para poder mostrar el ingreso NETO
     // (sin IVA). El IVA no es ingreso del negocio, es dinero recaudado
     // para el fisco y ya se contabiliza aparte en el módulo de Impuestos.
-    let qDia = sb.from('ventas').select('total,ganancia,impuesto,estado_pago,metodo_pago')
-      .eq('auth_user_id', S.userId).eq('estado','completada')
-      .gte('fecha', today).lt('fecha', siguienteDiaISO(today));
-    if (restriccionKpi) qDia = qDia.eq('creado_por_nombre', restriccionKpi);
-    const { data: diaVentas } = await qDia;
+    const { data: diaVentas } = await N360Leer.todo(() => {
+      let qDia = sb.from('ventas').select('total,ganancia,impuesto,estado_pago,metodo_pago')
+        .eq('auth_user_id', S.userId).eq('estado','completada')
+        .gte('fecha', today).lt('fecha', siguienteDiaISO(today));
+      if (restriccionKpi) qDia = qDia.eq('creado_por_nombre', restriccionKpi);
+      return qDia;
+    }, 'ventas del día');
     // Devoluciones del día: restan (ventas netas). No cuentan como "ventas".
     const devDia = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, S.userId, today, today, { creadoPor: restriccionKpi || null }) : [];
     const dia = (diaVentas || []).concat(devDia);
@@ -402,11 +404,13 @@ async function loadKPIs() {
 
     // Ventas del mes
     // FIX: mismo criterio — ingreso NETO de IVA
-    let qMes = sb.from('ventas').select('total,ganancia,fecha,impuesto,estado_pago,metodo_pago')
-      .eq('auth_user_id', S.userId).eq('estado','completada')
-      .gte('fecha', mesStart).lt('fecha', siguienteDiaISO(today));
-    if (restriccionKpi) qMes = qMes.eq('creado_por_nombre', restriccionKpi);
-    const { data: mesVentas } = await qMes;
+    const { data: mesVentas } = await N360Leer.todo(() => {
+      let qMes = sb.from('ventas').select('total,ganancia,fecha,impuesto,estado_pago,metodo_pago')
+        .eq('auth_user_id', S.userId).eq('estado','completada')
+        .gte('fecha', mesStart).lt('fecha', siguienteDiaISO(today));
+      if (restriccionKpi) qMes = qMes.eq('creado_por_nombre', restriccionKpi);
+      return qMes;
+    }, 'ventas del mes');
     const devMes = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, S.userId, mesStart, today, { creadoPor: restriccionKpi || null }) : [];
     const mes = (mesVentas || []).concat(devMes);
 
@@ -1159,8 +1163,8 @@ async function loadProductosCache() {
     // se vende desde aqui -- solo desde Farmacia > Control de
     // Sustancias, que crea la venta real por su cuenta y ya aparece
     // en el historial de Ventas igual que cualquier otra.
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
+      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre'), 'productos');
     const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
     // Combos: se agregan al MISMO catálogo de búsqueda/carrito que los
@@ -1217,8 +1221,8 @@ async function loadProductosCache() {
 
 async function loadClientesCache() {
   try {
-    const { data } = await sb.from('clientes').select('id,nombre,apellido,telefono,correo')
-      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('clientes').select('id,nombre,apellido,telefono,correo')
+      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre'), 'clientes');
     S.clientesCache = data || [];
   } catch(e) { S.clientesCache = []; }
 }
@@ -1428,12 +1432,12 @@ async function loadClientesRecurrentes() {
   const tbody = document.getElementById('recurrentes-tbody');
   if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="7">Cargando clientes recurrentes…</td></tr>';
   try {
-    const { data, error } = await sb.from('clientes')
+    const { data, error } = await N360Leer.todo(() => sb.from('clientes')
       .select('id,nombre,telefono,correo,tipo_cliente,frecuencia_pago,monto_recurrente,dia_pago,fecha_ultimo_pago,fecha_proxima_pago,saldo_pendiente,frecuencia_personalizada_unidad,frecuencia_personalizada_intervalo')
       .eq('auth_user_id', S.userId)
       .eq('tipo_cliente', 'recurrente')
       .eq('activo', true)
-      .order('fecha_proxima_pago', { ascending: true, nullsFirst: false });
+      .order('fecha_proxima_pago', { ascending: true, nullsFirst: false }), 'clientes');
     if (error) throw error;
     S.clientesRecurrentes = data || [];
     renderClientesRecurrentes();
