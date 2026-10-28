@@ -266,7 +266,8 @@ function sinCitaNuevo(si) {
   $s('sc-nuevo').style.display = si ? '' : 'none';
   $s('sc-elegido').style.display = !si && SC.paciente ? '' : 'none';
   $s('sc-aviso').innerHTML = ''; SC.forzar = false;
-  if (si) setTimeout(() => $s('sc-nombres').focus(), 50);
+  // Solo pone el cursor en "Nombres" si la persona no está escribiendo ya en otro campo (si no, lo escrito saltaría al nombre).
+  if (si) setTimeout(() => { const a = document.activeElement; if (!a || !a.matches || !a.matches('#modal-sincita input:not([type=radio]):not([type=checkbox]), #modal-sincita textarea')) $s('sc-nombres').focus(); }, 50);
 }
 function sinCitaMedico() {
   const m = SA.personal.find(x => x.id === $s('sc-medico').value);
