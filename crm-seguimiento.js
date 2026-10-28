@@ -97,6 +97,7 @@
       ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('[data-crm-cerrar]')) cerrar(id); });
       document.body.appendChild(ov);
     }
+    else document.body.appendChild(ov);   // la última ventana abierta siempre queda encima
     ov.querySelector(`#${id}-t`).textContent = titulo;
     ov.querySelector('.crm-cuerpo').innerHTML = cuerpo;
     ov.querySelector('.crm-pie').innerHTML = pie;
@@ -333,7 +334,8 @@
       <button type="button" class="crm-accion" data-crm-accion="whatsapp">💬 WhatsApp</button>
       <button type="button" class="crm-accion" data-crm-accion="otro">📝 Nota</button>
       <button type="button" class="crm-accion" data-crm-accion="visita">🚗 Visita</button>
-      <button type="button" class="crm-accion" data-crm-accion="tarea">⏰ Recordatorio</button></div>`;
+      <button type="button" class="crm-accion" data-crm-accion="tarea">⏰ Recordatorio</button>
+      ${window.N360Opor ? '<button type="button" class="crm-accion" data-crm-accion="oportunidad">🎯 Oportunidad</button>' : ''}</div>`;
   }
   async function montarFicha(cont, cli, { alCambiar } = {}) {
     estilos();
@@ -345,6 +347,7 @@
       const a = b.dataset.crmAccion;
       if (a === 'whatsapp') abrirWhatsApp(cli, { alGuardar: recargar });
       else if (a === 'tarea') abrirTarea(cli, { alGuardar: recargar });
+      else if (a === 'oportunidad') window.N360Opor.abrirEditor(null, { cliente: cli, alGuardar: recargar });
       else abrirRapido(cli, a, { alGuardar: recargar });
     };
     await pintarPendientes(cont, cli, alCambiar);
@@ -357,6 +360,31 @@
       zona.innerHTML = htmlTareas(l, { nombres });
       conectarLista(zona, { nombres, alCambiar: () => { pintarPendientes(cont, cli, alCambiar); alCambiar && alCambiar(); } });
     } catch (e) { console.error('crm pendientes:', e); zona.innerHTML = '<div class="crm-vacio">No se pudieron cargar los pendientes.</div>'; }
+  }
+
+  // ── Ventana "Seguimiento" de un cliente: registrar todo de primera mano ──
+  const ICO_INT = { llamada: '📞', visita: '🚗', reunion: '🤝', mensaje: '💬', correo: '✉️', cotizacion: '📄', reclamo: '⚠️', otro: '📝' };
+  async function ultimasInteracciones(zona, cli) {
+    if (!zona) return;
+    try {
+      const { data, error } = await C.sb.from('cliente_interacciones').select('id,tipo,fecha,titulo,descripcion').eq('auth_user_id', C.userId).eq('cliente_id', cli.id).order('fecha', { ascending: false }).limit(8);
+      if (error) throw error;
+      zona.innerHTML = `<div class="crm-grupo"><span>🗂️ Lo último registrado</span></div>` + ((data || []).length ? data.map(i => `<div class="crm-tarea"><span style="flex:none">${ICO_INT[i.tipo] || '📝'}</span>
+        <div class="crm-t-txt"><b>${esc(i.titulo || 'Nota')}</b><small>${esc(fechaCorta(i.fecha))}${i.descripcion ? ' · ' + esc(String(i.descripcion).slice(0, 140)) : ''}</small></div></div>`).join('')
+        : '<div class="crm-vacio">Todavía no hay nada registrado. Usa los botones de arriba.</div>');
+    } catch (e) { zona.innerHTML = ''; }
+  }
+  async function abrirPanelCliente(cli, { historial, alCambiar } = {}) {
+    const ov = ventana('crm-v-panel', `📝 Seguimiento — ${cli.nombre}`,
+      `<div class="crm-ayuda">Registra aquí llamadas, mensajes, notas, visitas, recordatorios y oportunidades. Todo queda en el historial del cliente.</div>
+       <div data-panel-ficha></div><div data-panel-opor></div><div data-panel-ult></div>`,
+      `${historial ? `<a class="crm-btn" href="${esc(historial)}" style="text-decoration:none">📊 Ver historial completo</a>` : ''}<button type="button" class="crm-btn prim" data-crm-cerrar>Listo</button>`);
+    ov.querySelector('.crm-caja').style.maxWidth = '560px';
+    const fic = ov.querySelector('[data-panel-ficha]'), op = ov.querySelector('[data-panel-opor]'), ult = ov.querySelector('[data-panel-ult]');
+    const refrescar = () => { ultimasInteracciones(ult, cli); if (window.N360Opor) window.N360Opor.montarDeCliente(op, cli, { alCambiar }); alCambiar && alCambiar(); };
+    await montarFicha(fic, cli, { alCambiar: refrescar });
+    if (window.N360Opor) window.N360Opor.montarDeCliente(op, cli, { alCambiar });
+    ultimasInteracciones(ult, cli);
   }
 
   // ── Pestaña "Seguimientos" (todos los clientes) ──
@@ -404,7 +432,7 @@
   window.N360CRM = {
     init({ sb, userId, usuario, negocio }) { C.sb = sb; C.userId = userId; C.usuario = usuario || null; C.negocio = negocio || null; C.plantillas = null; estilos(); },
     montarFicha, montarSeguimientos, montarAvisoPanel, contarPendientesHoy,
-    abrirTarea, abrirWhatsApp, abrirRapido, gestionarPlantillas, listar, marcar, crearTarea, numeroWhatsApp,
+    abrirTarea, abrirWhatsApp, abrirRapido, gestionarPlantillas, abrirPanelCliente, listar, marcar, crearTarea, numeroWhatsApp,
     // Piezas de pantalla compartidas con crm-oportunidades.js (mismas ventanas y colores)
     ui: { ventana, cerrar, estilos, esc, aviso, hoy, masDias, fechaCorta, registrar, contexto: () => C },
   };

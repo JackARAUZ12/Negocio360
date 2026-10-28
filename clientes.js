@@ -662,6 +662,10 @@ function renderTablaClientes() {
               ${c.tipo_cliente === 'recurrente' ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;background:var(--accent-soft);color:var(--accent)">RECURRENTE</span>` : ''}
             </div>
             ${c.empresa ? `<div style="font-size:11.5px;color:var(--text-muted)">${esc(c.empresa)}</div>` : ''}
+            <div class="cli-pills" onclick="event.stopPropagation()">
+              <a class="cli-pill cli-pill-hist" href="cliente-historial.html?id=${encodeURIComponent(c.id)}" title="Todo sobre este cliente: compras, créditos, pagos, notas y seguimiento">📊 Historial</a>
+              <button type="button" class="cli-pill cli-pill-seg" onclick="abrirSeguimientoCliente('${c.id}')" title="Registrar llamada, WhatsApp, nota, visita, recordatorio u oportunidad">📝 Seguimiento</button>
+            </div>
           </div>
         </div>
       </td>
@@ -1638,12 +1642,24 @@ function cargarSeguimientosCrm() {
   N360CRM.montarSeguimientos(document.getElementById('crm-seguimientos'), {
     alAbrirCliente: id => abrirPerfil(id), alCambiar: actualizarCuentaCrm });
 }
+// Botón "📝 Seguimiento" de cada cliente: registrar todo sin abrir la ficha completa.
+async function abrirSeguimientoCliente(id) {
+  if (!window.N360CRM) return;
+  let c = CS.clientes.find(x => x.id === id);
+  if (!c) { const { data } = await sb.from('clientes').select('*').eq('id', id).eq('auth_user_id', CS.userId).maybeSingle(); c = data; }
+  if (!c) return;
+  N360CRM.abrirPanelCliente({ ...c, nombre: [c.nombre, c.apellido].filter(Boolean).join(' ') || c.nombre }, {
+    historial: 'cliente-historial.html?id=' + encodeURIComponent(c.id), alCambiar: actualizarCuentaCrm });
+}
 function montarCrmFicha(cl) {
   if (!window.N360CRM) return;
   const cli = { ...cl, nombre: [cl.nombre, cl.apellido].filter(Boolean).join(' ') || cl.nombre };
   N360CRM.montarFicha(document.getElementById('perfil-crm'), cli, {
-    alCambiar: () => { cargarInteraccionesCliente(cl.id); actualizarCuentaCrm(); if (tabActiva === 'seguimientos') cargarSeguimientosCrm(); } });
+    alCambiar: () => { cargarInteraccionesCliente(cl.id); actualizarCuentaCrm(); if (tabActiva === 'seguimientos') cargarSeguimientosCrm(); montarOporFicha(cli); } });
   if (window.N360Grupos) N360Grupos.insignia(document.getElementById('perfil-grupo'), cl.id);
+  montarOporFicha(cli);
+}
+function montarOporFicha(cli) {
   if (window.N360Opor) N360Opor.montarDeCliente(document.getElementById('perfil-opor'), cli, {
     alCambiar: () => { if (tabActiva === 'oportunidades') cambiarTab('oportunidades'); } });
 }

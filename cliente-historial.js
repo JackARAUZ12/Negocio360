@@ -52,6 +52,18 @@
     }
     return out;
   }
+  // CRM: notas/llamadas/mensajes, cotizaciones, citas, oportunidades y recordatorios
+  // (solo se muestran en la línea de tiempo y en "Seguimiento"; si algo falla, solo no se muestra)
+  function cargarCRM() {
+    const opcional = (consulta, k) => TX.paginar(consulta).then(r => { CH[k] = r; }).catch(() => { CH[k] = []; });
+    return Promise.all([
+      opcional(() => sb.from('cliente_interacciones').select('id,tipo,fecha,titulo,descripcion,created_at').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('fecha', { ascending: false }), 'interacciones'),
+      opcional(() => sb.from('proformas').select('id,numero_proforma,fecha,created_at,total,estado').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('created_at', { ascending: false }), 'proformas'),
+      opcional(() => sb.from('agenda_citas').select('id,fecha,estado,notas,created_at').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('fecha', { ascending: false }), 'citas'),
+      opcional(() => sb.from('crm_oportunidades').select('id,titulo,etapa,valor_estimado,motivo_perdida,cerrada_en,created_at').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('created_at', { ascending: false }), 'oportunidades'),
+      opcional(() => sb.from('crm_tareas').select('id,titulo,vence_en,hecha,hecha_en,created_at').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('created_at', { ascending: false }), 'tareasCrm'),
+    ]);
+  }
   async function cargar() {
     const { data: cl, error } = await sb.from('clientes').select('*').eq('id', CH.id).eq('auth_user_id', TX.userId).maybeSingle();
     if (error) throw error;
@@ -67,12 +79,7 @@
       tareas.push(TX.paginar(() => sb.from('creditos').select('*').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('created_at', { ascending: false }))
         .then(c => { CH.creditos = c; }));
     }
-    // CRM: notas/llamadas/mensajes, cotizaciones y citas (solo se muestran en la línea de tiempo; si falla, no se muestran)
-    const opcional = (consulta, k) => TX.paginar(consulta).then(r => { CH[k] = r; }).catch(() => { CH[k] = []; });
-    tareas.push(
-      opcional(() => sb.from('cliente_interacciones').select('id,tipo,fecha,titulo,descripcion,created_at').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('fecha', { ascending: false }), 'interacciones'),
-      opcional(() => sb.from('proformas').select('id,numero_proforma,fecha,created_at,total,estado').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('created_at', { ascending: false }), 'proformas'),
-      opcional(() => sb.from('agenda_citas').select('id,fecha,estado,notas,created_at').eq('auth_user_id', TX.userId).eq('cliente_id', CH.id).order('fecha', { ascending: false }), 'citas'));
+    tareas.push(cargarCRM());
     await Promise.all(tareas);
     const idsCred = CH.creditos.map(c => c.id);
     const idsFiado = CH.fiados.map(f => f.id);
@@ -148,7 +155,7 @@
     const usoPct = R && R.limite > 0 ? Math.min(100, Math.round(100 * R.debe / R.limite)) : 0;
     const tabs = [
       ...(R ? [['activos', `Créditos activos (${R.activos})`], ['pagos', 'Pagos'], ['cerrados', 'Créditos cerrados']] : []),
-      ['fiados', 'Fiados'], ['compras', 'Compras'], ['linea', 'Línea de tiempo'], ['reporte', 'Reporte'],
+      ['fiados', 'Fiados'], ['compras', 'Compras'], ['seguimiento', '📝 Seguimiento'], ['linea', 'Línea de tiempo'], ['reporte', 'Reporte'],
     ];
     if (!tabs.some(t => t[0] === CH.tab)) CH.tab = tabs[0][0];
     $('ch-app').innerHTML = `
@@ -174,12 +181,30 @@
         <div class="ch-kpi ch-kpi-disp"><span>💳 Crédito disponible</span><b>${R.disponible == null ? 'Sin límite' : esc(money(Math.max(0, R.disponible)))}</b>
           ${R.limite > 0 ? `<div class="ch-barra ${usoPct >= 90 ? 'rojo' : usoPct >= 70 ? 'amarillo' : ''}"><i style="width:${usoPct}%"></i></div><small>Usa ${usoPct}% de su límite de ${esc(money(R.limite))}${R.disponible < 0 ? ' · ¡sobrepasado!' : ''}</small>` : '<small>No tiene límite de crédito configurado</small>'}</div>
       </div>` : ''}
+      ${window.N360CRM ? `<section class="ch-seg" aria-label="Seguimiento del cliente">
+        <div class="ch-seg-cab"><b>📝 Seguimiento</b><span>Registra aquí; todo queda en la pestaña "Seguimiento" y en la línea de tiempo.</span></div>
+        <div id="ch-crm"></div><div id="ch-opor"></div></section>` : ''}
       <nav class="ch-tabs" role="tablist">${tabs.map(([k, t]) => `<button type="button" role="tab" class="ch-tab${CH.tab === k ? ' on' : ''}" data-ch-tab="${k}" aria-selected="${CH.tab === k}">${esc(t)}</button>`).join('')}</nav>
       <div id="ch-tab-cuerpo" class="ch-tab-cuerpo"></div>`;
     pintarTab();
+    montarCRM();
+  }
+  // Botones de seguimiento (crm-seguimiento.js / crm-oportunidades.js). Al registrar algo,
+  // se vuelve a leer lo del CRM y se muestra en la pestaña "Seguimiento".
+  function montarCRM() {
+    if (!window.N360CRM || !$('ch-crm')) return;
+    const c = CH.cliente, cli = { ...c, nombre: `${c.nombre || ''} ${c.apellido || ''}`.trim() || 'Cliente' };
+    const alCambiar = async () => {
+      await cargarCRM();
+      CH.tab = 'seguimiento'; pintarTab();
+      if (window.N360Opor) N360Opor.montarDeCliente($('ch-opor'), cli, { alCambiar: refrescarLinea });
+    };
+    const refrescarLinea = async () => { await cargarCRM(); pintarTab(); };
+    N360CRM.montarFicha($('ch-crm'), cli, { alCambiar });
+    if (window.N360Opor) N360Opor.montarDeCliente($('ch-opor'), cli, { alCambiar: refrescarLinea });
   }
   function pintarTab() {
-    const f = { activos: tActivos, pagos: tPagos, cerrados: tCerrados, fiados: tFiados, compras: tCompras, linea: tLinea, reporte: tReporte }[CH.tab];
+    const f = { activos: tActivos, pagos: tPagos, cerrados: tCerrados, fiados: tFiados, compras: tCompras, linea: () => tLinea(false), seguimiento: tSeguimiento, reporte: tReporte }[CH.tab];
     $('ch-tab-cuerpo').innerHTML = f ? f() : '';
     document.querySelectorAll('.ch-tab').forEach(b => { b.classList.toggle('on', b.dataset.chTab === CH.tab); b.setAttribute('aria-selected', String(b.dataset.chTab === CH.tab)); });
   }
@@ -275,15 +300,29 @@
     CH.fiados.forEach(f => ev.push({ f: f.created_at || f.fecha, ico: '📒', t: `Fiado: ${f.descripcion || ''}`, m: f.monto_total }));
     CH.fiadoPagos.forEach(p => ev.push({ f: p.created_at, ico: '✅', t: 'Abono a fiado', m: p.monto, cls: 'verde' }));
     const ICO_INT = { llamada: '📞', visita: '🚗', reunion: '🤝', mensaje: '💬', correo: '✉️', cotizacion: '📄', reclamo: '⚠️', otro: '📝' };
-    (CH.interacciones || []).forEach(i => ev.push({ f: i.fecha || i.created_at, ico: ICO_INT[i.tipo] || '📝', t: [i.titulo || 'Nota', i.descripcion].filter(Boolean).join(': ').slice(0, 160) }));
+    (CH.interacciones || []).forEach(i => ev.push({ crm: 1, f: i.fecha || i.created_at, ico: ICO_INT[i.tipo] || '📝', t: [i.titulo || 'Nota', i.descripcion].filter(Boolean).join(': ').slice(0, 160) }));
     const EST_PRO = { aceptada: 'aceptada', convertida: 'convertida en venta', rechazada: 'rechazada', perdida: 'perdida', vencida: 'vencida' };
-    (CH.proformas || []).forEach(p => ev.push({ f: p.created_at || p.fecha, ico: '📄', t: `Cotización ${p.numero_proforma || ''}${EST_PRO[p.estado] ? ' (' + EST_PRO[p.estado] + ')' : ''}`, m: p.total, cls: ['rechazada', 'perdida', 'anulada'].includes(p.estado) ? 'gris' : '' }));
-    (CH.citas || []).forEach(c => ev.push({ f: c.fecha || c.created_at, ico: '📅', t: `Cita${c.estado ? ' (' + String(c.estado).replace(/_/g, ' ') + ')' : ''}${c.notas ? ': ' + String(c.notas).slice(0, 80) : ''}`, cls: ['cancelada', 'no_asistio'].includes(c.estado) ? 'gris' : '' }));
+    (CH.proformas || []).forEach(p => ev.push({ crm: 1, f: p.created_at || p.fecha, ico: '📄', t: `Cotización ${p.numero_proforma || ''}${EST_PRO[p.estado] ? ' (' + EST_PRO[p.estado] + ')' : ''}`, m: p.total, cls: ['rechazada', 'perdida', 'anulada'].includes(p.estado) ? 'gris' : '' }));
+    (CH.citas || []).forEach(c => ev.push({ crm: 1, f: c.fecha || c.created_at, ico: '📅', t: `Cita${c.estado ? ' (' + String(c.estado).replace(/_/g, ' ') + ')' : ''}${c.notas ? ': ' + String(c.notas).slice(0, 80) : ''}`, cls: ['cancelada', 'no_asistio'].includes(c.estado) ? 'gris' : '' }));
+    const MOT = { precio: 'precio muy alto', competencia: 'se fue con la competencia', sin_presupuesto: 'sin presupuesto', cambio_idea: 'cambió de idea', sin_respuesta: 'no respondió', otro: 'otro motivo' };
+    (CH.oportunidades || []).forEach(o => {
+      ev.push({ crm: 1, f: o.created_at, ico: '🎯', t: `Oportunidad: ${o.titulo} (estimado)`, m: o.valor_estimado, cls: 'gris' });
+      if (o.etapa === 'ganado' && o.cerrada_en) ev.push({ crm: 1, f: o.cerrada_en, ico: '🏆', t: `Oportunidad ganada: ${o.titulo}`, cls: 'verde' });
+      if (o.etapa === 'perdido' && o.cerrada_en) ev.push({ crm: 1, f: o.cerrada_en, ico: '✖️', t: `Oportunidad perdida: ${o.titulo}${MOT[o.motivo_perdida] ? ' — ' + MOT[o.motivo_perdida] : ''}`, cls: 'gris' });
+    });
+    (CH.tareasCrm || []).forEach(t => {
+      ev.push({ crm: 1, f: t.created_at, ico: '⏰', t: `Recordatorio: ${t.titulo} (para el ${fecha(t.vence_en)})` });
+      if (t.hecha && t.hecha_en) ev.push({ crm: 1, f: t.hecha_en, ico: '✅', t: `Hecho: ${t.titulo}`, cls: 'verde' });
+    });
     CH.devoluciones.forEach(d => ev.push({ f: d.created_at || d.fecha, ico: '↩️', t: `Devolución ${d.numero || ''}${d.motivo ? ': ' + d.motivo : ''}`, m: d.total }));
     return ev.filter(e => e.f).sort((a, b) => String(b.f).localeCompare(String(a.f)));
   }
-  function tLinea() {
-    const ev = eventosLinea();
+  function tSeguimiento() {
+    if (!eventosLinea().some(e => e.crm)) return vacio('📝', 'Todavía no hay seguimiento', 'Usa los botones de arriba (Llamé, WhatsApp, Nota, Visita, Recordatorio, Oportunidad) y aquí se irá viendo todo.');
+    return tLinea(true);
+  }
+  function tLinea(soloCrm) {
+    const ev = eventosLinea().filter(e => !soloCrm || e.crm);
     if (!ev.length) return vacio('🕑', 'Sin movimientos todavía');
     const vis = ev.slice(0, CH.lineaMax);
     let mesAnt = '';
@@ -559,6 +598,8 @@
     const qs = new URLSearchParams(location.search);
     CH.id = qs.get('id');
     TX.init(async () => {
+      if (window.N360CRM) N360CRM.init({ sb, userId: TX.userId });
+      if (window.N360Opor) N360Opor.init({ sb, userId: TX.userId, fmt: n => money(n) });
       if (!CH.id) { $('ch-app').innerHTML = vacio('👥', 'Elige un cliente', 'Abre el historial desde el módulo de Clientes.') + '<div style="text-align:center"><a class="tx-btn" href="clientes.html">Ir a Clientes</a></div>'; return; }
       try {
         const ok = await cargar();

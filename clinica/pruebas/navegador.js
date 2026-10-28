@@ -2323,6 +2323,55 @@ async function pruebaCampanas(browser, base) {
   }
 }
 
+// Botones visibles por cliente: "📊 Historial" y "📝 Seguimiento"; y seguimiento dentro del Historial.
+async function pruebaBotonesCliente(browser, base) {
+  console.log('\n▶ Clientes: botones visibles de Historial y Seguimiento');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clientes.html');
+    await page.evaluate(() => { const x = JSON.parse(JSON.stringify(window.__SEED)); x.tutoriales_vistos.push({ auth_user_id: x.clientes[0].auth_user_id, modulo_key: 'clientes' });
+      x.clientes[0].telefono = '88881234'; x.crm_tareas = []; x.cliente_interacciones = []; x.crm_oportunidades = []; sessionStorage.setItem('__DB', JSON.stringify(x)); });
+    await page.reload(); await esperarListo(page);
+    await page.waitForSelector('#clientes-tbody .cli-pill-hist', { timeout: 15000 });
+    const cid = await page.evaluate(() => CS.clientes[0].id);
+    // Se ven sin tener que correr la tabla hacia un lado
+    const visibles = await page.evaluate(() => [...document.querySelectorAll('#clientes-tbody tr:first-child .cli-pill')].every(b => { const r = b.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth; }));
+    verificar(visibles, `${tag}: "📊 Historial" y "📝 Seguimiento" se ven en cada cliente sin mover la tabla`);
+    verificar((await page.getAttribute('#clientes-tbody tr:first-child .cli-pill-hist', 'href')) === 'cliente-historial.html?id=' + cid, `${tag}: "Historial" lleva al historial de ese cliente`);
+    // Seguimiento: ventana con todo, sin abrir la ficha
+    await page.click('#clientes-tbody tr:first-child .cli-pill-seg');
+    await page.waitForSelector('#crm-v-panel.abierto [data-crm-accion="oportunidad"]');
+    verificar(!(await page.isVisible('#modal-perfil.open, #modal-perfil.active')) && await page.locator('#crm-v-panel [data-crm-accion]').count() === 6, `${tag}: "Seguimiento" abre su propia ventana con Llamé, WhatsApp, Nota, Visita, Recordatorio y Oportunidad`);
+    await page.click('#crm-v-panel [data-crm-accion="otro"]');
+    await page.fill('#crm-r-texto', 'Prefiere que le escriban en la tarde'); await page.click('#crm-r-ok');
+    await page.waitForFunction(() => document.querySelector('#crm-v-panel [data-panel-ult]').textContent.includes('Prefiere que le escriban'), null, { timeout: 5000 }).catch(() => {});
+    verificar((await page.textContent('#crm-v-panel [data-panel-ult]')).includes('Prefiere que le escriban'), `${tag}: la nota aparece al instante en "Lo último registrado"`);
+    await page.click('#crm-v-panel [data-crm-accion="oportunidad"]');
+    await page.fill('#op-e-tit', 'Pedido de fin de año'); await page.fill('#op-e-val', '2500'); await page.click('#op-e-ok');
+    await page.waitForFunction(() => document.querySelector('#crm-v-panel [data-panel-opor]').textContent.includes('Pedido de fin de año'), null, { timeout: 5000 }).catch(() => {});
+    verificar((await page.textContent('#crm-v-panel [data-panel-opor]')).includes('Pedido de fin de año'), `${tag}: la oportunidad se registra desde la misma ventana`);
+    verificar(await page.evaluate(() => { const c = document.querySelector('#crm-v-panel .crm-caja').getBoundingClientRect(); return c.left >= -1 && c.right <= innerWidth + 1; }), `${tag}: la ventana de Seguimiento cabe en la pantalla`);
+    // Historial: botones arriba y pestaña Seguimiento con todo
+    await page.click('#crm-v-panel a[href^="cliente-historial.html"]');
+    await page.waitForSelector('#ch-crm .crm-accion', { timeout: 15000 });
+    verificar(await page.locator('#ch-crm [data-crm-accion]').count() === 6, `${tag}: el Historial tiene arriba los botones de seguimiento`);
+    await page.click('[data-ch-tab="seguimiento"]');
+    let t = await page.textContent('#ch-tab-cuerpo');
+    verificar(t.includes('Prefiere que le escriban') && t.includes('Oportunidad: Pedido de fin de año'), `${tag}: la pestaña "Seguimiento" muestra notas y oportunidades`);
+    await page.click('#ch-crm [data-crm-accion="llamada"]');
+    await page.fill('#crm-r-texto', 'Confirmó el pedido'); await page.click('#crm-r-cuando [data-d="1"]'); await page.click('#crm-r-ok');
+    await page.waitForFunction(() => document.getElementById('ch-tab-cuerpo').textContent.includes('Confirmó el pedido'), null, { timeout: 5000 }).catch(() => {});
+    t = await page.textContent('#ch-tab-cuerpo');
+    verificar(t.includes('Llamada: Confirmó el pedido') && t.includes('Recordatorio: Volver a contactar'), `${tag}: lo registrado desde el Historial aparece al momento (llamada y recordatorio)`);
+    await page.click('[data-ch-tab="linea"]');
+    verificar((await page.textContent('#ch-tab-cuerpo')).includes('Confirmó el pedido'), `${tag}: también queda en la línea de tiempo completa`);
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag}: el Historial no se desborda`);
+    verificar(page.__errores.length === 0, `${tag} botones de cliente: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2352,6 +2401,7 @@ async function regresion(browser, base) {
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
+    if (process.env.SOLO_BOTONES) { await pruebaBotonesCliente(browser, base); throw 'fin'; }
     if (process.env.SOLO_CAMP) { await pruebaCampanas(browser, base); throw 'fin'; }
     if (process.env.SOLO_GRUPOS) { await pruebaGrupos(browser, base); throw 'fin'; }
     if (process.env.SOLO_OPOR) { await pruebaOportunidades(browser, base); throw 'fin'; }
@@ -2387,6 +2437,7 @@ async function regresion(browser, base) {
     await pruebaOportunidades(browser, base);
     await pruebaGrupos(browser, base);
     await pruebaCampanas(browser, base);
+    await pruebaBotonesCliente(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

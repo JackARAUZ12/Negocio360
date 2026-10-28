@@ -153,3 +153,9 @@ i.c { background: var(--accent); } i.p { background: var(--success); }
 }
 @media (max-width: 380px) { .ch-kpis { grid-template-columns: minmax(0, 1fr); } .ch-cred-nums b { font-size: 13px; } }
 .ch-panel[hidden], .ch-panel-fondo[hidden] { display: none !important; }
+
+/* Seguimiento (CRM): botones para registrar llamadas, WhatsApp, notas, visitas, recordatorios y oportunidades */
+.ch-seg { border: 1.5px solid var(--accent); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; background: var(--bg-surface); }
+.ch-seg-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 10px; }
+.ch-seg-cab b { font-size: 15px; color: var(--text-primary); }
+.ch-seg-cab span { font-size: 12px; color: var(--text-muted); }
