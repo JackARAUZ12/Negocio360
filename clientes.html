@@ -817,6 +817,9 @@
         <div class="section-tab" data-tab="inactivos" onclick="cambiarTab('inactivos')">
           💤 Inactivos
         </div>
+        <div class="section-tab" data-tab="grupos" onclick="cambiarTab('grupos')">
+          🧩 Grupos
+        </div>
         <div class="section-tab" data-tab="oportunidades" onclick="cambiarTab('oportunidades')">
           🎯 Oportunidades
         </div>
@@ -947,6 +950,14 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- ======= PANEL: GRUPOS (CRM) ======= -->
+      <div id="panel-grupos" style="display:none">
+        <div class="panel-card fade-in">
+          <div class="panel-header"><div class="panel-title">🧩 Grupos de clientes</div></div>
+          <div id="crm-grupos" style="padding:4px 16px 16px"></div>
         </div>
       </div>
 
@@ -1386,7 +1397,8 @@
           </span>
           <button class="btn-primary btn-sm" onclick="abrirModalInteraccion()">+ Registrar interacción</button>
         </div>
-        <div id="perfil-crm" style="margin-top:10px"></div>
+        <div id="perfil-grupo" style="margin-top:10px"></div>
+        <div id="perfil-crm" style="margin-top:4px"></div>
         <div id="perfil-opor" style="margin-top:6px"></div>
         <div id="interacciones-lista" style="display:flex;flex-direction:column;gap:0;margin-top:10px">
           <div style="font-size:12.5px;color:var(--text-muted);font-style:italic;padding:8px 0">Cargando…</div>
@@ -1516,7 +1528,8 @@
 
 <script src="crm-seguimiento.js?v=20261028b"></script>
 <script src="crm-oportunidades.js?v=20261028a"></script>
-<script src="clientes.js?v=20261028b"></script>
+<script src="crm-grupos.js?v=20261028a"></script>
+<script src="clientes.js?v=20261028c"></script>
 <script src="clientes-importar.js"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261028a"></script>

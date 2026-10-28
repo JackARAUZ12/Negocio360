@@ -2162,6 +2162,82 @@ async function pruebaOportunidades(browser, base) {
   }
 }
 
+// CRM Fase 3: grupos de clientes y puntaje con sus ventas reales (solo lectura).
+async function pruebaGrupos(browser, base) {
+  console.log('\n▶ CRM: grupos de clientes y puntaje');
+  // Igual que la función del servidor: ventas completadas (menos devoluciones) por cliente.
+  const simResumen = () => {
+    window.__RPC = Object.assign(window.__RPC || {}, { crm_resumen_clientes: () => {
+      const db = JSON.parse(sessionStorage.getItem('__DB')), por = {}, hoy = new Date(), lim = new Date(hoy - 365 * 864e5).toISOString().slice(0, 10);
+      (db.ventas || []).filter(v => v.cliente_id && v.estado !== 'anulada').forEach(v => {
+        const d = String(v.fecha || v.created_at).slice(0, 10), dev = (db.devoluciones_venta || []).filter(x => x.venta_id === v.id && x.estado !== 'anulada').reduce((a, x) => a + x.total, 0);
+        const m = Math.max(0, v.total - dev), r = por[v.cliente_id] = por[v.cliente_id] || { cliente_id: v.cliente_id, compras: 0, monto: 0, compras_12m: 0, monto_12m: 0, primera: d, ultima: d };
+        r.compras++; r.monto += m; if (d >= lim) { r.compras_12m++; r.monto_12m += m; } if (d < r.primera) r.primera = d; if (d > r.ultima) r.ultima = d; });
+      return Object.values(por); } });
+  };
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await ctx.addInitScript(simResumen);
+    await page.goto(base + '/clientes.html');
+    await page.evaluate(() => { const x = JSON.parse(JSON.stringify(window.__SEED)); const U = x.clientes[0].auth_user_id;
+      x.tutoriales_vistos.push({ auth_user_id: U, modulo_key: 'clientes' });
+      const dia = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+      const mk = (id, nombre, tel) => ({ id, auth_user_id: U, nombre, telefono: tel, activo: true, created_at: new Date().toISOString() });
+      x.clientes.push(mk('g-camp', 'Carla Campeona', '88880001'), mk('g-ries', 'Rosa Riesgo', '88880002'), mk('g-nuevo', 'Nico Nuevo', null), mk('g-perd', 'Pedro Perdido', null));
+      x.ventas = (x.ventas || []); let k = 0;
+      const v = (cli, dias, total, estado) => x.ventas.push({ id: 'gv-' + (k++), auth_user_id: U, cliente_id: cli, total, estado: estado || 'completada', fecha: dia(dias), created_at: dia(dias) + 'T12:00:00Z' });
+      [2, 9, 20, 35, 50, 70, 90, 120, 150, 200, 250].forEach(d => v('g-camp', d, 500));
+      [130, 160, 190, 220, 260, 300].forEach(d => v('g-ries', d, 900));
+      v('g-nuevo', 3, 150);
+      v('g-perd', 400, 300); v('g-perd', 500, 300);
+      v('g-ries', 5, 99999, 'anulada'); // una venta anulada no cuenta
+      x.devoluciones_venta = []; x.crm_tareas = []; x.cliente_interacciones = [];
+      sessionStorage.setItem('__DB', JSON.stringify(x)); });
+    const antes = await page.evaluate(() => sessionStorage.getItem('__DB'));
+    await page.goto(base + '/clientes.html?tab=grupos'); await esperarListo(page);
+    await page.waitForSelector('#crm-grupos .gr-tarjetas', { timeout: 15000 });
+    const n = async k => Number(await page.textContent(`[data-gr="${k}"] .gr-n`));
+    verificar(await n('campeon') === 1 && await n('en_riesgo') === 1 && await n('nuevo') === 1 && await n('perdido') === 1, `${tag}: separa a los clientes en Campeones, En riesgo, Nuevos y Perdidos`);
+    verificar(await n('sin_compras') >= 1, `${tag}: los clientes sin compras quedan en "Sin compras"`);
+    // Abre primero "En riesgo" (lo más urgente) y la venta anulada no cuenta
+    const lista = await page.textContent('#crm-grupos');
+    verificar(lista.includes('Rosa Riesgo') && lista.includes('Qué hacer') && lista.includes('Última compra hace 130 días'), `${tag}: empieza por "En riesgo" con qué hacer y desde cuándo no compra (la venta anulada no cuenta)`);
+    await page.click('[data-gr="campeon"]');
+    verificar((await page.textContent('#crm-grupos')).includes('Carla Campeona'), `${tag}: al tocar un grupo muestra sus clientes`);
+    const pts = Number(await page.textContent('#crm-grupos .gr-pts'));
+    verificar(pts >= 80 && pts <= 100, `${tag}: la campeona tiene puntaje alto (${pts})`);
+    // WhatsApp con el mensaje sugerido del grupo
+    await page.click('[data-gr-wa="g-camp"]');
+    await page.waitForFunction(() => (document.getElementById('crm-w-texto') || {}).value, null, { timeout: 5000 }).catch(() => {});
+    verificar((await page.inputValue('#crm-w-texto')).startsWith('¡Hola Carla! Gracias por ser de nuestros mejores clientes'), `${tag}: WhatsApp con el mensaje sugerido para el grupo y su nombre`);
+    await page.click('#crm-v-wa [data-crm-cerrar]');
+    // Recordatorio para todos los del grupo
+    await page.click('[data-gr="en_riesgo"]');
+    await page.click('[data-gr-tareas]');
+    await page.waitForFunction(() => (JSON.parse(sessionStorage.getItem('__DB')).crm_tareas || []).length === 1, null, { timeout: 5000 }).catch(() => {});
+    const db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.crm_tareas.length === 1 && db.crm_tareas[0].cliente_id === 'g-ries' && db.crm_tareas[0].hecha === false, `${tag}: "Recordatorio para todos" crea uno por cliente del grupo`);
+    // Excel
+    await page.evaluate(() => { window.__xlsx = null; window.XLSX = { utils: { book_new: () => ({ h: [] }), json_to_sheet: f => f, book_append_sheet: (wb, f, n) => wb.h.push({ f, n }) }, writeFile: (wb, nombre) => { window.__xlsx = { nombre, hojas: wb.h }; } }; });
+    await page.click('[data-gr-excel]');
+    const xl = await page.evaluate(() => window.__xlsx);
+    verificar(!!xl && /^clientes-en_riesgo-.*\.xlsx$/.test(xl.nombre) && xl.hojas[0].f.length === 1 && xl.hojas[0].f[0].Cliente === 'Rosa Riesgo' && 'Puntaje' in xl.hojas[0].f[0] && xl.hojas[0].f[0]['Días sin comprar'] === 130,
+      `${tag}: descarga el Excel del grupo (cliente, teléfono, puntaje, días sin comprar…)`);
+    // Solo lectura: no toca ventas ni clientes
+    const desp = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const a = JSON.parse(antes);
+    verificar(JSON.stringify(a.ventas) === JSON.stringify(desp.ventas) && JSON.stringify(a.clientes) === JSON.stringify(desp.clientes), `${tag}: los grupos no cambian ventas ni clientes`);
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag}: Grupos sin desbordarse`);
+    // Insignia en la ficha
+    await page.evaluate(() => abrirPerfil('g-camp'));
+    await page.waitForSelector('#perfil-grupo .gr-insignia', { timeout: 8000 });
+    verificar(/Campeones · \d+ pts/.test(await page.textContent('#perfil-grupo')), `${tag}: la ficha muestra su grupo y puntaje`);
+    verificar(page.__errores.length === 0, `${tag} Grupos: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2191,6 +2267,7 @@ async function regresion(browser, base) {
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
+    if (process.env.SOLO_GRUPOS) { await pruebaGrupos(browser, base); throw 'fin'; }
     if (process.env.SOLO_OPOR) { await pruebaOportunidades(browser, base); throw 'fin'; }
     if (process.env.SOLO_PROD) { await pruebaProduccion(browser, base); await pruebaVentaPreparados(browser, base); throw 'fin'; }
     if (process.env.SOLO_REGALO) { await pruebaSinRegalo(browser, base); throw 'fin'; }
@@ -2222,6 +2299,7 @@ async function regresion(browser, base) {
     await pruebaSinRegalo(browser, base);
     await pruebaCRM(browser, base);
     await pruebaOportunidades(browser, base);
+    await pruebaGrupos(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

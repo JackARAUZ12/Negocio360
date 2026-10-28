@@ -306,4 +306,26 @@ t('Terapias: especialidades nuevas y servicios sugeridos', () => {
   assert.strictEqual(C.clinicaServiciosSugeridos('laboratorio').length, 0);
   assert.strictEqual(C.clinicaValidarDatos('fisioterapia', { eva_antes: '11' }) !== '', true);
 });
+
+// CRM · grupos de clientes (crm-grupos.js): cálculo puro con fecha fija
+const gctx = vm.createContext({ console, window: {}, document: { getElementById: () => null } });
+vm.runInContext(fs.readFileSync(path.join(raiz, 'crm-grupos.js'), 'utf8'), gctx);
+const GR = vm.runInContext('window.N360Grupos', gctx);
+t('CRM grupos: cada cliente cae en su grupo', () => {
+  const H = '2026-10-28', cl = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(id => ({ id, nombre: id.toUpperCase() }));
+  const r = [
+    { cliente_id: 'a', compras: 30, monto: 9000, compras_12m: 12, monto_12m: 6000, primera: '2024-01-10', ultima: '2026-10-25' }, // campeón
+    { cliente_id: 'b', compras: 8, monto: 2000, compras_12m: 4, monto_12m: 1500, primera: '2025-01-01', ultima: '2026-09-10' },   // leal (48 días, 4 compras)
+    { cliente_id: 'c', compras: 1, monto: 300, compras_12m: 1, monto_12m: 300, primera: '2026-10-20', ultima: '2026-10-20' },     // nuevo
+    { cliente_id: 'd', compras: 9, monto: 5000, compras_12m: 6, monto_12m: 4000, primera: '2025-02-01', ultima: '2026-05-01' },   // en riesgo (180 días)
+    { cliente_id: 'e', compras: 2, monto: 100, compras_12m: 1, monto_12m: 50, primera: '2025-03-01', ultima: '2026-03-01' },      // dormido
+    { cliente_id: 'f', compras: 3, monto: 400, compras_12m: 0, monto_12m: 0, primera: '2023-01-01', ultima: '2025-06-01' },       // perdido
+    { cliente_id: 'g', compras: 3, monto: 200, compras_12m: 2, monto_12m: 200, primera: '2025-05-01', ultima: '2026-10-15' },     // prometedor
+  ];
+  const out = Object.fromEntries(GR.calcular(r, cl, H).map(x => [x.id, x]));
+  assert.deepStrictEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(k => out[k].grupo), ['campeon', 'leal', 'nuevo', 'en_riesgo', 'dormido', 'perdido', 'prometedor', 'sin_compras']);
+  assert.ok(out.a.puntaje > out.b.puntaje && out.b.puntaje > out.e.puntaje, 'el puntaje ordena del mejor al peor');
+  assert.ok(out.a.puntaje <= 100 && out.f.puntaje >= 0 && out.h.puntaje === 0);
+  assert.strictEqual(out.d.diasUltima, 180);
+});
 console.log(`${ok} pruebas unitarias correctas${process.exitCode ? ' (CON FALLAS)' : ''}`);
