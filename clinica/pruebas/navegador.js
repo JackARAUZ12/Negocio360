@@ -1683,30 +1683,34 @@ async function pruebaSinRegalo(browser, base) {
   }
 }
 
-// Producción · Fase 1: completar es UNA operación del servidor (todo o nada), sin doble descuento,
-// y el costo del producto terminado se actualiza. El servidor real se probó aparte (transacción revertida);
-// aquí se revisa que la pantalla lo use bien y lo explique.
+// Producción (Fases 1 y 2): "Producir hoy" en 2 toques, recetas con unidades (quintal/onza → libras),
+// costo extra por tanda, todo o nada sin doble descuento y costo del producto al día. El servidor real
+// se probó aparte (transacción revertida); aquí se revisa que la pantalla lo use y lo explique bien.
 async function pruebaProduccion(browser, base) {
-  console.log('\n▶ Producción: completar todo o nada y costo del producto');
+  console.log('\n▶ Producción: producir hoy, unidades, costo y sin doble descuento');
   const simServidor = () => {
     const DB = () => JSON.parse(sessionStorage.getItem('__DB')), G = d => sessionStorage.setItem('__DB', JSON.stringify(d));
     const r2 = n => Math.round(n * 100) / 100;
     function completar(db, o, buena) {
       const rec = db.recetas_produccion.find(r => r.id === o.receta_id), f = o.cantidad_planificada / rec.cantidad_producida;
-      const comps = db.receta_componentes.filter(c => c.receta_id === rec.id), falt = [];
-      comps.forEach(c => { const p = db.productos.find(x => x.id === c.producto_id); if (p.stock_actual < r2(c.cantidad * f)) falt.push({ nombre: p.nombre, necesario: r2(c.cantidad * f), disponible: p.stock_actual }); });
+      const comps = db.receta_componentes.filter(c => c.receta_id === rec.id), falt = [], nec = {};
+      comps.forEach(c => { const p = db.productos.find(x => x.id === c.producto_id), fu = window.factorUnidad(c.unidad_codigo, p);
+        nec[p.id] = c.unidad_codigo ? Math.round(c.cantidad * fu * f * 1000) / 1000 : r2(c.cantidad * f);
+        if (p.stock_actual < nec[p.id]) falt.push({ nombre: p.nombre, necesario: nec[p.id], disponible: p.stock_actual }); });
       if (falt.length) return { ok: false, motivo: 'falta_materia', faltantes: falt };
-      let mat = 0; comps.forEach(c => { const p = db.productos.find(x => x.id === c.producto_id), n = r2(c.cantidad * f); p.stock_actual = r2(p.stock_actual - n); mat += r2(n * p.costo); });
+      let mat = 0; Object.keys(nec).forEach(id => { const p = db.productos.find(x => x.id === id); p.stock_actual = Math.round((p.stock_actual - nec[id]) * 1000) / 1000; mat += r2(nec[id] * p.costo); });
       const total = r2(mat + (o.costo_mano_obra || 0)), unit = r2(total / buena), pt = db.productos.find(x => x.id === rec.producto_terminado_id), ant = pt.costo;
       pt.costo = pt.stock_actual > 0 ? r2((pt.stock_actual * ant + buena * unit) / (pt.stock_actual + buena)) : unit; pt.stock_actual = r2(pt.stock_actual + buena);
-      Object.assign(o, { estado: 'completada', cantidad_producida: buena, costo_total: total, costo_unitario: unit, merma_cantidad: r2(o.cantidad_planificada - buena), actualizo_costo_producto: true });
+      Object.assign(o, { estado: 'completada', cantidad_producida: buena, costo_materiales: r2(mat), costo_total: total, costo_unitario: unit, merma_cantidad: r2(o.cantidad_planificada - buena), fecha_completada: new Date().toISOString() });
       return { ok: true, tipo: 'normal', cantidad_producida: buena, costo_total: total, costo_unitario: unit, costo_anterior: ant, costo_nuevo: pt.costo };
     }
     window.__llamadasProd = 0;
     window.__RPC = {
       produccion_crear_y_completar: a => { window.__llamadasProd++; const db = DB(), d = a.p_datos; db.ordenes_produccion = db.ordenes_produccion || [];
-        const o = { id: 'op-' + Date.now(), auth_user_id: db.usuarios[0].auth_user_id, numero: 'OP-' + (db.ordenes_produccion.length + 1), receta_id: d.receta_id, producto_terminado_id: db.recetas_produccion.find(r => r.id === d.receta_id).producto_terminado_id,
-          cantidad_planificada: d.cantidad_planificada, costo_mano_obra: d.costo_mano_obra || 0, estado: 'pendiente', created_at: new Date().toISOString() };
+        const rec = db.recetas_produccion.find(r => r.id === d.receta_id);
+        const mo = 'costo_mano_obra' in d ? d.costo_mano_obra : r2((rec.costo_extra_tanda || 0) * d.cantidad_planificada / rec.cantidad_producida);
+        const o = { id: 'op-' + Date.now(), auth_user_id: db.usuarios[0].auth_user_id, numero: 'OP-' + (db.ordenes_produccion.length + 1), receta_id: d.receta_id, producto_terminado_id: rec.producto_terminado_id,
+          cantidad_planificada: d.cantidad_planificada, costo_mano_obra: mo, estado: 'pendiente', created_at: new Date().toISOString() };
         const r = completar(db, o, d.cantidad_planificada - (d.merma_cantidad || 0)); if (r.ok) { db.ordenes_produccion.push(o); G(db); } return r; },
       produccion_completar_orden: a => { window.__llamadasProd++; const db = DB(), o = db.ordenes_produccion.find(x => x.id === a.p_orden_id);
         if (o.estado === 'completada') return { ok: false, motivo: 'ya_completada' };
@@ -1714,47 +1718,81 @@ async function pruebaProduccion(browser, base) {
     };
   };
   const semillaProd = () => { const db = semilla(); const U = UID;
-    db.productos.push({ id: 'mp-harina', auth_user_id: U, tipo: 'producto', nombre: 'Harina', costo: 20, precio: 0, stock_actual: 10, es_materia_prima: true, activo: true },
+    db.productos.push({ id: 'mp-harina', auth_user_id: U, tipo: 'producto', nombre: 'Harina', costo: 0.8, precio: 0, stock_actual: 300, es_materia_prima: true, activo: true, unidad_codigo: 'libra', unidad_compra_codigo: 'quintal', factor_compra: 100 },
+      { id: 'mp-levadura', auth_user_id: U, tipo: 'producto', nombre: 'Levadura', costo: 40, precio: 0, stock_actual: 5, es_materia_prima: true, activo: true, unidad_codigo: 'libra' },
       { id: 'pt-pan', auth_user_id: U, tipo: 'producto', nombre: 'Pan simple', costo: 3, precio: 5, stock_actual: 10, activo: true });
-    db.recetas_produccion = [{ id: 'rec-pan', auth_user_id: U, producto_terminado_id: 'pt-pan', nombre: 'Pan', cantidad_producida: 100, activa: true, tipo: 'normal', created_at: '2026-10-01T00:00:00Z' }];
-    db.receta_componentes = [{ id: 'rc1', auth_user_id: U, receta_id: 'rec-pan', producto_id: 'mp-harina', cantidad: 2 }];
+    db.recetas_produccion = [{ id: 'rec-pan', auth_user_id: U, producto_terminado_id: 'pt-pan', nombre: 'Pan', cantidad_producida: 100, costo_extra_tanda: 30, activa: true, tipo: 'normal', created_at: '2026-10-01T00:00:00Z' }];
+    db.receta_componentes = [{ id: 'rc1', auth_user_id: U, receta_id: 'rec-pan', producto_id: 'mp-harina', cantidad: 0.25, unidad_codigo: 'quintal' },
+      { id: 'rc2', auth_user_id: U, receta_id: 'rec-pan', producto_id: 'mp-levadura', cantidad: 2, unidad_codigo: 'onza' }];
     db.receta_despiece_salidas = []; db.ordenes_produccion = []; db.orden_produccion_consumos = []; return db; };
+  const leer = page => page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
   for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
     const tag = ancho < 500 ? 'celular' : 'computadora';
     const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
     await ctx.addInitScript(simServidor);
     await page.goto(base + '/produccion.html');
     await page.evaluate(({ db }) => sessionStorage.setItem('__DB', JSON.stringify(db)), { db: semillaProd() });
-    await page.reload(); await page.waitForFunction(() => typeof abrirModalOrden === 'function' && STATE.recetas.length === 1 && STATE.productos.length > 0, null, { timeout: 15000 });
-    // A) Producir ahora: 200 panes, 10 malos, con doble clic
-    await page.evaluate(() => abrirModalOrden()); await page.waitForSelector('#modal-orden.modal-open');
-    await page.selectOption('#op-receta', 'rec-pan'); await page.fill('#op-cantidad', '200'); await page.fill('#op-merma-cantidad', '10');
-    await page.dispatchEvent('#op-cantidad', 'input'); await page.fill('#op-costo-mano-obra', '10');
-    await modalesSinDesborde(page, `${tag} nueva producción`);
-    await page.evaluate(() => { guardarOrden('completada'); guardarOrden('completada'); });   // doble clic
-    await page.waitForFunction(() => document.getElementById('modal-orden').style.display === 'none', null, { timeout: 10000 });
-    let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
-    const pan = db.productos.find(p => p.id === 'pt-pan'), har = db.productos.find(p => p.id === 'mp-harina');
+    await page.reload(); await page.waitForSelector('#ph-tarjetas .ph-card', { timeout: 15000 });
+    await sinDesborde(page, `${tag} producción`);
+    // A) Producir hoy: la tarjeta dice para cuánto alcanza; 200 hechos, 10 malos, doble clic
+    const tarjeta = await page.textContent('#ph-tarjetas .ph-card');
+    verificar(tarjeta.includes('Pan simple') && tarjeta.includes('Alcanza para 1,200') && tarjeta.includes('0.55 c/u'), `${tag}: la tarjeta dice qué es, cuánto cuesta cada uno y para cuánto alcanza (${tarjeta.replace(/\s+/g, ' ').trim()})`);
+    await page.click('#ph-tarjetas .ph-card'); await page.waitForSelector('#modal-producir-hoy.modal-open');
+    verificar(await page.inputValue('#ph-cantidad') === '100', `${tag}: propone la cantidad de la receta`);
+    await page.fill('#ph-cantidad', '200'); await page.fill('#ph-malos', '10');
+    const prev = await page.textContent('#ph-preview');
+    verificar(prev.includes('Harina') && prev.includes('50 libras') && prev.includes('0.25 libras') && prev.includes('60.00') && prev.includes('0.58'), `${tag}: muestra lo que se va a usar ya convertido, el costo extra y el costo de cada uno`);
+    verificar(await page.isVisible('#ph-motivo'), `${tag}: si hubo malos, pregunta qué pasó`);
+    await modalesSinDesborde(page, `${tag} producir hoy`);
+    if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/producir-hoy-' + tag + '.png' });
+    await page.fill('#ph-motivo', 'se quemaron');
+    await page.evaluate(() => { guardarProducirHoy(); guardarProducirHoy(); });
+    await page.waitForFunction(() => document.getElementById('modal-producir-hoy').style.display === 'none', null, { timeout: 10000 });
+    let db = await leer(page);
+    const pr = id => db.productos.find(p => p.id === id);
     verificar(await page.evaluate(() => window.__llamadasProd) === 1, `${tag}: con doble clic se produce una sola vez`);
-    verificar(har.stock_actual === 6 && pan.stock_actual === 200, `${tag}: descuenta la harina y suma los panes buenos (harina ${har.stock_actual}, pan ${pan.stock_actual})`);
-    verificar(pan.costo === 0.6, `${tag}: el costo del pan se actualiza con el promedio (${pan.costo})`);
-    verificar((await page.textContent('#toast')).includes('costo del producto'), `${tag}: avisa el costo nuevo del producto`);
-    // B) Falta materia prima: explica qué falta y no produce
-    await page.evaluate(() => abrirModalOrden()); await page.selectOption('#op-receta', 'rec-pan'); await page.fill('#op-cantidad', '1000');
-    await page.evaluate(() => { STATE.productos.find(p => p.id === 'mp-harina').stock_actual = 999; });   // la pantalla cree que alcanza; el servidor revisa
+    verificar(pr('mp-harina').stock_actual === 250 && pr('mp-levadura').stock_actual === 4.75 && pr('pt-pan').stock_actual === 200, `${tag}: descuenta 50 lb de harina y 0.25 lb de levadura y suma 190 panes`);
+    verificar(pr('pt-pan').costo === 0.7 && db.ordenes_produccion[0].costo_total === 110, `${tag}: el costo extra entra y el costo del pan se actualiza (${pr('pt-pan').costo})`);
+    await page.waitForSelector('#ph-hoy .prod-componente-row');
+    verificar((await page.textContent('#ph-hoy')).includes('190 buenos') && (await page.textContent('#ph-hoy')).includes('10 malos'), `${tag}: "Hoy produjiste" lo muestra`);
+    // B) Falta materia prima (ventana de siempre): explica qué falta y no produce
+    await page.evaluate(() => abrirModalOrden()); await page.selectOption('#op-receta', 'rec-pan'); await page.fill('#op-cantidad', '100000');
+    await page.evaluate(() => { STATE.productos.forEach(p => { if (p.es_materia_prima) p.stock_actual = 1e9; }); });
     await page.evaluate(() => guardarOrden('completada')); await page.waitForFunction(() => document.getElementById('op-error').textContent.length > 0);
-    verificar((await page.textContent('#op-error')).includes('No alcanza la materia prima: Harina'), `${tag}: si no alcanza, dice qué falta (${await page.textContent('#op-error')})`);
+    verificar((await page.textContent('#op-error')).includes('No alcanza la materia prima: Harina'), `${tag}: si no alcanza, dice qué falta`);
     await page.evaluate(() => closeModal('modal-orden'));
+    await page.evaluate(() => cargarProductosCache());
     // C) Orden ya completada: no se descuenta otra vez
     const oid = db.ordenes_produccion[0].id;
     await page.evaluate(id => { STATE.ordenes.find(o => o.id === id).estado = 'pendiente'; completarOrdenPlanificada(id); }, oid);
-    await page.waitForSelector('#modal-completar-orden.modal-open'); await modalesSinDesborde(page, `${tag} completar producción`);
+    await page.waitForSelector('#modal-completar-orden.modal-open');
     await page.click('#modal-completar-orden >> text=✅ Completar producción');
     await page.waitForFunction(() => document.getElementById('co-error').textContent.length > 0);
     verificar((await page.textContent('#co-error')).includes('ya estaba completada'), `${tag}: una producción completada no se descuenta dos veces`);
-    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
-    verificar(db.productos.find(p => p.id === 'mp-harina').stock_actual === 6, `${tag}: la harina sigue igual tras el intento repetido`);
-    verificar(!(await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).some(l => ['movimientos_financieros', 'incrementar_stock_producto'].includes(l.tabla)))), `${tag}: producir no toca la Caja ni usa los pasos sueltos de antes`);
+    await page.evaluate(() => closeModal('modal-completar-orden'));
+    // D) Editor de recetas: unidad por ingrediente con su equivalencia
+    await page.evaluate(() => abrirModalReceta('rec-pan')); await page.waitForSelector('#modal-receta.modal-open');
+    verificar(await page.inputValue('#rc-lista-componentes select[data-unidad="0"]') === 'quintal' && (await page.textContent('#rc-lista-componentes')).includes('= 25 libras'), `${tag}: la receta muestra "0.25 quintales = 25 libras"`);
+    verificar(await page.inputValue('#rc-costo-extra') === '30', `${tag}: la receta tiene su costo extra por tanda`);
+    await modalesSinDesborde(page, `${tag} receta con unidades`);
+    await page.selectOption('#rc-lista-componentes select[data-unidad="0"]', '');
+    await page.fill('#rc-lista-componentes input[type=number] >> nth=0', '25'); await page.dispatchEvent('#rc-lista-componentes input[type=number] >> nth=0', 'change');
+    await page.click('#btn-guardar-receta'); await page.waitForFunction(() => document.getElementById('modal-receta').style.display === 'none');
+    db = await leer(page);
+    const comps = db.receta_componentes.filter(c => c.receta_id === 'rec-pan');
+    verificar(comps.some(c => c.producto_id === 'mp-harina' && c.cantidad === 25 && !c.unidad_codigo) && comps.some(c => c.producto_id === 'mp-levadura' && c.unidad_codigo === 'onza'), `${tag}: la receta guarda cada ingrediente con su unidad`);
+    // E) Materia prima nueva con unidad de compra: quintal → 100 libras solo
+    await page.evaluate(() => { abrirModalIngresarMateriaPrima(); elegirModoMateriaPrima('nueva'); setDescontarCajaMateriaPrima(false); });
+    await page.fill('#mp-nombre', 'Azúcar'); await page.selectOption('#mp-unidad', 'libra'); await page.selectOption('#mp-unidad-compra', 'quintal');
+    verificar(await page.inputValue('#mp-factor') === '100' && (await page.textContent('#mp-factor-label')).includes('libras trae 1 quintal'), `${tag}: al comprar por quintal propone 100 libras`);
+    verificar((await page.textContent('#mp-costo-label')).includes('Costo por libra'), `${tag}: pide el costo por libra`);
+    await modalesSinDesborde(page, `${tag} materia prima con unidades`);
+    await page.fill('#mp-costo', '0.9'); await page.fill('#mp-stock-inicial', '100');
+    await page.click('#mp-btn-guardar'); await page.waitForFunction(() => document.getElementById('modal-materia-prima').style.display === 'none');
+    db = await leer(page);
+    const az = db.productos.find(p => p.nombre === 'Azúcar');
+    verificar(az && az.es_materia_prima && az.unidad_codigo === 'libra' && az.unidad_compra_codigo === 'quintal' && az.factor_compra === 100, `${tag}: la materia prima queda en libras y se compra por quintal`);
+    verificar(!(await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).some(l => ['movimientos_financieros', 'incrementar_stock_producto'].includes(l.tabla)))), `${tag}: producir no toca la Caja`);
     verificar(page.__errores.length === 0, `${tag} producción: sin errores (${page.__errores.join(' | ')})`);
     await ctx.close();
   }

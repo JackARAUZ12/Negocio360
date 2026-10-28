@@ -1214,8 +1214,20 @@
         <div class="greeting-actions">
           <button class="btn-secondary" onclick="abrirModalIngresarMateriaPrima()" title="Agrega materia prima a tu inventario, sin salir de Producción">📦 Ingresar materia prima</button>
           <button class="btn-secondary" onclick="abrirModalReceta()">🧪 Nueva receta</button>
-          <button class="btn-primary" onclick="abrirModalOrden()">+ Nueva orden de producción</button>
+          <button class="btn-secondary" onclick="abrirModalOrden()">📋 Orden para después</button>
         </div>
+      </div>
+
+      <!-- PRODUCIR HOY: lo de todos los días en 2 toques -->
+      <div class="panel-card fade-in" id="prod-hoy" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:800;font-size:16px">🍞 Producir hoy</div>
+            <div style="font-size:12.5px;color:var(--text-muted)">Toca lo que hiciste, escribe cuántos salieron y listo. Se descuenta la materia prima y el producto entra al inventario con su costo.</div>
+          </div>
+        </div>
+        <div id="ph-tarjetas" class="ph-grid"></div>
+        <div id="ph-hoy" style="margin-top:10px"></div>
       </div>
 
       <!-- 5 KPIs -->
@@ -1391,11 +1403,26 @@
 
               <div class="form-row">
                 <div class="form-group">
-                  <label>Costo unitario *</label>
+                  <label for="mp-unidad">¿En qué la mides? (para tus recetas)</label>
+                  <select id="mp-unidad" onchange="alCambiarUnidadMP()"></select>
+                </div>
+                <div class="form-group">
+                  <label for="mp-unidad-compra">¿La compras por otra unidad? (opcional)</label>
+                  <select id="mp-unidad-compra" onchange="alCambiarUnidadMP()"></select>
+                </div>
+              </div>
+              <div class="form-group" id="mp-factor-wrap" style="display:none">
+                <label for="mp-factor" id="mp-factor-label">¿Cuántas trae?</label>
+                <input type="number" id="mp-factor" min="0.0001" step="0.0001" placeholder="Ej: 100"/>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label id="mp-costo-label">Costo unitario *</label>
                   <input type="number" id="mp-costo" min="0" step="0.01" placeholder="0.00" oninput="actualizarResumenMateriaPrima()"/>
                 </div>
                 <div class="form-group">
-                  <label>Stock inicial *</label>
+                  <label id="mp-stock-label">Stock inicial *</label>
                   <input type="number" id="mp-stock-inicial" min="0" step="0.01" placeholder="0" oninput="actualizarResumenMateriaPrima()"/>
                 </div>
               </div>
@@ -1503,6 +1530,7 @@
 
             <div class="form-row" style="margin-top:10px">
               <div><label>Nombre de la receta</label><input type="text" id="rc-nombre" placeholder="Ej: Receta estándar" value="Receta estándar"/></div>
+              <div><label for="rc-costo-extra">Costo extra por tanda (mano de obra, gas, luz…) — opcional</label><input type="number" id="rc-costo-extra" min="0" step="0.01" placeholder="0.00"/></div>
             </div>
 
             <div style="font-weight:700;font-size:13px;margin:14px 0 6px" id="rc-titulo-componentes">Materia prima que necesita</div>
@@ -1551,7 +1579,7 @@
             </div>
 
             <div class="form-row" style="margin-top:10px">
-              <div><label>Costo de mano de obra (opcional)</label><input type="number" id="op-costo-mano-obra" min="0" step="0.01" value="0" oninput="recalcularNecesidadesOrden()"/></div>
+              <div><label>Costo de mano de obra (opcional)</label><input type="number" id="op-costo-mano-obra" min="0" step="0.01" value="0" oninput="this.dataset.manual='1';recalcularNecesidadesOrden()"/></div>
               <div><label>Costos indirectos (opcional)</label><input type="number" id="op-costo-indirecto" min="0" step="0.01" value="0" oninput="recalcularNecesidadesOrden()"/></div>
             </div>
 
@@ -1653,7 +1681,48 @@
   </div><!-- /main -->
 </div><!-- /app -->
 
-<script src="produccion.js?v=20261028a"></script>
+<div class="modal-overlay" id="modal-producir-hoy" role="dialog" aria-labelledby="ph-titulo">
+  <div class="modal-box" style="max-width:460px;width:100%">
+    <div class="modal-header"><span class="modal-title" id="ph-titulo">Producir</span>
+      <button class="modal-close" onclick="closeModal('modal-producir-hoy')" aria-label="Cerrar">✕</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label for="ph-cantidad" id="ph-cantidad-label">¿Cuántos hiciste?</label>
+          <input type="number" id="ph-cantidad" min="0.01" step="0.01" inputmode="decimal" oninput="recalcularProducirHoy()" onkeydown="if(event.key==='Enter')guardarProducirHoy()"/></div>
+        <div class="form-group" id="ph-malos-wrap"><label for="ph-malos">¿Cuántos salieron malos?</label>
+          <input type="number" id="ph-malos" min="0" step="0.01" inputmode="decimal" value="0" oninput="recalcularProducirHoy()" onkeydown="if(event.key==='Enter')guardarProducirHoy()"/></div>
+      </div>
+      <div class="form-group" id="ph-motivo-wrap" style="display:none"><label for="ph-motivo">¿Qué pasó? (opcional)</label>
+        <input type="text" id="ph-motivo" maxlength="300" placeholder="Ej: se quemaron, se cayeron"/></div>
+      <div id="ph-preview"></div>
+      <p id="ph-error" role="alert" style="color:var(--danger);font-size:12.5px;margin:8px 0 0"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-producir-hoy')">Cancelar</button>
+      <button class="btn-primary" id="ph-btn" onclick="guardarProducirHoy()">✅ Listo, guardar</button>
+    </div>
+  </div>
+</div>
+<style>
+  .ph-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-top:12px; }
+  .ph-card { display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; padding:12px; border:1px solid var(--border); border-radius:12px; background:var(--bg-surface); color:var(--text-primary); cursor:pointer; min-width:0; font:inherit; transition:box-shadow .15s, transform .15s; }
+  .ph-card:hover, .ph-card:focus-visible { box-shadow:var(--shadow-md, 0 4px 12px rgba(0,0,0,.1)); transform:translateY(-1px); outline:none; border-color:var(--accent); }
+  .ph-ico { font-size:22px; }
+  .ph-nombre { font-weight:800; font-size:14px; overflow-wrap:anywhere; }
+  .ph-sub { font-size:11.5px; color:var(--text-muted); }
+  .ph-falta { color:var(--danger); font-weight:700; }
+  .ph-vacio { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:13px; color:var(--text-muted); }
+  .ph-hoy-titulo, .ph-prev-titulo { font-weight:700; font-size:12.5px; margin:8px 0 4px; }
+  .ph-totales { margin-top:8px; padding:10px 12px; background:var(--bg-app); border-radius:8px; font-size:13px; }
+  .ph-totales > div { display:flex; justify-content:space-between; gap:8px; }
+  .ph-totales b { white-space:nowrap; }
+  .ph-unidad { color:var(--accent); font-weight:800; border-top:1px solid var(--border); margin-top:6px; padding-top:6px; }
+  .ph-fila-falta { color:var(--danger); }
+  #ph-preview .prod-componente-row, #ph-hoy .prod-componente-row { flex-wrap:wrap; gap:4px 10px; }
+  @media (max-width:420px) { .ph-grid { grid-template-columns:1fr 1fr; } }
+</style>
+<script src="unidades-medida.js?v=20261008a"></script>
+<script src="produccion.js?v=20261028b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261028a"></script>
 <script src="modulos-guard.js?v=20261025c"></script>
