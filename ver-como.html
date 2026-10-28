@@ -47,7 +47,7 @@
       try { sessionStorage.clear(); } catch (e) {}
       return falla('El acceso venció o ya se usó. Vuelve al panel y presiona el botón otra vez.');
     }
-    location.replace('dashboard.html');
+    location.replace(/^bodega-.*@negocio360\.internal$/i.test(email) ? 'bodega.html' : 'dashboard.html');
   } catch (e) {
     try { sessionStorage.clear(); } catch (e2) {}
     falla('Ocurrió un error al abrir la cuenta. Intenta de nuevo.');

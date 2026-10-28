@@ -1381,6 +1381,24 @@
      "Notificaciones" (notificaciones_leidas) — mismo formato: quién,
      su negocio/correo, y a qué hora lo vio.
 ══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-sucursales-cliente">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="sc-titulo">Bodegas y sucursales</span>
+      <button class="modal-close" aria-label="Cerrar" onclick="closeModal('modal-sucursales-cliente')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="card-subtitle" style="margin-bottom:14px">Se abren en otra pestaña, solo para mirar. No se puede modificar nada y queda registrado en la bitácora.</p>
+      <div id="sc-lista" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-sucursales-cliente')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-ver-lectores">
   <div class="modal">
     <div class="modal-header">
@@ -1934,7 +1952,7 @@
     }
   });
 </script>
-<script src="admin.js?v=20261021b"></script>
+<script src="admin.js?v=20261029a"></script>
 <script src="admin-freelancers.js?v=20261021a"></script>
 
 <script src="bienvenida-negocio360.js?v=10"></script>
