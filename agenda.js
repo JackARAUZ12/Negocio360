@@ -352,10 +352,10 @@ function renderCalendarioSemana() {
   const hoy = todayLocalISO();
   const dow = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
-  let html = `<div class="cal-grid-header">${dow.map((d,i) => {
+  let html = `<div class="cal-grid-header cal-header-semana">${dow.map((d,i) => {
     const dia = sumarDias(inicio, i);
     return `<div class="cal-dow">${d} <span style="color:var(--text-secondary)">${dia.getDate()}</span></div>`;
-  }).join('')}</div><div class="cal-grid">`;
+  }).join('')}</div><div class="cal-grid cal-grid-semana">`;
 
   for (let i = 0; i < 7; i++) {
     const dia = sumarDias(inicio, i);
@@ -363,8 +363,10 @@ function renderCalendarioSemana() {
     const esHoy = iso === hoy;
     const items = itemsDelDia(iso);
     html += `<div class="cal-cell cal-semana-cell ${esHoy?'cal-hoy':''}" onclick="abrirEventosDia('${iso}')">
+      <div class="cal-semana-dia-label">${dow[i]} ${dia.getDate()}${esHoy ? ' · hoy' : ''}</div>
       <div class="cal-eventos-wrap">
       ${items.map(it => `<div class="cal-evento-pill" style="background:${it.color}">${contenidoPillEvento(it)}</div>`).join('')}
+      ${items.length ? '' : '<div class="cal-semana-vacio">Sin eventos</div>'}
       </div>
     </div>`;
   }

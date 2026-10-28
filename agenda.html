@@ -1063,6 +1063,48 @@
       .ac-lineas-cab { display:none; }
       .ac-linea-form { grid-template-columns:1fr 1fr; }
     }
+
+    /* ===== AGENDA EN CELULAR (solo pantallas angostas; en computadora no cambia nada) ===== */
+    .cal-semana-dia-label, .cal-semana-vacio { display:none; }
+    .cal-grid, .cal-grid-header { grid-template-columns:repeat(7,minmax(0,1fr)); }
+    @media (max-width:640px) {
+      .cal-barra { padding:12px 12px 8px !important; gap:10px !important; }
+      .cal-barra-nav { width:100%; flex-wrap:wrap; }
+      .cal-titulo { flex:1 1 100%; margin:4px 0 0 !important; font-size:15px !important; line-height:1.25; }
+      .cal-barra-nav .cal-nav-btn { width:40px; height:40px; font-size:20px; }
+      .cal-barra-acc { width:100%; gap:8px !important; }
+      .cal-vistas { width:100%; }
+      .cal-vista-btn { flex:1; text-align:center; padding:10px 6px; font-size:14px; }
+      .cal-btn-acc { flex:1 1 calc(50% - 4px); justify-content:center; min-height:42px; }
+      #calendario-contenedor { padding:0 8px 12px !important; }
+
+      /* Mes: 7 columnas iguales, sin que el contenido las ensanche; eventos como rayitas de color */
+      .cal-dow { font-size:10px; padding:6px 0; letter-spacing:0; }
+      .cal-cell { min-height:62px; padding:4px 3px 3px; }
+      .cal-cell-num { font-size:12px; margin-bottom:3px; }
+      .cal-cell.cal-hoy .cal-cell-num { width:20px; height:20px; font-size:11.5px; }
+      .cal-grid:not(.cal-grid-semana) .cal-evento-pill { font-size:0; line-height:0; padding:0; height:6px; min-height:6px; flex:none; border-radius:3px; box-shadow:none; overflow:hidden; }
+      .cal-grid:not(.cal-grid-semana) .cal-evento-pill * { display:none; }
+      .cal-eventos-wrap { gap:3px; }
+      .cal-evento-mas { font-size:10px; padding:0 2px; }
+
+      /* Semana: una lista por días (no 7 columnas apretadas) */
+      .cal-header-semana { display:none; }
+      .cal-grid-semana { grid-template-columns:minmax(0,1fr); }
+      .cal-semana-cell { min-height:0; padding:10px 12px; }
+      .cal-semana-dia-label { display:block; font-size:13px; font-weight:800; color:var(--text-secondary); text-transform:capitalize; margin-bottom:6px; }
+      .cal-semana-cell.cal-hoy .cal-semana-dia-label { color:#1d4ed8; }
+      .cal-semana-vacio { display:block; font-size:12px; color:var(--text-muted); }
+      .cal-grid-semana .cal-evento-pill { flex:none; }
+
+      /* Día: controles a lo ancho y cuadrícula que se puede mover con el dedo */
+      .ac-barra { gap:8px; }
+      .ac-barra .ac-sel { max-width:none !important; flex:1 1 calc(50% - 4px); min-width:0; width:auto !important; }
+      .ac-scroll { max-height:78vh; max-height:78dvh; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; touch-action:pan-x pan-y; }
+      .ac-tabla { grid-template-columns:46px repeat(var(--ncols), minmax(132px, 1fr)); }
+      .ac-hora { right:4px; font-size:10px; }
+      .ac-leyenda { gap:8px; }
+    }
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
@@ -1286,21 +1328,21 @@
 
     <div id="content">
       <div class="panel-card fade-in" style="padding:0;overflow:hidden">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:16px 16px 12px">
-          <div style="display:flex;align-items:center;gap:6px">
+        <div class="cal-barra" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:16px 16px 12px">
+          <div class="cal-barra-nav" style="display:flex;align-items:center;gap:6px">
             <button class="btn-secondary btn-sm" onclick="irAHoyCalendario()">Hoy</button>
             <button class="cal-nav-btn" onclick="cambiarPeriodoCalendario(-1)">‹</button>
             <button class="cal-nav-btn" onclick="cambiarPeriodoCalendario(1)">›</button>
-            <span style="font-weight:800;font-size:16px;text-transform:capitalize;margin-left:6px" id="cal-titulo-periodo">—</span>
+            <span class="cal-titulo" style="font-weight:800;font-size:16px;text-transform:capitalize;margin-left:6px" id="cal-titulo-periodo">—</span>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <div style="display:flex;background:var(--bg-app);border-radius:8px;padding:2px">
+          <div class="cal-barra-acc" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="cal-vistas" style="display:flex;background:var(--bg-app);border-radius:8px;padding:2px">
               <button class="cal-vista-btn" data-vista="dia" onclick="cambiarVistaCalendario('dia')">Día</button>
               <button class="cal-vista-btn" data-vista="semana" onclick="cambiarVistaCalendario('semana')">Semana</button>
               <button class="cal-vista-btn active" data-vista="mes" onclick="cambiarVistaCalendario('mes')">Mes</button>
             </div>
-            <button class="btn-secondary btn-sm" onclick="abrirNuevoEvento()">+ Nuevo evento</button>
-            <button class="btn-primary btn-sm" onclick="N360Citas.nuevaCita()">+ Nueva cita</button>
+            <button class="btn-secondary btn-sm cal-btn-acc" onclick="abrirNuevoEvento()">+ Nuevo evento</button>
+            <button class="btn-primary btn-sm cal-btn-acc" onclick="N360Citas.nuevaCita()">+ Nueva cita</button>
           </div>
         </div>
 
@@ -1386,7 +1428,7 @@
 </div><!-- /app -->
 
 <script src="select-buscable.js?v=20261025e"></script>
-<script src="agenda.js?v=20261025i"></script>
+<script src="agenda.js?v=20261029a"></script>
 <script src="agenda-citas.js?v=20261028b"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>

@@ -55,7 +55,7 @@
       var f = document.createElement('button');
       f.id = 'n360-selector-cuenta';
       f.textContent = 'Cambiar de cuenta';
-      f.style.cssText = 'position:fixed;left:16px;bottom:56px;z-index:400;padding:7px 12px;border-radius:20px;border:1px solid #d6d6d6;background:#fff;color:#111;font:12px system-ui;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)';
+      f.style.cssText = 'position:fixed;left:16px;bottom:56px;z-index:400;padding:7px 12px;border-radius:20px;border:1px solid var(--border,#d6d6d6);background:var(--bg-surface,#fff);color:var(--text-primary,#111);font:12px system-ui;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)';
       f.addEventListener('click', abrir);
       document.body.appendChild(f);
       return;
@@ -76,17 +76,17 @@
     st.textContent =
       '#n360-sel-modal{position:fixed;inset:0;background:rgba(15,18,32,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;animation:n360selF .15s ease}' +
       '@keyframes n360selF{from{opacity:0}to{opacity:1}}@keyframes n360selU{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}' +
-      '#n360-sel-box{background:var(--bg-card,#fff);color:var(--text,#161a2b);border-radius:18px;max-width:460px;width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;animation:n360selU .2s ease;overflow:hidden}' +
+      '#n360-sel-box{background:var(--bg-surface,#fff);color:var(--text-primary,#161a2b);border:1px solid var(--border,transparent);border-radius:18px;max-width:460px;width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;animation:n360selU .2s ease;overflow:hidden}' +
       '#n360-sel-head{padding:18px 20px 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px}' +
       '#n360-sel-head h2{margin:0;font-size:18px;font-weight:700}' +
-      '#n360-sel-head p{margin:3px 0 0;font-size:13px;color:var(--text-muted,#6b7080)}' +
-      '#n360-sel-x{border:0;background:var(--bg-hover,rgba(120,120,140,.14));color:inherit;width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0}' +
+      '#n360-sel-head p{margin:3px 0 0;font-size:13px;color:var(--text-secondary,#6b7080)}' +
+      '#n360-sel-x{border:0;background:var(--bg-hover,rgba(120,120,140,.14));color:var(--text-primary,#161a2b);width:32px;height:32px;border-radius:50%;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0}' +
       '#n360-sel-x:hover{filter:brightness(.92)}' +
-      '#n360-sel-q{margin:0 20px 8px;padding:9px 12px;border-radius:10px;border:1px solid var(--border,#dfe1ea);background:transparent;color:inherit;font-size:14px;outline:none}' +
+      '#n360-sel-q{margin:0 20px 8px;padding:9px 12px;border-radius:10px;border:1px solid var(--border,#dfe1ea);background:transparent;color:var(--text-primary,#161a2b);font-size:14px;outline:none}' +
       '#n360-sel-q:focus{border-color:var(--accent,#6C63FF)}' +
       '#n360-sel-list{overflow:auto;padding:4px 14px 16px}' +
-      '.n360-sel-sec{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted,#6b7080);margin:12px 6px 6px}' +
-      '.n360-sel-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 12px;margin-bottom:6px;border:1px solid var(--border,#e3e5ee);border-radius:14px;background:transparent;color:inherit;cursor:pointer;font:inherit;transition:transform .12s,border-color .12s,box-shadow .12s}' +
+      '.n360-sel-sec{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary,#6b7080);margin:12px 6px 6px}' +
+      '.n360-sel-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 12px;margin-bottom:6px;border:1px solid var(--border,#e3e5ee);border-radius:14px;background:transparent;color:var(--text-primary,#161a2b);cursor:pointer;font:inherit;transition:transform .12s,border-color .12s,box-shadow .12s}' +
       '.n360-sel-item:hover:not(:disabled){border-color:var(--accent,#6C63FF);box-shadow:0 4px 14px rgba(108,99,255,.18);transform:translateY(-1px)}' +
       '.n360-sel-item:disabled{cursor:default}' +
       '.n360-sel-item.actual{border-color:var(--accent,#6C63FF);background:rgba(108,99,255,.09)}' +
@@ -95,13 +95,13 @@
       '.n360-sel-ico.c{background:rgba(108,99,255,.16)}.n360-sel-ico.s{background:rgba(16,185,129,.16)}.n360-sel-ico.b{background:rgba(245,158,11,.18)}' +
       '.n360-sel-info{flex:1;min-width:0}' +
       '.n360-sel-nom{font-weight:650;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-      '.n360-sel-tipo{font-size:12px;color:var(--text-muted,#6b7080);margin-top:1px}' +
-      '.n360-sel-tag{font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;white-space:nowrap;background:rgba(108,99,255,.12);color:var(--accent,#6C63FF)}' +
+      '.n360-sel-tipo{font-size:12px;color:var(--text-secondary,#6b7080);margin-top:1px}' +
+      '.n360-sel-tag{font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;white-space:nowrap;background:rgba(108,99,255,.14);color:var(--text-accent,var(--accent,#6C63FF))}' +
       '.n360-sel-item.actual .n360-sel-tag{background:var(--accent,#6C63FF);color:#fff}' +
-      '.n360-sel-item.off .n360-sel-tag{background:rgba(120,120,140,.18);color:inherit}' +
+      '.n360-sel-item.off .n360-sel-tag{background:rgba(120,120,140,.2);color:var(--text-secondary,#6b7080)}' +
       '.n360-sel-item.cargando .n360-sel-tag::after{content:"…"}' +
-      '#n360-sel-err{margin:0 20px 14px;color:#dc2626;font-size:13px;min-height:0}#n360-sel-err:empty{display:none}' +
-      '#n360-sel-vacio{padding:18px;text-align:center;color:var(--text-muted,#6b7080);font-size:14px}' +
+      '#n360-sel-err{margin:0 20px 14px;color:var(--danger,#dc2626);font-size:13px;min-height:0}#n360-sel-err:empty{display:none}' +
+      '#n360-sel-vacio{padding:18px;text-align:center;color:var(--text-secondary,#6b7080);font-size:14px}' +
       '@media (max-width:520px){#n360-sel-modal{align-items:flex-end;padding:0}#n360-sel-box{max-width:none;border-radius:20px 20px 0 0;max-height:90vh}}' +
       '@media (prefers-reduced-motion:reduce){#n360-sel-modal,#n360-sel-box{animation:none}.n360-sel-item{transition:none}}';
     document.head.appendChild(st);
@@ -220,19 +220,10 @@
 
   function error(msg) { var e = document.getElementById('n360-sel-err'); if (e) e.textContent = msg; if (msg) document.querySelectorAll('.n360-sel-item.cargando').forEach(function (b) { b.classList.remove('cargando'); }); }
 
-  async function cambiar(sucursalId, boton) {
-    var s = lista.find(function (x) { return x.id === sucursalId; });
-    if (!s) return;
-    // Volver a la Central: el mismo acceso con código de siempre.
-    if (s.es_central) {
-      if (!esHija) return;
-      if (perfilActual() && perfilActual().tipo === 'admin' && await volverSinCodigo()) return;
-      var cfg = window.PerfilesGuardConfig;
-      if (cfg && cfg.volverACentral) { var mm = document.getElementById('n360-sel-modal'); if (mm) mm.remove(); cfg.volverACentral(s.nombre); }
-      else error('No se pudo abrir el acceso a la Central.');
-      return;
-    }
-    boton.disabled = true; error('');
+  // Núcleo del cambio. Devuelve { ok:true } (ya navegando) o
+  // { ok:false, msg, fallback }: fallback=true cuando falló por algo técnico
+  // (sin respuesta del servidor), para que el flujo antiguo pueda intentarlo.
+  async function hacerCambio(s) {
     try {
       // Si soy un perfil con PIN (no administrador), se respeta su permiso por sucursal.
       var modulos = null;
@@ -241,7 +232,7 @@
         var perfil = JSON.parse(raw);
         if (perfil && perfil.tipo !== 'admin') {
           var p = await sb.from('sucursal_permisos').select('modulos_permitidos').eq('sucursal_id', s.id).eq('perfil_id', perfil.id).maybeSingle();
-          if (!p || !p.data) { boton.disabled = false; return error('Tu perfil no tiene acceso a "' + s.nombre + '".'); }
+          if (!p || !p.data) return { ok: false, msg: 'Tu perfil no tiene acceso a "' + s.nombre + '".', fallback: false };
           modulos = p.data.modulos_permitidos || [];
         }
       }
@@ -250,7 +241,7 @@
       if (resp.error || !resp.data || !resp.data.token_hash) {
         var msg = resp.data && resp.data.error;
         try { if (!msg && resp.error && resp.error.context) msg = (await resp.error.context.json()).error; } catch (_) {}
-        boton.disabled = false; return error(msg || 'No se pudo abrir esa cuenta.');
+        return { ok: false, msg: msg || 'No se pudo abrir esa cuenta.', fallback: !msg };
       }
       // Desde la Central se guarda su sesión para poder volver (igual que Sucursales).
       var ses = await sb.auth.getSession();
@@ -265,8 +256,8 @@
       if (v.error || !v.data || !v.data.session || v.data.session.user.id !== resp.data.destino_auth_id) {
         // Seguridad: se vuelve a comprobar de quién es la sesión real.
         var chk = await sb.auth.getSession();
-        if (!chk.data || !chk.data.session || chk.data.session.user.id !== yo.id) { location.href = 'login.html'; return; }
-        boton.disabled = false; return error('No se pudo abrir esa cuenta.');
+        if (!chk.data || !chk.data.session || chk.data.session.user.id !== yo.id) { location.href = 'login.html'; return { ok: true }; }
+        return { ok: false, msg: 'No se pudo abrir esa cuenta.', fallback: true };
       }
       // Copia que sobrevive si se cierra la pestaña (solo desde la Central), para ESTA cuenta.
       try {
@@ -285,11 +276,40 @@
       if (modulos) sessionStorage.setItem('n360_sucursal_modulos', JSON.stringify(modulos));
       else sessionStorage.removeItem('n360_sucursal_modulos');
       location.href = (resp.data.tipo === 'bodega') ? 'bodega.html' : 'dashboard.html';
+      return { ok: true };
     } catch (e) {
-      boton.disabled = false; error('No se pudo cambiar de cuenta. Revisa tu internet e intenta de nuevo.');
+      return { ok: false, msg: 'No se pudo cambiar de cuenta. Revisa tu internet e intenta de nuevo.', fallback: true };
     }
   }
 
-  window.N360SelectorCuenta = { abrir: abrir, listo: function () { return !!lista; } };
+  // Ir a la Central: sin código si el perfil activo es administrador; si no, el código de siempre.
+  async function irACentral(nombre) {
+    if (!esHija) return true;
+    if (perfilActual() && perfilActual().tipo === 'admin' && await volverSinCodigo()) return true;
+    var cfg = window.PerfilesGuardConfig;
+    if (cfg && cfg.volverACentral) { var mm = document.getElementById('n360-sel-modal'); if (mm) mm.remove(); cfg.volverACentral(nombre || 'tu cuenta principal'); return true; }
+    return false;
+  }
+
+  async function cambiar(sucursalId, boton) {
+    var s = lista.find(function (x) { return x.id === sucursalId; });
+    if (!s) return;
+    if (s.es_central) {
+      if (!(await irACentral(s.nombre))) error('No se pudo abrir el acceso a la Central.');
+      return;
+    }
+    boton.disabled = true; error('');
+    var r = await hacerCambio(s);
+    if (!r.ok) { boton.disabled = false; error(r.msg); }
+  }
+
+  // Para otros módulos (Sucursales): entra a una cuenta por su id de fila.
+  async function entrar(sucursalId) {
+    var s = lista && lista.find(function (x) { return x.id === sucursalId; });
+    if (!s || s.es_central) return { ok: false, msg: 'Cuenta no disponible', fallback: true };
+    return hacerCambio(s);
+  }
+
+  window.N360SelectorCuenta = { abrir: abrir, entrar: entrar, irACentral: irACentral, listo: function () { return !!lista; } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
 })();
