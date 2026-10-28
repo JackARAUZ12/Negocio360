@@ -8611,6 +8611,7 @@ function instalarMotorClinica() {
         impuestosTexto: document.getElementById('res-impuestos-label')?.textContent || 'Impuestos',
         metodos: (S.metodosPago || []).map(m => ({ id: m.id, nombre: m.nombre })),
         fiado: S.empresaConfig?.usa_modulo_fiados === true && !!S.clienteId,
+        separado: (S.metodosPago || []).length > 1,         // pago separado: hace falta más de una forma de pago
       };
     },
     fmt: n => fmt(n),
@@ -8654,6 +8655,16 @@ function instalarMotorClinica() {
         if (!llegarAlPago()) return { ok: false, motivo: avisos.pop() || 'Falta un dato de la venta (por ejemplo, el cliente).' };
         if (op.notas) { const ob = document.getElementById('venta-observaciones'); if (ob && !ob.value.trim()) ob.value = String(op.notas).slice(0, 1000); }
         if (op.fiado) seleccionarFiado();
+        else if (Array.isArray(op.separado) && op.separado.length) {
+          // Pago separado: el MISMO de Ventas (un movimiento de Caja por cada forma de pago, con su banco).
+          await seleccionarPagoSeparado();
+          (S.pagoSeparadoLineas || []).forEach(l => {
+            const x = op.separado.find(y => y.metodoId === l.metodoId);
+            l.monto = x ? Math.max(0, round2(Number(x.monto) || 0)) : 0;
+            if (x && x.banco && x.banco.id) { l.bancoId = x.banco.id; l.bancoNombre = x.banco.nombre; l.bancoMoneda = x.banco.moneda || 'NIO'; l.montoBancoConvertido = _psMontoBanco(l); }
+          });
+          renderResumenPagoSeparado();
+        }
         else {
           seleccionarMetodoPago(op.metodoId, op.metodoNombre);
           await mostrarSelectorBanco(op.metodoNombre);       // (seleccionarMetodoPago lo lanza sin esperar)

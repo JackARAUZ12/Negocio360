@@ -2512,6 +2512,93 @@ async function pruebaCuadreTransporte(browser, base) {
   verificar(!a.errores.length && !b.errores.length, `cuadre transporte: sin errores (${[...a.errores, ...b.errores].join(' | ')})`);
 }
 
+// Clínica: "Pago separado" en la pantalla de cobro (p. ej. efectivo + transferencia a un banco). Debe escribir
+// EXACTAMENTE lo mismo que el pago separado hecho en Ventas (un movimiento de Caja por cada forma de pago).
+async function pruebaPagoSeparadoClinica(browser, base) {
+  console.log('\n▶ Clínica: pago separado en la pantalla de cobro');
+  const semillaPS = () => {
+    const db = conCitas(semilla(), [citaAgenda('ag-c', { cliente_id: 'cli-1', cliente_nombre: 'Cliente Existente', estado: 'en_atencion' })]);
+    db.clinica_cita_cargos = [{ id: 'cg1', auth_user_id: UID, agenda_cita_id: 'ag-c', producto_id: 'prod-acet', descripcion: 'Acetaminofén 500 mg', cantidad: 3 }];
+    db.metodos_pago.push({ id: 'mp-transf', auth_user_id: UID, nombre: 'Transferencia', activo: true, tipo: 'transferencia' });
+    db.bancos = [{ id: 'bn-1', auth_user_id: UID, nombre: 'BAC', moneda: 'NIO', activo: true, created_at: '2026-01-01' }];
+    return db;
+  };
+  const correr = async (desdeClinica, ancho = 1280, alto = 900) => {
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    let extra = {};
+    if (desdeClinica) {
+      await page.goto(base + '/clinica-sala.html');
+      await page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semillaPS() });
+      await page.reload(); await esperarListo(page); await page.waitForFunction(() => typeof ClinicaCitas !== 'undefined');
+      await page.evaluate(() => ClinicaCitas.cobrar({ id: 'ag-c' }));
+      await marcoCobro(page, 2);
+      await page.waitForSelector('#clc-metodos [data-metodo="__separado"]', { timeout: 20000 });
+      await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
+      await page.click('#clc-metodos [data-metodo="__separado"]');
+      extra.boton0 = await page.isDisabled('#clc-cobrar');
+      await page.fill('#clc-separado [data-sep-monto="0"]', '300');
+      extra.falta = await page.textContent('#clc-sep-resumen');
+      await page.click('#clc-sep-resto');          // lo que falta va a la última escrita (efectivo) → se corrige a mano
+      await page.fill('#clc-separado [data-sep-monto="0"]', '300');
+      await page.fill('#clc-separado [data-sep-monto="1"]', '237.5');
+      extra.sinBanco = await page.textContent('#clc-sep-resumen');
+      extra.boton1 = await page.isDisabled('#clc-cobrar');
+      await page.click('#clc-separado [data-sep-banco="bn-1"]');
+      extra.cuadra = await page.textContent('#clc-sep-resumen');
+      extra.boton2 = await page.isDisabled('#clc-cobrar');
+      extra.cabe = await page.evaluate(() => document.querySelector('#cl-cobro .clc-caja').scrollWidth <= document.querySelector('#cl-cobro .clc-caja').clientWidth + 1);
+      if (process.env.FOTO_PS) { await page.evaluate(() => document.getElementById('clc-separado').scrollIntoView()); await page.screenshot({ path: process.env.FOTO_PS + '-' + ancho + '.png' }); }
+      await page.click('#clc-cobrar');
+      await page.waitForFunction(() => document.querySelector('#cl-cobro .clc-ok') || (document.getElementById('clc-err')?.textContent || '').length > 0, null, { timeout: 20000 });
+      extra.aviso = await page.textContent('#cl-cobro');
+    } else {
+      await page.goto(base + '/ventas.html');
+      await page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semillaPS() });
+      await page.reload(); await esperarListo(page);
+      await page.waitForFunction(() => typeof S !== 'undefined' && Array.isArray(S.productosCache) && S.productosCache.length === 2, null, { timeout: 15000 });
+      await page.evaluate(async () => {
+        await abrirNuevaVenta(); selectClienteOpcion('existente'); seleccionarCliente('cli-1');
+        await agregarAlCarritoConPrecio('prod-consulta', 'servicio', null);
+        await agregarAlCarritoConPrecio('prod-acet', 'producto', null); cambiarCantidad('prod-acet', 3);
+      });
+      await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
+      await page.evaluate(async () => {
+        for (let i = 0; i < 8 && S.paso < 5; i++) { const a = S.paso; pasoSiguiente(); await new Promise(r => setTimeout(r, 150)); if (S.paso === a) break; }
+        await seleccionarPagoSeparado();
+        S.pagoSeparadoLineas.forEach(l => { if (l.metodoId === 'mp-efectivo') l.monto = 300; if (l.metodoId === 'mp-transf') { l.monto = 237.5; l.bancoId = 'bn-1'; l.bancoNombre = 'BAC'; l.bancoMoneda = 'NIO'; } });
+        await confirmarVenta(false);
+      });
+    }
+    await page.waitForTimeout(800);
+    const r = await page.evaluate(() => ({ log: JSON.parse(sessionStorage.getItem('__LOG') || '[]'), db: JSON.parse(sessionStorage.getItem('__DB')) }));
+    r.errores = page.__errores; r.extra = extra; await ctx.close(); return r;
+  };
+  const limpiar = o => JSON.parse(JSON.stringify(o, (k, v) => ['id', 'venta_id', 'created_at', 'fecha', 'updated_at', 'numero_venta', 'numero_factura', 'observaciones', 'notas', 'referencia_id', 'referencia_caja'].includes(k) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id generado>' : v)));
+  const RPC_DINERO = ['venta_registrar_atomica', 'descontar_lote_venta', 'descontar_lote_fefo'];
+  const escrituras = log => log.filter(x => (x.op !== 'rpc' || RPC_DINERO.includes(x.tabla)) && !['tutoriales_vistos', 'usuarios', 'presencia_usuarios', 'auditoria_eventos', 'auditoria'].includes(x.tabla) && x.tabla !== 'agenda_citas' && !(x.tabla === 'auditoria_log' && x.datos?.tabla === 'agenda_citas'));
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const a = await correr(true, ancho, alto), e = a.extra;
+    verificar(e.boton0 && /Falta/.test(e.falta) && e.boton1 && /banco/.test(e.sinBanco) && /Cuadra exacto/.test(e.cuadra) && !e.boton2, `${tag}: pago separado avisa lo que falta, pide el banco de la transferencia y solo deja cobrar cuando cuadra (${e.falta} | ${e.cuadra})`);
+    verificar(e.cabe, `${tag}: el pago separado cabe en la pantalla`);
+    verificar(/Cobrado/.test(e.aviso) && /Pago separado \(Efectivo \+ Transferencia\)/.test(e.aviso), `${tag}: cobrado con "Pago separado (Efectivo + Transferencia)" sin salir de la Clínica`);
+    const venta = a.db.ventas?.[0], cita = a.db.agenda_citas.find(c => c.id === 'ag-c');
+    verificar(venta && Number(venta.total) === 537.5 && cita.venta_id === venta.id, `${tag}: la venta (537.50) queda ligada a la cita`);
+    verificar(!a.errores.length, `${tag}: sin errores (${a.errores.join(' | ')})`);
+    if (ancho > 500) {
+      const b = await correr(false);
+      const wa = escrituras(a.log), wb = escrituras(b.log);
+      verificar(wa.length > 0 && JSON.stringify(limpiar(wa)) === JSON.stringify(limpiar(wb)), `cuadre: el pago separado desde la Clínica escribe IDÉNTICO al pago separado de Ventas (${wa.length} escrituras)`);
+      if (JSON.stringify(limpiar(wa)) !== JSON.stringify(limpiar(wb))) {
+        const la = limpiar(wa), lb = limpiar(wb);
+        for (let i = 0; i < Math.max(la.length, lb.length); i++) if (JSON.stringify(la[i]) !== JSON.stringify(lb[i])) console.log('  diferencia #' + i + '\n   clínica:', JSON.stringify(la[i]), '\n   ventas:', JSON.stringify(lb[i]));
+      }
+      const txt = JSON.stringify(wa);
+      verificar(txt.includes('Efectivo (pago separado)') && txt.includes('Transferencia (pago separado)') && txt.includes('bn-1'), 'cuadre: un movimiento de Caja por cada forma de pago, la transferencia con su banco');
+    }
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2541,6 +2628,7 @@ async function regresion(browser, base) {
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
+    if (process.env.SOLO_PS) { await pruebaPagoSeparadoClinica(browser, base); throw 'fin'; }
     if (process.env.SOLO_TX) { await pruebaTransporte(browser, base); await pruebaCuadreTransporte(browser, base); throw 'fin'; }
     if (process.env.SOLO_BOTONES) { await pruebaBotonesCliente(browser, base); throw 'fin'; }
     if (process.env.SOLO_CAMP) { await pruebaCampanas(browser, base); throw 'fin'; }
@@ -2581,6 +2669,7 @@ async function regresion(browser, base) {
     await pruebaBotonesCliente(browser, base);
     await pruebaTransporte(browser, base);
     await pruebaCuadreTransporte(browser, base);
+    await pruebaPagoSeparadoClinica(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

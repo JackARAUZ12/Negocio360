@@ -792,7 +792,8 @@ function clinicaCobroAgenda(cita, cargos) {
    (ventas.html?clinica_cobro=1&motor=1): mismos cálculos, candados, Caja, inventario, lotes, impuestos,
    contabilidad y reportes. Nada se calcula aparte, por eso todo cuadra igual que una venta normal.
    Quien llama deja preparado lo que se cobra (n360_agenda_cobro, n360_clinica_cobro o n360_receta_a_vender).
-   Casos especiales (pago separado, puntos, certificados): "Otras opciones" muestra la venta completa. */
+   Pago separado (varias formas de pago): aquí mismo, con el pago separado de Ventas.
+   Casos especiales (puntos, certificados): "Otras opciones" muestra la venta completa. */
 const _CL_COBRO = { abierto: false, alTerminar: null, alCerrar: null, ventaId: null, vigia: null, escuchando: false, metodo: null, banco: null, bancos: [], estado: null, cobrando: false, clienteId: null };
 const _CL_COBRO_CSS = `#sidebar,#sidebar-overlay,#header,.mobile-menu-btn{display:none!important}
 #main{margin-left:0!important;width:100%!important;min-height:0!important}html,body{overflow-x:hidden}`;
@@ -909,7 +910,8 @@ async function _clCobroPintar() {
   const e = _CL_COBRO.estado, r = e.resumen || {}, t = r.texto || {};
   const lineas = e.items.map(i => `<div class="clc-linea"><span>${_clEsc(i.nombre)}<span class="clc-cant" style="display:block">${_clEsc(String(i.cantidad))} × ${_clEsc(i.precioTexto)}</span></span><b>${_clEsc(i.texto)}</b></div>`).join('');
   const metodos = e.metodos.map(mt => `<button type="button" class="clc-chip" data-metodo="${_clEsc(mt.id)}" data-nombre="${_clEsc(mt.nombre)}">${_clEsc(mt.nombre)}</button>`).join('')
-    + (e.fiado ? '<button type="button" class="clc-chip" data-metodo="__fiado" data-nombre="Fiado">📒 Fiado (paga después)</button>' : '');
+    + (e.fiado ? '<button type="button" class="clc-chip" data-metodo="__fiado" data-nombre="Fiado">📒 Fiado (paga después)</button>' : '')
+    + (e.separado ? '<button type="button" class="clc-chip" data-metodo="__separado" data-nombre="Pago separado">➗ Pago separado</button>' : '');
   document.getElementById('clc-cuerpo').innerHTML = `
     <div class="clc-quien">Cliente: <b>${_clEsc(e.cliente || 'Consumidor final')}</b></div>
     <div class="clc-lineas">${lineas}</div>
@@ -924,6 +926,7 @@ async function _clCobroPintar() {
     <div class="clc-sec">Forma de pago</div>
     <div class="clc-chips" id="clc-metodos">${metodos || '<span class="cl-sub">No hay formas de pago activas: configúralas en Caja.</span>'}</div>
     <div id="clc-bancos-wrap" style="display:none"><div class="clc-sec">¿A qué banco entra?</div><div class="clc-chips" id="clc-bancos"></div></div>
+    <div id="clc-separado" style="display:none"></div>
     <div id="clc-efectivo" style="display:none" class="clc-fila">
       <div><label class="clc-lab" for="clc-recibido">Recibido</label><input class="clc-in" id="clc-recibido" type="number" inputmode="decimal" step="any" min="0" placeholder="0.00"/></div>
       <div><label class="clc-lab">Cambio</label><div class="clc-cambio" id="clc-cambio">—</div></div>
@@ -932,7 +935,7 @@ async function _clCobroPintar() {
     <input class="clc-in" id="clc-nota" maxlength="300" placeholder="Aparece en la venta"/>
     <div class="clc-err" id="clc-err" role="alert"></div>`;
   document.getElementById('clc-pie').innerHTML = `<button type="button" class="clc-btn" id="clc-cobrar" disabled>Cobrar ${_clEsc(t.cobrar)}</button>
-    <button type="button" class="clc-link" onclick="clinicaCobroAvanzado()">Otras opciones (pago separado, puntos, certificados…) →</button>`;
+    <button type="button" class="clc-link" onclick="clinicaCobroAvanzado()">Otras opciones (puntos, certificados…) →</button>`;
   document.querySelectorAll('#clc-metodos .clc-chip').forEach(b => b.addEventListener('click', () => _clElegirMetodo(b.dataset.metodo, b.dataset.nombre)));
   document.getElementById('clc-recibido').addEventListener('input', _clCambio);
   document.getElementById('clc-cobrar').addEventListener('click', _clCobrarAhora);
@@ -953,7 +956,8 @@ function _clElegirMetodo(id, nombre) {
   if (_CL_COBRO.cobrando) return;
   _CL_COBRO.metodo = { id, nombre }; _CL_COBRO.banco = null;
   document.querySelectorAll('#clc-metodos .clc-chip').forEach(b => b.classList.toggle('activo', b.dataset.metodo === id));
-  const conBanco = id !== '__fiado' && _clNecesitaBanco(nombre);
+  _clPintarSeparado(id === '__separado');
+  const conBanco = !id.startsWith('__') && _clNecesitaBanco(nombre);
   document.getElementById('clc-bancos-wrap').style.display = conBanco ? '' : 'none';
   if (conBanco) {
     document.getElementById('clc-bancos').innerHTML = _CL_COBRO.bancos.map(b => `<button type="button" class="clc-chip" data-banco="${_clEsc(b.id)}">🏦 ${_clEsc(b.nombre)}${b.moneda && b.moneda !== 'NIO' ? ' (' + _clEsc(b.moneda) + ')' : ''}</button>`).join('');
@@ -968,7 +972,76 @@ function _clElegirMetodo(id, nombre) {
 }
 function _clListo() {
   const m = _CL_COBRO.metodo, b = document.getElementById('clc-cobrar'); if (!b) return;
+  if (m && m.id === '__separado') { b.disabled = !_clSeparadoListo() || _CL_COBRO.cobrando; return; }
   b.disabled = !m || (m.id !== '__fiado' && _clNecesitaBanco(m.nombre) && !_CL_COBRO.banco) || _CL_COBRO.cobrando;
+}
+/* Pago separado (p. ej. una parte en efectivo y otra con tarjeta): el MISMO de Ventas. Aquí solo se reparte
+   el total entre las formas de pago (con su banco si es tarjeta o transferencia); Ventas lo valida igual
+   y registra un movimiento de Caja por cada forma de pago. */
+const _clTotalCobrar = () => Number(_CL_COBRO.estado?.resumen?.cobrar ?? _CL_COBRO.estado?.resumen?.total) || 0;
+const _clR2 = n => Math.round((Number(n) || 0) * 100) / 100;
+function _clPintarSeparado(mostrar) {
+  const cont = document.getElementById('clc-separado'); if (!cont) return;
+  cont.style.display = mostrar ? '' : 'none';
+  if (!mostrar) { _CL_COBRO.separado = null; cont.innerHTML = ''; return; }
+  const metodos = (_CL_COBRO.estado?.metodos || []);
+  _CL_COBRO.separado = metodos.map(mt => ({ metodoId: mt.id, metodoNombre: mt.nombre, monto: 0, banco: null }));
+  cont.innerHTML = `<div class="clc-sec">¿Cuánto paga con cada forma?</div>
+    ${_CL_COBRO.separado.map((l, i) => `<div class="clc-sep-linea">
+      <div class="clc-fila" style="margin-top:6px;align-items:center"><div style="flex:1 1 120px"><b>${_clEsc(l.metodoNombre)}</b></div>
+        <div style="flex:0 1 150px"><input class="clc-in" type="number" inputmode="decimal" min="0" step="any" placeholder="0.00" data-sep-monto="${i}" aria-label="Monto con ${_clEsc(l.metodoNombre)}"/></div></div>
+      <div class="clc-chips" data-sep-bancos="${i}" style="display:none;margin-top:6px"></div></div>`).join('')}
+    <button type="button" class="clc-link" id="clc-sep-resto" style="margin-top:8px">Completar lo que falta con la última forma de pago que escribiste</button>
+    <div id="clc-sep-resumen" style="margin-top:10px;padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:700"></div>`;
+  cont.querySelectorAll('[data-sep-monto]').forEach(inp => inp.addEventListener('input', () => {
+    const i = Number(inp.dataset.sepMonto), l = _CL_COBRO.separado[i];
+    l.monto = Math.max(0, _clR2(inp.value));
+    _clBancosSeparado(i); _clResumenSeparado(); _clListo();
+  }));
+  document.getElementById('clc-sep-resto').addEventListener('click', () => {
+    const ls = _CL_COBRO.separado, conMonto = ls.map((l, i) => i).filter(i => ls[i].monto > 0);
+    const i = conMonto.length ? conMonto[conMonto.length - 1] : 0;
+    const otros = _clR2(ls.reduce((a, l, k) => a + (k === i ? 0 : l.monto), 0));
+    ls[i].monto = Math.max(0, _clR2(_clTotalCobrar() - otros));
+    const inp = cont.querySelector(`[data-sep-monto="${i}"]`); if (inp) inp.value = ls[i].monto ? ls[i].monto.toFixed(2) : '';
+    _clBancosSeparado(i); _clResumenSeparado(); _clListo();
+  });
+  _clResumenSeparado();
+}
+function _clBancosSeparado(i) {
+  const l = _CL_COBRO.separado[i], box = document.querySelector(`#clc-separado [data-sep-bancos="${i}"]`); if (!box) return;
+  const necesita = l.monto > 0 && _clNecesitaBanco(l.metodoNombre);
+  box.style.display = necesita ? 'flex' : 'none';
+  if (!necesita) { l.banco = null; return; }
+  if (box.dataset.listo === '1') return;
+  box.dataset.listo = '1';
+  box.innerHTML = _CL_COBRO.bancos.map(b => `<button type="button" class="clc-chip" data-sep-banco="${_clEsc(b.id)}">🏦 ${_clEsc(b.nombre)}</button>`).join('');
+  box.querySelectorAll('[data-sep-banco]').forEach(btn => btn.addEventListener('click', () => {
+    l.banco = _CL_COBRO.bancos.find(x => x.id === btn.dataset.sepBanco) || null;
+    box.querySelectorAll('[data-sep-banco]').forEach(x => x.classList.toggle('activo', x === btn)); _clResumenSeparado(); _clListo();
+  }));
+}
+function _clResumenSeparado() {
+  const el = document.getElementById('clc-sep-resumen'); if (!el) return;
+  const f = _clMotor()?.fmt || (x => Number(x || 0).toFixed(2));
+  const total = _clTotalCobrar(), suma = _clR2((_CL_COBRO.separado || []).reduce((a, l) => a + l.monto, 0)), dif = _clR2(total - suma);
+  const sinBanco = (_CL_COBRO.separado || []).find(l => l.monto > 0 && _clNecesitaBanco(l.metodoNombre) && !l.banco);
+  if (Math.abs(dif) < 0.01) {
+    el.style.background = 'var(--success-soft,#dcfce7)'; el.style.color = 'var(--success,#16a34a)';
+    el.textContent = sinBanco ? `Cuadra exacto. Falta elegir a qué banco entra lo de ${sinBanco.metodoNombre}.` : `✅ Cuadra exacto: ${f(suma)} de ${f(total)}`;
+  } else if (dif > 0) {
+    el.style.background = 'var(--warning-soft,#fef3c7)'; el.style.color = '#b45309';
+    el.textContent = `Falta ${f(dif)} (llevas ${f(suma)} de ${f(total)})`;
+  } else {
+    el.style.background = 'var(--danger-soft,#fee2e2)'; el.style.color = 'var(--danger,#dc2626)';
+    el.textContent = `Te pasaste por ${f(-dif)} (llevas ${f(suma)} de ${f(total)})`;
+  }
+}
+function _clSeparadoListo() {
+  const ls = (_CL_COBRO.separado || []).filter(l => l.monto > 0);
+  if (ls.length < 1) return false;
+  if (Math.abs(_clR2(ls.reduce((a, l) => a + l.monto, 0)) - _clTotalCobrar()) >= 0.01) return false;
+  return !ls.some(l => _clNecesitaBanco(l.metodoNombre) && !l.banco);
 }
 function _clCambio() {
   const el = document.getElementById('clc-cambio'); if (!el) return;
@@ -991,7 +1064,10 @@ async function _clCobrarAhora() {
   const btn = document.getElementById('clc-cobrar'); btn.textContent = 'Cobrando…';
   document.getElementById('clc-err').textContent = '';
   let r;
-  try { r = await motor.cobrar({ metodoId: m.id === '__fiado' ? null : m.id, metodoNombre: m.nombre, fiado: m.id === '__fiado', banco: _CL_COBRO.banco, notas: document.getElementById('clc-nota').value.trim() }); }
+  const separado = m.id === '__separado' ? (_CL_COBRO.separado || []).filter(l => l.monto > 0).map(l => ({ metodoId: l.metodoId, monto: l.monto, banco: l.banco })) : null;
+  if (separado && !_clSeparadoListo()) { _CL_COBRO.cobrando = false; _clListo(); document.getElementById('clc-err').textContent = 'El pago separado debe cuadrar exacto con el total.'; return; }
+  if (separado) _CL_COBRO.metodo = { ...m, nombre: `Pago separado (${(_CL_COBRO.separado || []).filter(l => l.monto > 0).map(l => l.metodoNombre).join(' + ')})` };
+  try { r = await motor.cobrar({ metodoId: (m.id === '__fiado' || separado) ? null : m.id, metodoNombre: m.nombre, fiado: m.id === '__fiado', separado, banco: separado ? null : _CL_COBRO.banco, notas: document.getElementById('clc-nota').value.trim() }); }
   catch (e) { r = { ok: false, motivo: 'No se pudo registrar la venta. Intenta de nuevo.' }; }
   _CL_COBRO.cobrando = false;
   if (r && r.ok) { if (!_CL_COBRO.ventaId) await _clCobroHecho(r); return; }
@@ -1002,7 +1078,7 @@ async function _clCobroHecho(r) {
   _CL_COBRO.ventaId = r.ventaId;
   const f = _clMotor()?.fmt || (x => Number(x || 0).toFixed(2));
   const rec = Number(document.getElementById('clc-recibido')?.value), total = Number(r.total) || 0;
-  const cambio = /efectivo/i.test(_CL_COBRO.metodo?.nombre || '') && rec > total ? Math.round((rec - total) * 100) / 100 : 0;
+  const cambio = _CL_COBRO.metodo?.id !== '__separado' && /efectivo/i.test(_CL_COBRO.metodo?.nombre || '') && rec > total ? Math.round((rec - total) * 100) / 100 : 0;
   document.getElementById('cl-cobro').classList.remove('clc-avanzado');
   document.getElementById('clc-cuerpo').innerHTML = `<div class="clc-ok"><div class="clc-ok-ico">✅</div><div class="clc-ok-tit">Cobrado ${_clEsc(f(total))}</div>
     <div class="cl-sub">Venta ${_clEsc(r.numero || '')} · ${_clEsc(_CL_COBRO.metodo?.nombre || '')}</div>
@@ -1052,7 +1128,7 @@ function clinicaCerrarCobro() {
   document.getElementById('clc-marco').src = 'about:blank';
   ['n360_agenda_cobro', 'n360_clinica_cobro', 'n360_receta_a_vender'].forEach(k => { try { sessionStorage.removeItem(k); } catch (_) {} });
   const cobrado = !!_CL_COBRO.ventaId, fin = _CL_COBRO.alCerrar;
-  Object.assign(_CL_COBRO, { abierto: false, alTerminar: null, alCerrar: null, ventaId: null, metodo: null, banco: null, estado: null });
+  Object.assign(_CL_COBRO, { abierto: false, alTerminar: null, alCerrar: null, ventaId: null, metodo: null, banco: null, estado: null, separado: null });
   if (!cobrado && typeof showToast === 'function') showToast('No se cobró nada.');
   if (typeof fin === 'function') { try { fin(cobrado); } catch (_) {} }
 }
