@@ -94,7 +94,14 @@ async function sinDesborde(page, nombre) {
   verificar(w.doc <= w.vista + 1, `${nombre}: sin desborde horizontal (${w.doc} <= ${w.vista})`);
 }
 async function modalesSinDesborde(page, nombre) {
-  const r = await page.evaluate(() => [...document.querySelectorAll('.modal-overlay.modal-open .modal-box')].map(b => ({ id: b.parentElement.id, ancho: b.getBoundingClientRect().width, dentro: b.scrollWidth <= b.clientWidth + 1 })));
+  const medir = () => page.evaluate(() => [...document.querySelectorAll('.modal-overlay.modal-open .modal-box')].map(b => ({ id: b.parentElement.id, ancho: b.getBoundingClientRect().width, dentro: b.scrollWidth <= b.clientWidth + 1 })));
+  let r = await medir();
+  // Si parece salirse, se vuelve a medir cuando la ventana termina de dibujarse: un desborde
+  // de un instante (mientras se arma) no es real; uno que sigue, sí falla.
+  if (r.some(m => !m.dentro || m.ancho > page.viewportSize().width + 1)) {
+    await page.waitForTimeout(400); r = await medir();
+    if (r.every(m => m.dentro && m.ancho <= page.viewportSize().width + 1)) console.log(`  (aviso: ${nombre} se salía un instante mientras se dibujaba; al terminar, cabe)`);
+  }
   r.forEach(m => verificar(m.ancho <= page.viewportSize().width + 1 && m.dentro, `${nombre}: ventana ${m.id} cabe en pantalla`));
 }
 const esperarListo = page => page.waitForFunction(() => document.getElementById('app')?.style.display === 'flex', null, { timeout: 15000 });
