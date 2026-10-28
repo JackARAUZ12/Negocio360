@@ -2854,9 +2854,7 @@ async function initDashboard() {
 
     // Load empresa config first — this also applies tema from personalizacion
     const resultConfig = await loadEmpresaConfig(userId);
-    if (resultConfig.ok && resultConfig.data && resultConfig.data.catalogo360_regalo_mostrado === false) {
-      mostrarRegaloFidelidadCatalogo360();
-    }
+    // La ventana del regalo de Catálogo360 ya no se muestra (pedido de Jack: estorbaba).
 
     const profile = await loadUserProfile(userId);
     if (profile) {

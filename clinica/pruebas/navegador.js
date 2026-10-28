@@ -1666,6 +1666,23 @@ async function pruebaNuevoMedico(browser, base) {
   }
 }
 
+// Panel principal: la ventana del regalo de Catálogo360 ya no aparece (aunque la cuenta no la haya visto).
+async function pruebaSinRegalo(browser, base) {
+  console.log('\n▶ Panel principal sin la ventana del regalo de Catálogo360');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/dashboard.html');
+    await page.evaluate(() => { const x = JSON.parse(JSON.stringify(window.__SEED)); x.configuracion_empresa[0].catalogo360_regalo_mostrado = false; sessionStorage.setItem('__DB', JSON.stringify(x)); });
+    await page.reload(); await page.waitForSelector('#loader.hidden', { state: 'attached', timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    verificar(await page.locator('text=Un regalo por tu fidelidad').count() === 0, `${tag}: no aparece la ventana del regalo de Catálogo360`);
+    verificar(await page.locator('#loader.hidden').count() === 1, `${tag}: el Panel principal carga normal`);
+    verificar(page.__errores.length === 0, `${tag} Panel principal: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 async function pruebaDemo(browser, base) {
   console.log('\n▶ Cuenta demo (sin multiusuario)');
   for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
@@ -1737,6 +1754,7 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
+    if (process.env.SOLO_REGALO) { await pruebaSinRegalo(browser, base); throw 'fin'; }
     if (process.env.SOLO_MEDICO) { await pruebaNuevoMedico(browser, base); throw 'fin'; }
     if (process.env.SOLO_SINCITA) { await pruebaSinCita(browser, base); throw 'fin'; }
     if (process.env.SOLO_DEMO) { await pruebaDemo(browser, base); throw 'fin'; }
@@ -1762,6 +1780,7 @@ async function regresion(browser, base) {
     await pruebaCuadreFase5(browser, base);
     await pruebaDemo(browser, base);
     await pruebaNuevoMedico(browser, base);
+    await pruebaSinRegalo(browser, base);
     await pruebaPasarConsulta(browser, base);
     await pruebaAtencionHoy(browser, base);
     await pruebaBuscadorIngreso(browser, base);
