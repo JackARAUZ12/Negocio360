@@ -87,6 +87,12 @@ function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 // elegir cualquier otro destino) — nunca tiene menú propio para saltar
 // directo a otra sucursal.
 function abrirVolverDesdeBodega() {
+  // Si el selector de cuentas del grupo está disponible, deja elegir a dónde ir
+  // (Central, sucursales u otras bodegas). Si no, queda el comportamiento de siempre.
+  if (window.N360SelectorCuenta && window.N360SelectorCuenta.listo && window.N360SelectorCuenta.listo()) {
+    window.N360SelectorCuenta.abrir();
+    return;
+  }
   if (window.PerfilesGuardConfig?.volverACentral) {
     window.PerfilesGuardConfig.volverACentral('esta bodega');
   } else {

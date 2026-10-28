@@ -2105,6 +2105,7 @@ async function pruebaOportunidades(browser, base) {
     await page.waitForFunction(() => !document.getElementById('opor-v-editar').classList.contains('abierto'));
     if (movil) await page.click('[data-op-etapa="nuevo"]');
     await page.waitForSelector('[data-op-col="nuevo"] .op-card >> text=50 camisas bordadas');
+    await page.waitForFunction(() => (JSON.parse(sessionStorage.getItem('__DB')).crm_oportunidades || []).some(o => o.prospecto_nombre === 'Ana López'), null, { timeout: 8000 }).catch(() => {});
     let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
     const ana = db.crm_oportunidades.find(o => o.prospecto_nombre === 'Ana López');
     verificar(ana && ana.etapa === 'nuevo' && Number(ana.valor_estimado) === 1500 && ana.origen === 'facebook' && !ana.cliente_id, `${tag}: el prospecto queda en "Nuevo" con su valor y de dónde vino`);
