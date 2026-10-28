@@ -278,7 +278,7 @@ async function abrirTrazabilidadLote(loteId) {
       const { data: compra } = await sb.from('compras')
         .select('numero, proveedor_nombre, fecha, total').eq('id', lote.compra_id).maybeSingle();
       if (compra) {
-        htmlCompra = `<div style="background:var(--bg-app,#f8fafc);border-radius:8px;padding:10px 12px">
+        htmlCompra = `<div style="background:var(--bg-app,var(--bg-surface-2,#f8fafc));border-radius:8px;padding:10px 12px">
           <div style="font-weight:700;font-size:13px">Compra #${esc(compra.numero || '—')}</div>
           <div style="font-size:12px;color:var(--text-muted)">${esc(compra.proveedor_nombre || 'Sin proveedor')} · ${compra.fecha} · ${fmt(compra.total)}</div>
         </div>`;
@@ -288,7 +288,7 @@ async function abrirTrazabilidadLote(loteId) {
     const { data: detalles } = await sb.from('venta_detalles')
       .select('cantidad, ventas(numero_venta, fecha, cliente_nombre)').eq('lote_id', loteId);
     const ventasHtml = (detalles && detalles.length)
-      ? detalles.map(d => `<div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--bg-app,#f8fafc);border-radius:8px;margin-bottom:5px;font-size:12.5px">
+      ? detalles.map(d => `<div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--bg-app,var(--bg-surface-2,#f8fafc));border-radius:8px;margin-bottom:5px;font-size:12.5px">
           <span>Venta #${esc(d.ventas?.numero_venta || '—')} · ${d.ventas?.fecha || ''} · ${esc(d.ventas?.cliente_nombre || 'Sin cliente')}</span>
           <strong>${fmtNumLote(d.cantidad)} u.</strong>
         </div>`).join('')

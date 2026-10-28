@@ -54,7 +54,7 @@
         <div style="padding:18px 20px 6px">
           <div style="font-size:17px;font-weight:800">📅 Cierre de mes pendiente</div>
           <div style="font-size:13px;color:var(--text-secondary,#555);margin-top:6px">Tu período del <b>${fechaCorta(p.desde)}</b> al <b>${fechaCorta(p.hasta)}</b> terminó y todavía no se ha cerrado.</div>
-          <div style="margin-top:12px;background:var(--bg-app,#f5f5f7);border-radius:12px;padding:12px 14px">
+          <div style="margin-top:12px;background:var(--bg-app,var(--bg-surface-2,#f5f5f7));border-radius:12px;padding:12px 14px">
             <div style="font-size:12px;color:var(--text-muted,#777)">En Caja había al ${fechaLarga(p.hasta)}</div>
             <div style="font-size:22px;font-weight:800">${dinero(p.saldo, moneda)}</div>
           </div>

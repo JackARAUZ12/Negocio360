@@ -1069,19 +1069,19 @@ async function verDetalleCierre(fecha, desdeMensual, saldoInicialMensual) {
     DETALLE_CIERRE_ACTUAL = { fecha, movimientos: lista, resumen: { saldoInicial, totalIngresos, totalEgresos, saldoFinal } };
 
     document.getElementById('dc-resumen').innerHTML = `
-      <div style="background:var(--bg-app,#f5f5f7);border-radius:10px;padding:10px 12px;text-align:center">
+      <div style="background:var(--bg-app,var(--bg-surface-2,#f5f5f7));border-radius:10px;padding:10px 12px;text-align:center">
         <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:4px">Saldo inicial</div>
         <div style="font-size:15px;font-weight:700">${fmt(saldoInicial)}</div>
       </div>
-      <div style="background:var(--bg-app,#f5f5f7);border-radius:10px;padding:10px 12px;text-align:center">
+      <div style="background:var(--bg-app,var(--bg-surface-2,#f5f5f7));border-radius:10px;padding:10px 12px;text-align:center">
         <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:4px">Ingresos</div>
         <div style="font-size:15px;font-weight:700;color:var(--success,#22c55e)">${fmt(totalIngresos)}</div>
       </div>
-      <div style="background:var(--bg-app,#f5f5f7);border-radius:10px;padding:10px 12px;text-align:center">
+      <div style="background:var(--bg-app,var(--bg-surface-2,#f5f5f7));border-radius:10px;padding:10px 12px;text-align:center">
         <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:4px">Egresos</div>
         <div style="font-size:15px;font-weight:700;color:var(--danger,#ef4444)">${fmt(totalEgresos)}</div>
       </div>
-      <div style="background:var(--bg-app,#f5f5f7);border-radius:10px;padding:10px 12px;text-align:center">
+      <div style="background:var(--bg-app,var(--bg-surface-2,#f5f5f7));border-radius:10px;padding:10px 12px;text-align:center">
         <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:4px">Saldo final</div>
         <div style="font-size:15px;font-weight:700">${fmt(saldoFinal)}</div>
       </div>

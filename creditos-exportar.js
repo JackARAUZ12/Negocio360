@@ -502,7 +502,7 @@
           '<span style="font-size:12px;color:var(--text-muted,#777)"><span id="exp-nsel"></span> · <a href="#" id="exp-todos" style="color:var(--accent,#5a5af4)">Quitar selección</a></span></div>' +
           '<input type="search" id="exp-buscar" placeholder="Buscar cliente…" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e8e8ef);border-radius:8px;font-size:13px;background:var(--bg-surface,#fff);color:inherit;margin-bottom:6px"/>' +
           '<div id="exp-lista" style="max-height:200px;overflow-y:auto;border:1px solid var(--border,#e8e8ef);border-radius:8px"></div></div>' +
-        '<div id="exp-resumen" style="padding:10px 12px;background:var(--bg-app,#f5f5fa);border-radius:8px;font-size:13px"></div>' +
+        '<div id="exp-resumen" style="padding:10px 12px;background:var(--bg-app,var(--bg-surface-2,#f5f5fa));border-radius:8px;font-size:13px"></div>' +
         '<div id="exp-error" style="color:var(--danger,#c0392b);font-size:12.5px;display:none"></div>' +
       '</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--border,#e8e8ef)">' +

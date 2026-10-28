@@ -235,7 +235,7 @@ function renderRotacion() {
   if (wrapReponer) wrapReponer.style.display = paraReponer.length ? '' : 'none';
   if (contReponer) {
     contReponer.innerHTML = paraReponer.map(r => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app,#fff7ed);border-radius:8px;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app,var(--bg-surface-2,#fff7ed));border-radius:8px;margin-bottom:6px">
         <div>
           <strong style="font-size:13px">${esc(r.nombre)}</strong> ${ROTACION_LABEL[r.rotacion] || ''}
           <div style="font-size:11.5px;color:var(--text-muted)">Stock actual: ${r.stockActual} (mínimo: ${r.stockMinimo})</div>
