@@ -6065,7 +6065,7 @@ async function _confirmarVentaInterno(conImpresion) {
       descuento:      item.descuento,
       subtotal:       item.subtotal,
       ganancia:       item.ganancia,
-      escala_id:      item.escalaId || null,
+      escala_id:      (item.esCombo || item.esPromocion) ? null : (item.escalaId || null),   // la escala de un combo es de combo_precios_escala (no cabe aquí); su nombre sí queda
       escala_nombre:  item.escalaNombre || null,
       vendido_sin_stock: !!item.sinStock,
       es_regalia:     !!item.esRegalia,
@@ -7500,7 +7500,7 @@ async function _confirmarVentaRapidaInterno() {
       descuento:       0,
       subtotal:        round2(item.cantidad*item.precio),
       ganancia:        round2(item.cantidad*(item.precio-item.costo)),
-      escala_id:       item.escalaId || null,
+      escala_id:       (item.esCombo || item.esPromocion) ? null : (item.escalaId || null),
       escala_nombre:   item.escalaNombre || null,
       vendido_sin_stock: !!item.sinStock,
       es_regalia:      !!item.esRegalia,
