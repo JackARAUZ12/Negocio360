@@ -98,7 +98,8 @@
     var filas = [];
     creditos.forEach(function (c) {
       var cuotas = (cuotasPorCredito[c.id] || []).map(function (q) {
-        var saldo = q.saldo != null ? num(q.saldo) : Math.max(0, num(q.monto_total) - num(q.monto_pagado));
+        // Siempre monto_total - monto_pagado: el campo cuotas.saldo está desactualizado en datos antiguos (queda en 0 aunque la cuota esté pendiente).
+        var saldo = Math.max(0, num(q.monto_total) - num(q.monto_pagado));
         var venc = String(q.fecha_vencimiento || '').slice(0, 10);
         var vencida = venc && venc < hoy && saldo > 0.005;
         return {
