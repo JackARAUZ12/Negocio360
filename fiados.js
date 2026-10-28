@@ -180,7 +180,7 @@ async function cargarProductos() {
   FD.productos = (data || []).filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
   FD.escalas = {};
   try {
-    const { data: esc_ } = await sb.from('precios_escala').select('id,producto_id,nombre,precio,orden').eq('auth_user_id', FD.userId).order('orden');
+    const { data: esc_ } = await N360Leer.todo(() => sb.from('precios_escala').select('id,producto_id,nombre,precio,orden').eq('auth_user_id', FD.userId).order('orden'), 'escalas de precio');
     (esc_ || []).forEach(e => { (FD.escalas[e.producto_id] = FD.escalas[e.producto_id] || []).push(e); });
   } catch (_) { /* sin escalas */ }
 }

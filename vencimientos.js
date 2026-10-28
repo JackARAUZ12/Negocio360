@@ -132,10 +132,10 @@ document.addEventListener('DOMContentLoaded', () => {
 async function cargarVencimientos() {
   const tbody = document.getElementById('vc-tbody');
   try {
-    const { data, error } = await sb.from('producto_lotes')
+    const { data, error } = await N360Leer.todo(() => sb.from('producto_lotes')
       .select('*, productos(nombre)')
       .eq('auth_user_id', STATE.userId).eq('activo', true).gt('cantidad_actual', 0)
-      .order('fecha_vencimiento', { ascending: true });
+      .order('fecha_vencimiento', { ascending: true }), 'lotes');
     if (error) throw error;
     STATE.lotes = (data || []).sort((a,b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento));
     STATE.agotadosCount = 0;

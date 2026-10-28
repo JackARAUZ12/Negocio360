@@ -132,10 +132,12 @@ document.addEventListener('DOMContentLoaded', () => {
 async function cargarLotes() {
   const tbody = document.getElementById('lt-tbody');
   try {
-    let consulta = sb.from('producto_lotes').select('*, productos(nombre)')
-      .eq('auth_user_id', STATE.userId).eq('activo', true);
-    if (!STATE.verAgotados) consulta = consulta.gt('cantidad_actual', 0);     // por defecto: solo lotes con unidades (como siempre)
-    const { data, error } = await consulta.order('fecha_vencimiento', { ascending: true });
+    const { data, error } = await N360Leer.todo(() => {
+      let consulta = sb.from('producto_lotes').select('*, productos(nombre)')
+        .eq('auth_user_id', STATE.userId).eq('activo', true);
+      if (!STATE.verAgotados) consulta = consulta.gt('cantidad_actual', 0);     // por defecto: solo lotes con unidades (como siempre)
+      return consulta.order('fecha_vencimiento', { ascending: true });
+    }, 'lotes');
     if (error) throw error;
     STATE.lotes = data || [];
     STATE.agotadosCount = 0;

@@ -370,8 +370,8 @@ async function loadProductos() {
 // producto cada vez que se agrega al carrito.
 async function loadEscalasCache() {
   try {
-    const { data } = await sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
-      .eq('auth_user_id', STATE.userId).order('orden');
+    const { data } = await N360Leer.todo(() => sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', STATE.userId).order('orden'), 'escalas de precio');
     const map = {};
     (data||[]).forEach(e => {
       if (!map[e.producto_id]) map[e.producto_id] = [];
@@ -1173,8 +1173,8 @@ async function loadProformas() {
   const tbody = document.getElementById('prof-tbody');
   if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Cargando proformas…</td></tr>`;
   try {
-    const { data, error } = await sbClient.from('proformas').select('*')
-      .eq('auth_user_id', STATE.userId).order('created_at', { ascending:false });
+    const { data, error } = await N360Leer.todo(() => sbClient.from('proformas').select('*')
+      .eq('auth_user_id', STATE.userId).order('created_at', { ascending:false }), 'proformas');
     if (error) throw error;
 
     const lista = data || [];

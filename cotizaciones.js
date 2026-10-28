@@ -359,8 +359,8 @@ async function loadProductos() {
 // producto cada vez que se agrega al carrito.
 async function loadEscalasCache() {
   try {
-    const { data } = await sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
-      .eq('auth_user_id', STATE.userId).order('orden');
+    const { data } = await N360Leer.todo(() => sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', STATE.userId).order('orden'), 'escalas de precio');
     const map = {};
     (data||[]).forEach(e => {
       if (!map[e.producto_id]) map[e.producto_id] = [];

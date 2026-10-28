@@ -490,11 +490,11 @@ async function cargarProveedores() {
 // ============================================================
 async function cargarEscalas() {
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await N360Leer.todo(() => supabaseClient
       .from('precios_escala')
       .select('id,producto_id,nombre,precio,orden')
       .eq('auth_user_id', STATE.user.id)
-      .order('orden');
+      .order('orden'), 'escalas de precio');
     if (error) throw error;
     const map = {};
     (data || []).forEach(e => {
@@ -2380,10 +2380,10 @@ async function cargarTodosLotes() {
   const cont = document.getElementById('listaTodosLotes');
   cont.innerHTML = 'Cargando…';
   try {
-    const { data: lotes } = await supabaseClient.from('producto_lotes')
+    const { data: lotes } = await N360Leer.todo(() => supabaseClient.from('producto_lotes')
       .select('*, productos(nombre, sku)')
       .eq('auth_user_id', STATE.user.id).eq('activo', true).gt('cantidad_actual', 0)
-      .order('fecha_vencimiento', { ascending: true });
+      .order('fecha_vencimiento', { ascending: true }), 'lotes');
 
     if (!lotes || !lotes.length) {
       cont.innerHTML = `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px">Todavía no hay ningún lote registrado. Se agregan al comprar productos desde Compras, o asignándolos a stock que ya tenías desde la ficha de cada producto.</p>`;
@@ -2430,11 +2430,11 @@ async function filtrarProximosVencer(dias) {
     const limite = new Date(hoy); limite.setDate(limite.getDate() + dias);
     const limiteISO = limite.toISOString().slice(0,10);
 
-    const { data: lotes } = await supabaseClient.from('producto_lotes')
+    const { data: lotes } = await N360Leer.todo(() => supabaseClient.from('producto_lotes')
       .select('*, productos(nombre, sku)')
       .eq('auth_user_id', STATE.user.id).eq('activo', true).gt('cantidad_actual', 0)
       .lte('fecha_vencimiento', limiteISO)
-      .order('fecha_vencimiento', { ascending: true });
+      .order('fecha_vencimiento', { ascending: true }), 'lotes');
 
     if (!lotes || !lotes.length) {
       cont.innerHTML = `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px">

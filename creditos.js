@@ -353,8 +353,8 @@
     CS.escalasPorProducto = {};
     const idsConEscala = CS.productos.filter(p => p.tipo_precio === 'escala').map(p => p.id);
     if (!idsConEscala.length) return;
-    const { data } = await _sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
-      .in('producto_id', idsConEscala).order('orden');
+    const { data } = await N360Leer.porIds(idsConEscala, ch => _sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .in('producto_id', ch).order('orden'), 'escalas de precio');
     (data || []).forEach(e => {
       if (!CS.escalasPorProducto[e.producto_id]) CS.escalasPorProducto[e.producto_id] = [];
       CS.escalasPorProducto[e.producto_id].push(e);

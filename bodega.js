@@ -431,11 +431,11 @@ async function cargarProveedores() {
 // ============================================================
 async function cargarEscalas() {
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await N360Leer.todo(() => supabaseClient
       .from('precios_escala')
       .select('id,producto_id,nombre,precio,orden')
       .eq('auth_user_id', STATE.user.id)
-      .order('orden');
+      .order('orden'), 'escalas de precio');
     if (error) throw error;
     const map = {};
     (data || []).forEach(e => {

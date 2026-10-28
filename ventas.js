@@ -1268,8 +1268,8 @@ function esPreparadoAlVender(id) { return !!S.productosCache?.find(p => p.id ===
 
 async function loadEscalasCache() {
   try {
-    const { data } = await sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
-      .eq('auth_user_id', S.userId).order('orden');
+    const { data } = await N360Leer.todo(() => sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', S.userId).order('orden'), 'escalas de precio');
     const map = {};
     (data || []).forEach(e => {
       if (!map[e.producto_id]) map[e.producto_id] = [];
