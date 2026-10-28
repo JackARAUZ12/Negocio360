@@ -30,6 +30,7 @@
       case 'lt': return v != null && v < f.val; case 'lte': return v != null && v <= f.val;
       case 'in': return f.val.map(comoTexto).includes(comoTexto(v));
       case 'is': return f.val === null || f.val === 'null' ? v == null : v === (f.val === true || f.val === 'true');
+      case 'like': { const re = new RegExp('^' + String(f.val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$'); return re.test(comoTexto(v)); }
       case 'ilike': { const re = new RegExp('^' + String(f.val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i'); return re.test(comoTexto(v)); }
       case 'or': return f.val.some(g => cumple(fila, g));
       case 'not': return !cumple(fila, f.val);
@@ -114,6 +115,7 @@
       lt(c, v) { st.filtros.push({ col: c, op: 'lt', val: v }); return prox; }, lte(c, v) { st.filtros.push({ col: c, op: 'lte', val: v }); return prox; },
       in(c, v) { st.filtros.push({ col: c, op: 'in', val: v || [] }); return prox; }, is(c, v) { st.filtros.push({ col: c, op: 'is', val: v }); return prox; },
       ilike(c, v) { st.filtros.push({ col: c, op: 'ilike', val: v }); return prox; },
+      like(c, v) { st.filtros.push({ col: c, op: 'like', val: v }); return prox; },
       or(txt) { st.filtros.push({ op: 'or', val: parseOr(txt) }); return prox; },
       not(c, op, v) { st.filtros.push({ op: 'not', val: { col: c, op, val: v } }); return prox; },
       order(c, o) { st.orden.push({ col: c, asc: o?.ascending !== false }); return prox; },

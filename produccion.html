@@ -1214,6 +1214,7 @@
         <div class="greeting-actions">
           <button class="btn-secondary" onclick="abrirModalIngresarMateriaPrima()" title="Agrega materia prima a tu inventario, sin salir de Producción">📦 Ingresar materia prima</button>
           <button class="btn-secondary" onclick="abrirModalReceta()">🧪 Nueva receta</button>
+          <button class="btn-secondary" onclick="abrirMermaProducto()" title="Pan vencido, dañado o que no se vendió">🗑️ Registrar merma</button>
           <button class="btn-secondary" onclick="abrirModalOrden()">📋 Orden para después</button>
         </div>
       </div>
@@ -1228,6 +1229,12 @@
         </div>
         <div id="ph-tarjetas" class="ph-grid"></div>
         <div id="ph-hoy" style="margin-top:10px"></div>
+      </div>
+
+      <!-- COSTOS Y MERMA DEL MES -->
+      <div class="panel-card fade-in" id="prod-reporte" style="margin-bottom:16px">
+        <div style="font-weight:800;font-size:15px;margin-bottom:8px">📊 Costos y merma del mes</div>
+        <div id="rp-mes"></div>
       </div>
 
       <!-- 5 KPIs -->
@@ -1703,7 +1710,37 @@
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-merma" role="dialog" aria-labelledby="mm-titulo">
+  <div class="modal-box" style="max-width:440px;width:100%">
+    <div class="modal-header"><span class="modal-title" id="mm-titulo">🗑️ Registrar merma</span>
+      <button class="modal-close" onclick="closeModal('modal-merma')" aria-label="Cerrar">✕</button></div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px">Para lo que ya estaba hecho y se perdió (pan vencido, dañado o que no se vendió). Baja el inventario; no saca dinero de la Caja.</p>
+      <div class="form-group"><label for="mm-producto">Producto *</label><select id="mm-producto" onchange="recalcularMerma()"></select></div>
+      <div class="form-group"><label for="mm-cantidad">¿Cuántos se perdieron? *</label><input type="number" id="mm-cantidad" min="0.001" step="0.001" inputmode="decimal" oninput="recalcularMerma()"/></div>
+      <div class="form-group"><label>¿Qué pasó?</label><div id="mm-motivos" class="mm-motivos"></div></div>
+      <div class="form-group"><label for="mm-nota">Nota (opcional)</label><input type="text" id="mm-nota" maxlength="300" placeholder="Ej: pan del martes"/></div>
+      <p id="mm-valor" style="font-size:12.5px;font-weight:700;margin:4px 0 0"></p>
+      <p id="mm-error" role="alert" style="color:var(--danger);font-size:12.5px;margin:6px 0 0"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-merma')">Cancelar</button>
+      <button class="btn-primary" id="mm-btn" onclick="guardarMerma()">Registrar merma</button>
+    </div>
+  </div>
+</div>
 <style>
+  .mm-motivos { display:flex; flex-wrap:wrap; gap:6px; }
+  .mm-motivo { display:inline-flex; align-items:center; gap:5px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; font-size:12.5px; cursor:pointer; }
+  .ph-peso { width:84px; }
+  .ph-peso-wrap { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+  .ph-perdida { color:#d97706; }
+  .rp-resumen { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:10px; }
+  .rp-resumen > div { background:var(--bg-app); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:2px; font-size:12px; color:var(--text-muted); }
+  .rp-resumen b { font-size:18px; color:var(--text-primary); }
+  .rp-perdido b { color:var(--danger); }
+  .rp-tabla { width:100%; font-size:12.5px; }
+  .rp-tabla td, .rp-tabla th { white-space:nowrap; }
   .ph-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-top:12px; }
   .ph-card { display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; padding:12px; border:1px solid var(--border); border-radius:12px; background:var(--bg-surface); color:var(--text-primary); cursor:pointer; min-width:0; font:inherit; transition:box-shadow .15s, transform .15s; }
   .ph-card:hover, .ph-card:focus-visible { box-shadow:var(--shadow-md, 0 4px 12px rgba(0,0,0,.1)); transform:translateY(-1px); outline:none; border-color:var(--accent); }
@@ -1722,7 +1759,7 @@
   @media (max-width:420px) { .ph-grid { grid-template-columns:1fr 1fr; } }
 </style>
 <script src="unidades-medida.js?v=20261008a"></script>
-<script src="produccion.js?v=20261028b"></script>
+<script src="produccion.js?v=20261028c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261028a"></script>
 <script src="modulos-guard.js?v=20261025c"></script>

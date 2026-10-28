@@ -1706,8 +1706,19 @@ async function pruebaProduccion(browser, base) {
     }
     window.__llamadasProd = 0;
     window.__RPC = {
+      produccion_merma_registrar: a => { const db = DB(), p = db.productos.find(x => x.id === a.p_producto_id);
+        if (p.stock_actual < a.p_cantidad) return { ok: false, motivo: 'sin_existencia', disponible: p.stock_actual };
+        db.movimientos_inventario = db.movimientos_inventario || [];
+        db.movimientos_inventario.push({ id: 'mv-' + Date.now(), auth_user_id: db.usuarios[0].auth_user_id, producto_id: p.id, tipo: 'ajuste_manual', razon: 'merma_' + a.p_motivo,
+          cantidad: -a.p_cantidad, costo_total: r2(a.p_cantidad * p.costo), descuenta_caja: false, nota: a.p_nota, created_at: new Date().toISOString() });
+        p.stock_actual = r2(p.stock_actual - a.p_cantidad); G(db); return { ok: true, costo_total: r2(a.p_cantidad * p.costo) }; },
       produccion_crear_y_completar: a => { window.__llamadasProd++; const db = DB(), d = a.p_datos; db.ordenes_produccion = db.ordenes_produccion || [];
         const rec = db.recetas_produccion.find(r => r.id === d.receta_id);
+        if (rec.tipo === 'despiece') { window.__reales = d.reales || null;
+          Object.entries(d.reales.consumo).forEach(([id, c]) => { const p = db.productos.find(x => x.id === id); p.stock_actual = r2(p.stock_actual - c); });
+          Object.entries(d.reales.salidas).forEach(([id, c]) => { const sd = db.receta_despiece_salidas.find(x => x.producto_id === id); if (!sd.es_merma) { const p = db.productos.find(x => x.id === id); p.stock_actual = r2(p.stock_actual + c); } });
+          db.ordenes_produccion.push({ id: 'op-d' + Date.now(), auth_user_id: db.usuarios[0].auth_user_id, receta_id: rec.id, tipo: 'despiece', cantidad_planificada: d.cantidad_planificada, estado: 'completada', costo_total: 2100, fecha_completada: new Date().toISOString(), created_at: new Date().toISOString() });
+          G(db); return { ok: true, tipo: 'despiece', costo_total: 2100 }; }
         const mo = 'costo_mano_obra' in d ? d.costo_mano_obra : r2((rec.costo_extra_tanda || 0) * d.cantidad_planificada / rec.cantidad_producida);
         const o = { id: 'op-' + Date.now(), auth_user_id: db.usuarios[0].auth_user_id, numero: 'OP-' + (db.ordenes_produccion.length + 1), receta_id: d.receta_id, producto_terminado_id: rec.producto_terminado_id,
           cantidad_planificada: d.cantidad_planificada, costo_mano_obra: mo, estado: 'pendiente', created_at: new Date().toISOString() };
@@ -1724,7 +1735,16 @@ async function pruebaProduccion(browser, base) {
     db.recetas_produccion = [{ id: 'rec-pan', auth_user_id: U, producto_terminado_id: 'pt-pan', nombre: 'Pan', cantidad_producida: 100, costo_extra_tanda: 30, activa: true, tipo: 'normal', created_at: '2026-10-01T00:00:00Z' }];
     db.receta_componentes = [{ id: 'rc1', auth_user_id: U, receta_id: 'rec-pan', producto_id: 'mp-harina', cantidad: 0.25, unidad_codigo: 'quintal' },
       { id: 'rc2', auth_user_id: U, receta_id: 'rec-pan', producto_id: 'mp-levadura', cantidad: 2, unidad_codigo: 'onza' }];
-    db.receta_despiece_salidas = []; db.ordenes_produccion = []; db.orden_produccion_consumos = []; return db; };
+    db.productos.push({ id: 'mp-cerdo', auth_user_id: U, tipo: 'producto', nombre: 'Cerdo en canal', costo: 10, precio: 0, stock_actual: 500, es_materia_prima: true, activo: true, unidad_codigo: 'libra' },
+      { id: 'pt-pierna', auth_user_id: U, tipo: 'producto', nombre: 'Pierna', costo: 0, precio: 100, stock_actual: 0, activo: true, unidad_codigo: 'libra' },
+      { id: 'pt-costilla', auth_user_id: U, tipo: 'producto', nombre: 'Costilla', costo: 0, precio: 80, stock_actual: 0, activo: true, unidad_codigo: 'libra' },
+      { id: 'pt-hueso', auth_user_id: U, tipo: 'producto', nombre: 'Hueso', costo: 0, precio: 0, stock_actual: 0, activo: true, unidad_codigo: 'libra' });
+    db.recetas_produccion.push({ id: 'rec-cerdo', auth_user_id: U, producto_terminado_id: null, nombre: 'Cerdo', cantidad_producida: 1, costo_extra_tanda: 0, activa: true, tipo: 'despiece', created_at: '2026-09-01T00:00:00Z' });
+    db.receta_componentes.push({ id: 'rc3', auth_user_id: U, receta_id: 'rec-cerdo', producto_id: 'mp-cerdo', cantidad: 200 });
+    db.receta_despiece_salidas = [{ id: 'ds1', auth_user_id: U, receta_id: 'rec-cerdo', producto_id: 'pt-pierna', cantidad_rendimiento: 40, es_merma: false },
+      { id: 'ds2', auth_user_id: U, receta_id: 'rec-cerdo', producto_id: 'pt-costilla', cantidad_rendimiento: 25, es_merma: false },
+      { id: 'ds3', auth_user_id: U, receta_id: 'rec-cerdo', producto_id: 'pt-hueso', cantidad_rendimiento: 15, es_merma: true }];
+    db.ordenes_produccion = []; db.orden_produccion_consumos = []; db.movimientos_inventario = []; return db; };
   const leer = page => page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
   for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
     const tag = ancho < 500 ? 'celular' : 'computadora';
@@ -1792,7 +1812,41 @@ async function pruebaProduccion(browser, base) {
     db = await leer(page);
     const az = db.productos.find(p => p.nombre === 'Azúcar');
     verificar(az && az.es_materia_prima && az.unidad_codigo === 'libra' && az.unidad_compra_codigo === 'quintal' && az.factor_compra === 100, `${tag}: la materia prima queda en libras y se compra por quintal`);
-    verificar(!(await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).some(l => ['movimientos_financieros', 'incrementar_stock_producto'].includes(l.tabla)))), `${tag}: producir no toca la Caja`);
+    // F) Carnicería con pesos reales
+    await page.click('#ph-tarjetas .ph-card[data-receta="rec-cerdo"]'); await page.waitForSelector('#modal-producir-hoy.modal-open');
+    verificar(await page.inputValue('#ph-preview input[aria-label="Peso real de Cerdo en canal"]') === '200', `${tag}: el despiece propone el peso de la receta`);
+    await page.fill('#ph-preview input[aria-label="Peso real de Cerdo en canal"]', '210');
+    await page.fill('#ph-preview input[aria-label="Peso real de Pierna"]', '42');
+    await page.fill('#ph-preview input[aria-label="Peso real de Costilla"]', '24');
+    await page.fill('#ph-preview input[aria-label="Peso real de Hueso"]', '16');
+    verificar((await page.textContent('#ph-preview')).includes('Se perdió en el proceso') && (await page.textContent('#ph-preview')).includes('128'), `${tag}: dice cuánto se perdió en el proceso (210 entró, 82 salió)`);
+    verificar(await page.inputValue('#ph-preview input[aria-label="Peso real de Costilla"]') === '24', `${tag}: lo escrito no se borra mientras se calcula`);
+    await modalesSinDesborde(page, `${tag} despiece con pesos`);
+    if (process.env.FOTOS) await page.screenshot({ path: process.env.FOTOS + '/despiece-' + tag + '.png' });
+    await page.click('#ph-btn'); await page.waitForFunction(() => document.getElementById('modal-producir-hoy').style.display === 'none', null, { timeout: 10000 });
+    const reales = await page.evaluate(() => window.__reales);
+    db = await leer(page);
+    verificar(reales && reales.consumo['mp-cerdo'] === 210 && reales.salidas['pt-pierna'] === 42 && reales.salidas['pt-hueso'] === 16, `${tag}: manda los pesos reales al servidor`);
+    verificar(db.productos.find(p => p.id === 'mp-cerdo').stock_actual === 290 && db.productos.find(p => p.id === 'pt-pierna').stock_actual === 42, `${tag}: el inventario usa los pesos reales`);
+    // G) Merma después de producir: 5 panes vencidos
+    await page.evaluate(() => abrirMermaProducto()); await page.waitForSelector('#modal-merma.modal-open');
+    verificar((await page.$$eval('#mm-producto option', os => os.map(o => o.value))).indexOf('mp-harina') === -1, `${tag}: la merma no ofrece materia prima`);
+    await page.selectOption('#mm-producto', 'pt-pan'); await page.fill('#mm-cantidad', '5000');
+    await page.click('#mm-btn'); await page.waitForFunction(() => document.getElementById('mm-error').textContent.length > 0);
+    verificar((await page.textContent('#mm-error')).includes('solo hay'), `${tag}: no deja dar de baja más de lo que hay`);
+    await page.fill('#mm-cantidad', '5');
+    verificar((await page.textContent('#mm-valor')).includes('3.50') && (await page.textContent('#mm-valor')).includes('No sale dinero de la Caja'), `${tag}: dice cuánto se pierde y que no toca la Caja`);
+    await modalesSinDesborde(page, `${tag} registrar merma`);
+    await page.click('#mm-btn'); await page.waitForFunction(() => document.getElementById('modal-merma').style.display === 'none');
+    db = await leer(page);
+    const mv = db.movimientos_inventario.find(m => m.producto_id === 'pt-pan');
+    verificar(db.productos.find(p => p.id === 'pt-pan').stock_actual === 195 && mv && mv.razon === 'merma_vencido' && mv.costo_total === 3.5 && mv.descuenta_caja === false, `${tag}: baja 5 panes como ajuste con su costo, sin Caja`);
+    // H) Reporte del mes
+    await page.waitForFunction(() => document.getElementById('rp-mes').textContent.includes('Perdiste en merma'));
+    const rep = await page.textContent("#rp-mes");
+    verificar(rep.includes('Pan simple') && rep.includes('9.30') && rep.includes('Cerdo (despiece)'), `${tag}: el reporte del mes suma lo producido y lo perdido (10 malos + 5 vencidos = 9.30)`);
+    await sinDesborde(page, `${tag} reporte del mes`);
+    verificar(!(await page.evaluate(() => (JSON.parse(sessionStorage.getItem('__LOG') || '[]')).some(l => ['movimientos_financieros', 'incrementar_stock_producto', 'gastos'].includes(l.tabla)))), `${tag}: producir y la merma no tocan la Caja`);
     verificar(page.__errores.length === 0, `${tag} producción: sin errores (${page.__errores.join(' | ')})`);
     await ctx.close();
   }

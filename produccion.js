@@ -1465,9 +1465,12 @@ function abrirProducirHoy(recetaId) {
   document.getElementById('ph-malos-wrap').style.display = desp ? 'none' : '';
   document.getElementById('ph-motivo').value = '';
   document.getElementById('ph-error').textContent = '';
+  STATE.phPesos = {};                          // pesos reales escritos a mano (despiece)
   recalcularProducirHoy();
   openModal('modal-producir-hoy');
-  setTimeout(() => { const el = document.getElementById('ph-cantidad'); el.focus(); el.select(); }, 60);
+  // Solo pone el cursor en la cantidad si no se está escribiendo ya en otra casilla (si no, lo escrito saltaría).
+  setTimeout(() => { const a = document.activeElement; if (a && a.matches && a.matches('#modal-producir-hoy input')) return;
+    const el = document.getElementById('ph-cantidad'); el.focus(); el.select(); }, 60);
 }
 function recalcularProducirHoy() {
   const r = STATE.phReceta; if (!r) return;
@@ -1477,6 +1480,7 @@ function recalcularProducirHoy() {
   document.getElementById('ph-motivo-wrap').style.display = malos > 0 ? '' : 'none';
   const prev = document.getElementById('ph-preview');
   if (cant <= 0) { prev.innerHTML = ''; return; }
+  if (desp) return pintarDespieceReal(r, cant, prev);
   const { necesidades, costoMateriales, todoSuficiente } = calcularNecesidadesOrden(r, cant);
   const extra = round2(Number(r.costo_extra_tanda || 0) * cant / Number(r.cantidad_producida || 1));
   const total = round2(costoMateriales + extra), buenos = round2(cant - malos);
@@ -1491,6 +1495,65 @@ function recalcularProducirHoy() {
       ${!todoSuficiente ? '<div class="ph-falta">⚠️ No alcanza la materia prima para esta cantidad.</div>' : ''}
     </div>`;
 }
+/* Despiece (carnicería): cada animal pesa distinto. Se proponen los pesos de la receta y se
+   pueden cambiar por los de verdad (lo que entró y lo que salió de cada corte); el costo se
+   reparte con esos pesos. Los que no se tocan quedan como dice la receta. */
+function datosDespieceReal(r, cant) {
+  const { necesidades } = calcularNecesidadesOrden(r, cant);
+  const P = STATE.phPesos || {};
+  const entradas = necesidades.map(n => {
+    const prod = STATE.productos.find(p => p.id === n.producto_id);
+    const real = P['c:' + n.producto_id];
+    return { ...n, peso: real != null ? real : n.necesario, costo: Number(prod?.costo || 0) };
+  });
+  const salidas = (r.receta_despiece_salidas || []).map(sd => {
+    const prod = STATE.productos.find(p => p.id === sd.producto_id);
+    const real = P['s:' + sd.producto_id];
+    const peso = real != null ? real : round2(sd.cantidad_rendimiento * cant);
+    return { producto_id: sd.producto_id, nombre: prod?.nombre || '—', peso, esMerma: !!sd.es_merma, unidadTxt: textoUnidadInventario(prod),
+             valor: sd.es_merma ? 0 : round2(peso * Number(prod?.precio || 0)) };
+  });
+  const extra = round2(Number(r.costo_extra_tanda || 0) * cant / Number(r.cantidad_producida || 1));
+  const costoMat = round2(entradas.reduce((t, e) => t + round2(e.peso * e.costo), 0));
+  const total = round2(costoMat + extra), sumaValor = salidas.reduce((t, x) => t + x.valor, 0);
+  salidas.forEach(x => { x.costoUnit = x.peso > 0 && sumaValor > 0 ? round2(round2(x.valor / sumaValor * total) / x.peso) : 0; });
+  const entro = entradas.reduce((t, e) => t + e.peso, 0), salio = salidas.reduce((t, x) => t + x.peso, 0);
+  return { entradas, salidas, extra, costoMat, total, entro, salio, todoSuficiente: entradas.every(e => !e.unidadMala && e.disponible >= e.peso) };
+}
+function pintarDespieceReal(r, cant, prev) {
+  const d = datosDespieceReal(r, cant);
+  const inp = (clave, valor, etiqueta) => `<input type="number" class="ph-peso" min="0" step="0.001" inputmode="decimal" value="${valor}" aria-label="${esc(etiqueta)}" oninput="cambiarPesoReal('${clave}', this.value)"/>`;
+  prev.innerHTML = `<div class="ph-prev-titulo">Lo que entró (puedes poner el peso real)</div>` + d.entradas.map(e => `
+    <div class="prod-componente-row" data-fila="c:${esc(e.producto_id)}"><span><span class="ph-ok"></span> ${esc(e.nombre)} <small>(hay ${fmtNum(e.disponible)})</small></span>
+      <span class="ph-peso-wrap">${inp('c:' + e.producto_id, e.peso, 'Peso real de ' + e.nombre)} ${esc(e.unidadTxt)}</span></div>`).join('') +
+    `<div class="ph-prev-titulo">Lo que salió</div>` + d.salidas.map(x => `
+    <div class="prod-componente-row" data-fila="s:${esc(x.producto_id)}"><span>${x.esMerma ? '🗑️' : '📦'} ${esc(x.nombre)}${x.esMerma ? ' <small>(desecho)</small>' : ' <small class="ph-cu"></small>'}</span>
+      <span class="ph-peso-wrap">${inp('s:' + x.producto_id, x.peso, 'Peso real de ' + x.nombre)} ${esc(x.unidadTxt)}</span></div>`).join('') +
+    `<div class="ph-totales" id="ph-desp-totales"></div>`;
+  actualizarTotalesDespiece(d);
+}
+// Al escribir un peso solo cambian los totales y los costos (las casillas no se vuelven a dibujar:
+// así no se pierde lo escrito ni se cierra el teclado del celular).
+function actualizarTotalesDespiece(d) {
+  const prev = document.getElementById('ph-preview');
+  d.entradas.forEach(e => { const f = prev.querySelector(`[data-fila="c:${CSS.escape(e.producto_id)}"]`); if (!f) return;
+    const ok = !e.unidadMala && e.disponible >= e.peso; f.classList.toggle('ph-fila-falta', !ok); f.querySelector('.ph-ok').textContent = ok ? '✅' : '⚠️'; });
+  d.salidas.forEach(x => { const el = prev.querySelector(`[data-fila="s:${CSS.escape(x.producto_id)}"] .ph-cu`); if (el) el.textContent = x.peso > 0 ? `· ${fmt(x.costoUnit)} c/u` : ''; });
+  document.getElementById('ph-desp-totales').innerHTML = `
+      <div><span>Costo de lo que entró</span><b>${fmt(d.costoMat)}</b></div>
+      ${d.extra > 0 ? `<div><span>Costo extra (mano de obra…)</span><b>${fmt(d.extra)}</b></div>` : ''}
+      <div><span>Entró / salió</span><b>${fmtNum(d.entro)} / ${fmtNum(d.salio)}</b></div>
+      ${d.entro - d.salio > 0.0005 ? `<div class="ph-perdida"><span>Se perdió en el proceso (agua, sangre…)</span><b>${fmtNum(Math.round((d.entro - d.salio) * 1000) / 1000)}</b></div>` : ''}
+      ${!d.todoSuficiente ? '<div class="ph-falta">⚠️ No alcanza la materia prima para esta cantidad.</div>' : ''}`;
+}
+function cambiarPesoReal(clave, valor) {
+  const n = parseFloat(valor);
+  STATE.phPesos = STATE.phPesos || {};
+  if (isNaN(n)) delete STATE.phPesos[clave]; else STATE.phPesos[clave] = n;
+  const cant = parseFloat(document.getElementById('ph-cantidad').value) || 0;
+  actualizarTotalesDespiece(datosDespieceReal(STATE.phReceta, cant));
+}
+
 async function guardarProducirHoy() {
   const r = STATE.phReceta; if (!r) return;
   const err = document.getElementById('ph-error'); err.textContent = '';
@@ -1499,14 +1562,25 @@ async function guardarProducirHoy() {
   const malos = desp ? 0 : Math.max(0, parseFloat(document.getElementById('ph-malos').value) || 0);
   if (!cant || cant <= 0) { err.textContent = desp ? 'Escribe cuántos lotes procesaste.' : 'Escribe cuántos hiciste.'; return; }
   if (malos >= cant) { err.textContent = 'Los malos deben ser menos que los que hiciste.'; return; }
-  const { todoSuficiente } = calcularNecesidadesOrden(r, cant);
-  if (!todoSuficiente) { err.textContent = 'No alcanza la materia prima. Ingresa más materia prima o baja la cantidad.'; return; }
+  let reales = null;
+  if (desp) {
+    const d = datosDespieceReal(r, cant);
+    if (d.entradas.some(e => !(e.peso > 0)) || d.salidas.some(x => !(x.peso >= 0))) { err.textContent = 'Revisa los pesos: deben ser números mayores que 0.'; return; }
+    if (!d.todoSuficiente) { err.textContent = 'No alcanza la materia prima. Ingresa más materia prima o baja la cantidad.'; return; }
+    if (d.salio > d.entro + 0.0005) { err.textContent = 'Salió más de lo que entró. Revisa los pesos.'; return; }
+    reales = { consumo: {}, salidas: {} };
+    d.entradas.forEach(e => { reales.consumo[e.producto_id] = e.peso; });
+    d.salidas.forEach(x => { reales.salidas[x.producto_id] = x.peso; });
+  } else {
+    const { todoSuficiente } = calcularNecesidadesOrden(r, cant);
+    if (!todoSuficiente) { err.textContent = 'No alcanza la materia prima. Ingresa más materia prima o baja la cantidad.'; return; }
+  }
   if (PRODUCIENDO) return;
   PRODUCIENDO = true;
   const btn = document.getElementById('ph-btn'); btn.disabled = true;
   try {
     const { data: res, error } = await sb.rpc('produccion_crear_y_completar', { p_datos: {
-      receta_id: r.id, cantidad_planificada: cant, merma_cantidad: malos,
+      receta_id: r.id, cantidad_planificada: cant, merma_cantidad: malos, ...(reales ? { reales } : {}),
       merma_motivo: malos > 0 ? (document.getElementById('ph-motivo').value.trim() || null) : null,
       usuario_nombre: STATE.currentUser?.nombre || 'Usuario' } });   // sin costo_mano_obra: el servidor usa el costo extra de la receta
     if (error) throw error;
@@ -1521,7 +1595,100 @@ async function guardarProducirHoy() {
   } finally { PRODUCIENDO = false; btn.disabled = false; }
 }
 
+/* =====================================================
+   MERMA DESPUÉS DE PRODUCIR (pan vencido, dañado, que no se vendió).
+   Baja la existencia en el servidor y queda como "ajuste de existencia (baja)"
+   con su costo, que la contabilidad ya toma. No toca Caja.
+===================================================== */
+const MOTIVOS_MERMA = [
+  { id: 'vencido', txt: '⏰ Se venció' }, { id: 'danado', txt: '💥 Se dañó' },
+  { id: 'no_vendido', txt: '🥖 No se vendió' }, { id: 'otro', txt: '📝 Otro' },
+];
+function abrirMermaProducto() {
+  const terminados = new Set(STATE.recetas.map(r => r.producto_terminado_id).filter(Boolean));
+  STATE.recetas.forEach(r => (r.receta_despiece_salidas || []).forEach(x => { if (!x.es_merma) terminados.add(x.producto_id); }));
+  const lista = STATE.productos.filter(p => p.tipo === 'producto' && !p.es_materia_prima)
+    .sort((a, b) => (terminados.has(b.id) - terminados.has(a.id)) || a.nombre.localeCompare(b.nombre));
+  document.getElementById('mm-producto').innerHTML = '<option value="">— Elige el producto —</option>' +
+    lista.map(p => `<option value="${esc(p.id)}">${esc(p.nombre)} (hay ${fmtNum(p.stock_actual)})</option>`).join('');
+  document.getElementById('mm-motivos').innerHTML = MOTIVOS_MERMA.map((m, i) =>
+    `<label class="mm-motivo"><input type="radio" name="mm-motivo" value="${m.id}" ${i === 0 ? 'checked' : ''}/> ${m.txt}</label>`).join('');
+  document.getElementById('mm-cantidad').value = '';
+  document.getElementById('mm-nota').value = '';
+  document.getElementById('mm-error').textContent = '';
+  document.getElementById('mm-valor').textContent = '';
+  openModal('modal-merma');
+}
+function recalcularMerma() {
+  const p = STATE.productos.find(x => x.id === document.getElementById('mm-producto').value);
+  const c = parseFloat(document.getElementById('mm-cantidad').value) || 0;
+  document.getElementById('mm-valor').textContent = p && c > 0 ? `Pierdes ${fmt(round2(c * Number(p.costo || 0)))} (a costo). No sale dinero de la Caja.` : '';
+}
+let REGISTRANDO_MERMA = false;
+async function guardarMerma() {
+  const err = document.getElementById('mm-error'); err.textContent = '';
+  const id = document.getElementById('mm-producto').value, c = parseFloat(document.getElementById('mm-cantidad').value);
+  const motivo = document.querySelector('input[name="mm-motivo"]:checked')?.value;
+  if (!id) { err.textContent = 'Elige el producto.'; return; }
+  if (!(c > 0)) { err.textContent = 'Escribe cuántos se perdieron.'; return; }
+  if (REGISTRANDO_MERMA) return;
+  REGISTRANDO_MERMA = true;
+  const btn = document.getElementById('mm-btn'); btn.disabled = true;
+  try {
+    const { data: r, error } = await sb.rpc('produccion_merma_registrar', { p_producto_id: id, p_cantidad: c, p_motivo: motivo, p_nota: document.getElementById('mm-nota').value.trim() || null });
+    if (error) throw error;
+    if (!r || !r.ok) { err.textContent = r && r.motivo === 'sin_existencia' ? `No hay tanto: solo hay ${fmtNum(r.disponible)}.` : 'No se pudo registrar. Revisa los datos.'; return; }
+    showToast(`🗑️ Merma registrada: ${fmt(r.costo_total)} a costo`);
+    closeModal('modal-merma');
+    await cargarProductosCache(); await cargarMermasMes(); renderReporteMes();
+  } catch (e) { console.error('guardarMerma:', e); err.textContent = 'No se pudo registrar. Intenta de nuevo.'; }
+  finally { REGISTRANDO_MERMA = false; btn.disabled = false; }
+}
+
+/* =====================================================
+   COSTOS Y MERMA DEL MES (solo lectura)
+===================================================== */
+function inicioMes() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); }
+async function cargarMermasMes() {
+  try {
+    const { data } = await sb.from('movimientos_inventario').select('producto_id, cantidad, costo_total, razon, created_at')
+      .eq('auth_user_id', STATE.userId).like('razon', 'merma_%').gte('created_at', inicioMes().toISOString());
+    STATE.mermasMes = data || [];
+  } catch (e) { STATE.mermasMes = []; }
+}
+function renderReporteMes() {
+  const cont = document.getElementById('rp-mes'); if (!cont) return;
+  const desde = inicioMes();
+  const ords = STATE.ordenes.filter(o => o.estado === 'completada' && o.fecha_completada && new Date(o.fecha_completada) >= desde);
+  const filas = {};
+  const fila = (id, nombre) => (filas[id] = filas[id] || { nombre, producido: 0, costo: 0, mermaProd: 0, valorMermaProd: 0, mermaDesp: 0, valorMermaDesp: 0 });
+  ords.forEach(o => {
+    if (o.tipo === 'despiece') { const r = STATE.recetas.find(x => x.id === o.receta_id); const f = fila('d:' + o.receta_id, (r ? tituloReceta(r) : 'Despiece') + ' (despiece)'); f.producido += Number(o.cantidad_planificada || 0); f.costo += Number(o.costo_total || 0); return; }
+    const f = fila(o.producto_terminado_id, nombreProducto(o.producto_terminado_id));
+    f.producido += Number(o.cantidad_producida || 0); f.costo += Number(o.costo_total || 0);
+    f.mermaProd += Number(o.merma_cantidad || 0); f.valorMermaProd += Number(o.merma_cantidad || 0) * Number(o.costo_unitario || 0);
+  });
+  (STATE.mermasMes || []).forEach(m => { const f = fila(m.producto_id, nombreProducto(m.producto_id)); f.mermaDesp += Math.abs(Number(m.cantidad || 0)); f.valorMermaDesp += Number(m.costo_total || 0); });
+  const lista = Object.values(filas).sort((a, b) => b.costo - a.costo);
+  const tot = lista.reduce((t, f) => ({ costo: t.costo + f.costo, perdido: t.perdido + f.valorMermaProd + f.valorMermaDesp }), { costo: 0, perdido: 0 });
+  if (!lista.length) { cont.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted)">Todavía no hay producción ni merma este mes.</p>'; return; }
+  cont.innerHTML = `
+    <div class="rp-resumen">
+      <div><span>Produjiste este mes por</span><b>${fmt(round2(tot.costo))}</b></div>
+      <div class="${tot.perdido > 0 ? 'rp-perdido' : ''}"><span>Perdiste en merma</span><b>${fmt(round2(tot.perdido))}</b></div>
+    </div>
+    <div class="table-wrap"><table class="rp-tabla">
+      <thead><tr><th>Producto</th><th>Producido</th><th>Costo c/u</th><th>Malos al producir</th><th>Merma después</th><th>Perdido</th></tr></thead>
+      <tbody>${lista.map(f => `<tr><td>${esc(f.nombre)}</td><td>${fmtNum(f.producido)}</td>
+        <td>${f.producido > 0 && !f.nombre.endsWith('(despiece)') ? fmt(round2(f.costo / f.producido)) : '—'}</td>
+        <td>${f.mermaProd ? fmtNum(f.mermaProd) : '—'}</td><td>${f.mermaDesp ? fmtNum(f.mermaDesp) : '—'}</td>
+        <td>${f.valorMermaProd + f.valorMermaDesp > 0 ? fmt(round2(f.valorMermaProd + f.valorMermaDesp)) : '—'}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0">"Malos al producir" ya va incluido en el costo de los buenos. "Merma después" baja el inventario como ajuste y no saca dinero de la Caja.</p>`;
+}
+
 function actualizarKPIsProduccion() {
+  try { renderReporteMes(); } catch (e) { console.error('renderReporteMes:', e); }
   try { renderProducirHoy(); } catch (e) { console.error('renderProducirHoy:', e); }
   const pendientes = STATE.ordenes.filter(o => o.estado === 'pendiente');
   const enProceso = STATE.ordenes.filter(o => o.estado === 'en_proceso');
@@ -1686,7 +1853,7 @@ async function init() {
 
     if (window.N360Unidades) await window.N360Unidades.cargarPersonalizadas(sb, user.id);
     await cargarProductosCache();
-    await Promise.all([cargarRecetas(), cargarOrdenes()]);
+    await Promise.all([cargarRecetas(), cargarOrdenes(), cargarMermasMes()]);
     actualizarKPIsProduccion();
 
     // Llegada directa desde "+ Nueva materia prima" en Productos/Servicios
