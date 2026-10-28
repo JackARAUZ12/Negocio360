@@ -163,37 +163,39 @@
                        desc: 'Qué usuarios del sistema son médicos (su columna en la Agenda y honorarios), consultorios, especialidades y bitácora de accesos.' },
 
     // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
+    // El Panel es la entrada única de Transporte en el menú: las demás pantallas se abren DENTRO del panel
+    // ("enPanel"), pero conservan su propia llave para los permisos por usuario.
     'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
-                       desc: 'Centro de mando del transporte de carga: flota, viajes, costos y cobros, conectado con Ventas, Créditos, Gastos y Caja.' },
-    'flota.html': { key: 'transporte_flota', label: 'Transporte · Flota', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Todo el transporte en un solo lugar y en orden: orden, despacho, viaje, entrega, cobro (aquí mismo, conectado con Ventas y Caja) y pago al conductor.' },
+    'flota.html': { key: 'transporte_flota', label: 'Transporte · Flota', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Tus cabezales, camiones, furgones y plataformas con fotos, documentos con vencimiento y estado.' },
-    'conductores.html': { key: 'transporte_conductores', label: 'Transporte · Conductores', icon: '🧑‍✈️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'conductores.html': { key: 'transporte_conductores', label: 'Transporte · Conductores', icon: '🧑‍✈️', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Conductores y ayudantes con documentos, licencias y disponibilidad.' },
 
-    'transporte-rutas.html': { key: 'transporte_rutas', label: 'Transporte · Rutas y tarifas', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-rutas.html': { key: 'transporte_rutas', label: 'Transporte · Rutas y tarifas', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Tus rutas habituales con distancia, fronteras y tarifas por viaje, km o tonelada.' },
-    'transporte-ordenes.html': { key: 'transporte_ordenes', label: 'Transporte · Órdenes', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-ordenes.html': { key: 'transporte_ordenes', label: 'Transporte · Órdenes', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Órdenes de transporte con tablero de despacho, costos del viaje y rentabilidad.' },
 
-    'transporte-liquidaciones.html': { key: 'transporte_liquidaciones', label: 'Transporte · Liquidación de conductores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-liquidaciones.html': { key: 'transporte_liquidaciones', label: 'Transporte · Liquidación de conductores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Pago a conductores y ayudantes por viaje, km o comisión, con anticipos y descuentos.' },
 
-    'transporte-subcontratistas.html': { key: 'transporte_subcontratistas', label: 'Transporte · Subcontratistas', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-subcontratistas.html': { key: 'transporte_subcontratistas', label: 'Transporte · Subcontratistas', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Transportistas externos: subcontrata viajes y paga de contado o a crédito (Cuentas por Pagar).' },
 
-    'transporte-facturacion.html': { key: 'transporte_facturacion', label: 'Transporte · Facturación y cobranza', icon: '🧾', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-facturacion.html': { key: 'transporte_facturacion', label: 'Transporte · Facturación y cobranza', icon: '🧾', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Convierte los viajes entregados en venta (contado o crédito) y da seguimiento al cobro.' },
 
-    'transporte-fronteras.html': { key: 'transporte_fronteras', label: 'Transporte · Fronteras y documentos', icon: '🛂', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-fronteras.html': { key: 'transporte_fronteras', label: 'Transporte · Fronteras y documentos', icon: '🛂', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Cruces de frontera, trámites aduaneros, carta de porte y documentos de cada orden.' },
 
-    'transporte-mantenimiento.html': { key: 'transporte_mantenimiento', label: 'Transporte · Mantenimiento y llantas', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-mantenimiento.html': { key: 'transporte_mantenimiento', label: 'Transporte · Mantenimiento y llantas', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Servicios preventivos por km o fecha, órdenes de trabajo del taller y control de llantas.' },
 
-    'transporte-entregas.html': { key: 'transporte_entregas', label: 'Transporte · Entregas e incidencias', icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-entregas.html': { key: 'transporte_entregas', label: 'Transporte · Entregas e incidencias', icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Prueba de entrega con firma, y registro y seguimiento de incidencias y reclamos de cada viaje.' },
 
-    'transporte-reportes.html': { key: 'transporte_reportes', label: 'Transporte · Reportes e indicadores', icon: '📈', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-reportes.html': { key: 'transporte_reportes', label: 'Transporte · Reportes e indicadores', icon: '📈', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Viajes, ingresos, costos, utilidad, cumplimiento, mantenimiento e incidencias por cliente, ruta, unidad y conductor.' },
 
     // ---- Diseño (secundario: herramientas para diseñadores; interruptor propio) ----

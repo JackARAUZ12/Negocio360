@@ -905,7 +905,7 @@
     return panel || entry[0];
   }
 
-  // La venta OCULTA que usan las pantallas de cobro (mesa del Restaurante o Clínica: ventas.html?…&motor=1,
+  // La venta OCULTA que usan las pantallas de cobro (mesa del Restaurante, Clínica o Transporte: ventas.html?…&motor=1,
   // siempre dentro de esa pantalla) se permite a quien tiene la pantalla que cobra, aunque no tenga Ventas.
   function motorDeCobroPermitido(perfil, file) {
     if (file !== 'ventas.html' || window.self === window.top) return false;
@@ -914,6 +914,7 @@
     const p = new Set(perfil.modulos || []);
     if (q.get('rest_cobro') === '1') return p.has('restaurante_comandas');
     if (q.get('clinica_cobro') === '1') return p.has('agenda') || [...p].some(k => String(k).startsWith('clinica_'));
+    if (q.get('tx_cobro') === '1') return p.has('transporte_facturacion') || p.has('transporte_ordenes');
     return false;
   }
 

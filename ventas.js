@@ -8549,6 +8549,8 @@ async function initVentas() {
     if (params.get('clinica_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_clinica === true && window.self !== window.top) instalarMotorClinica();
     // Cobro de una mesa del Restaurante: el mismo motor (la pantalla de cobro es la del restaurante).
     if (params.get('rest_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_restaurante === true && window.self !== window.top) instalarMotorClinica();
+    // Cobro de un viaje de Transporte: el mismo motor (la pantalla de cobro es la de Transporte).
+    if (params.get('tx_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_transporte === true && window.self !== window.top) instalarMotorClinica();
     // Deep link desde el módulo de Rutas ("Vender aquí") — abre Nueva
     // Venta con ese cliente ya elegido, mismo flujo de siempre.
     const rutaClienteId = params.get('ruta_cliente');
@@ -8603,14 +8605,25 @@ function instalarMotorClinica() {
       return {
         listo: S.carrito.length > 0, clienteId: S.clienteId || null, cliente: S.clienteNombre || '',
         items: S.carrito.map(i => ({ nombre: i.nombre, tipo: i.tipo, cantidad: i.cantidad, precio: i.precio, subtotal: i.subtotal, texto: fmt(i.subtotal), precioTexto: fmt(i.precio) })),
-        resumen: { subtotal: r.subtotal, descuento: r.descuento, impuestos: r.impuestos, total: r.total, cobrar: r.cobrar,
-          texto: { subtotal: fmt(r.subtotal || 0), descuento: fmt(r.descuento || 0), impuestos: fmt(r.impuestos || 0), total: fmt(r.total || 0), cobrar: fmt(r.cobrar ?? r.total ?? 0) } },
+        resumen: { subtotal: r.subtotal, descuento: r.descuento, impuestos: r.impuestos, total: r.total, cobrar: r.cobrar, retencionIr: r.retencionIr || 0, retencionPct: r.retencionPct || 0,
+          texto: { subtotal: fmt(r.subtotal || 0), descuento: fmt(r.descuento || 0), impuestos: fmt(r.impuestos || 0), total: fmt(r.total || 0), cobrar: fmt(r.cobrar ?? r.total ?? 0), retencionIr: fmt(r.retencionIr || 0) } },
+        retencion: !!S.retIr,
         impuestosTexto: document.getElementById('res-impuestos-label')?.textContent || 'Impuestos',
         metodos: (S.metodosPago || []).map(m => ({ id: m.id, nombre: m.nombre })),
         fiado: S.empresaConfig?.usa_modulo_fiados === true && !!S.clienteId,
       };
     },
     fmt: n => fmt(n),
+    // "El cliente me retiene IR" (lo usa el cobro de Transporte): la misma retención de la venta normal
+    // (no cambia el total de la factura; baja lo que se cobra y queda como retención a favor en Impuestos).
+    retencion(activo, pct) {
+      if (!S.retIr) return false;
+      S.retIr.activo = !!activo;
+      if (pct != null) { let n = Number(pct); if (!(n >= 0)) n = 0; if (n > 100) n = 100; S.retIr.porcentaje = n; }
+      try { renderOtrosImpuestos(); } catch (_) {}
+      calcularResumen();
+      return true;
+    },
     // Ticket de la venta por la misma ruta de siempre (Bluetooth, app de escritorio, USB o impresión normal).
     // La Clínica abre la ventana de impresión en el mismo toque y la pasa aquí; si hay impresora directa, se cierra.
     async imprimirTicket(ventaId, ventana) {

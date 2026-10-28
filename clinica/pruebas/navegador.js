@@ -2372,6 +2372,145 @@ async function pruebaBotonesCliente(browser, base) {
   }
 }
 
+// Transporte: Panel único (partes dentro, en orden) y cobro DENTRO del módulo con el motor de Ventas.
+function semillaTransporte() {
+  const db = semilla();
+  Object.assign(db.configuracion_empresa[0], { usa_modulo_transporte: true });
+  const hoy = new Date().toISOString();
+  db.tutoriales_vistos.push({ auth_user_id: UID, modulo_key: 'transporte_panel' });
+  db.transporte_ordenes = [
+    { id: 'ot-1', auth_user_id: UID, numero: 'OT-0001', cliente_id: 'cli-1', cliente_nombre: 'Cliente Existente', estado: 'entregada', total: 1500, origen: 'Managua', destino: 'San José', entrega_real: hoy, receptor: 'Ana', created_at: hoy },
+    { id: 'ot-2', auth_user_id: UID, numero: 'OT-0002', cliente_id: 'cli-1', cliente_nombre: 'Cliente Existente', estado: 'pendiente', total: 800, origen: 'León', destino: 'Managua', created_at: hoy },
+    { id: 'ot-3', auth_user_id: UID, numero: 'OT-0003', cliente_id: null, cliente_nombre: '', estado: 'entregada', total: 900, origen: 'Estelí', destino: 'Managua', entrega_real: hoy, created_at: hoy },
+  ];
+  db.transporte_unidades = [{ id: 'un-1', auth_user_id: UID, placa: 'M 123', estado: 'disponible' }];
+  db.transporte_conductores = [{ id: 'co-1', auth_user_id: UID, nombre: 'Luis', estado: 'disponible' }];
+  db.transporte_costos = []; db.creditos = [];
+  return db;
+}
+async function pruebaTransporte(browser, base) {
+  console.log('\n▶ Transporte: Panel único y cobro dentro del módulo');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/transporte.html');
+    await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); }, semillaTransporte());
+    await page.goto(base + '/transporte.html');
+    await page.waitForSelector('#tpn-tabs .tpn-tab', { timeout: 20000 });
+    verificar(await page.locator('#tpn-tabs .tpn-tab').count() === 11, `${tag}: el Panel de Transporte tiene sus 11 partes en la barra, en orden`);
+    const menu = await page.$$eval('#sidebar a, #sidebar .nav-item, #sidebar .sidebar-item', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    verificar(!menu.some(t => /Transporte · (Flota|Órdenes|Conductores|Facturación)/.test(t)), `${tag}: el menú ya no muestra las pantallas sueltas de transporte (solo el Panel)`);
+    await page.waitForFunction(() => /1 por cobrar/.test(document.getElementById('tpn-ciclo').textContent), null, { timeout: 10000 }).catch(() => {});
+    const ciclo = await page.textContent('#tpn-ciclo');
+    verificar(ciclo.includes('1 por asignar') && ciclo.includes('por cobrar') && ciclo.includes('Pagar al conductor'), `${tag}: el ciclo del viaje en orden con lo que hay en cada paso`);
+    verificar((await page.textContent('#tpn-inicio-vista')).includes('El cobro se hace aquí mismo'), `${tag}: el panel explica cómo funciona y que el cobro queda en Ventas y Caja`);
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag}: el inicio del panel no se desborda`);
+    // Abrir una parte: queda DENTRO del panel, sin su menú propio ni el botón de volver
+    await page.click('#tpn-tabs [data-sub="ordenes"]');
+    let fr = null;
+    for (let i = 0; i < 100 && !fr; i++) { fr = page.frames().find(f => /transporte-ordenes\.html/.test(f.url())); if (!fr) await page.waitForTimeout(100); }
+    await fr.waitForSelector('#ot-vista', { timeout: 15000 });
+    await page.waitForTimeout(400);
+    const dentro = await fr.evaluate(() => ({ menu: getComputedStyle(document.getElementById('sidebar')).display, volver: [...document.querySelectorAll('a[href="transporte.html"]')].every(a => getComputedStyle(a).display === 'none') }));
+    verificar(/#ordenes$/.test(page.url()) && dentro.menu === 'none' && dentro.volver, `${tag}: "Órdenes" se abre dentro del panel, sin su menú propio`);
+    verificar(await page.isVisible('#tpn-pasos') && (await page.textContent('#tpn-pasos')).includes('Siguiente paso'), `${tag}: arriba se ve el paso del ciclo y el botón "Siguiente paso"`);
+    await page.click('#tpn-inicio');
+    await page.waitForSelector('#tpn-inicio-vista', { state: 'visible' });
+    verificar(await page.isHidden('#tpn-marco-wrap'), `${tag}: "🚛 Panel" vuelve al inicio`);
+    verificar(page.__errores.length === 0, `${tag} Panel de Transporte: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+  // Cobro: pantalla propia de Transporte, la venta por el motor de Ventas, orden ligada y sin doble cobro.
+  const { ctx, page } = await nuevaPagina(browser, base, 360, 740);
+  await page.goto(base + '/transporte-facturacion.html');
+  await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semillaTransporte());
+  await page.goto(base + '/transporte-facturacion.html');
+  await page.waitForSelector('[data-fc-facturar="ot-1"]', { timeout: 20000 });
+  verificar((await page.textContent('[data-fc-facturar="ot-1"]')).includes('Cobrar viaje'), 'cobro transporte: el botón dice "💳 Cobrar viaje"');
+  await page.click('[data-fc-facturar="ot-1"]');
+  await page.waitForSelector('#txc-metodos .txc-chip', { timeout: 25000 });
+  const urlAntes = page.url();
+  verificar((await page.textContent('#txc-cuerpo')).includes('Flete OT-0001') && (await page.textContent('#txc-cuerpo')).includes('Managua'), 'cobro transporte: la pantalla de cobro trae el flete del viaje y la ruta');
+  verificar(await page.evaluate(() => { const c = document.querySelector('#txc-cobro .txc-caja').getBoundingClientRect(); return c.left >= -1 && c.right <= innerWidth + 1; }), 'cobro transporte: cabe en celular');
+  // Retención de IR: baja lo que se cobra, no el total de la factura
+  await page.check('#txc-ret-chk');
+  await page.waitForTimeout(300);
+  const tot = await page.textContent('#txc-tot');
+  verificar(tot.includes('Retención IR (2%)') && tot.includes('Recibes'), `cobro transporte: la retención de IR se muestra aparte (${tot.replace(/\s+/g, ' ')})`);
+  await page.uncheck('#txc-ret-chk'); await page.waitForTimeout(200);
+  await page.locator('#txc-metodos .txc-chip', { hasText: 'Efectivo' }).first().click();
+  await page.fill('#txc-recibido', '2000');
+  verificar((await page.textContent('#txc-cambio')).includes('500'), 'cobro transporte: calcula el cambio (2000 − 1500 = 500)');
+  await page.click('#txc-cobrar');
+  await page.waitForFunction(() => document.querySelector('#txc-cobro .txc-ok') || (document.getElementById('txc-err')?.textContent || '').length > 0, null, { timeout: 25000 });
+  const err = await page.textContent('#txc-cuerpo');
+  const r = await page.evaluate(() => ({ log: JSON.parse(sessionStorage.getItem('__LOG') || '[]'), db: JSON.parse(sessionStorage.getItem('__DB')) }));
+  const venta = (r.db.ventas || [])[0], orden = r.db.transporte_ordenes.find(o => o.id === 'ot-1');
+  verificar(err.includes('Cobrado') && page.url() === urlAntes && /transporte-facturacion\.html/.test(page.url()), `cobro transporte: se cobró sin salir de Transporte (${err.replace(/\s+/g, ' ').slice(0, 160)})`);
+  verificar(venta && Number(venta.total) === 1500 && r.log.some(x => x.tabla === 'venta_registrar_atomica' || (x.tabla === 'ventas' && x.op === 'insert')), `cobro transporte: quedó como venta normal en Ventas por 1500 (${venta?.total})`);
+  verificar(orden.venta_id === venta?.id && !!orden.facturada_en, 'cobro transporte: la orden quedó ligada a su venta');
+  verificar(r.log.some(x => /caja/i.test(x.tabla) || x.tabla === 'venta_registrar_atomica'), 'cobro transporte: el dinero pasa por el mismo camino de Caja que una venta directa');
+  await page.click('#txc-listo');
+  await page.waitForTimeout(600);
+  verificar(!(await page.locator('[data-fc-facturar="ot-1"]').count()), 'cobro transporte: el viaje cobrado sale de "Por facturar"');
+  // Sin doble cobro y sin cliente: no deja cobrar
+  await page.evaluate(() => TXCobro.abrir('ot-1'));
+  await page.waitForFunction(() => /ya está cobrado/.test(document.getElementById('txc-cuerpo').textContent), null, { timeout: 10000 }).catch(() => {});
+  verificar((await page.textContent('#txc-cuerpo')).includes('ya está cobrado'), 'cobro transporte: un viaje ya cobrado no se cobra dos veces');
+  await page.click('#txc-cerrar2');
+  await page.evaluate(() => TXCobro.abrir('ot-3'));
+  await page.waitForFunction(() => /no tiene cliente/.test(document.getElementById('txc-cuerpo').textContent), null, { timeout: 10000 }).catch(() => {});
+  verificar((await page.textContent('#txc-cuerpo')).includes('no tiene cliente'), 'cobro transporte: sin cliente no deja cobrar y explica qué hacer');
+  verificar((r.db.ventas || []).length === 1, 'cobro transporte: una sola venta registrada');
+  verificar(page.__errores.length === 0, `cobro transporte: sin errores (${page.__errores.join(' | ')})`);
+  await ctx.close();
+}
+
+// Cuadre: el cobro desde Transporte escribe EXACTAMENTE lo mismo que la venta hecha por el camino anterior (Ventas con el flete cargado).
+async function pruebaCuadreTransporte(browser, base) {
+  console.log('\n▶ Cuadre: cobro de un viaje desde Transporte vs el camino anterior por Ventas');
+  const correr = async nuevo => {
+    const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+    await page.goto(base + '/transporte-facturacion.html');
+    const db = semillaTransporte();
+    db.productos.push({ id: 'prod-flete', auth_user_id: UID, tipo: 'servicio', nombre: 'Flete de transporte', precio: 0, costo: 0, stock_actual: 0, activo: true });
+    await page.evaluate(d => { sessionStorage.setItem('__DB', JSON.stringify(d)); sessionStorage.setItem('__LOG', '[]'); }, db);
+    if (nuevo) {
+      await page.goto(base + '/transporte-facturacion.html');
+      await page.waitForSelector('[data-fc-facturar="ot-1"]', { timeout: 20000 });
+      await page.click('[data-fc-facturar="ot-1"]');
+      await page.waitForSelector('#txc-metodos .txc-chip', { timeout: 25000 });
+      await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
+      await page.locator('#txc-metodos .txc-chip', { hasText: 'Efectivo' }).first().click();
+      await page.click('#txc-cobrar');
+      await page.waitForFunction(() => document.querySelector('#txc-cobro .txc-ok') || (document.getElementById('txc-err')?.textContent || '').length > 0, null, { timeout: 25000 });
+    } else {
+      await page.evaluate(() => sessionStorage.setItem('n360_tx_cobro', JSON.stringify({ ordenId: 'ot-1', numero: 'OT-0001', clienteId: 'cli-1', productoId: 'prod-flete', monto: 1500,
+        concepto: 'Flete OT-0001: Managua → San José', auto: true, observaciones: 'x' })));
+      await page.goto(base + '/ventas.html'); await esperarListo(page);
+      await page.waitForFunction(() => typeof S !== 'undefined' && S.carrito && S.carrito.length === 1, null, { timeout: 20000 });
+      await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
+      await page.evaluate(async () => { for (let i = 0; i < 8 && S.paso < 5; i++) { const a = S.paso; pasoSiguiente(); await new Promise(r => setTimeout(r, 150)); if (S.paso === a) break; }
+        seleccionarMetodoPago('mp-efectivo', 'Efectivo'); await confirmarVenta(false); });
+    }
+    await page.waitForTimeout(800);
+    const r = await page.evaluate(() => ({ log: JSON.parse(sessionStorage.getItem('__LOG') || '[]'), db: JSON.parse(sessionStorage.getItem('__DB')) }));
+    r.errores = page.__errores; await ctx.close(); return r;
+  };
+  const limpiar = o => JSON.parse(JSON.stringify(o, (k, v) => ['id', 'venta_id', 'created_at', 'fecha', 'updated_at', 'numero_venta', 'numero_factura', 'observaciones', 'notas', 'referencia_id', 'referencia_caja', 'facturada_en'].includes(k) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id generado>' : v)));
+  const RPC_DINERO = ['venta_registrar_atomica', 'descontar_lote_venta', 'descontar_lote_fefo'];
+  const escrituras = log => log.filter(x => (x.op !== 'rpc' || RPC_DINERO.includes(x.tabla)) && !['tutoriales_vistos', 'usuarios', 'presencia_usuarios', 'auditoria_eventos', 'auditoria', 'productos'].includes(x.tabla));
+  const a = await correr(true), b = await correr(false);
+  const wa = escrituras(a.log), wb = escrituras(b.log);
+  verificar(wa.length > 0 && JSON.stringify(limpiar(wa)) === JSON.stringify(limpiar(wb)), `cuadre transporte: venta, detalle, Caja y ligado de la orden IDÉNTICOS al camino anterior por Ventas (${wa.length} escrituras)`);
+  if (JSON.stringify(limpiar(wa)) !== JSON.stringify(limpiar(wb))) {
+    const la = limpiar(wa), lb = limpiar(wb);
+    for (let i = 0; i < Math.max(la.length, lb.length); i++) if (JSON.stringify(la[i]) !== JSON.stringify(lb[i])) console.log('  diferencia #' + i + '\n   transporte:', JSON.stringify(la[i]), '\n   ventas:', JSON.stringify(lb[i]));
+  }
+  verificar(a.db.transporte_ordenes.find(o => o.id === 'ot-1').venta_id === a.db.ventas?.[0]?.id && b.db.transporte_ordenes.find(o => o.id === 'ot-1').venta_id === b.db.ventas?.[0]?.id, 'cuadre transporte: en los dos caminos la orden queda ligada a su venta');
+  verificar(!a.errores.length && !b.errores.length, `cuadre transporte: sin errores (${[...a.errores, ...b.errores].join(' | ')})`);
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2401,6 +2540,7 @@ async function regresion(browser, base) {
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
+    if (process.env.SOLO_TX) { await pruebaTransporte(browser, base); await pruebaCuadreTransporte(browser, base); throw 'fin'; }
     if (process.env.SOLO_BOTONES) { await pruebaBotonesCliente(browser, base); throw 'fin'; }
     if (process.env.SOLO_CAMP) { await pruebaCampanas(browser, base); throw 'fin'; }
     if (process.env.SOLO_GRUPOS) { await pruebaGrupos(browser, base); throw 'fin'; }
@@ -2438,6 +2578,8 @@ async function regresion(browser, base) {
     await pruebaGrupos(browser, base);
     await pruebaCampanas(browser, base);
     await pruebaBotonesCliente(browser, base);
+    await pruebaTransporte(browser, base);
+    await pruebaCuadreTransporte(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

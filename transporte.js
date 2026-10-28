@@ -223,7 +223,7 @@ async function cargarKpis() {
   });
 
   const card = (ico, bg, label, valor, sub, href) => `
-    <div class="kpi-card tp-kpi-link" onclick="navigate('${href}')">
+    <div class="kpi-card tp-kpi-link" onclick="(window.tpIr || navigate)('${href}')">
       <div class="kpi-icon" style="background:${bg}">${ico}</div>
       <div class="kpi-body"><div class="kpi-label">${label}</div><div class="kpi-value">${valor}</div><div class="kpi-sub">${sub}</div></div>
     </div>`;
@@ -334,9 +334,9 @@ function accesosVisibles() {
 }
 
 function renderAccesos() {
-  const lista = accesosVisibles();
+  const lista = accesosVisibles().filter(a => !(typeof TPN_SUBS !== 'undefined' && TPN_SUBS.some(x => x.archivo === a.href)));
   document.getElementById('tp-accesos').innerHTML = lista.map(a => `
-    <button type="button" class="tp-acceso" onclick="navigate('${a.href}')">
+    <button type="button" class="tp-acceso" onclick="(window.tpIr || navigate)('${a.href}')">
       <div class="tp-acceso-ico">${a.ico}</div><div><b>${esc(a.t)}</b><span>${esc(a.d)}</span></div>
     </button>`).join('') || '<div class="tp-ayuda">No hay módulos conectados disponibles para este perfil.</div>';
 }
@@ -370,6 +370,7 @@ async function initTransporte() {
     renderConfig();
     renderAccesos();
     cargarKpis();
+    if (typeof tpnIniciar === 'function') tpnIniciar();
   } catch (err) {
     console.error('initTransporte:', err);
     document.getElementById('loader').classList.add('hidden');
