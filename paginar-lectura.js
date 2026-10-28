@@ -25,6 +25,17 @@
   }
   async function todo(construir, etiqueta, opts) {
     const ordenId = !(opts && opts.ordenId === false);
+    // Cliente de grupo (reporte-grupo-shim): su constructor no tiene .range();
+    // ya filtra en el navegador, así que se lee tal cual, como siempre.
+    try {
+      const prueba = construir();
+      if (prueba && typeof prueba.range !== 'function') {
+        const x = await prueba;
+        if (x && x.error) { avisar(etiqueta); return { data: null, error: x.error, count: null }; }
+        const d = (x && x.data) || [];
+        return { data: d, error: null, count: Array.isArray(d) ? d.length : 0 };
+      }
+    } catch (e) { avisar(etiqueta); return { data: null, error: e, count: null }; }
     const filas = [];
     for (let desde = 0; desde < 5000000; desde += PAG) {
       let pagina = null, ultimo = null;
