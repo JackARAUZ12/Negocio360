@@ -2599,6 +2599,101 @@ async function pruebaPagoSeparadoClinica(browser, base) {
   }
 }
 
+// Pago separado con la MISMA forma de pago repetida (dos transferencias a dos bancos) y una parte en dólares:
+// desde la Clínica y desde Ventas ("＋ Agregar otra línea" y 💱) deben escribir lo mismo.
+async function pruebaPagoSeparadoVariosBancos(browser, base) {
+  console.log('\n▶ Pago separado: dos bancos y una parte en dólares (Clínica y Ventas)');
+  const semillaPS = () => {
+    const db = conCitas(semilla(), [citaAgenda('ag-c', { cliente_id: 'cli-1', cliente_nombre: 'Cliente Existente', estado: 'en_atencion' })]);
+    db.clinica_cita_cargos = [{ id: 'cg1', auth_user_id: UID, agenda_cita_id: 'ag-c', producto_id: 'prod-acet', descripcion: 'Acetaminofén 500 mg', cantidad: 3 }];
+    db.configuracion_empresa[0].tasa_cambio_usd = 36.5;
+    db.metodos_pago.push({ id: 'mp-transf', auth_user_id: UID, nombre: 'Transferencia', activo: true, tipo: 'transferencia' });
+    db.bancos = [{ id: 'bn-1', auth_user_id: UID, nombre: 'BAC', moneda: 'NIO', activo: true, created_at: '2026-01-01' },
+      { id: 'bn-2', auth_user_id: UID, nombre: 'Lafise', moneda: 'NIO', activo: true, created_at: '2026-01-02' }];
+    return db;
+  };
+  // Total 537.50 = USD 5 en efectivo (182.50) + 200 por transferencia a BAC + 155 por transferencia a Lafise
+  const correr = async (desdeClinica, ancho = 1280, alto = 900) => {
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    const extra = {};
+    if (desdeClinica) {
+      await page.goto(base + '/clinica-sala.html');
+      await page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semillaPS() });
+      await page.reload(); await esperarListo(page); await page.waitForFunction(() => typeof ClinicaCitas !== 'undefined');
+      await page.evaluate(() => ClinicaCitas.cobrar({ id: 'ag-c' }));
+      await marcoCobro(page, 2);
+      await page.waitForSelector('#clc-metodos [data-metodo="__separado"]', { timeout: 20000 });
+      await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
+      await page.click('#clc-metodos [data-metodo="__separado"]');
+      await page.click('#clc-separado [data-sep-moneda="0"]');               // efectivo en dólares
+      await page.fill('#clc-separado [data-sep-monto="0"]', '5');
+      extra.conv = await page.textContent('#clc-separado [data-sep-conv="0"]');
+      await page.fill('#clc-separado [data-sep-monto="1"]', '200');
+      await page.click('#clc-separado [data-sep-bancos="1"] [data-sep-banco="bn-1"]');
+      await page.selectOption('#clc-sep-agregar', 'mp-transf');               // otra transferencia
+      await page.fill('#clc-separado [data-sep-monto="2"]', '155');
+      await page.click('#clc-separado [data-sep-bancos="2"] [data-sep-banco="bn-2"]');
+      extra.cuadra = await page.textContent('#clc-sep-resumen');
+      extra.lineas = await page.locator('#clc-separado .clc-sep-linea').count();
+      extra.cabe = await page.evaluate(() => document.querySelector('#cl-cobro .clc-caja').scrollWidth <= document.querySelector('#cl-cobro .clc-caja').clientWidth + 1);
+      if (process.env.FOTO_PS) { await page.evaluate(() => document.getElementById('clc-separado').scrollIntoView()); await page.screenshot({ path: process.env.FOTO_PS + '-bancos-' + ancho + '.png' }); }
+      await page.click('#clc-cobrar');
+      await page.waitForFunction(() => document.querySelector('#cl-cobro .clc-ok') || (document.getElementById('clc-err')?.textContent || '').length > 0, null, { timeout: 20000 });
+      extra.aviso = await page.textContent('#cl-cobro');
+    } else {
+      await page.goto(base + '/ventas.html');
+      await page.evaluate(({ db }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.removeItem('__LOG'); }, { db: semillaPS() });
+      await page.reload(); await esperarListo(page);
+      await page.waitForFunction(() => typeof S !== 'undefined' && Array.isArray(S.productosCache) && S.productosCache.length === 2, null, { timeout: 15000 });
+      await page.evaluate(async () => {
+        await abrirNuevaVenta(); selectClienteOpcion('existente'); seleccionarCliente('cli-1');
+        await agregarAlCarritoConPrecio('prod-consulta', 'servicio', null);
+        await agregarAlCarritoConPrecio('prod-acet', 'producto', null); cambiarCantidad('prod-acet', 3);
+        for (let i = 0; i < 8 && S.paso < 5; i++) { const a = S.paso; pasoSiguiente(); await new Promise(r => setTimeout(r, 150)); if (S.paso === a) break; }
+        await seleccionarPagoSeparado();
+      });
+      await page.evaluate(() => sessionStorage.setItem('__LOG', '[]'));
+      // Como lo haría una persona en Ventas: 💱 en efectivo, montos, bancos y "＋ Agregar otra línea".
+      await page.click('#ps-ma-0 ~ * .n360-ma-link, #ps-monto-0 + .n360-ma-link').catch(() => {});
+      await page.fill('#ps-monto-0-ma', '5');
+      await page.fill('#ps-monto-1', '200'); await page.dispatchEvent('#ps-monto-1', 'input');
+      await page.locator('#pago-separado-banco-wrap-1 .metodo-card', { hasText: 'BAC' }).click();
+      await page.selectOption('#ps-agregar', 'mp-transf');
+      await page.fill('#ps-monto-2', '155'); await page.dispatchEvent('#ps-monto-2', 'input');
+      await page.locator('#pago-separado-banco-wrap-2 .metodo-card', { hasText: 'Lafise' }).click();
+      extra.resumen = await page.textContent('#pago-separado-resumen');
+      await page.evaluate(async () => { await confirmarVenta(false); });
+    }
+    await page.waitForTimeout(800);
+    const r = await page.evaluate(() => ({ log: JSON.parse(sessionStorage.getItem('__LOG') || '[]'), db: JSON.parse(sessionStorage.getItem('__DB')) }));
+    r.errores = page.__errores; r.extra = extra; await ctx.close(); return r;
+  };
+  const limpiar = o => JSON.parse(JSON.stringify(o, (k, v) => ['id', 'venta_id', 'created_at', 'fecha', 'updated_at', 'numero_venta', 'numero_factura', 'observaciones', 'notas', 'referencia_id', 'referencia_caja'].includes(k) ? undefined : (typeof v === 'string' && /^id-[a-z0-9]+-\d+-/.test(v) ? '<id generado>' : v)));
+  const RPC_DINERO = ['venta_registrar_atomica', 'descontar_lote_venta', 'descontar_lote_fefo'];
+  const escrituras = log => log.filter(x => (x.op !== 'rpc' || RPC_DINERO.includes(x.tabla)) && !['tutoriales_vistos', 'usuarios', 'presencia_usuarios', 'auditoria_eventos', 'auditoria'].includes(x.tabla) && x.tabla !== 'agenda_citas' && !(x.tabla === 'auditoria_log' && x.datos?.tabla === 'agenda_citas'));
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const a = await correr(true, ancho, alto), e = a.extra;
+    verificar(/USD 5\.00 = .*182\.50/.test(e.conv) && e.lineas === 3 && /Cuadra exacto/.test(e.cuadra), `${tag} Clínica: efectivo en dólares (USD 5 = C$ 182.50) + dos transferencias a dos bancos cuadran (${e.conv} | ${e.cuadra})`);
+    verificar(e.cabe, `${tag} Clínica: cabe en la pantalla con tres líneas`);
+    verificar(/Cobrado/.test(e.aviso), `${tag} Clínica: cobrado sin salir de la Clínica`);
+    const txt = JSON.stringify(escrituras(a.log));
+    verificar(txt.includes('"bn-1"') && txt.includes('"bn-2"') && /USD 5\.00/.test(txt), `${tag} Clínica: Caja recibe la transferencia en BAC, la de Lafise y anota que pagó USD 5`);
+    verificar(!a.errores.length, `${tag} Clínica: sin errores (${a.errores.join(' | ')})`);
+    if (ancho > 500) {
+      const b = await correr(false);
+      verificar(/Cuadra exacto/.test(b.extra.resumen), `Ventas: "＋ Agregar otra línea" y 💱 dólares cuadran el pago separado (${b.extra.resumen})`);
+      const wa = escrituras(a.log), wb = escrituras(b.log);
+      verificar(wa.length > 0 && JSON.stringify(limpiar(wa)) === JSON.stringify(limpiar(wb)), `cuadre: dos bancos + dólares desde la Clínica escriben IDÉNTICO a Ventas (${wa.length} escrituras)`);
+      if (JSON.stringify(limpiar(wa)) !== JSON.stringify(limpiar(wb))) {
+        const la = limpiar(wa), lb = limpiar(wb);
+        for (let i = 0; i < Math.max(la.length, lb.length); i++) if (JSON.stringify(la[i]) !== JSON.stringify(lb[i])) console.log('  diferencia #' + i + '\n   clínica:', JSON.stringify(la[i]), '\n   ventas:', JSON.stringify(lb[i]));
+      }
+      verificar(!b.errores.length, `Ventas: sin errores (${b.errores.join(' | ')})`);
+    }
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2628,7 +2723,7 @@ async function regresion(browser, base) {
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
-    if (process.env.SOLO_PS) { await pruebaPagoSeparadoClinica(browser, base); throw 'fin'; }
+    if (process.env.SOLO_PS) { await pruebaPagoSeparadoClinica(browser, base); await pruebaPagoSeparadoVariosBancos(browser, base); throw 'fin'; }
     if (process.env.SOLO_TX) { await pruebaTransporte(browser, base); await pruebaCuadreTransporte(browser, base); throw 'fin'; }
     if (process.env.SOLO_BOTONES) { await pruebaBotonesCliente(browser, base); throw 'fin'; }
     if (process.env.SOLO_CAMP) { await pruebaCampanas(browser, base); throw 'fin'; }
@@ -2670,6 +2765,7 @@ async function regresion(browser, base) {
     await pruebaTransporte(browser, base);
     await pruebaCuadreTransporte(browser, base);
     await pruebaPagoSeparadoClinica(browser, base);
+    await pruebaPagoSeparadoVariosBancos(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

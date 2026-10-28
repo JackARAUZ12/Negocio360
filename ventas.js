@@ -5125,6 +5125,30 @@ function _psAdjuntarMoneda(prefijo, lineas, alCambiar) {
   });
 }
 
+// Otra línea con un método que ya está (p. ej. dos transferencias a bancos distintos, o una parte
+// en dólares y otra en córdobas). Cada línea sigue siendo un movimiento de Caja con su banco, como siempre.
+function _psControlAgregar(cont, prefijo) {
+  const lineas = prefijo === 'vr-' ? VR.pagoSeparadoLineas : S.pagoSeparadoLineas;
+  const div = document.createElement('div');
+  div.style.cssText = 'padding:10px 0 2px';
+  div.innerHTML = `<select id="${prefijo}ps-agregar" aria-label="Agregar otra línea de pago" style="width:100%">
+    <option value="">＋ Agregar otra línea (otro banco)…</option>
+    ${(S.metodosPago || []).map(m => `<option value="${esc(m.id)}">${esc(m.nombre)}</option>`).join('')}</select>`;
+  cont.appendChild(div);
+  div.querySelector('select').addEventListener('change', e => {
+    const m = (S.metodosPago || []).find(x => x.id === e.target.value); if (!m) return;
+    lineas.push({ metodoId: m.id, metodoNombre: m.nombre, monto: 0, bancoId: null, bancoNombre: null, montoBancoConvertido: null, extra: true });
+    (prefijo === 'vr-' ? renderLineasPagoSeparadoVR : renderLineasPagoSeparado)();
+  });
+}
+function quitarLineaPagoSeparado(prefijo, idx) {
+  const lineas = prefijo === 'vr-' ? VR.pagoSeparadoLineas : S.pagoSeparadoLineas;
+  if (!lineas[idx] || !lineas[idx].extra) return;
+  lineas.splice(idx, 1);
+  (prefijo === 'vr-' ? renderLineasPagoSeparadoVR : renderLineasPagoSeparado)();
+}
+window.quitarLineaPagoSeparado = quitarLineaPagoSeparado;
+
 async function renderLineasPagoSeparado() {
   const cont = document.getElementById('pago-separado-lineas');
   if (!cont || !S.pagoSeparadoLineas) return;
@@ -5145,6 +5169,7 @@ async function renderLineasPagoSeparado() {
         <span style="flex:1;font-size:13px;font-weight:600">${esc(linea.metodoNombre)}</span>
         <input type="number" id="ps-monto-${i}" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
           style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparado(${i}, this.value)"/>
+        ${linea.extra ? `<button type="button" class="btn-icon" title="Quitar esta línea" aria-label="Quitar esta línea" style="width:24px;height:24px;display:inline-flex" onclick="quitarLineaPagoSeparado('', ${i})">✕</button>` : ''}
       </div>
       <div id="ps-ma-${i}" style="padding:0 0 4px 28px"></div>
       <div id="pago-separado-banco-wrap-${i}" style="padding:6px 0 10px 28px;display:${mostrarAhora ? '' : 'none'}">
@@ -5156,6 +5181,7 @@ async function renderLineasPagoSeparado() {
   }).join('');
 
   _psAdjuntarMoneda('', S.pagoSeparadoLineas);
+  _psControlAgregar(cont, '');
   renderResumenPagoSeparado();
 }
 
@@ -7497,6 +7523,7 @@ async function renderLineasPagoSeparadoVR() {
         <span style="flex:1;font-size:13px;font-weight:600">${esc(linea.metodoNombre)}</span>
         <input type="number" id="vr-ps-monto-${i}" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
           style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparadoVR(${i}, this.value)"/>
+        ${linea.extra ? `<button type="button" class="btn-icon" title="Quitar esta línea" aria-label="Quitar esta línea" style="width:24px;height:24px;display:inline-flex" onclick="quitarLineaPagoSeparado('vr-', ${i})">✕</button>` : ''}
       </div>
       <div id="vr-ps-ma-${i}" style="padding:0 0 4px 28px"></div>
       <div id="vr-pago-separado-banco-wrap-${i}" style="padding:6px 0 10px 28px;display:${mostrarAhora ? '' : 'none'}">
@@ -7508,6 +7535,7 @@ async function renderLineasPagoSeparadoVR() {
   }).join('');
 
   _psAdjuntarMoneda('vr-', VR.pagoSeparadoLineas);
+  _psControlAgregar(cont, 'vr-');
   renderResumenPagoSeparadoVR();
 }
 
@@ -8611,7 +8639,8 @@ function instalarMotorClinica() {
         impuestosTexto: document.getElementById('res-impuestos-label')?.textContent || 'Impuestos',
         metodos: (S.metodosPago || []).map(m => ({ id: m.id, nombre: m.nombre })),
         fiado: S.empresaConfig?.usa_modulo_fiados === true && !!S.clienteId,
-        separado: (S.metodosPago || []).length > 1,         // pago separado: hace falta más de una forma de pago
+        separado: (S.metodosPago || []).length > 0,         // pago separado (varias formas de pago, bancos o monedas)
+        moneda: { base: S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO', tasa: Number(S.empresaConfig?.tasa_cambio_usd) || 0 },
       };
     },
     fmt: n => fmt(n),
@@ -8658,10 +8687,21 @@ function instalarMotorClinica() {
         else if (Array.isArray(op.separado) && op.separado.length) {
           // Pago separado: el MISMO de Ventas (un movimiento de Caja por cada forma de pago, con su banco).
           await seleccionarPagoSeparado();
-          (S.pagoSeparadoLineas || []).forEach(l => {
-            const x = op.separado.find(y => y.metodoId === l.metodoId);
-            l.monto = x ? Math.max(0, round2(Number(x.monto) || 0)) : 0;
-            if (x && x.banco && x.banco.id) { l.bancoId = x.banco.id; l.bancoNombre = x.banco.nombre; l.bancoMoneda = x.banco.moneda || 'NIO'; l.montoBancoConvertido = _psMontoBanco(l); }
+          // Cada parte va a la primera línea libre de su método; si el método se repite (otro banco u
+          // otra moneda), se agrega otra línea igual que con "＋ Agregar otra línea" en Ventas.
+          const usadas = new Set();
+          op.separado.forEach(x => {
+            let i = (S.pagoSeparadoLineas || []).findIndex((l, k) => !usadas.has(k) && l.metodoId === x.metodoId);
+            if (i < 0) {
+              const m = (S.metodosPago || []).find(y => y.id === x.metodoId); if (!m) return;
+              S.pagoSeparadoLineas.push({ metodoId: m.id, metodoNombre: m.nombre, monto: 0, bancoId: null, bancoNombre: null, montoBancoConvertido: null, extra: true });
+              i = S.pagoSeparadoLineas.length - 1;
+            }
+            usadas.add(i);
+            const l = S.pagoSeparadoLineas[i];
+            l.monto = Math.max(0, round2(Number(x.monto) || 0));
+            if (x.otra && x.otra.monto > 0 && Math.abs(Number(x.otra.base) - l.monto) < 0.005) l.otra = { moneda: x.otra.moneda, monto: round2(x.otra.monto), tasa: Number(x.otra.tasa), base: l.monto };
+            if (x.banco && x.banco.id) { l.bancoId = x.banco.id; l.bancoNombre = x.banco.nombre; l.bancoMoneda = x.banco.moneda || 'NIO'; l.montoBancoConvertido = _psMontoBanco(l); }
           });
           renderResumenPagoSeparado();
         }

@@ -984,29 +984,70 @@ function _clPintarSeparado(mostrar) {
   const cont = document.getElementById('clc-separado'); if (!cont) return;
   cont.style.display = mostrar ? '' : 'none';
   if (!mostrar) { _CL_COBRO.separado = null; cont.innerHTML = ''; return; }
-  const metodos = (_CL_COBRO.estado?.metodos || []);
-  _CL_COBRO.separado = metodos.map(mt => ({ metodoId: mt.id, metodoNombre: mt.nombre, monto: 0, banco: null }));
+  _CL_COBRO.separado = (_CL_COBRO.estado?.metodos || []).map(mt => ({ metodoId: mt.id, metodoNombre: mt.nombre, monto: 0, banco: null, enOtra: false, montoOtra: 0 }));
+  _clDibujarSeparado();
+}
+// Moneda de la cuenta y la otra (córdobas ↔ dólares), con la tasa de Caja › Bancos (la misma que usa Ventas).
+function _clMonedas() {
+  const m = _CL_COBRO.estado?.moneda || {}, base = m.base === 'USD' ? 'USD' : 'NIO';
+  return { base, otra: base === 'USD' ? 'NIO' : 'USD', tasa: Number(m.tasa) || 0, simbolo: x => (x === 'USD' ? 'USD' : 'C$') };
+}
+function _clDibujarSeparado() {
+  const cont = document.getElementById('clc-separado'); if (!cont || !_CL_COBRO.separado) return;
+  const mon = _clMonedas(), ls = _CL_COBRO.separado;
   cont.innerHTML = `<div class="clc-sec">¿Cuánto paga con cada forma?</div>
-    ${_CL_COBRO.separado.map((l, i) => `<div class="clc-sep-linea">
-      <div class="clc-fila" style="margin-top:6px;align-items:center"><div style="flex:1 1 120px"><b>${_clEsc(l.metodoNombre)}</b></div>
-        <div style="flex:0 1 150px"><input class="clc-in" type="number" inputmode="decimal" min="0" step="any" placeholder="0.00" data-sep-monto="${i}" aria-label="Monto con ${_clEsc(l.metodoNombre)}"/></div></div>
+    ${ls.map((l, i) => `<div class="clc-sep-linea" style="border-bottom:1px solid var(--border,#e5e7eb);padding:6px 0 8px">
+      <div class="clc-fila" style="margin-top:0;align-items:center;flex-wrap:nowrap">
+        <div style="flex:1 1 auto;min-width:0"><b>${_clEsc(l.metodoNombre)}</b>${l.enOtra ? ` <b style="color:var(--accent,#6C63FF)">en ${mon.otra === 'USD' ? 'dólares (USD)' : 'córdobas (C$)'}</b>` : ''}${l.extra ? ' <span class="cl-sub">(otra línea)</span>' : ''}</div>
+        <div style="flex:0 0 132px"><input class="clc-in" type="number" inputmode="decimal" min="0" step="any" placeholder="${l.enOtra ? mon.simbolo(mon.otra) + ' ' : ''}0.00" data-sep-monto="${i}"
+          value="${l.enOtra ? (l.montoOtra || '') : (l.monto || '')}" aria-label="Monto con ${_clEsc(l.metodoNombre)}${l.enOtra ? ' en ' + mon.simbolo(mon.otra) : ''}"/></div>
+        ${l.extra ? `<button type="button" class="clc-x" data-sep-quitar="${i}" title="Quitar esta línea" aria-label="Quitar esta línea" style="width:30px;height:30px;font-size:13px">✕</button>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:12px">
+        <button type="button" class="clc-link" data-sep-moneda="${i}" style="color:var(--accent,#6C63FF)">💱 ${l.enOtra ? 'Escribir en ' + mon.simbolo(mon.base) : 'Pagó en ' + (mon.otra === 'USD' ? 'dólares' : 'córdobas')}</button>
+        <span class="cl-sub" data-sep-conv="${i}"></span></div>
       <div class="clc-chips" data-sep-bancos="${i}" style="display:none;margin-top:6px"></div></div>`).join('')}
+    <select class="clc-in" id="clc-sep-agregar" style="margin-top:10px;font-size:13.5px" aria-label="Agregar otra línea de pago">
+      <option value="">＋ Agregar otra línea (otro banco)…</option>
+      ${(_CL_COBRO.estado?.metodos || []).map(mt => `<option value="${_clEsc(mt.id)}">${_clEsc(mt.nombre)}</option>`).join('')}</select>
     <button type="button" class="clc-link" id="clc-sep-resto" style="margin-top:8px">Completar lo que falta con la última forma de pago que escribiste</button>
     <div id="clc-sep-resumen" style="margin-top:10px;padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:700"></div>`;
   cont.querySelectorAll('[data-sep-monto]').forEach(inp => inp.addEventListener('input', () => {
-    const i = Number(inp.dataset.sepMonto), l = _CL_COBRO.separado[i];
-    l.monto = Math.max(0, _clR2(inp.value));
-    _clBancosSeparado(i); _clResumenSeparado(); _clListo();
+    const i = Number(inp.dataset.sepMonto), l = ls[i], v = Math.max(0, _clR2(inp.value));
+    if (l.enOtra) { l.montoOtra = v; l.monto = mon.tasa > 0 ? _clR2(mon.base === 'NIO' ? v * mon.tasa : v / mon.tasa) : 0; }
+    else l.monto = v;
+    _clConvSeparado(i); _clBancosSeparado(i); _clResumenSeparado(); _clListo();
   }));
-  document.getElementById('clc-sep-resto').addEventListener('click', () => {
-    const ls = _CL_COBRO.separado, conMonto = ls.map((l, i) => i).filter(i => ls[i].monto > 0);
-    const i = conMonto.length ? conMonto[conMonto.length - 1] : 0;
-    const otros = _clR2(ls.reduce((a, l, k) => a + (k === i ? 0 : l.monto), 0));
-    ls[i].monto = Math.max(0, _clR2(_clTotalCobrar() - otros));
-    const inp = cont.querySelector(`[data-sep-monto="${i}"]`); if (inp) inp.value = ls[i].monto ? ls[i].monto.toFixed(2) : '';
-    _clBancosSeparado(i); _clResumenSeparado(); _clListo();
+  cont.querySelectorAll('[data-sep-moneda]').forEach(b => b.addEventListener('click', () => {
+    const i = Number(b.dataset.sepMoneda), l = ls[i];
+    if (!l.enOtra && !(mon.tasa > 0)) { document.getElementById('clc-err').textContent = 'Falta la tasa de cambio: configúrala en Caja › Bancos.'; return; }
+    l.enOtra = !l.enOtra; l.montoOtra = 0; l.monto = 0;
+    _clDibujarSeparado(); _clListo();
+  }));
+  cont.querySelectorAll('[data-sep-quitar]').forEach(b => b.addEventListener('click', () => {
+    ls.splice(Number(b.dataset.sepQuitar), 1); _clDibujarSeparado(); _clListo();
+  }));
+  document.getElementById('clc-sep-agregar').addEventListener('change', e => {
+    const mt = (_CL_COBRO.estado?.metodos || []).find(x => x.id === e.target.value); if (!mt) return;
+    ls.push({ metodoId: mt.id, metodoNombre: mt.nombre, monto: 0, banco: null, enOtra: false, montoOtra: 0, extra: true });
+    _clDibujarSeparado(); _clListo();
+    const nuevo = cont.querySelector(`[data-sep-monto="${ls.length - 1}"]`); if (nuevo) nuevo.focus();
   });
+  document.getElementById('clc-sep-resto').addEventListener('click', () => {
+    const conMonto = ls.map((l, i) => i).filter(i => ls[i].monto > 0);
+    const i = conMonto.length ? conMonto[conMonto.length - 1] : 0, l = ls[i];
+    const otros = _clR2(ls.reduce((a, x, k) => a + (k === i ? 0 : x.monto), 0));
+    l.monto = Math.max(0, _clR2(_clTotalCobrar() - otros));
+    if (l.enOtra) l.montoOtra = mon.tasa > 0 ? _clR2(mon.base === 'NIO' ? l.monto / mon.tasa : l.monto * mon.tasa) : 0;
+    _clDibujarSeparado(); _clListo();
+  });
+  ls.forEach((l, i) => { _clConvSeparado(i); _clBancosSeparado(i); });
   _clResumenSeparado();
+}
+function _clConvSeparado(i) {
+  const l = _CL_COBRO.separado[i], el = document.querySelector(`#clc-separado [data-sep-conv="${i}"]`); if (!el) return;
+  const mon = _clMonedas(), f = _clMotor()?.fmt || (x => Number(x || 0).toFixed(2));
+  el.textContent = l.enOtra ? (l.montoOtra > 0 ? `${mon.simbolo(mon.otra)} ${Number(l.montoOtra).toFixed(2)} = ${f(l.monto)} (tasa C$ ${mon.tasa.toFixed(2)})` : `Escribe el monto en ${mon.otra === 'USD' ? 'dólares' : 'córdobas'} · tasa C$ ${mon.tasa.toFixed(2)}`) : '';
 }
 function _clBancosSeparado(i) {
   const l = _CL_COBRO.separado[i], box = document.querySelector(`#clc-separado [data-sep-bancos="${i}"]`); if (!box) return;
@@ -1015,7 +1056,7 @@ function _clBancosSeparado(i) {
   if (!necesita) { l.banco = null; return; }
   if (box.dataset.listo === '1') return;
   box.dataset.listo = '1';
-  box.innerHTML = _CL_COBRO.bancos.map(b => `<button type="button" class="clc-chip" data-sep-banco="${_clEsc(b.id)}">🏦 ${_clEsc(b.nombre)}</button>`).join('');
+  box.innerHTML = _CL_COBRO.bancos.map(b => `<button type="button" class="clc-chip ${l.banco && l.banco.id === b.id ? 'activo' : ''}" data-sep-banco="${_clEsc(b.id)}">🏦 ${_clEsc(b.nombre)}${b.moneda && b.moneda !== 'NIO' ? ' (' + _clEsc(b.moneda) + ')' : ''}</button>`).join('');
   box.querySelectorAll('[data-sep-banco]').forEach(btn => btn.addEventListener('click', () => {
     l.banco = _CL_COBRO.bancos.find(x => x.id === btn.dataset.sepBanco) || null;
     box.querySelectorAll('[data-sep-banco]').forEach(x => x.classList.toggle('activo', x === btn)); _clResumenSeparado(); _clListo();
@@ -1064,7 +1105,9 @@ async function _clCobrarAhora() {
   const btn = document.getElementById('clc-cobrar'); btn.textContent = 'Cobrando…';
   document.getElementById('clc-err').textContent = '';
   let r;
-  const separado = m.id === '__separado' ? (_CL_COBRO.separado || []).filter(l => l.monto > 0).map(l => ({ metodoId: l.metodoId, monto: l.monto, banco: l.banco })) : null;
+  const mon = _clMonedas();
+  const separado = m.id === '__separado' ? (_CL_COBRO.separado || []).filter(l => l.monto > 0).map(l => ({ metodoId: l.metodoId, monto: l.monto, banco: l.banco,
+    otra: l.enOtra && l.montoOtra > 0 ? { moneda: mon.otra, monto: l.montoOtra, tasa: mon.tasa, base: l.monto } : null })) : null;
   if (separado && !_clSeparadoListo()) { _CL_COBRO.cobrando = false; _clListo(); document.getElementById('clc-err').textContent = 'El pago separado debe cuadrar exacto con el total.'; return; }
   if (separado) _CL_COBRO.metodo = { ...m, nombre: `Pago separado (${(_CL_COBRO.separado || []).filter(l => l.monto > 0).map(l => l.metodoNombre).join(' + ')})` };
   try { r = await motor.cobrar({ metodoId: (m.id === '__fiado' || separado) ? null : m.id, metodoNombre: m.nombre, fiado: m.id === '__fiado', separado, banco: separado ? null : _CL_COBRO.banco, notas: document.getElementById('clc-nota').value.trim() }); }
