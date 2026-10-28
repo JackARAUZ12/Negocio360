@@ -54,6 +54,8 @@ const R = {
     creditosResumen: [],
   },
 
+  fallaLectura: false,   // true si alguna lectura no se pudo completar (los reportes NO se exportan así)
+
   // Cliente actualmente elegido en la pestaña Créditos (pantalla). null =
   // ningún cliente elegido todavía → no se muestra ningún historial.
   creditoClienteSeleccionado: null,
@@ -133,6 +135,18 @@ function getDateRange() {
     case 'semana': return { from: startOfWeekISO(),  to: today };
     case 'mes':    return { from: startOfMonthISO(), to: today };
     case 'anio':   return { from: startOfYearISO(),  to: today };
+    case 'mesant': { // mes calendario anterior completo
+      const n = new Date(), ini = new Date(n.getFullYear(), n.getMonth()-1, 1), fin = new Date(n.getFullYear(), n.getMonth(), 0);
+      return { from: ymd(ini), to: ymd(fin) };
+    }
+    case 'trimestre': { // trimestre calendario en curso, hasta hoy
+      const n = new Date();
+      return { from: ymd(new Date(n.getFullYear(), Math.floor(n.getMonth()/3)*3, 1)), to: today };
+    }
+    case 'anioant': { // año calendario anterior completo
+      const y = new Date().getFullYear() - 1;
+      return { from: `${y}-01-01`, to: `${y}-12-31` };
+    }
     case 'custom': return { from: R.fechaDesde||today, to: R.fechaHasta||today };
     default:       return { from: startOfMonthISO(), to: today };
   }
@@ -157,6 +171,9 @@ function periodLabel() {
     case 'semana': return 'Esta semana';
     case 'mes':    return 'Este mes';
     case 'anio':   return 'Este año';
+    case 'mesant': return 'Mes anterior';
+    case 'trimestre': return 'Este trimestre';
+    case 'anioant': return 'Año anterior';
     case 'custom': return `${R.fechaDesde} — ${R.fechaHasta}`;
     default:       return 'Este mes';
   }
@@ -582,14 +599,78 @@ function emptyRow(cols, msg) {
    ============================================================ */
 
 /* ---- VENTAS ---- */
+
+/* ============================================================
+   LECTURA COMPLETA DE DATOS (sin límite de filas)
+   ------------------------------------------------------------
+   La base de datos entrega como máximo 1,000 filas por consulta.
+   Antes, los reportes leían una sola vez y, si había más, las más
+   antiguas se perdían EN SILENCIO (por ejemplo, faltaba agosto).
+   Ahora toda lectura pasa por aquí: lee por páginas hasta terminar,
+   reintenta si el internet falla un momento, y si no puede leer todo
+   AVISA (nunca entrega un reporte incompleto como si estuviera completo).
+   ============================================================ */
+const PAG_FILAS = 1000;   // filas por página (tope de la base de datos)
+const LOTE_IDS  = 80;     // identificadores por consulta (.in) para no pasarse del largo permitido
+let _avisoLecturaMs = 0;
+
+function avisarLecturaIncompleta(etiqueta, e) {
+  R.fallaLectura = true;
+  console.error('Reportes — lectura incompleta:', etiqueta, e);
+  const ahora = Date.now();
+  if (ahora - _avisoLecturaMs > 4000) {
+    _avisoLecturaMs = ahora;
+    try { showToast(`No se pudo leer todo (${etiqueta}). Revisa tu conexión y actualiza: el reporte podría estar incompleto.`, 'error'); } catch (_) {}
+  }
+}
+
+// construir: función que devuelve una consulta NUEVA cada vez (debe terminar con un orden estable que incluya 'id').
+async function leerTodo(construir, etiqueta) {
+  const todo = [];
+  for (let desde = 0; desde < 5000000; desde += PAG_FILAS) {
+    let filas = null, ultimo = null;
+    for (let intento = 0; intento < 3; intento++) {
+      if (intento) await new Promise(r => setTimeout(r, intento * 700));
+      try {
+        const x = await construir().range(desde, desde + PAG_FILAS - 1);
+        if (!x.error) { filas = x.data || []; ultimo = null; break; }
+        ultimo = x.error;
+      } catch (e) { ultimo = e; }
+    }
+    if (filas === null) { avisarLecturaIncompleta(etiqueta, ultimo); throw (ultimo || new Error('Lectura incompleta: ' + etiqueta)); }
+    for (let i = 0; i < filas.length; i++) todo.push(filas[i]);
+    if (filas.length < PAG_FILAS) break;
+  }
+  return todo;
+}
+
+// Igual que leerTodo, pero para listas largas de identificadores: los reparte en lotes (4 a la vez).
+async function leerPorIds(ids, construir, etiqueta) {
+  const lotes = [];
+  for (let i = 0; i < ids.length; i += LOTE_IDS) lotes.push(ids.slice(i, i + LOTE_IDS));
+  const out = [];
+  for (let g = 0; g < lotes.length; g += 4) {
+    const grupo = await Promise.all(lotes.slice(g, g + 4).map(ch => leerTodo(() => construir(ch), etiqueta)));
+    grupo.forEach(filas => { for (let i = 0; i < filas.length; i++) out.push(filas[i]); });
+  }
+  return out;
+}
+
+// Día siguiente (AAAA-MM-DD): para filtrar "hasta el final de ese día" en columnas con hora (igual que Ventas).
+function diaSiguienteISO(iso) {
+  const d = new Date(String(iso).slice(0, 10) + 'T12:00:00');
+  d.setDate(d.getDate() + 1);
+  return ymd(d);
+}
+
 async function fetchVentas() {
   const { from, to } = getDateRange();
-  const { data } = await sb.from('ventas')
+  const data = await leerTodo(() => sb.from('ventas')
     .select('id,numero_venta,fecha,cliente_id,cliente_nombre,total,ganancia,costo_total,subtotal,descuento,impuesto,metodo_pago_nombre,estado')
     .eq('auth_user_id', R.userId)
     .eq('estado', 'completada')
-    .gte('fecha', from).lte('fecha', to)
-    .order('fecha', { ascending:false });
+    .gte('fecha', from).lt('fecha', diaSiguienteISO(to))
+    .order('fecha', { ascending:false }).order('id'), 'ventas');
   // Devoluciones (DEV-…) del período: van como filas en negativo, así todos los totales quedan NETOS.
   const devs = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, R.userId, from, to) : [];
   R.cache.ventas = (data || []).concat(devs).sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
@@ -600,11 +681,10 @@ async function fetchVentasDetalles() {
   if (!R.cache.ventas.length) return [];
   const ventaIds = R.cache.ventas.filter(v => !v.es_devolucion).map(v => v.id);
   if (!ventaIds.length) return [];
-  const { data } = await sb.from('venta_detalles')
+  return await leerPorIds(ventaIds, ch => sb.from('venta_detalles')
     .select('venta_id,producto_id,producto_nombre,tipo_item,cantidad,precio,costo,subtotal,ganancia,es_regalia')
     .eq('auth_user_id', R.userId)
-    .in('venta_id', ventaIds);
-  return data || [];
+    .in('venta_id', ch).order('id'), 'detalle de ventas');
 }
 
 /* FIX IVA: "total" NO debe usarse tal cual — incluye el IVA cobrado al
@@ -722,12 +802,12 @@ function totalUnidadesProducto(detalleMap) {
 /* ---- COMPRAS ---- */
 async function fetchCompras() {
   const { from, to } = getDateRange();
-  const { data } = await sb.from('compras')
+  const data = await leerTodo(() => sb.from('compras')
     .select('id,numero,fecha,proveedor_id,proveedor_nombre,total,subtotal,estado,metodo_pago_nombre,concepto')
     .eq('auth_user_id', R.userId)
     .neq('estado','anulada')
     .gte('fecha', from).lte('fecha', to)
-    .order('fecha', { ascending:false });
+    .order('fecha', { ascending:false }).order('id'), 'compras');
   R.cache.compras = data || [];
   return R.cache.compras;
 }
@@ -735,11 +815,10 @@ async function fetchCompras() {
 async function fetchComprasDetalles() {
   if (!R.cache.compras.length) return [];
   const ids = R.cache.compras.map(c => c.id);
-  const { data } = await sb.from('detalle_compras')
+  return await leerPorIds(ids, ch => sb.from('detalle_compras')
     .select('compra_id,producto_id,producto_nombre,cantidad,costo_unitario,subtotal,iva_monto,created_at')
     .eq('auth_user_id', R.userId)
-    .in('compra_id', ids);
-  return data || [];
+    .in('compra_id', ch).order('created_at').order('id'), 'detalle de compras');
 }
 
 // Detalle de compras para exportar (producto, descripcion, cantidad,
@@ -769,12 +848,12 @@ async function cargarDescripcionesExport(detalles) {
 /* ---- GASTOS ---- */
 async function fetchGastos() {
   const { from, to } = getDateRange();
-  const { data } = await sb.from('gastos')
+  const data = await leerTodo(() => sb.from('gastos')
     .select('id,concepto,categoria,monto,fecha,tipo,estado,empleado')
     .eq('auth_user_id', R.userId)
     .eq('estado','activo')
     .gte('fecha', from).lte('fecha', to)
-    .order('fecha', { ascending:false });
+    .order('fecha', { ascending:false }).order('id'), 'gastos');
   R.cache.gastos = data || [];
   return R.cache.gastos;
 }
@@ -787,13 +866,13 @@ async function fetchGastos() {
 async function fetchSalariosPagados() {
   const { from, to } = getDateRange();
   try {
-    const { data } = await sb.from('empleados_pagos')
-      .select('total_pagado, fecha')
+    const data = await leerTodo(() => sb.from('empleados_pagos')
+      .select('id, total_pagado, fecha')
       .eq('auth_user_id', R.userId).neq('estado', 'anulado')
-      .gte('fecha', from).lte('fecha', to);
+      .gte('fecha', from).lte('fecha', to).order('id'), 'pagos de salarios');
     return (data || []).reduce((s,p) => s+Number(p.total_pagado||0), 0);
   } catch (e) {
-    console.warn('fetchSalariosPagados:', e);
+    console.warn('fetchSalariosPagados:', e);   // leerTodo ya avisó en pantalla y marcó R.fallaLectura
     return 0;
   }
 }
@@ -810,15 +889,15 @@ async function fetchSalarios() {
     // la base de datos -- un join anidado tipo "empleados(nombre)"
     // fallaria. Se traen los empleados aparte y se unen a mano por
     // empleado_id, mas robusto que depender de una FK que no existe.
-    const [{ data: pagosEmp }, { data: empleados }, { data: pagosFrl }, { data: freelancersLista }] = await Promise.all([
-      sb.from('empleados_pagos')
+    const [pagosEmp, empleados, pagosFrl, freelancersLista] = await Promise.all([
+      leerTodo(() => sb.from('empleados_pagos')
         .select('id, fecha, total_pagado, metodo_pago_nombre, empleado_id')
-        .eq('auth_user_id', R.userId).neq('estado', 'anulado').gte('fecha', from).lte('fecha', to),
-      sb.from('empleados').select('id, nombre').eq('auth_user_id', R.userId),
-      sb.from('freelancers_pagos')
+        .eq('auth_user_id', R.userId).neq('estado', 'anulado').gte('fecha', from).lte('fecha', to).order('id'), 'pagos de salarios'),
+      leerTodo(() => sb.from('empleados').select('id, nombre').eq('auth_user_id', R.userId).order('id'), 'empleados'),
+      leerTodo(() => sb.from('freelancers_pagos')
         .select('id, fecha_pago, monto_pagado, metodo_pago_nombre, periodo_inicio, periodo_fin, freelancer_id')
-        .eq('auth_user_id', R.userId).gte('fecha_pago', from).lte('fecha_pago', to),
-      sb.from('freelancers').select('id, nombre, tipo_comision').eq('auth_user_id', R.userId),
+        .eq('auth_user_id', R.userId).gte('fecha_pago', from).lte('fecha_pago', to).order('id'), 'pagos de comisiones'),
+      leerTodo(() => sb.from('freelancers').select('id, nombre, tipo_comision').eq('auth_user_id', R.userId).order('id'), 'freelancers'),
     ]);
 
     const nombreEmpleado = {};
@@ -851,21 +930,21 @@ async function fetchSalarios() {
 
 /* ---- CLIENTES ---- */
 async function fetchClientes() {
-  const { data } = await sb.from('clientes')
+  const data = await leerTodo(() => sb.from('clientes')
     .select('id,nombre,telefono,correo,empresa,num_compras,total_compras,ultima_compra,primera_compra,estado,created_at')
     .eq('auth_user_id', R.userId)
     .eq('activo', true)
-    .order('total_compras', { ascending:false });
+    .order('total_compras', { ascending:false }).order('id'), 'clientes');
   R.cache.clientes = data || [];
   return R.cache.clientes;
 }
 
 /* ---- PRODUCTOS ---- */
 async function fetchProductos() {
-  const { data } = await sb.from('productos')
+  const data = await leerTodo(() => sb.from('productos')
     .select('id,nombre,sku,codigo_barras,tipo,categoria,proveedor_id,proveedor_nombre,precio,costo,stock_actual,stock_minimo,activo,unidad_codigo')
     .eq('auth_user_id', R.userId)
-    .order('nombre');
+    .order('nombre').order('id'), 'productos');
   R.cache.productos = data || [];
   return R.cache.productos;
 }
@@ -910,19 +989,19 @@ async function fetchCapital() {
 async function fetchOtrosMovimientos() {
   const { from, to } = getDateRange();
   try {
-    const { data } = await sb.from('movimientos_financieros')
-      .select('tipo_flujo, monto, referencia_tipo')
+    const data = await leerTodo(() => sb.from('movimientos_financieros')
+      .select('id, tipo_flujo, monto, referencia_tipo')
       .eq('auth_user_id', R.userId)
       .eq('estado', 'completado')
       .is('referencia_tipo', null)
-      .gte('fecha', from).lte('fecha', to);
+      .gte('fecha', from).lte('fecha', to).order('id'), 'otros movimientos de caja');
 
     const movs = data || [];
     const otrosIngresos = movs.filter(m => m.tipo_flujo === 'INGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
     const otrosEgresos  = movs.filter(m => m.tipo_flujo === 'EGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
     return { otrosIngresos, otrosEgresos };
   } catch(e) {
-    console.warn('fetchOtrosMovimientos:', e);
+    console.warn('fetchOtrosMovimientos:', e);   // leerTodo ya avisó en pantalla y marcó R.fallaLectura
     return { otrosIngresos: 0, otrosEgresos: 0 };
   }
 }
@@ -934,14 +1013,13 @@ async function fetchOtrosMovimientos() {
    venta y se paga desde impuestos.html. Aquí solo se muestra. */
 async function fetchImpuestos() {
   try {
-    const { data } = await sb.from('movimientos_impuestos')
-      .select('tipo_movimiento, monto, fecha, saldo_resultante, created_at')
+    // Todos los movimientos (antes solo los últimos 300, y "total pagado" quedaba incompleto).
+    return await leerTodo(() => sb.from('movimientos_impuestos')
+      .select('id, tipo_movimiento, monto, fecha, saldo_resultante, created_at')
       .eq('auth_user_id', R.userId)
-      .order('created_at', { ascending:false })
-      .limit(300);
-    return data || [];
+      .order('created_at', { ascending:false }).order('id', { ascending:false }), 'impuestos');
   } catch(e) {
-    console.warn('fetchImpuestos:', e);
+    console.warn('fetchImpuestos:', e);   // leerTodo ya avisó en pantalla y marcó R.fallaLectura
     return [];
   }
 }
@@ -962,12 +1040,12 @@ function calcImpuestosResumen(movs) {
 /* ---- MOVIMIENTOS (para flujo de caja) ---- */
 async function fetchMovimientos() {
   const { from, to } = getDateRange();
-  const { data } = await sb.from('movimientos_financieros')
-    .select('tipo_flujo,monto,fecha,tipo_movimiento,metodo_pago_nombre')
+  const data = await leerTodo(() => sb.from('movimientos_financieros')
+    .select('id,tipo_flujo,monto,fecha,tipo_movimiento,metodo_pago_nombre')
     .eq('auth_user_id', R.userId)
     .eq('estado','completado')
     .gte('fecha', from).lte('fecha', to)
-    .order('fecha');
+    .order('fecha').order('id'), 'movimientos de caja');
   // Las transferencias entre cuentas propias no son ingresos ni egresos: se excluyen del flujo.
   R.cache.movimientos = (data || []).filter(m => m.tipo_movimiento !== 'TRANSFERENCIA');
   return R.cache.movimientos;
@@ -975,12 +1053,11 @@ async function fetchMovimientos() {
 
 /* ---- GASTOS PROGRAMADOS ---- */
 async function fetchGastosProgramados() {
-  const { data } = await sb.from('gastos_programados')
+  return await leerTodo(() => sb.from('gastos_programados')
     .select('id,nombre,categoria,monto,frecuencia,fecha_proxima,activo')
     .eq('auth_user_id', R.userId)
     .eq('activo', true)
-    .order('fecha_proxima');
-  return data || [];
+    .order('fecha_proxima').order('id'), 'gastos programados');
 }
 
 /* ============================================================
@@ -993,17 +1070,18 @@ async function fetchDatosMensuales() {
   const start = `${year}-01-01`;
   const end   = todayISO();
 
-  const [resV, resC, resG] = await Promise.all([
-    sb.from('ventas').select('fecha,total,ganancia,impuesto')
+  const [datV, datC, datG] = await Promise.all([
+    leerTodo(() => sb.from('ventas').select('id,fecha,total,ganancia,impuesto')
       .eq('auth_user_id', R.userId).eq('estado','completada')
-      .gte('fecha', start).lte('fecha', end),
-    sb.from('compras').select('fecha,total')
+      .gte('fecha', start).lt('fecha', diaSiguienteISO(end)).order('id'), 'ventas del año'),
+    leerTodo(() => sb.from('compras').select('id,fecha,total')
       .eq('auth_user_id', R.userId).neq('estado','anulada')
-      .gte('fecha', start).lte('fecha', end),
-    sb.from('gastos').select('fecha,monto')
+      .gte('fecha', start).lte('fecha', end).order('id'), 'compras del año'),
+    leerTodo(() => sb.from('gastos').select('id,fecha,monto')
       .eq('auth_user_id', R.userId).eq('estado','activo')
-      .gte('fecha', start).lte('fecha', end),
+      .gte('fecha', start).lte('fecha', end).order('id'), 'gastos del año'),
   ]);
+  const resV = { data: datV }, resC = { data: datC }, resG = { data: datG };
 
   const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const ventas   = new Array(12).fill(0);
@@ -1713,7 +1791,7 @@ async function loadInventario() {
    archivo solo para esto.
    ============================================================ */
 async function fetchActivos() {
-  const { data } = await sb.from('activos_fijos').select('*').eq('auth_user_id', R.userId).order('created_at', { ascending: false });
+  const data = await leerTodo(() => sb.from('activos_fijos').select('*').eq('auth_user_id', R.userId).order('created_at', { ascending: false }).order('id'), 'activos fijos');
   R.cache.activos = data || [];
   return R.cache.activos;
 }
@@ -1868,25 +1946,38 @@ async function loadClientesTab() {
      que se cobró sobre ese interés (nunca incluye el valor del
      producto ni los impuestos sobre el capital).
    ============================================================ */
+// Proforma de origen de cada crédito (PR-…), por lotes: devuelve un Map(credito_id -> número).
+async function mapaProformasCreditos(lista) {
+  const out = new Map();
+  if (!window.N360ProformaCredito || !lista.length) return out;
+  try {
+    for (let i = 0; i < lista.length; i += LOTE_IDS) {
+      const m = await N360ProformaCredito.mapa(sb, R.userId, lista.slice(i, i + LOTE_IDS));
+      m.forEach((v, k) => out.set(k, v));
+    }
+  } catch (e) { console.warn('mapaProformasCreditos:', e); }
+  return out;
+}
+
 async function fetchCreditosReporte() {
-  const { data: creditos } = await sb.from('creditos').select('*')
+  const creditos = await leerTodo(() => sb.from('creditos').select('*')
     .eq('auth_user_id', R.userId)
     .gte('fecha_inicio', R.fechaDesde || '1970-01-01')
-    .lte('fecha_inicio', R.fechaHasta || todayISO());
+    .lte('fecha_inicio', R.fechaHasta || todayISO()).order('id'), 'créditos');
 
   const lista = creditos || [];
   if (!lista.length) return [];
   // Proforma de origen de cada crédito (PR-…), solo para mostrar
-  const prMap = window.N360ProformaCredito ? await N360ProformaCredito.mapa(sb, R.userId, lista) : new Map();
+  const prMap = await mapaProformasCreditos(lista);
 
   const ids = lista.map(c => c.id);
-  const { data: cuotas } = await sb.from('creditos_cuotas')
-    .select('credito_id,monto_total,impuesto')
-    .in('credito_id', ids);
+  const cuotas = await leerPorIds(ids, ch => sb.from('creditos_cuotas')
+    .select('id,credito_id,monto_total,impuesto')
+    .in('credito_id', ch).order('id'), 'cuotas de créditos');
 
-  const clienteIds = [...new Set(lista.map(c => c.cliente_id))];
-  const { data: clientesData } = await sb.from('clientes').select('id,nombre,apellido')
-    .in('id', clienteIds.length ? clienteIds : ['00000000-0000-0000-0000-000000000000']);
+  const clienteIds = [...new Set(lista.map(c => c.cliente_id).filter(Boolean))];
+  const clientesData = await leerPorIds(clienteIds, ch => sb.from('clientes').select('id,nombre,apellido')
+    .in('id', ch).order('id'), 'clientes de créditos');
   const clienteMap = new Map((clientesData||[]).map(c => [c.id, c]));
 
   const sumaPorCredito = new Map(); // credito_id -> { totalCuotas, totalImpuesto }
@@ -1928,17 +2019,17 @@ async function fetchCreditosReporte() {
    Reporte General).
    ------------------------------------------------------------ */
 async function fetchCreditosHistorialPagos() {
-  const { data: creditos } = await sb.from('creditos').select('id,numero_credito,tipo,cliente_id,num_cuotas,venta_id')
+  const creditos = await leerTodo(() => sb.from('creditos').select('id,numero_credito,tipo,cliente_id,num_cuotas,venta_id')
     .eq('auth_user_id', R.userId)
     .gte('fecha_inicio', R.fechaDesde || '1970-01-01')
-    .lte('fecha_inicio', R.fechaHasta || todayISO());
+    .lte('fecha_inicio', R.fechaHasta || todayISO()).order('id'), 'créditos');
 
   const lista = creditos || [];
   if (!lista.length) { R.cache.creditosProductos = new Map(); return []; }
 
   const creditoMap = new Map(lista.map(c => [c.id, c]));
   const ids = lista.map(c => c.id);
-  const prMapH = window.N360ProformaCredito ? await N360ProformaCredito.mapa(sb, R.userId, lista) : new Map();
+  const prMapH = await mapaProformasCreditos(lista);
 
   // Productos financiados — se leen de la venta que originó cada
   // crédito (creditos NUNCA guarda productos directamente). Los
@@ -1947,7 +2038,7 @@ async function fetchCreditosHistorialPagos() {
   const ventaIds = lista.map(c => c.venta_id).filter(Boolean);
   const productosPorCredito = new Map();
   if (ventaIds.length) {
-    const { data: detalles } = await sb.from('venta_detalles').select('venta_id,producto_nombre,cantidad').in('venta_id', ventaIds);
+    const detalles = await leerPorIds(ventaIds, ch => sb.from('venta_detalles').select('id,venta_id,producto_nombre,cantidad').in('venta_id', ch).order('id'), 'productos de créditos');
     const porVenta = new Map();
     (detalles||[]).forEach(d => {
       if (!porVenta.has(d.venta_id)) porVenta.set(d.venta_id, []);
@@ -1959,14 +2050,14 @@ async function fetchCreditosHistorialPagos() {
   }
   R.cache.creditosProductos = productosPorCredito;
 
-  const { data: cuotas } = await sb.from('creditos_cuotas')
-    .select('credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,saldo,estado,updated_at')
-    .in('credito_id', ids)
-    .order('numero');
+  const cuotas = await leerPorIds(ids, ch => sb.from('creditos_cuotas')
+    .select('id,credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,saldo,estado,updated_at')
+    .in('credito_id', ch)
+    .order('numero').order('id'), 'cuotas de créditos');
 
-  const clienteIds = [...new Set(lista.map(c => c.cliente_id))];
-  const { data: clientesData } = await sb.from('clientes').select('id,nombre,apellido,telefono,correo')
-    .in('id', clienteIds.length ? clienteIds : ['00000000-0000-0000-0000-000000000000']);
+  const clienteIds = [...new Set(lista.map(c => c.cliente_id).filter(Boolean))];
+  const clientesData = await leerPorIds(clienteIds, ch => sb.from('clientes').select('id,nombre,apellido,telefono,correo')
+    .in('id', ch).order('id'), 'clientes de créditos');
   const clienteMap = new Map((clientesData||[]).map(c => [c.id, c]));
 
   return (cuotas||[]).map(cu => {
@@ -2174,9 +2265,9 @@ async function loadCreditosTab() {
 
     // Ventas a crédito por mes (solo tipo='venta', este año, monto del producto sin intereses/impuestos)
     const year = new Date().getFullYear();
-    const { data: creditosAnio } = await sb.from('creditos').select('tipo,capital_financiado,fecha_inicio')
+    const creditosAnio = await leerTodo(() => sb.from('creditos').select('id,tipo,capital_financiado,fecha_inicio')
       .eq('auth_user_id', R.userId).eq('tipo','venta')
-      .gte('fecha_inicio', `${year}-01-01`).lte('fecha_inicio', `${year}-12-31`);
+      .gte('fecha_inicio', `${year}-01-01`).lte('fecha_inicio', `${year}-12-31`).order('id'), 'créditos del año');
     const mesesLabel = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
     const porMes = new Array(12).fill(0);
     (creditosAnio||[]).forEach(c => {
@@ -2356,12 +2447,12 @@ async function loadHotelTab() {
   try {
     const { from, to } = getDateRange();
 
-    const [{ data: reservas }, { data: habitaciones }] = await Promise.all([
-      sb.from('hotel_reservaciones').select('*, hotel_habitaciones(numero)')
+    const [reservas, habitaciones] = await Promise.all([
+      leerTodo(() => sb.from('hotel_reservaciones').select('*, hotel_habitaciones(numero)')
         .eq('auth_user_id', R.userId).neq('estado', 'cancelada')
         .gte('fecha_entrada', from).lte('fecha_entrada', to)
-        .order('fecha_entrada', { ascending: false }),
-      sb.from('hotel_habitaciones').select('id').eq('auth_user_id', R.userId).eq('activo', true),
+        .order('fecha_entrada', { ascending: false }).order('id'), 'reservaciones'),
+      leerTodo(() => sb.from('hotel_habitaciones').select('id').eq('auth_user_id', R.userId).eq('activo', true).order('id'), 'habitaciones'),
     ]);
 
     const lista = reservas || [];
@@ -2608,7 +2699,10 @@ async function ejecutarExportacion(tipo, formato, clienteId, clienteNombre) {
   const ext = formato === 'xlsx' ? 'xlsx' : 'pdf';
   showToast(`Generando ${tipo}.${ext}…`, 'info');
   try {
+    R.fallaLectura = false;
     await ensureCaches();
+    // Candado: un reporte incompleto NUNCA se descarga como si estuviera completo.
+    if (R.fallaLectura) throw new Error('Faltaron datos al leer: no se generó el archivo para evitar un reporte incompleto.');
     if (ext === 'xlsx') await exportarExcel(tipo, clienteId, clienteNombre);
     else                await exportarPDF(tipo, clienteId, clienteNombre);
     showToast(`✅ ${tipo}.${ext} descargado`, 'success');
@@ -3000,10 +3094,13 @@ function filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, paraExc
   return cols.map(c => {
     if (c.key === 'codigosBarras') return '';
     if (c.key === 'productos') return `Uds. producto: ${fmtNum(totUnidadesProd)}`;
-    if (c.key === 'subTotal')     return paraExcel ? totMonto : fmt(totMonto);
-    if (c.key === 'subTotalNeto') { const n = totMonto - (totImpuesto||0); return paraExcel ? n : fmt(n); }
-    if (c.key === 'total')     return paraExcel ? totMonto : fmt(totMonto);
-    if (c.key === 'ganancia')  return paraExcel ? totGanancia : fmt(totGanancia);
+    // En Excel el total también se convierte a la moneda de visualización
+    // (igual que cada fila, vía celdaXLSX) para que cuadre con el PDF.
+    const cx = (n) => convertirParaMostrar(Number(n||0), R.moneda);
+    if (c.key === 'subTotal')     return paraExcel ? cx(totMonto) : fmt(totMonto);
+    if (c.key === 'subTotalNeto') { const n = totMonto - (totImpuesto||0); return paraExcel ? cx(n) : fmt(n); }
+    if (c.key === 'total')     return paraExcel ? cx(totMonto) : fmt(totMonto);
+    if (c.key === 'ganancia')  return paraExcel ? cx(totGanancia) : fmt(totGanancia);
     if (!etiquetaPuesta) { etiquetaPuesta = true; return 'TOTALES'; }
     return '';
   });
@@ -3064,6 +3161,64 @@ function headersPDF(cols)  { return cols.map(c => c.label); }
 function headersXLSX(cols) { return cols.map(c => c.tipo==='moneda' ? `${c.label} (${sym()})` : c.label); }
 function formatosXLSX(cols) {
   return cols.map(c => c.tipo==='moneda' ? NUM_MONEDA : c.tipo==='entero' ? NUM_ENTERO : c.tipo==='cantidad' ? NUM_CANT : c.tipo==='fecha' ? NUM_FECHA : null);
+}
+
+// ---- TOTALES por tipo de reporte (Fase 2) ----
+// Columnas que se suman en la fila de TOTALES de cada reporte. Solo se
+// suman las columnas que estén activas en "Configurar exportaciones".
+const COLS_SUMA = {
+  compras:    ['cantidad','subTotal','subTotalNeto','total'],
+  clientes:   ['compras','totalGastado'],
+  inventario: ['stock','valorTotal'],
+  activos:    ['costo','depreciacion','valorLibros'],
+  gastos:     ['monto'],
+  salarios:   ['monto'],
+  creditos:   ['monto_cuota','pagado','saldo'],
+};
+const UNIDAD_REGISTROS = { compras:'compras', clientes:'clientes', inventario:'productos', activos:'activos', gastos:'gastos', salarios:'pagos', creditos:'cuotas' };
+// Suma por columna (null = esa columna no se suma). Ignora celdas vacías
+// (p. ej. "Total compra" solo va en la 1.ª línea de cada compra).
+function sumasReporte(tipoRep, cols, filas) {
+  const claves = COLS_SUMA[tipoRep] || [];
+  return cols.map(c => claves.includes(c.key)
+    ? filas.reduce((a, f) => a + (typeof f[c.key] === 'number' ? f[c.key] : 0), 0)
+    : null);
+}
+function colEtiquetaTotales(cols, sumas) {
+  const i = sumas.findIndex(s => s === null);
+  return i < 0 ? -1 : i;
+}
+function textoTotales(tipoRep, n) { return `TOTALES (${fmtNum(n)} ${UNIDAD_REGISTROS[tipoRep] || 'registros'})`; }
+// Filas de pie para jsPDF-autotable. Devuelve [] si no hay datos.
+function footPDF(tipoRep, cols, filas, n) {
+  if (!filas.length || !cols.length) return [];
+  const sumas = sumasReporte(tipoRep, cols, filas);
+  if (!sumas.some(s => s !== null)) return [];
+  const ie = colEtiquetaTotales(cols, sumas);
+  const out = [cols.map((c, i) => sumas[i] !== null ? celdaPDF(sumas[i], c.tipo, '') : (i === ie ? textoTotales(tipoRep, n) : ''))];
+  if (tipoRep === 'compras') {
+    const ia = cols.findIndex(c => c.key === 'subTotal'), ib = cols.findIndex(c => c.key === 'subTotalNeto');
+    if (ia >= 0 && ib >= 0) {
+      const fila = cols.map(() => '');
+      const ie2 = ie >= 0 && ie !== ia && ie !== ib ? ie : (ia > 0 ? 0 : -1);
+      if (ie2 >= 0 && ie2 !== ia) fila[ie2] = 'IVA incluido en compras';
+      fila[ia] = celdaPDF(sumas[ia] - sumas[ib], 'moneda', '');
+      out.push(fila);
+    }
+  }
+  return out;
+}
+// Opciones de totales para appendSheetXLSX (fórmulas SUBTOTAL: respetan filtros).
+function totalesXLSX(tipoRep, cols, filas, n) {
+  if (!filas.length || !cols.length) return null;
+  const sumas = sumasReporte(tipoRep, cols, filas);
+  if (!sumas.some(s => s !== null)) return null;
+  const opts = { sumas, colEtiqueta: colEtiquetaTotales(cols, sumas), etiqueta: textoTotales(tipoRep, n) };
+  if (tipoRep === 'compras') {
+    const ia = cols.findIndex(c => c.key === 'subTotal'), ib = cols.findIndex(c => c.key === 'subTotalNeto');
+    if (ia >= 0 && ib >= 0) opts.iva = { colA: ia, colB: ib, colEtiqueta: opts.colEtiqueta >= 0 && opts.colEtiqueta !== ia ? opts.colEtiqueta : 0, etiqueta: 'IVA incluido en compras' };
+  }
+  return opts;
 }
 
 /* ---- UI: pintar los checkboxes de configuración en la pestaña Exportar ---- */
@@ -3326,6 +3481,7 @@ function docHeader(tipo) {
 }
 
 /* ---- PDF ---- */
+const FOOT_STYLE_PDF = { fillColor:[230,230,250], textColor:[30,30,40], fontStyle:'bold' };
 /* FIX: el "Reporte General" solo mostraba el resumen financiero y
    ventas — al llegar a la sección de ventas se reasignaba la
    variable `tipo` a 'ventas-section', y como los bloques de
@@ -3365,6 +3521,10 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     doc.text(`${h.biz} — Reporte ${esGeneral ? 'General (Completo)' : `de ${tituloTipo(tipo)}`}`, textoX, 13);
     doc.setFontSize(9); doc.setFont(undefined,'normal');
     doc.text(`Período: ${h.periodo} | Moneda: ${h.moneda} | Generado: ${h.ahora}`, W-10, 13, { align:'right' });
+    if (tipo === 'creditos') {
+      doc.setFontSize(7.5);
+      doc.text(`Filtro: ${clienteNombre ? 'Cliente ' + clienteNombre : 'Todos los clientes con crédito'}`, textoX, 18);
+    }
   }
 
   pintarCabecera();
@@ -3432,9 +3592,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       doc.text('No hay columnas seleccionadas para Compras (revisa "Configurar exportaciones").', 10, startY);
       startY += 10;
     } else {
-      const rows = filasCompraExport(cols).map(f => filaAPDF(f, cols));
+      const filasC = filasCompraExport(cols);
+      const rows = filasC.map(f => filaAPDF(f, cols));
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        foot: footPDF('compras', cols, filasC, R.cache.compras.length), showFoot:'lastPage', footStyles:FOOT_STYLE_PDF,
         headStyles:{fillColor:[249,115,22]}, margin:{left:10,right:10}, styles:{fontSize:8} });
       startY = doc.lastAutoTable.finalY + 10;
     }
@@ -3454,9 +3616,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       doc.text('No hay columnas seleccionadas para Clientes (revisa "Configurar exportaciones").', 10, startY);
       startY += 10;
     } else {
-      const rows = R.cache.clientes.map(c => filaAPDF(filaCliente(c), cols));
+      const filasCl = R.cache.clientes.map(c => filaCliente(c));
+      const rows = filasCl.map(f => filaAPDF(f, cols));
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        foot: footPDF('clientes', cols, filasCl, filasCl.length), showFoot:'lastPage', footStyles:FOOT_STYLE_PDF,
         headStyles:{fillColor:[34,197,94]}, margin:{left:10,right:10}, styles:{fontSize:8} });
       startY = doc.lastAutoTable.finalY + 10;
     }
@@ -3477,9 +3641,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       doc.text('No hay columnas seleccionadas para Inventario (revisa "Configurar exportaciones").', 10, startY);
       startY += 10;
     } else {
-      const rows = prods.map(p => filaAPDF(filaProducto(p), cols));
+      const filasP = prods.map(p => filaProducto(p));
+      const rows = filasP.map(f => filaAPDF(f, cols));
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        foot: footPDF('inventario', cols, filasP, filasP.length), showFoot:'lastPage', footStyles:FOOT_STYLE_PDF,
         headStyles:{fillColor:[8,182,212]}, margin:{left:10,right:10}, styles:{fontSize:8} });
       startY = doc.lastAutoTable.finalY + 10;
     }
@@ -3493,9 +3659,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       doc.text('No hay columnas seleccionadas para Activos Fijos (revisa "Configurar exportaciones").', 10, startY);
       startY += 10;
     } else {
-      const rows = (R.cache.activos||[]).map(a => filaAPDF(filaActivoFijo(a), cols));
+      const filasA = (R.cache.activos||[]).map(a => filaActivoFijo(a));
+      const rows = filasA.map(f => filaAPDF(f, cols));
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        foot: footPDF('activos', cols, filasA, filasA.length), showFoot:'lastPage', footStyles:FOOT_STYLE_PDF,
         headStyles:{fillColor:[8,182,212]}, margin:{left:10,right:10}, styles:{fontSize:8} });
       startY = doc.lastAutoTable.finalY + 10;
     }
@@ -3514,9 +3682,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       doc.setFontSize(9); doc.setTextColor(150,150,150);
       doc.text('No hay columnas seleccionadas para Gastos (revisa "Configurar exportaciones").', 10, startY);
     } else {
-      const rows = R.cache.gastos.map(g => filaAPDF(filaGasto(g), cols));
+      const filasG = R.cache.gastos.map(g => filaGasto(g));
+      const rows = filasG.map(f => filaAPDF(f, cols));
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        foot: footPDF('gastos', cols, filasG, filasG.length), showFoot:'lastPage', footStyles:FOOT_STYLE_PDF,
         headStyles:{fillColor:[239,68,68]}, margin:{left:10,right:10}, styles:{fontSize:8} });
     }
   }
@@ -3533,9 +3703,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       doc.setFontSize(9); doc.setTextColor(150,150,150);
       doc.text('No hay columnas seleccionadas para Salarios (revisa "Configurar exportaciones").', 10, startY);
     } else {
-      const rows = (R.cache.salarios||[]).map(s => filaAPDF(filaSalario(s), cols));
+      const filasS = (R.cache.salarios||[]).map(x => filaSalario(x));
+      const rows = filasS.map(f => filaAPDF(f, cols));
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], theme:'striped',
+        foot: footPDF('salarios', cols, filasS, filasS.length), showFoot:'lastPage', footStyles:FOOT_STYLE_PDF,
         headStyles:{fillColor:[90,90,244]}, margin:{left:10,right:10}, styles:{fontSize:8} });
     }
   }
@@ -3610,6 +3782,7 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       }
       doc.autoTable({ startY, head:[headersPDF(cols)],
         body:rows.length?rows:[[`Sin cuotas para ${nombreCliente}`, ...Array(cols.length-1).fill('')]], theme:'striped',
+        foot: footPDF('creditos', cols, filasCliente.map(f => filaCreditoPago(f)), filasCliente.length), showFoot:'lastPage', footStyles:FOOT_STYLE_PDF,
         didParseCell: (data) => {
           if (data.section === 'body' && filasSeparadoras.has(data.row.index)) {
             data.cell.styles.fontStyle = 'bold';
@@ -3639,6 +3812,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
       startY,
       head:[['N° crédito','Cliente','Tipo','Monto producto/capital','Total con impuestos e intereses','Ganancia estimada','Estado']],
       body: rows.length ? rows : [['Sin créditos en este período','','','','','','']],
+      foot: filas.length ? [[`TOTALES (${fmtNum(filas.length)} créditos)`, '', '',
+        fmt(filas.reduce((a,f)=>a+Number(f.montoProducto||0),0)),
+        fmt(filas.reduce((a,f)=>a+Number(f.totalCuotas||0),0)),
+        fmt(filas.reduce((a,f)=>a+Number(f.gananciaEstimada||0),0)), '']] : [],
+      showFoot:'lastPage', footStyles:FOOT_STYLE_PDF,
       theme:'striped', headStyles:{fillColor:[168,85,247]}, margin:{left:10,right:10}, styles:{fontSize:8},
     });
     startY = doc.lastAutoTable.finalY + 10;
@@ -3669,7 +3847,7 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
    formato numérico por columna, ancho autoajustado, fila fija y
    autofiltro. `formatos` es un array paralelo a `headers`: null para
    texto, o un formato numérico de Excel (ej. '#,##0.00') para números. */
-function appendSheetXLSX(wb, nombreHoja, headers, rows, formatos) {
+function appendSheetXLSX(wb, nombreHoja, headers, rows, formatos, opts) {
   const aoa = [headers, ...rows];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
 
@@ -3687,6 +3865,41 @@ function appendSheetXLSX(wb, nombreHoja, headers, rows, formatos) {
     const maxLen = rows.reduce((m, r) => Math.max(m, String(r[ci] ?? '').length), h.length);
     return { wch: Math.min(Math.max(maxLen + 2, 10), 42) };
   });
+
+  // FILA DE TOTALES (fuera del autofiltro, tras una fila en blanco, para que
+  // al ordenar/filtrar nunca se mezcle con los datos). Con `sumas` usa
+  // fórmulas SUBTOTAL(109) (suman solo lo visible al filtrar); con `fija`
+  // pone valores ya calculados (p. ej. Ventas).
+  if (opts && rows.length) {
+    const ult = rows.length + 1;           // última fila de datos (1-based)
+    const rt  = rows.length + 2;           // fila de totales (0-based)
+    const col = XLSX.utils.encode_col;
+    const poner = (r, c, cell) => { ws[XLSX.utils.encode_cell({ r, c })] = cell; };
+    let ultimaR = rt;
+    if (opts.fija) {
+      opts.fija.forEach((v, ci) => {
+        if (v === '' || v === null || v === undefined) return;
+        const num = typeof v === 'number';
+        poner(rt, ci, num ? { t:'n', v, z: formatos[ci] || undefined } : { t:'s', v:String(v) });
+      });
+    } else if (opts.sumas) {
+      opts.sumas.forEach((sm, ci) => {
+        if (sm === null) return;
+        const L = col(ci);
+        const cache = rows.reduce((a, row) => a + (typeof row[ci] === 'number' ? row[ci] : 0), 0);
+        poner(rt, ci, { t:'n', f:`SUBTOTAL(109,${L}2:${L}${ult})`, v:cache, z: formatos[ci] || undefined });
+      });
+      if (opts.colEtiqueta >= 0 && !opts.sumas[opts.colEtiqueta]) poner(rt, opts.colEtiqueta, { t:'s', v:opts.etiqueta });
+      if (opts.iva) {
+        const La = col(opts.iva.colA), Lb = col(opts.iva.colB), tr = rt + 1;
+        const ca = ws[XLSX.utils.encode_cell({ r:rt, c:opts.iva.colA })], cb = ws[XLSX.utils.encode_cell({ r:rt, c:opts.iva.colB })];
+        poner(rt + 1, opts.iva.colEtiqueta, { t:'s', v:opts.iva.etiqueta });
+        poner(rt + 1, opts.iva.colA, { t:'n', f:`${La}${tr}-${Lb}${tr}`, v:(ca?.v||0)-(cb?.v||0), z: formatos[opts.iva.colA] || undefined });
+        ultimaR = rt + 1;
+      }
+    }
+    ws['!ref'] = XLSX.utils.encode_range({ s:{ r:0, c:0 }, e:{ r:ultimaR, c:Math.max(headers.length - 1, 0) } });
+  }
 
   // Fila de encabezado congelada, para desplazarse sin perderla de vista
   ws['!freeze'] = { xSplit: '0', ySplit: '1', topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
@@ -3714,14 +3927,17 @@ function hojaVentasXLSX(wb) {
   const filas  = filasVentaExport(cols, detMap);
   const rows   = filas.map(f => filaAXLSX(f, cols));
   const totImpuesto = R.cache.ventas.reduce((s,v)=>s+Number(v.impuesto||0),0);
+  let optsTot = null;
   if (rows.length) {
     const totUnidadesProd = totalUnidadesProducto(detMap);
     const totMonto        = R.cache.ventas.reduce((s,v)=>s+Number(v.total||0),0);
     const totGanancia     = R.cache.ventas.reduce((s,v)=>s+Number(v.ganancia||0),0);
-    rows.push(filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, true, totImpuesto));
+    // Mismos valores de siempre, pero fuera del autofiltro y ya en la
+    // moneda de visualización (antes iban pegados a los datos y sin convertir).
+    optsTot = { fija: filaTotalesVentas(cols, totUnidadesProd, totMonto, totGanancia, true, totImpuesto) };
   }
   appendSheetXLSX(wb, 'Ventas', headersXLSX(cols),
-    rows.length?rows:[['Sin datos en este período', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+    rows.length?rows:[['Sin datos en este período', ...Array(cols.length-1).fill('')]], formatosXLSX(cols), optsTot);
 }
 
 function hojaComprasXLSX(wb) {
@@ -3730,9 +3946,11 @@ function hojaComprasXLSX(wb) {
     appendSheetXLSX(wb, 'Compras', ['Aviso'], [['No hay columnas seleccionadas para Compras (revisa "Configurar exportaciones").']], [null]);
     return;
   }
-  const rows = filasCompraExport(cols).map(f => filaAXLSX(f, cols));
+  const filasC = filasCompraExport(cols);
+  const rows = filasC.map(f => filaAXLSX(f, cols));
   appendSheetXLSX(wb, 'Compras', headersXLSX(cols),
-    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols),
+    totalesXLSX('compras', cols, filasC, R.cache.compras.length));
 }
 
 function hojaClientesXLSX(wb) {
@@ -3741,9 +3959,11 @@ function hojaClientesXLSX(wb) {
     appendSheetXLSX(wb, 'Clientes', ['Aviso'], [['No hay columnas seleccionadas para Clientes (revisa "Configurar exportaciones").']], [null]);
     return;
   }
-  const rows = R.cache.clientes.map(c => filaAXLSX(filaCliente(c), cols));
+  const filasCl = R.cache.clientes.map(c => filaCliente(c));
+  const rows = filasCl.map(f => filaAXLSX(f, cols));
   appendSheetXLSX(wb, 'Clientes', headersXLSX(cols),
-    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols),
+    totalesXLSX('clientes', cols, filasCl, filasCl.length));
 }
 
 function hojaInventarioXLSX(wb) {
@@ -3753,9 +3973,11 @@ function hojaInventarioXLSX(wb) {
     return;
   }
   const prods = (R.cache.productos||[]).filter(p=>p.tipo==='producto'&&p.activo);
-  const rows = prods.map(p => filaAXLSX(filaProducto(p), cols));
+  const filasP = prods.map(p => filaProducto(p));
+  const rows = filasP.map(f => filaAXLSX(f, cols));
   appendSheetXLSX(wb, 'Inventario', headersXLSX(cols),
-    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols),
+    totalesXLSX('inventario', cols, filasP, filasP.length));
 }
 
 function hojaActivosXLSX(wb) {
@@ -3764,9 +3986,11 @@ function hojaActivosXLSX(wb) {
     appendSheetXLSX(wb, 'Activos Fijos', ['Aviso'], [['No hay columnas seleccionadas para Activos Fijos (revisa "Configurar exportaciones").']], [null]);
     return;
   }
-  const rows = (R.cache.activos||[]).map(a => filaAXLSX(filaActivoFijo(a), cols));
+  const filasA = (R.cache.activos||[]).map(a => filaActivoFijo(a));
+  const rows = filasA.map(f => filaAXLSX(f, cols));
   appendSheetXLSX(wb, 'Activos Fijos', headersXLSX(cols),
-    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols),
+    totalesXLSX('activos', cols, filasA, filasA.length));
 }
 
 function hojaGastosXLSX(wb) {
@@ -3775,9 +3999,11 @@ function hojaGastosXLSX(wb) {
     appendSheetXLSX(wb, 'Gastos', ['Aviso'], [['No hay columnas seleccionadas para Gastos (revisa "Configurar exportaciones").']], [null]);
     return;
   }
-  const rows = R.cache.gastos.map(g => filaAXLSX(filaGasto(g), cols));
+  const filasG = R.cache.gastos.map(g => filaGasto(g));
+  const rows = filasG.map(f => filaAXLSX(f, cols));
   appendSheetXLSX(wb, 'Gastos', headersXLSX(cols),
-    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols),
+    totalesXLSX('gastos', cols, filasG, filasG.length));
 }
 
 function hojaSalariosXLSX(wb) {
@@ -3786,9 +4012,11 @@ function hojaSalariosXLSX(wb) {
     appendSheetXLSX(wb, 'Salarios', ['Aviso'], [['No hay columnas seleccionadas para Salarios (revisa "Configurar exportaciones").']], [null]);
     return;
   }
-  const rows = (R.cache.salarios||[]).map(s => filaAXLSX(filaSalario(s), cols));
+  const filasS = (R.cache.salarios||[]).map(x => filaSalario(x));
+  const rows = filasS.map(f => filaAXLSX(f, cols));
   appendSheetXLSX(wb, 'Salarios', headersXLSX(cols),
-    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+    rows.length?rows:[['Sin datos', ...Array(cols.length-1).fill('')]], formatosXLSX(cols),
+    totalesXLSX('salarios', cols, filasS, filasS.length));
 }
 
 // Historial de pagos de UN cliente (nunca mezcla clientes). `clienteId`
@@ -3841,8 +4069,10 @@ function hojaCreditosXLSX(wb, clienteId, clienteNombre) {
       rows = [];
     }
   }
+  const filasCr = filasCliente.map(f => filaCreditoPago(f));
   appendSheetXLSX(wb, 'Créditos', headersXLSX(cols),
-    rows.length?rows:[[`Sin cuotas para ${nombreCliente}`, ...Array(cols.length-1).fill('')]], formatosXLSX(cols));
+    rows.length?rows:[[`Sin cuotas para ${nombreCliente}`, ...Array(cols.length-1).fill('')]], formatosXLSX(cols),
+    totalesXLSX('creditos', cols, filasCr, filasCr.length));
 
   // Hoja aparte con los productos financiados de cada crédito incluido
   // — antes solo se veía el monto, nunca qué se compró al crédito.
@@ -3863,21 +4093,24 @@ function hojaCreditosResumenXLSX(wb) {
     `Total con impuestos e intereses (${sym()})`, `Ganancia estimada (${sym()})`, 'Estado'];
   const rows = filas.map(f => [
     f.numero_credito, f.cliente, f.tipo==='venta'?'Por venta':'Financiero',
-    Number(f.montoProducto||0), Number(f.totalCuotas||0), Number(f.gananciaEstimada||0), f.estado,
+    convertirParaMostrar(Number(f.montoProducto||0), R.moneda), convertirParaMostrar(Number(f.totalCuotas||0), R.moneda),
+    convertirParaMostrar(Number(f.gananciaEstimada||0), R.moneda), f.estado,
   ]);
   appendSheetXLSX(wb, 'Créditos (resumen)', headers,
     rows.length?rows:[['Sin créditos en este período','','','','','','']],
-    [null, null, null, NUM_MONEDA, NUM_MONEDA, NUM_MONEDA, null]);
+    [null, null, null, NUM_MONEDA, NUM_MONEDA, NUM_MONEDA, null],
+    rows.length ? { sumas:[null,null,null,0,0,0,null], colEtiqueta:0, etiqueta:`TOTALES (${fmtNum(rows.length)} créditos)` } : null);
 }
 
 function hojaResumenXLSX(wb) {
   const r = R.cache.resumen || {};
+  const cx = (n) => convertirParaMostrar(Number(n||0), R.moneda);
   const headers = ['Concepto', `Monto (${sym()})`];
   const rows = [
-    ['Ventas totales', Number(r.ventas||0)], ['Compras totales', Number(r.compras||0)],
-    ['Total gastos', Number(r.gastos||0)], ['Ganancia bruta', Number(r.gananciaBruta||0)],
-    ['Otros ingresos', Number(r.otrosIngresos||0)], ['Otros egresos', Number(r.otrosEgresos||0)],
-    ['Ganancia neta', Number(r.gananciaNeta||0)], ['Caja disponible', Number(r.capital||0)],
+    ['Ventas totales', cx(r.ventas)], ['Compras totales', cx(r.compras)],
+    ['Total gastos', cx(r.gastos)], ['Ganancia bruta', cx(r.gananciaBruta)],
+    ['Otros ingresos', cx(r.otrosIngresos)], ['Otros egresos', cx(r.otrosEgresos)],
+    ['Ganancia neta', cx(r.gananciaNeta)], ['Caja disponible', cx(r.capital)],
   ];
   appendSheetXLSX(wb, 'Resumen', headers, rows, [null, NUM_MONEDA]);
 }
@@ -3897,6 +4130,17 @@ async function exportarExcel(tipo, clienteId, clienteNombre) {
   if (tipo==='salarios'   || esGeneral) hojaSalariosXLSX(wb);
   if (tipo==='creditos')  hojaCreditosXLSX(wb, clienteId, clienteNombre);
   if (esGeneral)          hojaCreditosResumenXLSX(wb);
+
+  // Hoja "Parámetros": con qué datos y filtros se generó este archivo.
+  const hp = docHeader(tipo);
+  const filasParam = [
+    ['Negocio', hp.biz], ['Reporte', esGeneral ? 'General (Completo)' : tituloTipo(tipo)],
+    ['Período', hp.periodo], ['Moneda', hp.moneda], ['Generado', hp.ahora],
+  ];
+  if (tipo === 'creditos') filasParam.push(['Cliente', clienteNombre || 'Todos los clientes con crédito']);
+  filasParam.push(['Nota', 'Las filas TOTALES usan SUBTOTAL: al filtrar columnas en Excel suman solo lo visible.']);
+  appendSheetXLSX(wb, 'Parámetros', ['Parámetro', 'Valor'], filasParam, [null, null]);
+  wb.Workbook = wb.Workbook || {}; wb.Workbook.CalcPr = { fullCalcOnLoad: true };
 
   const sufijoCliente = tipo === 'creditos' ? `_${slugify(clienteNombre)}` : '';
   XLSX.writeFile(wb, `negocio360_${tipo}${sufijoCliente}_${todayISO()}.xlsx`);
