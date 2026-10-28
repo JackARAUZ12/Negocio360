@@ -4,15 +4,19 @@
    bodegas del MISMO grupo con un clic, sin correo ni contraseñas
    (usa la función del servidor grupo-cambiar-cuenta, pase de un solo uso).
    - Para volver a la Central se usa el mismo acceso con código que ya existía.
-   - FASE PILOTO: solo aparece en las cuentas listadas en PILOTO.
+   - Aparece en la Central y en cada sucursal/bodega de cualquier grupo con 2 o más cuentas.
+   - Al cambiar se lleva el perfil activo (sin pedir el código otra vez). Para volver
+     a la Central sin código, el perfil activo debe ser de administrador; si no, se
+     pide el código como siempre.
    - En "Ver como cliente" (solo lectura) no hace nada.
    ============================================================ */
 (function () {
   'use strict';
   var URL_SB = 'https://zvlincmqmmoclqhykejv.supabase.co';
   var KEY_SB = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
-  // Cuenta de pruebas NEGOCIO360 (Central) y sus 2 bodegas.
-  var PILOTO = ['b699660c-b808-4f0a-9b24-d0df60a92e83', '9d4f7f0f-4747-4142-ab01-bfa1794739fb', '71b37c58-3687-4294-8eee-b65ba87c2fca'];
+  var CLAVE_PERFIL = 'n360_perfil_activo';
+  var CLAVE_RESPALDO = 'n360_central_session_backup';
+  var CLAVE_RESPALDO_LS = 'n360_central_session_backup_ls';
 
   if (window.N360SelectorCuenta) return;
   if (window.N360VerComo && window.N360VerComo.activo) return;
@@ -27,7 +31,7 @@
       sb = window.supabase.createClient(URL_SB, KEY_SB);
       var r = await sb.auth.getSession();
       yo = r && r.data && r.data.session && r.data.session.user;
-      if (!yo || PILOTO.indexOf(yo.id) < 0) return;
+      if (!yo) return;
       esHija = /@negocio360\.internal$/i.test(yo.email || '');
       var l = await sb.rpc('listar_sucursales_grupo');
       if (l.error || !Array.isArray(l.data) || l.data.length < 2) return;
@@ -38,8 +42,18 @@
 
   function ponerBoton(intento) {
     var nav = document.querySelector('#sidebar .sidebar-nav, .sidebar-nav');
-    if (!nav) { if (intento < 20) setTimeout(function () { ponerBoton(intento + 1); }, 250); return; }
     if (document.getElementById('n360-selector-cuenta')) return;
+    if (!nav) {
+      if (intento < 20) { setTimeout(function () { ponerBoton(intento + 1); }, 250); return; }
+      // Sin menú lateral en esta página: botón flotante.
+      var f = document.createElement('button');
+      f.id = 'n360-selector-cuenta';
+      f.textContent = 'Cambiar de cuenta';
+      f.style.cssText = 'position:fixed;left:16px;bottom:56px;z-index:400;padding:7px 12px;border-radius:20px;border:1px solid #d6d6d6;background:#fff;color:#111;font:12px system-ui;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.1)';
+      f.addEventListener('click', abrir);
+      document.body.appendChild(f);
+      return;
+    }
     var it = document.createElement('div');
     it.id = 'n360-selector-cuenta';
     it.className = 'nav-item';
@@ -80,6 +94,51 @@
     return false; // la cuenta hija no sabe su fila: el servidor rechaza si es ella misma
   }
 
+
+  function perfilActual() {
+    try {
+      var raw = sessionStorage.getItem(CLAVE_PERFIL);
+      if (!raw) return null;
+      var p = JSON.parse(raw);
+      return (p && p.authUserId === yo.id) ? p : null;
+    } catch (_) { return null; }
+  }
+  function llevarPerfil(p, authId) {
+    if (!p) return;
+    sessionStorage.setItem(CLAVE_PERFIL, JSON.stringify({
+      authUserId: authId, id: p.id, nombre: p.nombre, tipo: p.tipo, modulos: p.modulos || [],
+    }));
+  }
+  function leerRespaldo() {
+    var raw = sessionStorage.getItem(CLAVE_RESPALDO);
+    if (!raw) {
+      try {
+        var ls = JSON.parse(localStorage.getItem(CLAVE_RESPALDO_LS) || 'null');
+        if (ls && ls.sucursal_auth_id === yo.id && (Date.now() - (ls.guardado || 0)) < 30 * 86400000) raw = JSON.stringify(ls);
+      } catch (_) { raw = null; }
+    }
+    try { return raw ? JSON.parse(raw) : null; } catch (_) { return null; }
+  }
+
+  // Vuelve a la Central con la sesión guardada, sin pedir el código (solo si el perfil
+  // activo es administrador). Devuelve true si ya se está navegando; false => usar el código.
+  async function volverSinCodigo() {
+    try {
+      var perfil = perfilActual();
+      var bk = leerRespaldo();
+      if (!perfil || !bk) return false;
+      var r = await sb.auth.setSession({ access_token: bk.access_token, refresh_token: bk.refresh_token });
+      if (r.error || !r.data || !r.data.session) return false;
+      var centralId = r.data.session.user.id;
+      sessionStorage.removeItem(CLAVE_RESPALDO);
+      try { localStorage.removeItem(CLAVE_RESPALDO_LS); } catch (_) {}
+      sessionStorage.removeItem('n360_sucursal_modulos');
+      llevarPerfil(perfil, centralId);
+      location.href = 'dashboard.html';
+      return true;
+    } catch (_) { return false; }
+  }
+
   function error(msg) { var e = document.getElementById('n360-sel-err'); if (e) e.textContent = msg; }
 
   async function cambiar(sucursalId, boton) {
@@ -88,6 +147,7 @@
     // Volver a la Central: el mismo acceso con código de siempre.
     if (s.es_central) {
       if (!esHija) return;
+      if (perfilActual() && perfilActual().tipo === 'admin' && await volverSinCodigo()) return;
       var cfg = window.PerfilesGuardConfig;
       if (cfg && cfg.volverACentral) { var mm = document.getElementById('n360-sel-modal'); if (mm) mm.remove(); cfg.volverACentral(s.nombre); }
       else error('No se pudo abrir el acceso a la Central.');
@@ -106,6 +166,7 @@
           modulos = p.data.modulos_permitidos || [];
         }
       }
+      var perfilLlevar = perfilActual();
       var resp = await sb.functions.invoke('grupo-cambiar-cuenta', { body: { sucursal_id: s.id } });
       if (resp.error || !resp.data || !resp.data.token_hash) {
         var msg = resp.data && resp.data.error;
@@ -120,6 +181,7 @@
           nombre_negocio: (lista.find(function (x) { return x.es_central; }) || {}).nombre || 'tu cuenta principal',
         }));
       }
+      var viejoBk = esHija ? leerRespaldo() : null;
       var v = await sb.auth.verifyOtp({ token_hash: resp.data.token_hash, type: 'magiclink' });
       if (v.error || !v.data || !v.data.session || v.data.session.user.id !== resp.data.destino_auth_id) {
         // Seguridad: se vuelve a comprobar de quién es la sesión real.
@@ -129,7 +191,8 @@
       }
       // Copia que sobrevive si se cierra la pestaña (solo desde la Central), para ESTA cuenta.
       try {
-        var bk = sessionStorage.getItem('n360_central_session_backup');
+        var bk = sessionStorage.getItem(CLAVE_RESPALDO);
+        if (!bk && esHija && viejoBk) bk = JSON.stringify(viejoBk);
         if (bk) {
           var b = JSON.parse(bk);
           localStorage.setItem('n360_central_session_backup_ls', JSON.stringify({
@@ -138,6 +201,8 @@
           }));
         }
       } catch (_) {}
+      if (viejoBk && !sessionStorage.getItem(CLAVE_RESPALDO)) sessionStorage.setItem(CLAVE_RESPALDO, JSON.stringify(viejoBk));
+      llevarPerfil(perfilLlevar, resp.data.destino_auth_id);
       if (modulos) sessionStorage.setItem('n360_sucursal_modulos', JSON.stringify(modulos));
       else sessionStorage.removeItem('n360_sucursal_modulos');
       location.href = (resp.data.tipo === 'bodega') ? 'bodega.html' : 'dashboard.html';
