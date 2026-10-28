@@ -2074,6 +2074,94 @@ async function pruebaCRM(browser, base) {
   }
 }
 
+// CRM Fase 2: prospectos y tablero de oportunidades. El valor es un estimado: no crea ventas ni toca Caja.
+async function pruebaOportunidades(browser, base) {
+  console.log('\n▶ CRM: prospectos y tablero de oportunidades');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora', movil = ancho < 500;
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/clientes.html');
+    await page.evaluate(() => { const x = JSON.parse(JSON.stringify(window.__SEED)); const U = x.clientes[0].auth_user_id;
+      x.tutoriales_vistos.push({ auth_user_id: U, modulo_key: 'clientes' });
+      const hace = d => new Date(Date.now() - d * 86400000).toISOString();
+      x.crm_oportunidades = [{ id: 'op-1', auth_user_id: U, cliente_id: x.clientes[0].id, titulo: 'Renovar uniformes', valor_estimado: 800, etapa: 'contactado', etapa_desde: hace(20), created_at: hace(25), updated_at: hace(20) },
+        { id: 'op-x', auth_user_id: 'otro-negocio', prospecto_nombre: 'Ajeno', titulo: 'No es mía', valor_estimado: 99, etapa: 'nuevo', etapa_desde: hace(1), created_at: hace(1), updated_at: hace(1) }];
+      x.crm_tareas = []; x.cliente_interacciones = []; sessionStorage.setItem('__DB', JSON.stringify(x)); });
+    await page.goto(base + '/clientes.html?tab=oportunidades'); await esperarListo(page);
+    await page.waitForSelector('#crm-oportunidades .op-kpis', { timeout: 15000 });
+    const antes = await page.evaluate(() => { const d = JSON.parse(sessionStorage.getItem('__DB')); return { v: (d.ventas || []).length, c: (d.caja_movimientos || []).length, vd: (d.venta_detalles || []).length }; });
+    const kp = await page.textContent('#crm-oportunidades .op-kpis');
+    verificar(kp.includes('En juego (1)') && !(await page.textContent('#crm-oportunidades')).includes('No es mía'), `${tag}: el tablero muestra solo las oportunidades de este negocio`);
+    if (movil) await page.click('[data-op-etapa="contactado"]');
+    verificar((await page.textContent('[data-op="op-1"]')).includes('¡dale seguimiento!'), `${tag}: avisa cuando una oportunidad lleva +14 días sin moverse`);
+    // Nueva oportunidad con prospecto
+    await page.click('[data-op-nueva]');
+    await page.click('#op-e-ok');
+    verificar((await page.textContent('#op-e-err')).includes('nombre'), `${tag}: sin nombre no se guarda y lo explica`);
+    await page.fill('#op-e-pnom', 'Ana López'); await page.fill('#op-e-ptel', '88887777'); await page.fill('#op-e-tit', '50 camisas bordadas');
+    await page.fill('#op-e-val', '1500'); await page.selectOption('#op-e-origen', 'facebook');
+    verificar(await page.evaluate(() => { const c = document.querySelector('#opor-v-editar .crm-caja').getBoundingClientRect(); return c.right <= innerWidth + 1 && c.left >= -1; }), `${tag}: la ventana de oportunidad cabe en la pantalla`);
+    await page.click('#op-e-ok');
+    await page.waitForFunction(() => !document.getElementById('opor-v-editar').classList.contains('abierto'));
+    if (movil) await page.click('[data-op-etapa="nuevo"]');
+    await page.waitForSelector('[data-op-col="nuevo"] .op-card >> text=50 camisas bordadas');
+    let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const ana = db.crm_oportunidades.find(o => o.prospecto_nombre === 'Ana López');
+    verificar(ana && ana.etapa === 'nuevo' && Number(ana.valor_estimado) === 1500 && ana.origen === 'facebook' && !ana.cliente_id, `${tag}: el prospecto queda en "Nuevo" con su valor y de dónde vino`);
+    verificar((await page.textContent('#crm-oportunidades .op-kpis')).includes('En juego (2)'), `${tag}: "En juego" se actualiza`);
+    // Pasar de etapa con el botón
+    await page.click(`[data-op="${ana.id}"] [data-op-mover="contactado"]`);
+    await page.waitForFunction(id => JSON.parse(sessionStorage.getItem('__DB')).crm_oportunidades.find(o => o.id === id).etapa === 'contactado', ana.id);
+    verificar(true, `${tag}: el botón "Contactado ▶" la pasa de etapa`);
+    // Ganar: se guarda como cliente
+    await page.waitForSelector(`[data-op="${ana.id}"] [data-op-ganar]`);
+    await page.click(`[data-op="${ana.id}"] [data-op-ganar]`);
+    verificar(await page.isChecked('#op-g-cli'), `${tag}: al ganar ofrece guardar al prospecto como cliente`);
+    await page.click('#op-g-ok');
+    await page.waitForSelector('#opor-v-ganar a[href="ventas.html"]');
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const anaFin = db.crm_oportunidades.find(o => o.id === ana.id), cliAna = db.clientes.find(c => c.nombre === 'Ana López');
+    verificar(anaFin.etapa === 'ganado' && !!anaFin.cerrada_en && cliAna && cliAna.telefono === '88887777' && anaFin.cliente_id === cliAna.id && cliAna.canal_adquisicion === 'Facebook', `${tag}: ganada → Ana queda como cliente (con teléfono y canal) y ligada a la oportunidad`);
+    verificar(await page.isVisible('#opor-v-ganar a[href="ventas.html"]'), `${tag}: después de ganar ofrece "Ir a Ventas" para cobrar`);
+    await page.click('#opor-v-ganar [data-crm-cerrar]');
+    // Perder con motivo
+    if (movil) await page.click('[data-op-etapa="contactado"]');
+    await page.click('[data-op="op-1"] [data-op-perder]');
+    await page.click('#op-p-ok');
+    verificar((await page.textContent('#op-p-err')).includes('motivo'), `${tag}: para marcar perdida pide el motivo`);
+    await page.click('#op-p-mot [data-m="precio"]'); await page.click('#op-p-ok');
+    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('__DB')).crm_oportunidades.find(o => o.id === 'op-1').etapa === 'perdido');
+    db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    verificar(db.crm_oportunidades.find(o => o.id === 'op-1').motivo_perdida === 'precio', `${tag}: la perdida guarda el motivo (precio)`);
+    await page.waitForSelector('#crm-oportunidades .op-kpis');
+    verificar((await page.textContent('#crm-oportunidades .op-kpis')).includes('5 (50%)'), `${tag}: muestra cuántas ganas de cada 10 (1 ganada y 1 perdida = 5 de 10)`);
+    // Reabrir desde Perdidas
+    await page.click('[data-op-cerr="perdido"]'); await page.click('[data-op-reabrir="op-1"]');
+    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('__DB')).crm_oportunidades.find(o => o.id === 'op-1').etapa === 'negociando');
+    verificar(true, `${tag}: una perdida se puede reabrir (vuelve a Negociando)`);
+    // Arrastrar en computadora
+    if (!movil) {
+      await page.waitForSelector('[data-op="op-1"]');
+      await page.dragAndDrop('[data-op="op-1"]', '[data-op-col="cotizado"]');
+      await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('__DB')).crm_oportunidades.find(o => o.id === 'op-1').etapa === 'cotizado', null, { timeout: 5000 }).catch(() => {});
+      verificar((await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')).crm_oportunidades.find(o => o.id === 'op-1').etapa)) === 'cotizado', `${tag}: se puede arrastrar una tarjeta a otra columna`);
+    }
+    const despues = await page.evaluate(() => { const d = JSON.parse(sessionStorage.getItem('__DB')); return { v: (d.ventas || []).length, c: (d.caja_movimientos || []).length, vd: (d.venta_detalles || []).length }; });
+    verificar(JSON.stringify(antes) === JSON.stringify(despues), `${tag}: el tablero no crea ventas ni movimientos de Caja`);
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag}: el tablero no se desborda`);
+    // Ficha del cliente: sus oportunidades abiertas
+    const cid = await page.evaluate(() => CS.clientes[0].id);
+    await page.evaluate(id => abrirPerfil(id), cid);
+    await page.waitForSelector('#perfil-opor .op-fila');
+    verificar((await page.textContent('#perfil-opor')).includes('Renovar uniformes'), `${tag}: la ficha del cliente muestra sus oportunidades abiertas`);
+    await page.click('#perfil-opor [data-opc-nueva]'); await page.fill('#op-e-tit', 'Mantenimiento anual'); await page.click('#op-e-ok');
+    await page.waitForFunction(() => document.getElementById('perfil-opor').textContent.includes('Mantenimiento anual'), null, { timeout: 5000 }).catch(() => {});
+    verificar((await page.textContent('#perfil-opor')).includes('Mantenimiento anual'), `${tag}: desde la ficha se crea una oportunidad ya ligada al cliente`);
+    verificar(page.__errores.length === 0, `${tag} Oportunidades: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2102,7 +2190,8 @@ async function regresion(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
-    if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); throw 'fin'; }
+    if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
+    if (process.env.SOLO_OPOR) { await pruebaOportunidades(browser, base); throw 'fin'; }
     if (process.env.SOLO_PROD) { await pruebaProduccion(browser, base); await pruebaVentaPreparados(browser, base); throw 'fin'; }
     if (process.env.SOLO_REGALO) { await pruebaSinRegalo(browser, base); throw 'fin'; }
     if (process.env.SOLO_MEDICO) { await pruebaNuevoMedico(browser, base); throw 'fin'; }
@@ -2132,6 +2221,7 @@ async function regresion(browser, base) {
     await pruebaNuevoMedico(browser, base);
     await pruebaSinRegalo(browser, base);
     await pruebaCRM(browser, base);
+    await pruebaOportunidades(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

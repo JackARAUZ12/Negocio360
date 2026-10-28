@@ -405,5 +405,7 @@
     init({ sb, userId, usuario, negocio }) { C.sb = sb; C.userId = userId; C.usuario = usuario || null; C.negocio = negocio || null; C.plantillas = null; estilos(); },
     montarFicha, montarSeguimientos, montarAvisoPanel, contarPendientesHoy,
     abrirTarea, abrirWhatsApp, abrirRapido, gestionarPlantillas, listar, marcar, crearTarea, numeroWhatsApp,
+    // Piezas de pantalla compartidas con crm-oportunidades.js (mismas ventanas y colores)
+    ui: { ventana, cerrar, estilos, esc, aviso, hoy, masDias, fechaCorta, registrar, contexto: () => C },
   };
 })();
