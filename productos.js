@@ -426,11 +426,11 @@ async function cargarDatosEmpresa() {
 async function cargarProductos() {
   try {
     mostrarSkeletons();
-    const { data, error } = await supabaseClient
+    const { data, error } = await N360Leer.todo(() => supabaseClient
       .from('productos')
       .select('*')
       .eq('auth_user_id', STATE.user.id)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false }), 'productos');
 
     if (error) throw error;
 

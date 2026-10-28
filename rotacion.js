@@ -146,9 +146,9 @@ async function cargarRotacion() {
     const desdeISO = desde.toISOString().slice(0, 10);
 
     // Ventas del rango, agrupadas por producto.
-    const { data: detalles, error } = await sb.from('venta_detalles')
+    const { data: detalles, error } = await N360Leer.todo(() => sb.from('venta_detalles')
       .select('producto_id, producto_nombre, cantidad, subtotal, ventas!inner(fecha, auth_user_id)')
-      .eq('ventas.auth_user_id', STATE.userId).gte('ventas.fecha', desdeISO);
+      .eq('ventas.auth_user_id', STATE.userId).gte('ventas.fecha', desdeISO), 'ventas');
     if (error) throw error;
 
     const porProducto = {};
@@ -161,8 +161,8 @@ async function cargarRotacion() {
 
     // Todos los productos activos (tipo 'producto') -- los que no
     // vendieron nada en el rango tambien aparecen, como "sin movimiento".
-    const { data: productos } = await sb.from('productos')
-      .select('id, nombre, costo, precio, stock_actual, stock_minimo, stock_maximo').eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true);
+    const { data: productos } = await N360Leer.todo(() => sb.from('productos')
+      .select('id, nombre, costo, precio, stock_actual, stock_minimo, stock_maximo').eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true), 'productos');
 
     const lista = (productos || []).map(p => {
       const v = porProducto[p.id];

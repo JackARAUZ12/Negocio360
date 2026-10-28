@@ -130,10 +130,10 @@ async function cargarResumenMensual() {
     // Cada consulta solo trae la columna de monto (no la fila completa)
     // -- minimiza los datos transferidos, el conteo/suma se hace aquí.
     const [ventas, gastos, compras, pagos] = await Promise.all([
-      sbClient.from('ventas').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo),
-      sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', inicio).lt('fecha', limiteExclusivo),
-      sbClient.from('compras').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo),
-      sbClient.from('creditos_pagos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','completado').gte('fecha', inicio).lt('fecha', limiteExclusivo),
+      N360Leer.todo(() => sbClient.from('ventas').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo), 'resumen'),
+      N360Leer.todo(() => sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', inicio).lt('fecha', limiteExclusivo), 'resumen'),
+      N360Leer.todo(() => sbClient.from('compras').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo), 'resumen'),
+      N360Leer.todo(() => sbClient.from('creditos_pagos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','completado').gte('fecha', inicio).lt('fecha', limiteExclusivo), 'resumen'),
     ]);
 
     const sumar = (res, campo) => (res.data||[]).reduce((s,r) => s + (Number(r[campo])||0), 0);
@@ -165,8 +165,8 @@ let PRODUCTOS_SELECCIONADOS_CONSULTA = new Set();
 
 async function cargarOpcionesConsultaProducto() {
   try {
-    const { data: productos } = await sbClient.from('productos')
-      .select('id, nombre').eq('auth_user_id', STATE.userId).order('nombre');
+    const { data: productos } = await N360Leer.todo(() => sbClient.from('productos')
+      .select('id, nombre').eq('auth_user_id', STATE.userId).order('nombre'), 'productos');
     TODOS_LOS_PRODUCTOS_CONSULTA = productos || [];
     renderListaProductosConsulta(TODOS_LOS_PRODUCTOS_CONSULTA);
 
@@ -347,9 +347,9 @@ async function consultarProductoPorUsuario() {
   try {
     const { desde, hasta } = calcularRangoFechas(PERIODO_CONSULTA_ACTUAL);
 
-    const { data: ventas } = await sbClient.from('ventas')
+    const { data: ventas } = await N360Leer.todo(() => sbClient.from('ventas')
       .select('id').eq('auth_user_id', STATE.userId).eq('estado','completada')
-      .eq('creado_por_nombre', usuario).gte('fecha', desde).lt('fecha', siguienteDiaISO(hasta));
+      .eq('creado_por_nombre', usuario).gte('fecha', desde).lt('fecha', siguienteDiaISO(hasta)), 'ventas');
 
     if (!ventas || !ventas.length) {
       resultDiv.innerHTML = `<p style="padding:12px 0;margin:0">No hay ventas de <b>${esc(usuario)}</b> con usuario asignado en ese período — puede que no haya vendido nada, o que esas ventas sean de antes de que este seguimiento se activara.</p>`;
@@ -370,9 +370,9 @@ async function consultarProductoPorUsuario() {
     const idsVentas = ventas.map(v => v.id);
     const nombresPorId = Object.fromEntries(TODOS_LOS_PRODUCTOS_CONSULTA.map(p => [p.id, p.nombre]));
     const nombresElegidos = idsProductos.map(id => nombresPorId[id]).filter(Boolean);
-    const { data: detalles } = await sbClient.from('venta_detalles')
+    const { data: detalles } = await N360Leer.porIds(idsVentas, ch => sbClient.from('venta_detalles')
       .select('producto_nombre, cantidad, subtotal')
-      .in('venta_id', idsVentas).in('producto_nombre', nombresElegidos);
+      .in('venta_id', ch).in('producto_nombre', nombresElegidos), 'detalle de ventas');
 
     const porProducto = {};
     (detalles||[]).forEach(d => {
@@ -433,10 +433,12 @@ async function cargarVentasPorUsuario() {
     const hoy = todayISO();
     const inicioMes = hoy.slice(0,7) + '-01';
 
-    let qMes = sbClient.from('ventas').select('id, numero_venta, fecha, total, created_at')
-      .eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicioMes).order('created_at',{ascending:false});
-    if (usuarioElegido) qMes = qMes.eq('creado_por_nombre', usuarioElegido);
-    const { data: ventasMes } = await qMes;
+    const { data: ventasMes } = await N360Leer.todo(() => {
+      let qMes = sbClient.from('ventas').select('id, numero_venta, fecha, total, created_at')
+        .eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicioMes).order('created_at',{ascending:false});
+      if (usuarioElegido) qMes = qMes.eq('creado_por_nombre', usuarioElegido);
+      return qMes;
+    }, 'ventas del mes');
 
     const totalMes = (ventasMes||[]).reduce((s,v) => s + (Number(v.total)||0), 0);
     const totalHoy = (ventasMes||[]).filter(v => (v.fecha||'').slice(0,10) === hoy).reduce((s,v) => s + (Number(v.total)||0), 0);
@@ -451,8 +453,8 @@ async function cargarVentasPorUsuario() {
 
     // Traer los productos de todas estas ventas de una sola vez
     const idsVentas = ventasMes.map(v => v.id);
-    const { data: detalles } = await sbClient.from('venta_detalles')
-      .select('venta_id, producto_nombre, cantidad, subtotal').in('venta_id', idsVentas).order('created_at');
+    const { data: detalles } = await N360Leer.porIds(idsVentas, ch => sbClient.from('venta_detalles')
+      .select('venta_id, producto_nombre, cantidad, subtotal').in('venta_id', ch).order('created_at'), 'detalle de ventas');
     const detallesPorVenta = {};
     (detalles||[]).forEach(d => { (detallesPorVenta[d.venta_id] ||= []).push(d); });
 

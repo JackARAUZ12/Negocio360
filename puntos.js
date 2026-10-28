@@ -239,8 +239,8 @@ async function guardarReglasPuntos() {
 
 /* ---------- Clientes y saldos ---------- */
 async function cargarClientesPuntos() {
-  const clientes = await traerTodo(() => sb.from('clientes')
-    .select('id, nombre, apellido, telefono, whatsapp, activo').eq('auth_user_id', STATE.userId).order('id'));
+  const clientes = await traerTodo(() => N360Leer.todo(() => sb.from('clientes')
+    .select('id, nombre, apellido, telefono, whatsapp, activo').eq('auth_user_id', STATE.userId).order('id'), 'clientes'));
   const saldos = await traerTodo(() => sb.from('puntos_saldos')
     .select('cliente_id, saldo, total_ganado, total_canjeado').eq('auth_user_id', STATE.userId).order('cliente_id'));
 

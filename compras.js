@@ -346,13 +346,13 @@ function populateMetodosSelect() {
 ===================================================== */
 async function loadProductosDisponibles() {
   try {
-    const { data } = await sbClient
+    const { data } = await N360Leer.todo(() => sbClient
       .from('productos')
       .select('*')
       .eq('auth_user_id', STATE.userId)
       .eq('tipo', 'producto')  // ← SOLO productos, nunca servicios
       .eq('activo', true)
-      .order('nombre');
+      .order('nombre'), 'productos');
     STATE.productos = data || [];
     // Escala de costos (opcional por producto): si falla, todo sigue con costo fijo.
     STATE.escalasCosto = {};
@@ -371,12 +371,12 @@ async function loadProductosDisponibles() {
 async function loadKPIs() {
   const { from, to } = getFilterDates('mes', '', '');
   try {
-    const { data } = await sbClient
+    const { data } = await N360Leer.todo(() => sbClient
       .from('compras')
       .select('total, estado, fecha, id')
       .eq('auth_user_id', STATE.userId)
       .gte('fecha', from)
-      .lte('fecha', to);
+      .lte('fecha', to), 'compras');
 
     const todas    = data || [];
     const activas  = todas.filter(c => c.estado !== 'anulada');
@@ -387,12 +387,12 @@ async function loadKPIs() {
     const totalHoy = deHoy.reduce((s, c) => s + Number(c.total), 0);
 
     // Valor inventario actual
-    const { data: prods } = await sbClient
+    const { data: prods } = await N360Leer.todo(() => sbClient
       .from('productos')
       .select('stock_actual, costo')
       .eq('auth_user_id', STATE.userId)
       .eq('tipo', 'producto')
-      .eq('activo', true);
+      .eq('activo', true), 'productos');
 
     const valorInventario = (prods || []).reduce(
       (s, p) => s + (Number(p.stock_actual || 0) * Number(p.costo || 0)), 0
@@ -406,13 +406,13 @@ async function loadKPIs() {
       .eq('activo', true);
 
     // Unidades ingresadas este mes
-    const { data: detalles } = await sbClient
+    // Solo los detalles de compras activas del mes (se leen solo esos, por lotes)
+    const compraIdsActivas = new Set(activas.map(c => c.id));
+    const { data: detalles } = await N360Leer.porIds([...compraIdsActivas], ch => sbClient
       .from('detalle_compras')
       .select('cantidad, compra_id')
-      .eq('auth_user_id', STATE.userId);
-
-    // Solo los detalles de compras activas del mes
-    const compraIdsActivas = new Set(activas.map(c => c.id));
+      .eq('auth_user_id', STATE.userId)
+      .in('compra_id', ch), 'detalle de compras');
     const unidadesMes = (detalles || [])
       .filter(d => compraIdsActivas.has(d.compra_id))
       .reduce((s, d) => s + Number(d.cantidad), 0);

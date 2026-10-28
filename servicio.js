@@ -103,13 +103,13 @@ function renderUserInfo(profile, email) {
 
 async function cargarClientesCache() {
   try {
-    const { data } = await sb.from('clientes').select('id,nombre').eq('auth_user_id', STATE.userId).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('clientes').select('id,nombre').eq('auth_user_id', STATE.userId).order('nombre'), 'clientes');
     STATE.clientes = data || [];
   } catch (e) { STATE.clientes = []; }
 }
 async function cargarProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku').eq('auth_user_id', STATE.userId).eq('es_materia_prima', false).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('productos').select('id,nombre,sku').eq('auth_user_id', STATE.userId).eq('es_materia_prima', false).order('nombre'), 'productos');
     STATE.productos = data || [];
   } catch (e) { STATE.productos = []; }
 }

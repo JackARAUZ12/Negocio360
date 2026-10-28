@@ -92,8 +92,8 @@ function ordenarPorCercania(paradas) {
 ===================================================== */
 async function cargarClientes() {
   try {
-    const { data } = await sb.from('clientes').select('id,nombre,apellido,telefono,direccion,latitud,longitud')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('clientes').select('id,nombre,apellido,telefono,direccion,latitud,longitud')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre'), 'clientes');
     STATE.clientes = data || [];
   } catch (e) { console.warn('cargarClientes:', e); STATE.clientes = []; }
 }
@@ -898,7 +898,7 @@ async function abrirMoverStock(sucursalDestinoId, paradaId) {
   openModal('modal-mover-stock');
   if (!STATE.productosPropios) {
     try {
-      const { data } = await sb.from('productos').select('id,nombre,stock_actual').eq('auth_user_id', STATE.userId).eq('tipo','producto').eq('activo', true).order('nombre');
+      const { data } = await N360Leer.todo(() => sb.from('productos').select('id,nombre,stock_actual').eq('auth_user_id', STATE.userId).eq('tipo','producto').eq('activo', true).order('nombre'), 'productos');
       STATE.productosPropios = data || [];
     } catch (e) { STATE.productosPropios = []; }
   }

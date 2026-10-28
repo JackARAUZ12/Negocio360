@@ -186,8 +186,8 @@ async function loadMetodosPago() {
 
 async function loadClientes() {
   try {
-    const { data } = await sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre'), 'clientes');
     STATE.clientes = data || [];
     llenarSelectClientes();
   } catch (e) { console.warn('loadClientes:', e); }
@@ -320,9 +320,9 @@ function actualizarProveedorLineaProf(idx, valor) {
 
 async function loadProductos() {
   try {
-    const { data } = await sbClient.from('productos')
+    const { data } = await N360Leer.todo(() => sbClient.from('productos')
       .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio,unidad_codigo,permite_fraccion,proveedor_id,proveedor_nombre,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
+      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre'), 'productos');
     const productos = data || [];
 
     // Combos: se agregan al mismo catálogo de búsqueda/carrito que los
