@@ -2402,6 +2402,7 @@ async function cargarNumeroSerie() {
     sub.textContent = activo
       ? 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá.'
       : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    if (activo) sub.innerHTML = 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá. <a href="productos.html?series=1" style="font-weight:700">Elegir productos y cargar series →</a>';
     toggle.disabled = false;
   } catch (e) {
     console.error('cargarNumeroSerie:', e);
@@ -2430,6 +2431,7 @@ async function guardarNumeroSerie(activo) {
     sub.textContent = activo
       ? 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá.'
       : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    if (activo) sub.innerHTML = 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá. <a href="productos.html?series=1" style="font-weight:700">Elegir productos y cargar series →</a>';
     setStatus(statusEl, activo ? 'Número de serie activado.' : 'Número de serie desactivado.', true);
   } catch (e) {
     console.error('guardarNumeroSerie:', e);

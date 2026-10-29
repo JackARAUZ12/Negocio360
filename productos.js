@@ -348,6 +348,7 @@ async function cargarDatosEmpresa() {
     STATE.manejaPresentaciones = empresa?.maneja_presentaciones === true;
     if (window.N360Unidades) { try { await window.N360Unidades.cargarPersonalizadas(supabaseClient, STATE.user.id); poblarSelectorUnidad('unidad'); } catch (e) { console.warn(e); } }
     STATE.usaNumeroSerie = empresa?.usa_numero_serie === true;
+    { const bSer = $('btnSeriesAsistente'); if (bSer) bSer.style.display = STATE.usaNumeroSerie ? '' : 'none'; }
     STATE.usaModeloProducto = empresa?.usa_modelo_producto === true;
     STATE.ordenColumnasProductos = Array.isArray(empresa?.orden_columnas_productos) ? empresa.orden_columnas_productos : null;
     STATE.ordenColumnasServicios = Array.isArray(empresa?.orden_columnas_servicios) ? empresa.orden_columnas_servicios : null;
@@ -693,6 +694,11 @@ function abrirSeriesProducto(id) {
   window.N360Series.abrirInventario({ sb: supabaseClient, userId: STATE.user.id, productoId: id, empresaConfig: STATE.empresa });
 }
 window.abrirSeriesProducto = abrirSeriesProducto;
+function abrirAsistenteSeries() {
+  if (!STATE.usaNumeroSerie || !window.N360Series) return;
+  window.N360Series.abrirAsistente({ sb: supabaseClient, userId: STATE.user.id, empresaConfig: STATE.empresa, alCambiar: () => { try { cargarProductos(); } catch (e) {} } });
+}
+window.abrirAsistenteSeries = abrirAsistenteSeries;
 
 function aplicarVisibilidadNumeroSerie() {
   const wrap1 = $('wrapNumeroSerie');
@@ -5159,6 +5165,9 @@ async function init() {
   cargarProveedores();
 
   initNotificaciones();
+
+  // Llegó desde Configuración (?series=1) al activar números de serie: abre el asistente.
+  try { if (new URLSearchParams(location.search).get('series') === '1' && STATE.usaNumeroSerie) setTimeout(abrirAsistenteSeries, 400); } catch (e) {}
 
   if (window.Negocio360Tutorial) {
     const pasosProductos = [

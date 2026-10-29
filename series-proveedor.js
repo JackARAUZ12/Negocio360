@@ -536,6 +536,66 @@
     } catch (e) { console.error('abrirInventario:', e); aviso('No se pudo abrir: ' + (e && e.message || 'error'), 'error'); }
   }
 
+  /* ---------- Asistente: qué productos llevan serie y cuántas faltan por cargar ---------- */
+  async function abrirAsistente(ctx) {
+    if (!activo(ctx.empresaConfig)) { aviso('Activa los números de serie en Configuración', 'warning'); return; }
+    var d = overlay('<div class="nsp-h"><span>🔢 Asistente de números de serie</span><button class="nsp-x" data-x>✕</button></div>' +
+      '<div class="nsp-tabs"><button class="nsp-tab on" data-t="con">Productos con serie</button><button class="nsp-tab" data-t="marcar">Marcar productos</button></div>' +
+      '<div class="nsp-b" id="nsp-as" style="min-height:260px"></div>', true);
+    d.querySelector('[data-x]').onclick = function () { d.close(); };
+    var cuerpo = d.querySelector('#nsp-as'), st = { tab: 'con', prods: [], cnt: {}, q: '' };
+    async function cargar() {
+      cuerpo.innerHTML = '<div class="nsp-muted">Cargando…</div>';
+      try {
+        st.prods = await leerTodo(function () { return ctx.sb.from('productos').select('id,nombre,sku,stock_actual,requiere_numero_serie,tipo,activo').eq('auth_user_id', ctx.userId).eq('tipo', 'producto'); });
+        var ss = await leerTodo(function () { return ctx.sb.from('numeros_serie').select('producto_id,estado').eq('auth_user_id', ctx.userId).eq('estado', 'en_stock'); });
+        st.cnt = {}; ss.forEach(function (x) { st.cnt[x.producto_id] = (st.cnt[x.producto_id] || 0) + 1; });
+        st.prods.sort(function (a, b) { return String(a.nombre).localeCompare(String(b.nombre)); });
+        pintar();
+      } catch (e) { cuerpo.innerHTML = '<div class="nsp-err" style="display:block">No se pudo cargar: ' + esc(e && e.message || 'error') + '</div>'; }
+    }
+    function pintar() {
+      d.querySelectorAll('.nsp-tab').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-t') === st.tab); });
+      var q = st.q.trim().toLowerCase();
+      if (st.tab === 'con') {
+        var lista = st.prods.filter(function (p) { return p.requiere_numero_serie === true && (!q || (p.nombre + ' ' + (p.sku || '')).toLowerCase().indexOf(q) >= 0); });
+        var totFalta = 0; lista.forEach(function (p) { totFalta += Math.max(0, Math.floor(Number(p.stock_actual) || 0) - (st.cnt[p.id] || 0)); });
+        cuerpo.innerHTML = '<div class="nsp-muted">Cada producto que requiere serie debe tener cargadas las series de las unidades que tienes. Al vender, se elige entre las series cargadas. Cargarlas no cambia stock ni dinero.</div>' +
+          '<div class="nsp-row"><input class="nsp-in" id="as-q" placeholder="Buscar producto…" value="' + esc(st.q) + '" style="flex:1;min-width:200px"/><span class="nsp-bd ' + (totFalta ? 'y' : 'g') + '">Faltan por cargar: ' + totFalta + '</span></div>' +
+          (lista.length ? '<div class="nsp-tw"><table class="nsp-tbl"><thead><tr><th>Producto</th><th>Stock</th><th>Con serie</th><th>Faltan</th><th></th></tr></thead><tbody>' + lista.map(function (p) {
+            var stock = Math.floor(Number(p.stock_actual) || 0), c = st.cnt[p.id] || 0, f = Math.max(0, stock - c);
+            return '<tr><td><b>' + esc(p.nombre) + '</b>' + (p.sku ? '<div class="nsp-muted">' + esc(p.sku) + '</div>' : '') + '</td><td>' + stock + '</td><td>' + c + '</td><td>' + (f ? '<span class="nsp-bd y">' + f + '</span>' : '<span class="nsp-bd g">Completo</span>') + '</td><td><button class="nsp-bt s p" data-cargar="' + p.id + '">Cargar series</button></td></tr>';
+          }).join('') + '</tbody></table></div>' : '<div class="nsp-muted" style="padding:20px 0">Aún no hay productos marcados con "requiere número de serie". Usa la pestaña <b>Marcar productos</b>.</div>');
+        var qi = cuerpo.querySelector('#as-q'); qi.oninput = function () { st.q = qi.value; clearTimeout(pintar._t); pintar._t = setTimeout(function () { var pos = qi.selectionStart; pintar(); var n = cuerpo.querySelector('#as-q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 250); };
+        cuerpo.querySelectorAll('[data-cargar]').forEach(function (b) { b.onclick = function () { abrirInventario({ sb: ctx.sb, userId: ctx.userId, productoId: b.getAttribute('data-cargar'), empresaConfig: ctx.empresaConfig }, cargar); }; });
+      } else {
+        var cand = st.prods.filter(function (p) { return p.requiere_numero_serie !== true && p.activo !== false && (!q || (p.nombre + ' ' + (p.sku || '')).toLowerCase().indexOf(q) >= 0); });
+        var corte = cand.slice(0, 300);
+        cuerpo.innerHTML = '<div class="nsp-muted">Marca los productos que se venden con número de serie (celulares, laptops, equipos…). Desde ese momento, al venderlos se pedirá la serie. No cambia el stock.</div>' +
+          '<div class="nsp-row"><input class="nsp-in" id="as-q" placeholder="Buscar producto…" value="' + esc(st.q) + '" style="flex:1;min-width:200px"/><button class="nsp-bt" id="as-todos">Marcar visibles</button><button class="nsp-bt p" id="as-ok">Activar serie en los marcados</button></div>' +
+          (corte.length ? '<div class="nsp-tw"><table class="nsp-tbl"><tbody>' + corte.map(function (p) { return '<tr><td style="width:28px"><input type="checkbox" data-m="' + p.id + '"/></td><td><b>' + esc(p.nombre) + '</b>' + (p.sku ? ' <span class="nsp-muted">' + esc(p.sku) + '</span>' : '') + '</td><td class="nsp-muted">Stock ' + Math.floor(Number(p.stock_actual) || 0) + '</td></tr>'; }).join('') + '</tbody></table></div>' + (cand.length > 300 ? '<div class="nsp-muted">Mostrando 300 de ' + cand.length + '. Usa la búsqueda.</div>' : '') : '<div class="nsp-muted" style="padding:20px 0">No hay más productos para marcar.</div>');
+        var qi2 = cuerpo.querySelector('#as-q'); qi2.oninput = function () { st.q = qi2.value; clearTimeout(pintar._t); pintar._t = setTimeout(function () { var pos = qi2.selectionStart; pintar(); var n = cuerpo.querySelector('#as-q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 250); };
+        cuerpo.querySelector('#as-todos').onclick = function () { cuerpo.querySelectorAll('[data-m]').forEach(function (c) { c.checked = true; }); };
+        cuerpo.querySelector('#as-ok').onclick = async function () {
+          var ids = Array.prototype.map.call(cuerpo.querySelectorAll('[data-m]:checked'), function (c) { return c.getAttribute('data-m'); });
+          if (!ids.length) { aviso('Marca al menos un producto', 'warning'); return; }
+          if (!(await confirmar('Activar número de serie', 'Se activará "requiere número de serie" en ' + ids.length + ' producto(s). Al venderlos se pedirá la serie. El stock no cambia.', 'Activar'))) return;
+          try {
+            for (var i = 0; i < ids.length; i += 80) {
+              var r = await ctx.sb.from('productos').update({ requiere_numero_serie: true }).eq('auth_user_id', ctx.userId).in('id', ids.slice(i, i + 80));
+              if (r.error) throw r.error;
+            }
+            aviso(ids.length + ' producto(s) con número de serie'); st.tab = 'con'; st.q = '';
+            if (ctx.alCambiar) { try { ctx.alCambiar(); } catch (e) {} }
+            cargar();
+          } catch (e) { aviso('No se pudo: ' + (e && e.message || 'error'), 'error'); }
+        };
+      }
+    }
+    d.querySelectorAll('.nsp-tab').forEach(function (b) { b.onclick = function () { st.tab = b.getAttribute('data-t'); st.q = ''; pintar(); }; });
+    await cargar();
+  }
+
   /* ---------- botón en Compras (solo si el negocio activó números de serie) ---------- */
   function iniciarBoton(idBoton, getCtx) {
     var intentos = 0, t = setInterval(function () {
@@ -547,5 +607,5 @@
     }, 500);
   }
 
-  window.N360Series = { activo: activo, despuesDeCompra: despuesDeCompra, abrirPanel: abrirPanel, abrirInventario: abrirInventario, marcarVendidas: marcarVendidas, validarVenta: validarVenta, decorarModalVenta: decorarModalVenta, iniciarBoton: iniciarBoton, _abrirRegistro: abrirRegistro };
+  window.N360Series = { activo: activo, despuesDeCompra: despuesDeCompra, abrirPanel: abrirPanel, abrirInventario: abrirInventario, abrirAsistente: abrirAsistente, marcarVendidas: marcarVendidas, validarVenta: validarVenta, decorarModalVenta: decorarModalVenta, iniciarBoton: iniciarBoton, _abrirRegistro: abrirRegistro };
 })();
