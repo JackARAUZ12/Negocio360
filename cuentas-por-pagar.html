@@ -1203,6 +1203,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             Registrar pago
           </button>
+          <button class="btn-ghost" id="btn-exportar-cxp" onclick="abrirExportarCxP()" title="Exportar cuentas por pagar a Excel o PDF con filtros, vencimientos y antigüedad">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar
+          </button>
           <button class="btn-ghost" onclick="abrirNuevaCuentaDirecta()" title="Un gasto o deuda con un proveedor que NO es compra de productos — no toca tu inventario">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
             Cuenta directa
@@ -1849,6 +1853,10 @@
 <script src="comision-pago-tarjeta.js?v=20261023a"></script>
 <script src="paginar-lectura.js?v=20261029d"></script>
 <script src="cuentas-por-pagar.js?v=20261029a"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="exportar-modulo.js?v=20261029a"></script>
+<script src="exportar-cxp.js?v=20261029a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
