@@ -520,6 +520,7 @@
         info.textContent = 'Stock del producto: ' + stock + ' · series en stock ya registradas: ' + reg;
         d.querySelector('#iv-cant').value = Math.max(1, stock - reg);
       }
+      if (ctx.productoId && prods.some(function (x) { return x.id === ctx.productoId; })) sel.value = ctx.productoId;
       sel.onchange = actualizarInfo; actualizarInfo();
       d.querySelector('[data-x]').onclick = d.querySelector('[data-x2]').onclick = function () { d.close(); };
       d.querySelector('#iv-ok').onclick = function () {

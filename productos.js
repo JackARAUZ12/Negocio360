@@ -687,6 +687,13 @@ function aplicarVisibilidadPresentaciones() {
   if (wrap) wrap.style.display = STATE.manejaPresentaciones ? '' : 'none';
 }
 
+// Registrar números de serie (y garantía del proveedor) de un producto. Solo si el negocio activó números de serie.
+function abrirSeriesProducto(id) {
+  if (!STATE.usaNumeroSerie || !window.N360Series) return;
+  window.N360Series.abrirInventario({ sb: supabaseClient, userId: STATE.user.id, productoId: id, empresaConfig: STATE.empresa });
+}
+window.abrirSeriesProducto = abrirSeriesProducto;
+
 function aplicarVisibilidadNumeroSerie() {
   const wrap1 = $('wrapNumeroSerie');
   const wrap2 = $('wrapNumeroSerieEdit');
@@ -2099,6 +2106,7 @@ function renderTablaProductos(tbody) {
             <div class="row-actions" style="opacity:1;">
               <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
               <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
+              ${(STATE.usaNumeroSerie && p.requiere_numero_serie === true && p.tipo === 'producto') ? `<button class="row-action-btn" title="Números de serie y garantía del proveedor" onclick="abrirSeriesProducto('${p.id}')">🔢</button>` : ''}
               <button class="row-action-btn dup"  title="Duplicar"      onclick="duplicarProducto('${p.id}')">📋</button>
               <button class="row-action-btn del"  title="Eliminar"      onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
             </div>
@@ -4019,6 +4027,14 @@ async function guardarProducto() {
     await cargarEscalas();
     await cargarEscalasCosto();
     await cargarProductos();
+
+    // Producto nuevo que requiere serie y ya trae existencia: ofrece registrar sus series (opcional, no cambia stock ni dinero).
+    try {
+      if (STATE.modalMode !== 'editar' && productoIdGuardado && STATE.usaNumeroSerie && tipo === 'producto'
+          && $('inputRequiereSerie')?.checked === true && stockActual > 0) {
+        setTimeout(() => abrirSeriesProducto(productoIdGuardado), 300);
+      }
+    } catch (eSer) { console.warn('series del producto nuevo:', eSer); }
 
   } catch (e) {
     console.error('guardarProducto:', e);
