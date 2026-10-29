@@ -319,6 +319,10 @@
     var jsPDF = window.jspdf.jsPDF;
     var horizontal = (cfg.pdfOrientacion || 'portrait') === 'landscape';
     var doc = new jsPDF({ orientation: horizontal ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+    // La tipografía base del PDF no trae algunos símbolos (− ↔): se cambian por equivalentes.
+    function san(t) { if (Array.isArray(t)) return t.map(san); return typeof t === 'string' ? t.replace(/\u2212/g, '-').replace(/\u2194/g, '<->') : t; }
+    var _texto = doc.text.bind(doc);
+    doc.text = function (t) { var a = Array.prototype.slice.call(arguments); a[0] = san(t); return _texto.apply(null, a); };
     var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 12;
     var rgb = hexARgb(await colorMarca(ctx));
     var luz = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
@@ -408,6 +412,7 @@
         columnStyles: estilosCol,
         didParseCell: function (h) {
           var idx = h.column.index;
+          if (h.cell && h.cell.text) h.cell.text = san(h.cell.text);
           if ((h.section === 'head' || h.section === 'foot') && (cols[idx].num || cols[idx].fecha)) h.cell.styles.halign = 'right';
           if (h.section === 'body') {
             var mk = marcas[h.row.index] || {};
