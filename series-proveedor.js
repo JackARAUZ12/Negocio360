@@ -118,9 +118,9 @@
     }).join('');
     var d = overlay(
       '<div class="nsp-h"><span>🔢 Números de serie — ' + esc(opciones.titulo || ('Compra ' + (ctx.numero || ''))) + '</span><button class="nsp-x" data-x>✕</button></div>' +
-      '<div class="nsp-b"><div class="nsp-muted">Cada unidad tiene su propia serie. Con un lector de códigos solo escanea: cada lectura baja a la siguiente línea. También puedes pegar la lista del proveedor, o generar un rango (SN1001 a SN1010). Si no las tienes ahora, usa <b>Completar después</b>: esto no cambia el stock ni el dinero de la compra.</div>' + bloques +
+      '<div class="nsp-b"><div class="nsp-muted">' + (opciones.sinPendientes ? 'Registra las series de unidades que ya tienes. ' : '') + 'Cada unidad tiene su propia serie. Con un lector de códigos solo escanea: cada lectura baja a la siguiente línea. También puedes pegar la lista del proveedor, o generar un rango (SN1001 a SN1010). ' + (opciones.sinPendientes ? 'Esto no cambia el stock ni el dinero.' : 'Si no las tienes ahora, usa <b>Completar después</b>: esto no cambia el stock ni el dinero de la compra.') + '</div>' + bloques +
       '<div class="nsp-err" id="nsp-err-g"></div></div>' +
-      '<div class="nsp-f"><button class="nsp-bt" id="nsp-despues">Completar después</button><button class="nsp-bt p" id="nsp-guardar">Guardar series</button></div>');
+      '<div class="nsp-f">' + (opciones.sinPendientes ? '<button class="nsp-bt" id="nsp-despues">Cancelar</button>' : '<button class="nsp-bt" id="nsp-despues">Completar después</button>') + '<button class="nsp-bt p" id="nsp-guardar">Guardar series</button></div>');
     function ta(i) { return d.querySelector('[data-ta="' + i + '"]'); }
     function actualizar(i) {
       var vals = parseLista(ta(i).value), c = d.querySelector('[data-cnt="' + i + '"]');
@@ -146,6 +146,7 @@
 
     d.querySelector('#nsp-despues').onclick = async function () {
       var b = this; b.disabled = true;
+      if (opciones.sinPendientes) { d.close(); if (opciones.alCerrar) opciones.alCerrar(); return; }
       try { await guardarPendientes(ctx, lineas.map(function (l) { return { l: l, faltan: l.cantidad }; })); aviso('Quedó pendiente: lo completas en Compras › Series y garantías'); }
       catch (e) { console.warn('series pendientes:', e); }
       d.close(); if (opciones.alCerrar) opciones.alCerrar();
@@ -259,7 +260,7 @@
       }
       for (var j = 0; j < items.length; j++) {
         var it = items[j];
-        var r = await sb.from('numeros_serie').select('estado,compra_id').eq('auth_user_id', userId).eq('producto_id', it.producto_id).ilike('numero_serie', escLike(it.numero_serie)).not('compra_id', 'is', null).in('estado', ['vendida', 'en_reclamo', 'devuelta_proveedor']);
+        var r = await sb.from('numeros_serie').select('estado,compra_id').eq('auth_user_id', userId).eq('producto_id', it.producto_id).ilike('numero_serie', escLike(it.numero_serie)).in('estado', ['vendida', 'en_reclamo', 'devuelta_proveedor']);
         if (!r.error && r.data && r.data.length) {
           var est = r.data[0].estado;
           return 'La serie "' + it.numero_serie + '" ya figura como ' + (ESTADOS[est] || est).toLowerCase() + '. Si el cliente la devolvió, márcala "Volver a stock" en Compras › Series y garantías.';
@@ -360,7 +361,7 @@
       var prodsOpt = Object.keys(st.prods).sort(function (a, b) { return nombreProd(a).localeCompare(nombreProd(b)); }).map(function (id) { return '<option value="' + id + '"' + (st.prod === id ? ' selected' : '') + '>' + esc(nombreProd(id)) + '</option>'; }).join('');
       var maxF = 200, corte = lista.slice(0, maxF);
       cuerpo.innerHTML =
-        '<div class="nsp-row"><span class="nsp-bd b">En stock: ' + cuenta.en_stock + '</span><span class="nsp-bd g">Vendidas: ' + cuenta.vendida + '</span><span class="nsp-bd y">En reclamo: ' + cuenta.en_reclamo + '</span><span class="nsp-muted">Solo cuentan las series registradas; el stock del producto no cambia por esto.</span></div>' +
+        '<div class="nsp-row"><button class="nsp-bt p s" id="nsp-inv">+ Registrar series de inventario</button><span class="nsp-bd b">En stock: ' + cuenta.en_stock + '</span><span class="nsp-bd g">Vendidas: ' + cuenta.vendida + '</span><span class="nsp-bd y">En reclamo: ' + cuenta.en_reclamo + '</span><span class="nsp-muted">Solo cuentan las series registradas; el stock del producto no cambia por esto.</span></div>' +
         '<div class="nsp-row"><input class="nsp-in" id="nsp-q" placeholder="Buscar serie, producto, proveedor o compra…" value="' + esc(st.q) + '" style="flex:1;min-width:200px"/>' +
         '<select class="nsp-in" id="nsp-est"><option value="">Todos los estados</option>' + Object.keys(ESTADOS).map(function (k) { return '<option value="' + k + '"' + (st.est === k ? ' selected' : '') + '>' + ESTADOS[k] + '</option>'; }).join('') + '</select>' +
         '<select class="nsp-in" id="nsp-prod"><option value="">Todos los productos</option>' + prodsOpt + '</select>' +
@@ -372,9 +373,10 @@
               '<td>' + (s.proveedor_nombre ? esc(s.proveedor_nombre) : '<span class="nsp-muted">—</span>') + (s.compra_id ? '<div class="nsp-muted">' + esc(st.compras[s.compra_id] || '') + ' · ' + fc(s.fecha_compra) + '</div>' : '') + '</td>' +
               '<td>' + badgeGarantia(s.garantia_proveedor_vence) + '</td>' +
               '<td>' + (e === 'vendida' ? (esc(st.clientes[s.cliente_id] || 'Sin cliente') + '<div class="nsp-muted">' + fc(s.fecha_venta) + '</div>') : '<span class="nsp-muted">—</span>') + '</td>' +
-              '<td style="white-space:nowrap">' + ((e === 'en_stock' || e === 'vendida') ? '<button class="nsp-bt s" data-rec="' + s.id + '">Reclamar</button> ' : '') + ((e === 'vendida' && s.compra_id) ? '<button class="nsp-bt s" data-vol="' + s.id + '" title="Si el cliente la devolvió">Volver a stock</button>' : '') + '</td></tr>';
+              '<td style="white-space:nowrap">' + ((e === 'en_stock' || e === 'vendida') ? '<button class="nsp-bt s" data-rec="' + s.id + '">Reclamar</button> ' : '') + ((s.estado === 'vendida') ? '<button class="nsp-bt s" data-vol="' + s.id + '" title="Si el cliente la devolvió">Volver a stock</button>' : '') + '</td></tr>';
           }).join('') + '</tbody></table></div>' + (lista.length > maxF ? '<div class="nsp-muted">Mostrando ' + maxF + ' de ' + lista.length + '. Usa los filtros para acotar.</div>' : '')
           : '<div class="nsp-muted" style="padding:20px 0">No hay series con esos filtros. Las series se registran al guardar una compra de productos que requieren número de serie.</div>');
+      cuerpo.querySelector('#nsp-inv').onclick = function () { abrirInventario(ctx, cargar); };
       var q2 = cuerpo.querySelector('#nsp-q');
       q2.oninput = function () { st.q = q2.value; clearTimeout(pintarSeries._t); pintarSeries._t = setTimeout(function () { var pos = q2.selectionStart; pintarSeries(); var n = cuerpo.querySelector('#nsp-q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 250); };
       cuerpo.querySelector('#nsp-est').onchange = function (e) { st.est = e.target.value; pintarSeries(); };
@@ -493,6 +495,46 @@
     await cargar();
   }
 
+
+  /* ---------- Registrar series de inventario que ya existe (sin compra) ---------- */
+  async function abrirInventario(ctx, alTerminar) {
+    try {
+      var prods = await leerTodo(function () { return ctx.sb.from('productos').select('id,nombre,sku,stock_actual,requiere_numero_serie,garantia_proveedor_meses').eq('auth_user_id', ctx.userId).eq('requiere_numero_serie', true); });
+      var provs = await leerTodo(function () { return ctx.sb.from('proveedores').select('id,nombre').eq('auth_user_id', ctx.userId); });
+      prods.sort(function (a, b) { return String(a.nombre).localeCompare(String(b.nombre)); });
+      provs.sort(function (a, b) { return String(a.nombre).localeCompare(String(b.nombre)); });
+      if (!prods.length) { aviso('Primero marca "requiere número de serie" en los productos que lo necesiten (Productos › editar)', 'warning'); return; }
+      var d = overlay('<div class="nsp-h"><span>Registrar series de inventario</span><button class="nsp-x" data-x>✕</button></div><div class="nsp-b">' +
+        '<div class="nsp-muted">Para unidades que ya tienes (productos nuevos o existentes). No cambia el stock ni el dinero.</div>' +
+        '<label class="nsp-muted">Producto</label><select class="nsp-in" id="iv-prod">' + prods.map(function (p) { return '<option value="' + p.id + '">' + esc(p.nombre) + (p.sku ? ' (' + esc(p.sku) + ')' : '') + '</option>'; }).join('') + '</select>' +
+        '<div class="nsp-muted" id="iv-info"></div>' +
+        '<label class="nsp-muted">Proveedor</label><select class="nsp-in" id="iv-prov"><option value="">Sin proveedor / no sé</option>' + provs.map(function (p) { return '<option value="' + p.id + '">' + esc(p.nombre) + '</option>'; }).join('') + '</select>' +
+        '<div class="nsp-row"><div><label class="nsp-muted">Fecha de compra</label><br/><input class="nsp-in" id="iv-fecha" type="date" value="' + hoy() + '"/></div>' +
+        '<div><label class="nsp-muted">¿Cuántas series?</label><br/><input class="nsp-in" id="iv-cant" type="number" min="1" step="1" value="1" style="width:100px"/></div></div>' +
+        '<div class="nsp-err" id="iv-err"></div></div><div class="nsp-f"><button class="nsp-bt" data-x2>Cancelar</button><button class="nsp-bt p" id="iv-ok">Continuar</button></div>');
+      var sel = d.querySelector('#iv-prod'), info = d.querySelector('#iv-info');
+      async function actualizarInfo() {
+        var p = prods.find(function (x) { return x.id === sel.value; }); if (!p) return;
+        var r = await ctx.sb.from('numeros_serie').select('id').eq('auth_user_id', ctx.userId).eq('producto_id', p.id).eq('estado', 'en_stock').limit(1000);
+        var reg = (r.data || []).length, stock = Math.floor(Number(p.stock_actual) || 0);
+        info.textContent = 'Stock del producto: ' + stock + ' · series en stock ya registradas: ' + reg;
+        d.querySelector('#iv-cant').value = Math.max(1, stock - reg);
+      }
+      sel.onchange = actualizarInfo; actualizarInfo();
+      d.querySelector('[data-x]').onclick = d.querySelector('[data-x2]').onclick = function () { d.close(); };
+      d.querySelector('#iv-ok').onclick = function () {
+        var p = prods.find(function (x) { return x.id === sel.value; }), cant = Math.floor(Number(d.querySelector('#iv-cant').value)), er = d.querySelector('#iv-err');
+        if (!p || !(cant >= 1)) { er.textContent = 'Indica cuántas series vas a registrar.'; er.style.display = 'block'; return; }
+        var pv = provs.find(function (x) { return x.id === d.querySelector('#iv-prov').value; });
+        var fecha = d.querySelector('#iv-fecha').value || hoy();
+        d.close();
+        abrirRegistro({ sb: ctx.sb, userId: ctx.userId, compraId: null, numero: 'Inventario', fecha: fecha, proveedor: pv ? { id: pv.id, nombre: pv.nombre } : null },
+          [{ detalleId: null, productoId: p.id, nombre: p.nombre, sku: p.sku, cantidad: cant, garantiaMeses: p.garantia_proveedor_meses || '' }],
+          { titulo: 'Inventario · ' + p.nombre, sinPendientes: true, alCerrar: function (g) { if (g && alTerminar) alTerminar(); } });
+      };
+    } catch (e) { console.error('abrirInventario:', e); aviso('No se pudo abrir: ' + (e && e.message || 'error'), 'error'); }
+  }
+
   /* ---------- botón en Compras (solo si el negocio activó números de serie) ---------- */
   function iniciarBoton(idBoton, getCtx) {
     var intentos = 0, t = setInterval(function () {
@@ -504,5 +546,5 @@
     }, 500);
   }
 
-  window.N360Series = { activo: activo, despuesDeCompra: despuesDeCompra, abrirPanel: abrirPanel, marcarVendidas: marcarVendidas, validarVenta: validarVenta, decorarModalVenta: decorarModalVenta, iniciarBoton: iniciarBoton, _abrirRegistro: abrirRegistro };
+  window.N360Series = { activo: activo, despuesDeCompra: despuesDeCompra, abrirPanel: abrirPanel, abrirInventario: abrirInventario, marcarVendidas: marcarVendidas, validarVenta: validarVenta, decorarModalVenta: decorarModalVenta, iniciarBoton: iniciarBoton, _abrirRegistro: abrirRegistro };
 })();
