@@ -393,7 +393,7 @@
       var prodsOpt = Object.keys(st.prods).sort(function (a, b) { return nombreProd(a).localeCompare(nombreProd(b)); }).map(function (id) { return '<option value="' + id + '"' + (st.prod === id ? ' selected' : '') + '>' + esc(nombreProd(id)) + '</option>'; }).join('');
       var maxF = 200, corte = lista.slice(0, maxF);
       cuerpo.innerHTML =
-        '<div class="nsp-row"><button class="nsp-bt p s" id="nsp-inv">+ Registrar series de inventario</button><span class="nsp-bd b">En stock: ' + cuenta.en_stock + '</span><span class="nsp-bd g">Vendidas: ' + cuenta.vendida + '</span><span class="nsp-bd y">En reclamo: ' + cuenta.en_reclamo + '</span><span class="nsp-muted">Solo cuentan las series registradas; el stock del producto no cambia por esto.</span></div>' +
+        '<div class="nsp-row"><button class="nsp-bt p s" id="nsp-inv">+ Registrar series de inventario</button>' + (window.N360Exp && window.abrirExportarSeries ? '<button class="nsp-bt s" id="nsp-exp">⬇ Exportar</button>' : '') + '<span class="nsp-bd b">En stock: ' + cuenta.en_stock + '</span><span class="nsp-bd g">Vendidas: ' + cuenta.vendida + '</span><span class="nsp-bd y">En reclamo: ' + cuenta.en_reclamo + '</span><span class="nsp-muted">Solo cuentan las series registradas; el stock del producto no cambia por esto.</span></div>' +
         '<div class="nsp-row"><input class="nsp-in" id="nsp-q" placeholder="Buscar serie, producto, proveedor o compra…" value="' + esc(st.q) + '" style="flex:1;min-width:200px"/>' +
         '<select class="nsp-in" id="nsp-est"><option value="">Todos los estados</option>' + Object.keys(ESTADOS).map(function (k) { return '<option value="' + k + '"' + (st.est === k ? ' selected' : '') + '>' + ESTADOS[k] + '</option>'; }).join('') + '</select>' +
         '<select class="nsp-in" id="nsp-prod"><option value="">Todos los productos</option>' + prodsOpt + '</select>' +
@@ -408,6 +408,7 @@
               '<td style="white-space:nowrap">' + ((e === 'en_stock' || e === 'vendida') ? '<button class="nsp-bt s" data-rec="' + s.id + '">Reclamar</button> ' : '') + ((s.estado === 'vendida') ? '<button class="nsp-bt s" data-vol="' + s.id + '" title="Si el cliente la devolvió">Volver a stock</button>' : '') + '</td></tr>';
           }).join('') + '</tbody></table></div>' + (lista.length > maxF ? '<div class="nsp-muted">Mostrando ' + maxF + ' de ' + lista.length + '. Usa los filtros para acotar.</div>' : '')
           : '<div class="nsp-muted" style="padding:20px 0">No hay series con esos filtros. Las series se registran al guardar una compra de productos que requieren número de serie.</div>');
+      var bExp = cuerpo.querySelector('#nsp-exp'); if (bExp) bExp.onclick = function () { window.abrirExportarSeries({ sb: ctx.sb, userId: ctx.userId, empresaConfig: ctx.empresaConfig }); };
       cuerpo.querySelector('#nsp-inv').onclick = function () { abrirInventario(ctx, cargar); };
       var q2 = cuerpo.querySelector('#nsp-q');
       q2.oninput = function () { st.q = q2.value; clearTimeout(pintarSeries._t); pintarSeries._t = setTimeout(function () { var pos = q2.selectionStart; pintarSeries(); var n = cuerpo.querySelector('#nsp-q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 250); };
