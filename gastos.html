@@ -1105,6 +1105,10 @@
           <p>Controla los egresos de tu negocio: inmediatos, recurrentes y salarios.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" id="btn-exportar-gastos" onclick="abrirExportarGastos()" title="Exportar gastos a Excel o PDF con filtros, subtotales y totales">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar
+          </button>
           <button class="btn-primary" onclick="openNuevoGasto()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo gasto
@@ -1585,6 +1589,10 @@
 <script src="aviso-efectivo.js?v=20261013a"></script>
 <script src="comision-pago-tarjeta.js?v=20261023a"></script>
 <script src="gastos.js?v=20261024a"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="exportar-modulo.js?v=20261029b"></script>
+<script src="exportar-gastos.js?v=20261029a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>

@@ -184,7 +184,7 @@
     var bordes = { top: borde, left: borde, bottom: borde, right: borde };
     var filtrosTxt = cfg.textoFiltros ? cfg.textoFiltros(op) : '';
 
-    function fmtNum(c) { return c.din ? FMT_DIN : (c.dec ? '#,##0.00' : (c.cant ? '#,##0.###' : '#,##0')); }
+    function fmtNum(c) { if (c.pctj) return '0.0%'; return c.din ? FMT_DIN : (c.dec ? '#,##0.00' : (c.cant ? '#,##0.###' : '#,##0')); }
     function encabezadoHoja(ws, titulo, ancho) {
       ancho = Math.max(ancho, 4);
       ws.mergeCells(1, 1, 1, ancho); ws.getCell(1, 1).value = E.nombreNegocio();
@@ -383,6 +383,7 @@
       function celda(c, v, esTotal) {
         if (v === null || v === undefined || v === '') return '';
         if (c.fecha) return fechaCorta(v);
+        if (c.pctj) return (num(v) * 100).toFixed(1) + '%';
         if (c.num) return c.din ? miles(v) : (c.dec ? miles(v) : (c.cant ? String(Math.round(num(v) * 1000) / 1000) : String(Math.round(num(v)))));
         return String(v);
       }
