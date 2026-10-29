@@ -391,7 +391,7 @@
         (lista.length ? '<div class="nsp-tw"><table class="nsp-tbl"><thead><tr><th>Serie</th><th>Producto</th><th>Estado</th><th>Proveedor / compra</th><th>Garantía proveedor</th><th>Venta</th><th></th></tr></thead><tbody>' +
           corte.map(function (s) {
             var e = estadoReal(s);
-            return '<tr><td><b>' + esc(s.numero_serie) + '</b></td><td>' + esc(nombreProd(s.producto_id)) + '</td><td>' + badgeEstado(e) + '</td>' +
+            return '<tr><td><a href="#" data-ficha="' + s.id + '" style="font-weight:700;color:var(--accent,#5a5af4);text-decoration:none" title="Ver historial de la serie">' + esc(s.numero_serie) + '</a></td><td>' + esc(nombreProd(s.producto_id)) + '</td><td>' + badgeEstado(e) + '</td>' +
               '<td>' + (s.proveedor_nombre ? esc(s.proveedor_nombre) : '<span class="nsp-muted">—</span>') + (s.compra_id ? '<div class="nsp-muted">' + esc(st.compras[s.compra_id] || '') + ' · ' + fc(s.fecha_compra) + '</div>' : '') + '</td>' +
               '<td>' + badgeGarantia(s.garantia_proveedor_vence) + '</td>' +
               '<td>' + (e === 'vendida' ? (esc(st.clientes[s.cliente_id] || 'Sin cliente') + '<div class="nsp-muted">' + fc(s.fecha_venta) + '</div>') : '<span class="nsp-muted">—</span>') + '</td>' +
@@ -404,6 +404,7 @@
       cuerpo.querySelector('#nsp-est').onchange = function (e) { st.est = e.target.value; pintarSeries(); };
       cuerpo.querySelector('#nsp-prod').onchange = function (e) { st.prod = e.target.value; pintarSeries(); };
       cuerpo.querySelector('#nsp-vence').onchange = function (e) { st.vence = e.target.value; pintarSeries(); };
+      cuerpo.querySelectorAll('[data-ficha]').forEach(function (a) { a.onclick = function (ev) { ev.preventDefault(); var x = st.series.find(function (y) { return y.id === a.getAttribute('data-ficha'); }); if (x) fichaSerie(x); }; });
       cuerpo.querySelectorAll('[data-rec]').forEach(function (b) { b.onclick = function () { var s = st.series.find(function (x) { return x.id === b.getAttribute('data-rec'); }); if (s) nuevoReclamo(s); }; });
       cuerpo.querySelectorAll('[data-vol]').forEach(function (b) { b.onclick = async function () {
         var s = st.series.find(function (x) { return x.id === b.getAttribute('data-vol'); }); if (!s) return;
@@ -412,6 +413,30 @@
         if (r.error) { aviso('No se pudo: ' + r.error.message, 'error'); return; }
         aviso('Serie de vuelta en stock'); cargar();
       }; });
+    }
+
+
+    async function fichaSerie(s) {
+      var e = estadoReal(s), gar = [], recs = st.reclamos.filter(function (r) { return r.numero_serie_id === s.id; });
+      try {
+        var q = ctx.sb.from('garantias_clientes').select('numero,fecha_compra,fecha_vencimiento,garantia_meses,cliente_nombre,venta_id').eq('auth_user_id', ctx.userId).eq('numero_serie', s.numero_serie);
+        if (s.producto_id) q = q.eq('producto_id', s.producto_id);
+        var rg = await q.limit(20); gar = rg.data || [];
+      } catch (er) { gar = []; }
+      var linea = function (t, v) { return '<div class="nsp-row" style="justify-content:space-between;border-bottom:1px solid var(--border,#e8e8ef);padding:6px 0"><span class="nsp-muted">' + t + '</span><span style="text-align:right">' + v + '</span></div>'; };
+      var dd = overlay('<div class="nsp-h"><span>Serie ' + esc(s.numero_serie) + '</span><button class="nsp-x" data-x>✕</button></div><div class="nsp-b">' +
+        linea('Producto', esc(nombreProd(s.producto_id))) + linea('Estado', badgeEstado(e)) +
+        '<div style="font-weight:700;margin-top:6px">Compra y proveedor</div>' +
+        linea('Proveedor', esc(s.proveedor_nombre || '—')) + linea('Compra', s.compra_id ? esc(st.compras[s.compra_id] || '') + ' · ' + fc(s.fecha_compra) : (s.fecha_compra ? 'Inventario · ' + fc(s.fecha_compra) : '—')) +
+        linea('Garantía del proveedor', s.garantia_proveedor_meses ? esc(s.garantia_proveedor_meses) + ' meses · ' + badgeGarantia(s.garantia_proveedor_vence) : '<span class="nsp-muted">Sin garantía registrada</span>') +
+        '<div style="font-weight:700;margin-top:6px">Venta y garantía al cliente</div>' +
+        (e === 'vendida' ? linea('Cliente', esc(st.clientes[s.cliente_id] || 'Sin cliente')) + linea('Fecha de venta', fc(s.fecha_venta)) : linea('Venta', '<span class="nsp-muted">Aún no vendida</span>')) +
+        (gar.length ? gar.map(function (g) { return linea('Garantía ' + esc(g.numero), esc(g.garantia_meses) + ' meses · ' + badgeGarantia(g.fecha_vencimiento)); }).join('') : linea('Garantía al cliente', '<span class="nsp-muted">—</span>')) +
+        '<div style="font-weight:700;margin-top:6px">Reclamos al proveedor</div>' +
+        (recs.length ? recs.map(function (r) { return linea(esc(r.numero) + ' · ' + fc(r.fecha_reclamo), esc(ESTADOS_RECLAMO[r.estado] || r.estado) + (r.resultado ? ' · ' + esc(RESULTADOS[r.resultado] || r.resultado) : '')); }).join('') : '<div class="nsp-muted">Sin reclamos.</div>') +
+        '</div><div class="nsp-f"><button class="nsp-bt" data-x2>Cerrar</button>' + ((e === 'en_stock' || e === 'vendida') ? '<button class="nsp-bt p" id="fi-rec">Reclamar al proveedor</button>' : '') + '</div>');
+      dd.querySelector('[data-x]').onclick = dd.querySelector('[data-x2]').onclick = function () { dd.close(); };
+      var br = dd.querySelector('#fi-rec'); if (br) br.onclick = function () { dd.close(); nuevoReclamo(s); };
     }
 
     function nuevoReclamo(s) {
