@@ -1452,6 +1452,41 @@ function escHtmlCli(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+/* Estado que ve el usuario en el historial del cliente (29-oct-2026).
+   Una venta a crédito queda "completada" en cuanto se registra, aunque el cliente no
+   haya pagado nada; por eso aquí se muestra el estado de SU crédito. Solo lectura. */
+function esVentaCredito(v) {
+  return v && (v.estado_pago === 'credito' || v.metodo_pago === 'credito' || v.metodo_pago === 'fiado');
+}
+async function cargarCreditosDeVentas(ventas) {
+  const ids = (ventas || []).filter(esVentaCredito).map(v => v.id);
+  if (!ids.length) return;
+  try {
+    const { data } = await sb.from('creditos')
+      .select('venta_id,numero_credito,estado,saldo_pendiente')
+      .eq('auth_user_id', CS.userId).in('venta_id', ids);
+    const porVenta = new Map((data || []).map(c => [c.venta_id, c]));
+    ventas.forEach(v => { if (esVentaCredito(v)) v._credito = porVenta.get(v.id) || null; });
+  } catch (_) { /* sin red: se muestra "A crédito" sin el detalle */ }
+}
+function metodoVentaCliente(v) {
+  if (esVentaCredito(v)) return v.metodo_pago === 'fiado' ? 'Fiado' : 'Crédito';
+  return v.metodo_pago_nombre || '—';
+}
+function estadoVentaCliente(v) {
+  if (v.estado === 'anulada') return { cls: 'estado-anulada', texto: 'anulada' };
+  if (v.estado === 'devuelta') return { cls: 'estado-devuelta', texto: 'devuelta' };
+  if (esVentaCredito(v)) {
+    const c = v._credito;
+    if (c && c.estado !== 'cancelado' && c.estado !== 'anulado' && Number(c.saldo_pendiente) > 0.004)
+      return { cls: 'estado-credito-pendiente', texto: `Crédito pendiente · saldo ${fmt(c.saldo_pendiente)}` };
+    if (c && c.estado === 'cancelado' && Number(c.saldo_pendiente) <= 0.004)
+      return { cls: 'estado-completada', texto: 'Crédito pagado' };
+    return { cls: 'estado-credito-pendiente', texto: 'A crédito' };
+  }
+  return { cls: 'estado-completada', texto: v.estado || 'completada' };
+}
+
 async function cargarHistorialVentas(clienteId) {
   CS.ventasCliente = [];
   const tbody = document.getElementById('historial-tbody');
@@ -1459,13 +1494,16 @@ async function cargarHistorialVentas(clienteId) {
 
   try {
     const { data } = await sb.from('ventas')
-      .select('id,numero_venta,fecha,metodo_pago_nombre,total,estado')
+      .select('id,numero_venta,fecha,metodo_pago,metodo_pago_nombre,estado_pago,total,estado')
       .eq('cliente_id', clienteId)
       .eq('auth_user_id', CS.userId)
       .order('fecha', { ascending: false })
       .limit(50);
 
     CS.ventasCliente = data || [];
+    // Ventas a crédito: "completada" solo dice que la venta quedó registrada; lo que importa
+    // es si el crédito ya se pagó. Se lee el crédito de cada una (solo lectura).
+    await cargarCreditosDeVentas(CS.ventasCliente);
 
     if (!tbody) return;
 
@@ -1478,16 +1516,14 @@ async function cargarHistorialVentas(clienteId) {
     }
 
     tbody.innerHTML = CS.ventasCliente.map(v => {
-      const estadoCls = {
-        completada:'estado-completada', anulada:'estado-anulada', devuelta:'estado-devuelta'
-      }[v.estado] || 'estado-completada';
+      const e = estadoVentaCliente(v);
       return `
       <tr style="cursor:pointer" onclick="verDetalleVentaPerfil('${v.id}')">
         <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:12px">${esc(v.numero_venta)}</span></td>
         <td style="color:var(--text-secondary);font-size:12.5px">${fmtFecha(v.fecha)}</td>
-        <td style="color:var(--text-secondary);font-size:12.5px">${esc(v.metodo_pago_nombre || '—')}</td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${esc(metodoVentaCliente(v))}</td>
         <td style="font-family:var(--font-mono);font-weight:700">${fmt(v.total)}</td>
-        <td><span class="estado-badge ${estadoCls}">${v.estado}</span></td>
+        <td><span class="estado-badge ${e.cls}">${esc(e.texto)}</span></td>
       </tr>`;
     }).join('');
 
@@ -1523,9 +1559,9 @@ async function verDetalleVentaPerfil(ventaId) {
 
     const v = ventaFull.data;
     const its = items.data || [];
-    const estadoCls = {
-      completada:'estado-completada', anulada:'estado-anulada', devuelta:'estado-devuelta'
-    }[v.estado] || 'estado-completada';
+    if (venta._credito !== undefined) v._credito = venta._credito;
+    const eVenta = estadoVentaCliente(v);
+    const estadoCls = eVenta.cls;
 
     body.innerHTML = `
       <div class="detalle-grid">
@@ -1535,7 +1571,7 @@ async function verDetalleVentaPerfil(ventaId) {
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Estado</div>
-          <div class="detalle-value"><span class="estado-badge ${estadoCls}">${v.estado}</span></div>
+          <div class="detalle-value"><span class="estado-badge ${estadoCls}">${esc(eVenta.texto)}</span></div>
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Fecha</div>
@@ -1543,7 +1579,7 @@ async function verDetalleVentaPerfil(ventaId) {
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Método de pago</div>
-          <div class="detalle-value">${esc(v.metodo_pago_nombre || '—')}</div>
+          <div class="detalle-value">${esc(metodoVentaCliente(v))}</div>
         </div>
         ${v.observaciones ? `
         <div class="detalle-item full">
