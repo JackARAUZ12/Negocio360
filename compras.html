@@ -1250,6 +1250,9 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Personalizar
           </button>
+          <button class="btn-secondary" id="btn-series-garantias" style="display:none" onclick="window.N360Series&&N360Series.abrirPanel({sb:sbClient,userId:STATE.userId,empresaConfig:STATE.empresaConfig})" title="Series de productos, garantía del proveedor y reclamos">
+            🛡️ Series y garantías
+          </button>
           <button class="btn-secondary" id="btn-exportar-compras" onclick="abrirExportarCompras()" title="Exportar compras a Excel o PDF con filtros, subtotales y totales">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Exportar
@@ -2354,9 +2357,11 @@
 <script src="aviso-efectivo.js?v=20261013a"></script>
 <script src="comision-pago-tarjeta.js?v=20261023a"></script>
 <script src="paginar-lectura.js?v=20261029d"></script>
-<script src="compras.js?v=20261029a"></script>
+<script src="compras.js?v=20261029b"></script>
 <script src="exportar-modulo.js?v=20261029b"></script>
-<script src="exportar-compras.js?v=20261029a"></script>
+<script src="exportar-compras.js?v=20261029b"></script>
+<script src="series-proveedor.js?v=20261029a"></script>
+<script>N360Series.iniciarBoton("btn-series-garantias",function(){return {empresaConfig:STATE.empresaConfig}});</script>
 <script>
   // Actualizar resumen-total-final en paso 7 cuando cambia el resumen
   const _nc7Sync = setInterval(() => {

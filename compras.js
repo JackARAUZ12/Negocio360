@@ -2306,6 +2306,14 @@ async function guardarCompra() {
 
     await Promise.allSettled([loadKPIs(), loadCompras(), loadProveedores(), loadProductosDisponibles()]);
 
+    // Series del proveedor (solo si el negocio activó números de serie). No bloquea ni cambia la compra.
+    try {
+      if (window.N360Series && STATE.empresaConfig?.usa_numero_serie === true) {
+        window.N360Series.despuesDeCompra({ sb: sbClient, userId: STATE.userId, empresaConfig: STATE.empresaConfig, compraId: compra.id, numero, fecha,
+          proveedor: STATE.proveedorSeleccionado ? { id: STATE.proveedorSeleccionado.id, nombre: STATE.proveedorSeleccionado.nombre } : null });
+      }
+    } catch (eSer) { console.warn('series compra:', eSer); }
+
   } catch(e) {
     console.error('guardarCompra:', e);
     showToast('Error al guardar la compra: ' + (e.message || ''), 'error');

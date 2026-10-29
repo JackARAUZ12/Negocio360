@@ -3634,6 +3634,7 @@ function renderModalNumerosSerie(slots) {
       <input type="text" class="form-input ns-input" data-idx="${i}" placeholder="Número de serie"/>
     </div>`).join('');
   document.getElementById('ns-venta-error').textContent = '';
+  try { if (window.N360Series && S.empresaConfig?.usa_numero_serie === true) window.N360Series.decorarModalVenta(sb, S.userId, slots); } catch (e) {}
 }
 
 function cerrarModalNumerosSerie() {
@@ -3655,12 +3656,24 @@ function continuarVentaConSeries() {
     document.getElementById('ns-venta-error').textContent = 'Completa el número de serie de cada unidad.';
     return;
   }
-  S._seriesRecolectadas = slots.map((s, i) => ({ ...s, numero_serie: valores[i] }));
-  closeModal('modal-numeros-serie');
-  const accion = S._accionVentaPendiente;
-  S._seriesSlotsPendientes = null;
-  S._accionVentaPendiente = null;
-  if (accion) accion();
+  const items = slots.map((s, i) => ({ ...s, numero_serie: valores[i] }));
+  const seguir = () => {
+    S._seriesRecolectadas = items;
+    closeModal('modal-numeros-serie');
+    const accion = S._accionVentaPendiente;
+    S._seriesSlotsPendientes = null;
+    S._accionVentaPendiente = null;
+    if (accion) accion();
+  };
+  // Con series de compra: avisa si la serie ya fue vendida / está en reclamo (si algo falla, la venta sigue normal).
+  if (window.N360Series && S.empresaConfig?.usa_numero_serie === true) {
+    window.N360Series.validarVenta(sb, S.userId, items).then(msg => {
+      if (msg) { document.getElementById('ns-venta-error').textContent = msg; return; }
+      seguir();
+    }).catch(() => seguir());
+    return;
+  }
+  seguir();
 }
 
 // CANDADO DOBLE CLIC (16-oct-2026): un doble clic en "Confirmar venta"
@@ -3746,7 +3759,13 @@ async function registrarNumerosDeSerie(ventaId, clienteId, fecha) {
   const series = S._seriesRecolectadas;
   if (!series || !series.length) return;
   try {
-    await sb.from('numeros_serie').insert(series.map(s => ({
+    // Series que vinieron de una compra (en stock): pasan a "vendida"; el resto se inserta como siempre.
+    let porInsertar = series;
+    if (window.N360Series && S.empresaConfig?.usa_numero_serie === true) {
+      try { porInsertar = await window.N360Series.marcarVendidas(sb, S.userId, ventaId, clienteId, fecha, series); }
+      catch (eMv) { console.warn('marcarVendidas:', eMv); porInsertar = series; }
+    }
+    if (porInsertar.length) await sb.from('numeros_serie').insert(porInsertar.map(s => ({
       auth_user_id: S.userId, producto_id: s.producto_id, numero_serie: s.numero_serie,
       venta_id: ventaId, combo_id: s.combo_id, combo_nombre: s.combo_nombre,
       cliente_id: clienteId || null, fecha_venta: fecha,
