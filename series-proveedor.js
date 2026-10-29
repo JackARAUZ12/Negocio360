@@ -313,6 +313,15 @@
     } catch (e) { console.warn('decorarModalVenta:', e); }
   }
 
+  // Resumen corto de proveedor para otras pantallas (Servicio técnico)
+  function resumenProveedor(r) {
+    if (!r || r.estado == null) return '';
+    var t = '<div style="margin-top:6px"><b>Estado:</b> ' + badgeEstado(r.estado) + '</div>';
+    if (r.proveedor_nombre) t += '<div><b>Proveedor:</b> ' + esc(r.proveedor_nombre) + (r.fecha_compra ? ' · compra ' + fc(r.fecha_compra) : '') + '</div>';
+    t += '<div><b>Garantía del proveedor:</b> ' + badgeGarantia(r.garantia_proveedor_vence) + '</div>';
+    return t;
+  }
+
   /* ---------- 3) PANEL: series · reclamos · pendientes ---------- */
   function badgeGarantia(vence) {
     if (!vence) return '<span class="nsp-muted">—</span>';
@@ -326,7 +335,7 @@
     return '<span class="nsp-bd ' + cl + '">' + esc(ESTADOS[e] || e) + '</span>';
   }
 
-  async function abrirPanel(ctx, tabInicial) {
+  async function abrirPanel(ctx, tabInicial, inicial) {
     if (!activo(ctx.empresaConfig)) { aviso('Activa los números de serie en Configuración para usar esto', 'warning'); return; }
     var d = overlay(
       '<div class="nsp-h"><span>🛡️ Series y garantías de proveedor</span><button class="nsp-x" data-x>✕</button></div>' +
@@ -353,6 +362,7 @@
         var vids = Object.keys(vid); st.clientes = {};
         for (var k = 0; k < vids.length; k += 80) { var rv = await ctx.sb.from('clientes').select('id,nombre,apellido').eq('auth_user_id', ctx.userId).in('id', vids.slice(k, k + 80)); (rv.data || []).forEach(function (c) { st.clientes[c.id] = ((c.nombre || '') + ' ' + (c.apellido || '')).trim(); }); }
         st.cargado = true;
+        if (inicial && inicial.serieId) { var sf = st.series.find(function (x) { return x.id === inicial.serieId; }); inicial = null; if (sf) { st.q = sf.numero_serie; setTimeout(function () { fichaSerie(sf); }, 0); } }
         var np = d.querySelector('#nsp-npend'); if (np) np.textContent = st.pend.length ? '(' + st.pend.length + ')' : '';
         pintar();
       } catch (e) {
@@ -654,5 +664,5 @@
     }, 500);
   }
 
-  window.N360Series = { activo: activo, despuesDeCompra: despuesDeCompra, abrirPanel: abrirPanel, abrirInventario: abrirInventario, abrirAsistente: abrirAsistente, marcarVendidas: marcarVendidas, validarVenta: validarVenta, decorarModalVenta: decorarModalVenta, iniciarBoton: iniciarBoton, _abrirRegistro: abrirRegistro };
+  window.N360Series = { activo: activo, despuesDeCompra: despuesDeCompra, abrirPanel: abrirPanel, resumenProveedor: resumenProveedor, abrirInventario: abrirInventario, abrirAsistente: abrirAsistente, marcarVendidas: marcarVendidas, validarVenta: validarVenta, decorarModalVenta: decorarModalVenta, iniciarBoton: iniciarBoton, _abrirRegistro: abrirRegistro };
 })();

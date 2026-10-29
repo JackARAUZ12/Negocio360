@@ -533,6 +533,29 @@ function renderTablaGarantias() {
 STATE.clienteElegidoGarantia = null;
 STATE.productoElegidoGarantia = null;
 
+// Busca una serie. Si por alguna razón hay más de una fila con ese número, prefiere la vendida más reciente
+// (antes, con dos filas la búsqueda fallaba y decía que nunca se vendió).
+async function _buscarSerieFila(q) {
+  const { data } = await sb.from('numeros_serie').select('*')
+    .eq('auth_user_id', STATE.userId).eq('numero_serie', q)
+    .order('fecha_venta', { ascending: false, nullsFirst: false }).limit(5);
+  const filas = data || [];
+  return filas.find(f => f.estado !== 'en_stock') || filas[0] || null;
+}
+
+// Datos del proveedor de la serie + botón al historial/reclamo. Solo si el negocio usa números de serie y la serie viene de compra/inventario.
+function _bloqueProveedorSerie(data) {
+  try {
+    if (STATE.empresaConfig?.usa_numero_serie !== true || !window.N360Series || data.estado == null) return '';
+    return window.N360Series.resumenProveedor(data) +
+      `<button type="button" class="btn-secondary btn-sm" style="margin-top:8px" onclick="abrirFichaSerieServicio('${data.id}')">🛡️ Historial y reclamo al proveedor</button>`;
+  } catch (e) { return ''; }
+}
+function abrirFichaSerieServicio(serieId) {
+  if (!window.N360Series) return;
+  window.N360Series.abrirPanel({ sb, userId: STATE.userId, empresaConfig: STATE.empresaConfig }, 'series', { serieId });
+}
+
 function abrirModalBuscarSerie() {
   document.getElementById('bs-input').value = '';
   document.getElementById('bs-resultado').innerHTML = '';
@@ -548,8 +571,7 @@ function buscarSerieIndependiente(valor) {
   cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Buscando…</p>';
   _timeoutBuscarSerieIndep = setTimeout(async () => {
     try {
-      const { data } = await sb.from('numeros_serie').select('*')
-        .eq('auth_user_id', STATE.userId).eq('numero_serie', q).maybeSingle();
+      const data = await _buscarSerieFila(q);
       if (!data) {
         cont.innerHTML = `
           <div style="padding:12px;background:var(--danger-soft,#fee2e2);border-radius:8px;font-size:13px;color:var(--danger)">
@@ -559,6 +581,16 @@ function buscarSerieIndependiente(valor) {
       }
       const cliente = STATE.clientes.find(c => c.id === data.cliente_id);
       const producto = STATE.productos.find(p => p.id === data.producto_id);
+      if (data.estado === 'en_stock') {
+        // Serie cargada desde compras/inventario que todavía no se vendió
+        cont.innerHTML = `
+          <div style="padding:12px;background:var(--bg-hover,#f3f4f6);border-radius:8px;font-size:13px">
+            <div style="font-weight:700;margin-bottom:6px">📦 Serie en stock — aún no se ha vendido</div>
+            <div><b>Producto:</b> ${esc(producto?.nombre || 'Producto')}</div>
+            ${_bloqueProveedorSerie(data)}
+          </div>`;
+        return;
+      }
       cont.innerHTML = `
         <div style="padding:12px;background:var(--success-soft,#dcfce7);border-radius:8px;font-size:13px">
           <div style="font-weight:700;color:var(--success);margin-bottom:6px">✅ Número de serie registrado</div>
@@ -566,6 +598,7 @@ function buscarSerieIndependiente(valor) {
           ${data.combo_nombre ? `<div style="color:var(--text-muted)">Parte del combo: ${esc(data.combo_nombre)}</div>` : ''}
           <div><b>Cliente:</b> ${esc(cliente?.nombre || 'Sin cliente')}</div>
           <div><b>Fecha de venta:</b> ${fmtFechaCorta(data.fecha_venta)}</div>
+          ${_bloqueProveedorSerie(data)}
           <button type="button" class="btn-primary btn-sm" style="margin-top:10px" onclick="crearGarantiaDesdeSerie('${data.numero_serie}')">🛡️ Crear garantía con estos datos</button>
         </div>`;
     } catch (e) {
@@ -629,10 +662,14 @@ function buscarPorSerieGarantia(valor) {
   cont.innerHTML = '<span style="color:var(--text-muted)">Buscando…</span>';
   _timeoutBusquedaSerie = setTimeout(async () => {
     try {
-      const { data } = await sb.from('numeros_serie').select('*')
-        .eq('auth_user_id', STATE.userId).eq('numero_serie', q).maybeSingle();
+      const data = await _buscarSerieFila(q);
       if (!data) {
         cont.innerHTML = '<span style="color:var(--danger)">⚠️ No se encontró ninguna venta con ese número de serie en el sistema.</span>';
+        STATE.serieEncontradaGarantia = null;
+        return;
+      }
+      if (data.estado === 'en_stock') {
+        cont.innerHTML = '<span style="color:var(--warning,#b45309)">📦 Esta serie está en stock: todavía no se ha vendido, no hay cliente al que ligar la garantía.</span>';
         STATE.serieEncontradaGarantia = null;
         return;
       }
