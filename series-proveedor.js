@@ -270,24 +270,46 @@
     return null;
   }
 
-  // Sugerencias (series en stock) para la ventana de venta
+  // Ventana de venta: por cada unidad se elige la serie exacta entre las que están en stock.
+  // Si el producto no tiene series cargadas, o se escribe otra, la venta sigue como siempre (solo con aviso).
   async function decorarModalVenta(sb, userId, slots) {
     try {
       var ids = []; slots.forEach(function (s) { if (s.producto_id && ids.indexOf(s.producto_id) < 0) ids.push(s.producto_id); });
       if (!ids.length) return;
-      var r = await sb.from('numeros_serie').select('producto_id,numero_serie').eq('auth_user_id', userId).eq('estado', 'en_stock').in('producto_id', ids).order('numero_serie').limit(1000);
-      if (r.error || !r.data || !r.data.length) return;
-      var por = {}; r.data.forEach(function (x) { (por[x.producto_id] = por[x.producto_id] || []).push(x.numero_serie); });
+      var por = {};
+      for (var i = 0; i < ids.length; i += 40) {
+        var r = await sb.from('numeros_serie').select('producto_id,numero_serie').eq('auth_user_id', userId).eq('estado', 'en_stock').in('producto_id', ids.slice(i, i + 40)).order('numero_serie').limit(1000);
+        if (r.error) return;
+        (r.data || []).forEach(function (x) { (por[x.producto_id] = por[x.producto_id] || []).push(x.numero_serie); });
+      }
       var cont = document.getElementById('ns-lista-campos'); if (!cont) return;
-      Object.keys(por).forEach(function (pid) {
-        var dl = document.createElement('datalist'); dl.id = 'nsp-dl-' + pid;
-        dl.innerHTML = por[pid].map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('');
-        cont.appendChild(dl);
+      var inputs = Array.prototype.slice.call(cont.querySelectorAll('.ns-input'));
+      function elegidas(pid, excepto) { return inputs.filter(function (x) { var sl = slots[parseInt(x.getAttribute('data-idx'), 10)]; return x !== excepto && sl && sl.producto_id === pid && x.value.trim(); }).map(function (x) { return x.value.trim().toLowerCase(); }); }
+      function refrescar() {
+        inputs.forEach(function (inp) {
+          var sl = slots[parseInt(inp.getAttribute('data-idx'), 10)]; if (!sl || !por[sl.producto_id]) return;
+          var wrap = inp.parentNode, sel = wrap.querySelector('.nsp-sel'), av = wrap.querySelector('.nsp-aviso');
+          var otras = elegidas(sl.producto_id, inp), val = inp.value.trim().toLowerCase();
+          var libres = por[sl.producto_id].filter(function (v) { return otras.indexOf(v.toLowerCase()) < 0; });
+          var actual = sel.value;
+          sel.innerHTML = '<option value="">— Elegir serie en stock (' + libres.length + ') —</option>' + libres.map(function (v) { return '<option value="' + esc(v) + '">' + esc(v) + '</option>'; }).join('');
+          sel.value = libres.indexOf(actual) >= 0 ? actual : '';
+          var enLista = !!val && por[sl.producto_id].some(function (v) { return v.toLowerCase() === val; });
+          av.textContent = !val ? '' : (enLista ? '✓ Serie en stock' : 'Esta serie no está entre las cargadas: la venta se guarda igual, pero sin enlace a la compra ni garantía del proveedor.');
+          av.style.color = enLista ? '#16a34a' : '#b45309';
+        });
+      }
+      inputs.forEach(function (inp) {
+        var sl = slots[parseInt(inp.getAttribute('data-idx'), 10)];
+        if (!sl || !por[sl.producto_id]) return;
+        var sel = document.createElement('select'); sel.className = 'form-input nsp-sel'; sel.style.marginBottom = '6px';
+        var av = document.createElement('div'); av.className = 'nsp-aviso'; av.style.cssText = 'font-size:12px;margin-top:4px';
+        inp.parentNode.insertBefore(sel, inp); inp.parentNode.appendChild(av);
+        inp.placeholder = 'o escanea / escribe la serie';
+        sel.onchange = function () { if (sel.value) { inp.value = sel.value; } refrescar(); };
+        inp.addEventListener('input', refrescar);
       });
-      cont.querySelectorAll('.ns-input').forEach(function (inp) {
-        var s = slots[parseInt(inp.getAttribute('data-idx'), 10)];
-        if (s && por[s.producto_id]) { inp.setAttribute('list', 'nsp-dl-' + s.producto_id); inp.placeholder = 'Número de serie (hay ' + por[s.producto_id].length + ' en stock)'; }
-      });
+      refrescar();
     } catch (e) { console.warn('decorarModalVenta:', e); }
   }
 

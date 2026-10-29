@@ -6053,16 +6053,21 @@ async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, client
 
       const vencimiento = new Date(hoy + 'T00:00:00');
       vencimiento.setMonth(vencimiento.getMonth() + meses);
-      const { data: numero } = await sb.rpc('generar_numero_garantia', { p_user_id: S.userId });
-
-      filas.push({
-        auth_user_id: S.userId, numero: numero || `GT-${Date.now()}`,
-        cliente_id: clienteId || null, cliente_nombre: clienteId ? clienteNombre : null,
-        producto_id: productoIdParaGarantia, producto_nombre: nombreParaGarantia,
-        venta_id: ventaId, fecha_compra: hoy, garantia_meses: meses,
-        fecha_vencimiento: ymd(vencimiento), origen: 'automatica',
-        numero_serie: numeroSerieGarantia,
-      });
+      // Con números de serie activados y varias unidades vendidas: una garantía por cada serie
+      // (así cada unidad queda con su propia garantía). Sin eso, queda 1 por línea como siempre.
+      const unaPorSerie = S.empresaConfig?.usa_numero_serie === true && !item.esCombo && !item.esPromocion && seriesCoincidentes.length > 1;
+      const listaSeries = unaPorSerie ? seriesCoincidentes.map(x => x.numero_serie) : [numeroSerieGarantia];
+      for (const serieGar of listaSeries) {
+        const { data: numero } = await sb.rpc('generar_numero_garantia', { p_user_id: S.userId });
+        filas.push({
+          auth_user_id: S.userId, numero: numero || `GT-${Date.now()}-${filas.length}`,
+          cliente_id: clienteId || null, cliente_nombre: clienteId ? clienteNombre : null,
+          producto_id: productoIdParaGarantia, producto_nombre: nombreParaGarantia,
+          venta_id: ventaId, fecha_compra: hoy, garantia_meses: meses,
+          fecha_vencimiento: ymd(vencimiento), origen: 'automatica',
+          numero_serie: serieGar,
+        });
+      }
     }
     if (filas.length) await sb.from('garantias_clientes').insert(filas);
   } catch (e) {
