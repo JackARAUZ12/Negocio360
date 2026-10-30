@@ -2694,6 +2694,36 @@ async function pruebaPagoSeparadoVariosBancos(browser, base) {
   }
 }
 
+// Cuentas de demostración: botón "Cerrar sesión" discreto en cada módulo (solo en la demo).
+async function pruebaDemoSalir(browser, base) {
+  console.log('\n▶ Demo: botón "Cerrar sesión" en todos los módulos');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    for (const demo of [false, true]) {
+      const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+      if (demo) await ctx.addInitScript(() => { window.__DEMO = true; });
+      for (const pag of ['dashboard.html', 'ventas.html', 'clientes.html', 'clinica-panel.html']) {
+        await page.goto(base + '/' + pag); await page.waitForTimeout(1800);
+        const n = await page.locator('#n360-demo-salir').count();
+        if (!demo) { verificar(n === 0, `${tag} cuenta real ${pag}: no aparece el botón`); continue; }
+        const info = await page.evaluate(() => { const b = document.getElementById('n360-demo-salir'); if (!b) return null; const r = b.getBoundingClientRect(); return { visible: r.width > 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth, alto: r.height, ancho: r.width, texto: b.textContent }; });
+        verificar(info && info.visible && info.alto <= 40 && info.ancho <= 200 && /Cerrar sesión/.test(info.texto), `${tag} demo ${pag}: botón "Cerrar sesión" visible y pequeño (${info && Math.round(info.ancho)}×${info && Math.round(info.alto)})`);
+        verificar(page.__errores.length === 0, `${tag} demo ${pag}: sin errores (${page.__errores.join(' | ')})`);
+        if (process.env.FOTO_DS && ['dashboard.html', 'ventas.html'].includes(pag)) await page.screenshot({ path: `${process.env.FOTO_DS}-${pag}-${ancho}.png` });
+      }
+      if (demo) {
+        // Dentro del panel (pantallas incrustadas) no se repite el botón
+        const dentro = await page.evaluate(() => [...document.querySelectorAll('iframe')].reduce((a, f) => { try { return a + f.contentDocument.querySelectorAll('#n360-demo-salir').length; } catch (_) { return a; } }, 0));
+        verificar(dentro === 0, `${tag} demo: dentro del panel no se repite el botón`);
+        await page.click('#n360-demo-salir');                       // el diálogo de confirmar se acepta solo en la prueba
+        await page.waitForURL(/login\.html/, { timeout: 8000 }).catch(() => {});
+        verificar(/login\.html/.test(page.url()) && await page.evaluate(() => sessionStorage.getItem('__SALIO') === '1'), `${tag} demo: "Cerrar sesión" sale de la cuenta y lleva al inicio de sesión`);
+      }
+      await ctx.close();
+    }
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2723,6 +2753,7 @@ async function regresion(browser, base) {
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
+    if (process.env.SOLO_DEMOSALIR) { await pruebaDemoSalir(browser, base); throw 'fin'; }
     if (process.env.SOLO_PS) { await pruebaPagoSeparadoClinica(browser, base); await pruebaPagoSeparadoVariosBancos(browser, base); throw 'fin'; }
     if (process.env.SOLO_TX) { await pruebaTransporte(browser, base); await pruebaCuadreTransporte(browser, base); throw 'fin'; }
     if (process.env.SOLO_BOTONES) { await pruebaBotonesCliente(browser, base); throw 'fin'; }
@@ -2766,6 +2797,7 @@ async function regresion(browser, base) {
     await pruebaCuadreTransporte(browser, base);
     await pruebaPagoSeparadoClinica(browser, base);
     await pruebaPagoSeparadoVariosBancos(browser, base);
+    await pruebaDemoSalir(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);
