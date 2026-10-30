@@ -1019,6 +1019,8 @@ async function abrirDetalle(ventaId) {
     if (esVentaACredito(venta)) pintarCreditoDeVenta(venta);
     // Devoluciones: botón "↩️ Devolución", las ya hechas y sus candados
     try { window.N360Devolucion?.decorarDetalle(venta); } catch (eDev) { console.warn('devoluciones:', eDev); }
+    // Números de serie vendidos en esta venta (solo si el negocio los usa)
+    try { if (S.empresaConfig?.usa_numero_serie === true && window.N360Series) window.N360Series.pintarSeriesVenta({ sb, userId: S.userId, empresaConfig: S.empresaConfig }, ventaId, items, body); } catch (eSer) { console.warn('series de la venta:', eSer); }
   } catch(e) {
     body.innerHTML = `<p style="color:var(--danger);padding:20px">Error al cargar detalle: ${e.message}</p>`;
   }

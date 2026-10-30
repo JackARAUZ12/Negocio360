@@ -322,6 +322,34 @@
     return t;
   }
 
+  // Detalle de una venta: muestra, bajo cada producto, los números de serie que se vendieron en ESA venta.
+  async function pintarSeriesVenta(ctx, ventaId, items, cuerpo) {
+    try {
+      if (!activo(ctx.empresaConfig) || !cuerpo) return;
+      var r = await ctx.sb.from('numeros_serie').select('id,producto_id,numero_serie,estado,combo_id,combo_nombre,proveedor_nombre,garantia_proveedor_vence').eq('venta_id', ventaId).eq('auth_user_id', ctx.userId).order('numero_serie').limit(500);
+      if (r.error || !r.data || !r.data.length) return;
+      var chip = function (x) {
+        var t = esc(x.numero_serie);
+        var base = 'display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border-radius:999px;font-family:var(--font-mono,monospace);font-size:11.5px;font-weight:600;background:var(--accent-soft,#eef);color:var(--accent,#5a5af4);text-decoration:none';
+        return x.estado ? '<a href="#" data-nsp-serie="' + x.id + '" style="' + base + '" title="Ver historial de la serie">🔢 ' + t + '</a>' : '<span style="' + base + '">🔢 ' + t + '</span>';
+      };
+      var filas = cuerpo.querySelectorAll('.detalle-items-table tbody tr'), usadas = {};
+      (items || []).forEach(function (it, i) {
+        if (!filas[i] || !it.producto_id) return;
+        var mias = r.data.filter(function (x) { return x.producto_id === it.producto_id && !x.combo_id; });
+        if (!mias.length) return;
+        mias.forEach(function (x) { usadas[x.id] = 1; });
+        var td = filas[i].querySelector('td'); if (td) td.insertAdjacentHTML('beforeend', '<div style="margin-top:3px">' + mias.map(chip).join('') + '</div>');
+      });
+      var resto = r.data.filter(function (x) { return !usadas[x.id]; });
+      if (resto.length) {
+        var tabla = cuerpo.querySelector('.detalle-items-table');
+        if (tabla && tabla.parentNode) tabla.parentNode.insertAdjacentHTML('beforeend', '<div style="margin-top:8px;font-size:12.5px"><b>Números de serie</b><div>' + resto.map(function (x) { return chip(x) + (x.combo_nombre ? '<span class="nsp-muted">(combo ' + esc(x.combo_nombre) + ')</span> ' : ''); }).join('') + '</div></div>');
+      }
+      cuerpo.querySelectorAll('[data-nsp-serie]').forEach(function (a) { a.onclick = function (ev) { ev.preventDefault(); abrirPanel({ sb: ctx.sb, userId: ctx.userId, empresaConfig: ctx.empresaConfig }, 'series', { serieId: a.getAttribute('data-nsp-serie') }); }; });
+    } catch (e) { console.warn('pintarSeriesVenta:', e); }
+  }
+
   /* ---------- 3) PANEL: series · reclamos · pendientes ---------- */
   function badgeGarantia(vence) {
     if (!vence) return '<span class="nsp-muted">—</span>';
@@ -665,5 +693,5 @@
     }, 500);
   }
 
-  window.N360Series = { activo: activo, despuesDeCompra: despuesDeCompra, abrirPanel: abrirPanel, resumenProveedor: resumenProveedor, abrirInventario: abrirInventario, abrirAsistente: abrirAsistente, marcarVendidas: marcarVendidas, validarVenta: validarVenta, decorarModalVenta: decorarModalVenta, iniciarBoton: iniciarBoton, _abrirRegistro: abrirRegistro };
+  window.N360Series = { activo: activo, despuesDeCompra: despuesDeCompra, abrirPanel: abrirPanel, pintarSeriesVenta: pintarSeriesVenta, resumenProveedor: resumenProveedor, abrirInventario: abrirInventario, abrirAsistente: abrirAsistente, marcarVendidas: marcarVendidas, validarVenta: validarVenta, decorarModalVenta: decorarModalVenta, iniciarBoton: iniciarBoton, _abrirRegistro: abrirRegistro };
 })();

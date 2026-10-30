@@ -226,12 +226,12 @@ function buscarGarantiaTicket(q) {
   q = q.trim().toLowerCase();
   if (!q) { cont.innerHTML = ''; return; }
   const resultados = STATE.garantias.filter(g =>
-    (g.cliente_nombre||'').toLowerCase().includes(q) || (g.producto_nombre||'').toLowerCase().includes(q) || g.numero.toLowerCase().includes(q)
+    (g.cliente_nombre||'').toLowerCase().includes(q) || (g.producto_nombre||'').toLowerCase().includes(q) || g.numero.toLowerCase().includes(q) || (g.numero_serie||'').toLowerCase().includes(q)
   ).slice(0, 6);
   cont.innerHTML = resultados.map(g => `
     <div style="padding:6px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px"
          onclick="elegirGarantiaTicket('${g.id}')">
-      <b>${esc(g.numero)}</b> — ${esc(g.producto_nombre||'—')} ${g.cliente_nombre ? `(${esc(g.cliente_nombre)})` : ''}
+      <b>${esc(g.numero)}</b> — ${esc(g.producto_nombre||'—')} ${g.numero_serie ? `· 🔢 ${esc(g.numero_serie)}` : ''} ${g.cliente_nombre ? `(${esc(g.cliente_nombre)})` : ''}
     </div>
   `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
 }
@@ -339,7 +339,7 @@ function renderTablaTickets() {
     return `<tr>
       <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(t.numero)}</span></td>
       <td>${esc(t.cliente_nombre || '—')}</td>
-      <td>${esc(t.producto_nombre || '—')}</td>
+      <td>${esc(t.producto_nombre || '—')}${_usaSeries() && _serieDeTicket(t) ? `<div style="font-size:11.5px;color:var(--text-muted)">🔢 ${esc(_serieDeTicket(t))}</div>` : ''}</td>
       <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.descripcion_problema)}">${esc(t.descripcion_problema)}</td>
       <td>${garantiaHtml}</td>
       <td><span class="status-badge ${ESTADO_TICKET_CLASE[t.estado]}">${ESTADO_TICKET_LABEL[t.estado]}</span></td>
@@ -362,6 +362,7 @@ function verDetalleTicket(id) {
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.8">
       ${t.cliente_nombre ? `<div><b>Cliente:</b> ${esc(t.cliente_nombre)}</div>` : ''}
       ${t.producto_nombre ? `<div><b>Producto:</b> ${esc(t.producto_nombre)}</div>` : ''}
+      ${_usaSeries() && _serieDeTicket(t) ? `<div><b>N° de serie:</b> <a href="#" onclick="abrirFichaSeriePorNumero('${esc(_serieDeTicket(t))}');return false" style="font-family:var(--font-mono);font-weight:600;color:var(--accent)">${esc(_serieDeTicket(t))}</a> <span style="color:var(--text-muted);font-size:11.5px">(toca para ver su historial)</span></div>` : ''}
       ${t.fecha_compra ? `<div><b>Comprado el:</b> ${fmtFechaCorta(t.fecha_compra)}${t.garantia_meses ? ` — garantía de ${t.garantia_meses} meses` : ''}</div>` : ''}
       ${garantia ? `<div>${garantia.vigente ? `<span style="color:var(--success)">✅ Garantía vigente hasta ${fmtFechaCorta(garantia.vencimiento)}</span>` : `<span style="color:var(--danger)">⚠️ Garantía vencida desde ${fmtFechaCorta(garantia.vencimiento)}</span>`}</div>` : ''}
       ${t.tecnico_asignado ? `<div><b>Técnico:</b> ${esc(t.tecnico_asignado)}</div>` : ''}
@@ -509,8 +510,9 @@ async function cargarGarantias() {
 function renderTablaGarantias() {
   const tbody = document.getElementById('tabla-garantias');
   if (!tbody) return;
+  const thSerie = document.getElementById('th-serie-garantia'); if (thSerie) thSerie.style.display = _usaSeries() ? '' : 'none';
   if (!STATE.garantias.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Todavía no hay ninguna garantía registrada.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Todavía no hay ninguna garantía registrada.</td></tr>`;
     return;
   }
   tbody.innerHTML = STATE.garantias.map(g => {
@@ -523,8 +525,47 @@ function renderTablaGarantias() {
       <td>${fmtFechaCorta(g.fecha_vencimiento)}</td>
       <td>${vigente ? '<span style="color:var(--success);font-weight:600">✅ Vigente</span>' : '<span style="color:var(--danger);font-weight:600">⚠️ Vencida</span>'}</td>
       <td><span class="status-badge ${g.origen==='automatica'?'status-activo':'status-pendiente'}">${g.origen==='automatica'?'Automática':'Manual'}</span></td>
+      ${_usaSeries() ? `<td>${g.numero_serie ? `<a href="#" onclick="abrirFichaSeriePorNumero('${esc(g.numero_serie)}');return false" style="font-family:var(--font-mono);font-weight:600;color:var(--accent)" title="Ver historial de la serie">${esc(g.numero_serie)}</a>` : '<span style="color:var(--text-muted)">—</span>'}</td>` : ''}
     </tr>`;
   }).join('');
+}
+
+// ---- Números de serie visibles en Servicio postventa (solo si el negocio los usa) ----
+function _usaSeries() { return STATE.empresaConfig?.usa_numero_serie === true; }
+function _serieDeTicket(t) {
+  const g = t.garantia_id ? STATE.garantias.find(x => x.id === t.garantia_id) : null;
+  return g?.numero_serie || '';
+}
+async function abrirFichaSeriePorNumero(numero) {
+  try {
+    const fila = await _buscarSerieFila(numero);
+    if (!fila) { showToast('Esa serie no está en el sistema', 'warning'); return; }
+    if (fila.estado == null) { showToast('Serie de una venta antigua: sin historial de proveedor', 'info'); return; }
+    abrirFichaSerieServicio(fila.id);
+  } catch (e) { console.warn('abrirFichaSeriePorNumero:', e); }
+}
+// En la ventana de garantía: al elegir cliente, muestra las series que se le vendieron para tocar una (sin escribir).
+async function mostrarSeriesDeCliente(clienteId) {
+  const cont = document.getElementById('gt-series-cliente');
+  if (!cont) return;
+  cont.innerHTML = '';
+  if (!_usaSeries() || !clienteId) return;
+  try {
+    const { data } = await sb.from('numeros_serie').select('producto_id,numero_serie,fecha_venta,estado')
+      .eq('auth_user_id', STATE.userId).eq('cliente_id', clienteId).order('fecha_venta', { ascending: false }).limit(40);
+    const filas = (data || []).filter(r => r.estado == null || r.estado === 'vendida');
+    if (!filas.length) return;
+    cont.innerHTML = '<div style="color:var(--text-muted);margin-bottom:4px">Series vendidas a este cliente (toca una):</div>' + filas.map(r => {
+      const prod = STATE.productos.find(p => p.id === r.producto_id);
+      return `<button type="button" class="btn-secondary btn-sm" style="margin:0 6px 6px 0" onclick="elegirSerieDeCliente('${esc(r.numero_serie)}')">${esc(prod?.nombre || 'Producto')} · <b>${esc(r.numero_serie)}</b>${r.fecha_venta ? ' · ' + fmtFechaCorta(r.fecha_venta) : ''}</button>`;
+    }).join('');
+  } catch (e) { console.warn('mostrarSeriesDeCliente:', e); }
+}
+function elegirSerieDeCliente(numero) {
+  const inp = document.getElementById('gt-buscar-serie');
+  if (!inp) return;
+  inp.value = numero;
+  buscarPorSerieGarantia(numero);
 }
 
 /* =====================================================
@@ -689,6 +730,7 @@ function buscarPorSerieGarantia(valor) {
 
 function elegirClienteGarantia(id, nombre) {
   STATE.clienteElegidoGarantia = { id, nombre };
+  mostrarSeriesDeCliente(id);
   document.getElementById('gt-cliente-id').value = id;
   document.getElementById('gt-buscar-cliente').value = '';
   document.getElementById('gt-cliente-resultados').innerHTML = '';
@@ -697,6 +739,7 @@ function elegirClienteGarantia(id, nombre) {
   el.innerHTML = `<span>👤 ${esc(nombre)}</span><button type="button" class="row-action-btn" onclick="quitarClienteGarantia()">✕</button>`;
 }
 function quitarClienteGarantia() {
+  { const c = document.getElementById('gt-series-cliente'); if (c) c.innerHTML = ''; }
   STATE.clienteElegidoGarantia = null;
   document.getElementById('gt-cliente-id').value = '';
   document.getElementById('gt-cliente-elegido').style.display = 'none';

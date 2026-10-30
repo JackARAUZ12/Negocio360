@@ -1283,7 +1283,7 @@
             <table>
               <thead><tr>
                 <th>N° Garantía</th><th>Cliente</th><th>Producto</th><th>Comprado</th>
-                <th>Vence</th><th>Estado</th><th>Origen</th>
+                <th>Vence</th><th>Estado</th><th>Origen</th><th id="th-serie-garantia" style="display:none">N° de serie</th>
               </tr></thead>
               <tbody id="tabla-garantias"><tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Cargando…</td></tr></tbody>
             </table>
@@ -1327,6 +1327,7 @@
               <label>📟 Buscar por número de serie (opcional)</label>
               <input type="text" id="gt-buscar-serie" placeholder="Escribe el número de serie de la venta..." oninput="buscarPorSerieGarantia(this.value)"/>
               <div id="gt-serie-resultado" style="margin-top:6px;font-size:12.5px"></div>
+              <div id="gt-series-cliente" style="margin-top:6px;font-size:12.5px"></div>
             </div>
 
             <div class="form-group">
@@ -1392,7 +1393,7 @@
 
             <div class="form-group">
               <label>Vincular a una garantía registrada (opcional)</label>
-              <input type="text" id="tk-buscar-garantia" placeholder="Buscar por cliente o producto..." oninput="buscarGarantiaTicket(this.value)"/>
+              <input type="text" id="tk-buscar-garantia" placeholder="Buscar por cliente, producto o serie..." oninput="buscarGarantiaTicket(this.value)"/>
               <input type="hidden" id="tk-garantia-id"/>
               <div id="tk-garantia-resultados" style="max-height:120px;overflow-y:auto;margin-top:4px"></div>
               <div id="tk-garantia-elegida" style="display:none;margin-top:6px;padding:7px 10px;background:var(--accent-soft);border-radius:8px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center"></div>
@@ -1443,8 +1444,8 @@
 </div><!-- /app -->
 
 <script src="paginar-lectura.js?v=20261029d"></script>
-<script src="series-proveedor.js?v=20261029g"></script>
-<script src="servicio.js?v=20261029b"></script>
+<script src="series-proveedor.js?v=20261029h"></script>
+<script src="servicio.js?v=20261029c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261025c"></script>
