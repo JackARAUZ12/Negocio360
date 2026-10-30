@@ -2102,12 +2102,13 @@ async function pruebaOportunidades(browser, base) {
     await page.fill('#op-e-val', '1500'); await page.selectOption('#op-e-origen', 'facebook');
     verificar(await page.evaluate(() => { const c = document.querySelector('#opor-v-editar .crm-caja').getBoundingClientRect(); return c.right <= innerWidth + 1 && c.left >= -1; }), `${tag}: la ventana de oportunidad cabe en la pantalla`);
     await page.click('#op-e-ok');
-    await page.waitForFunction(() => !document.getElementById('opor-v-editar').classList.contains('abierto'));
+    await page.waitForFunction(() => !document.getElementById('opor-v-editar').classList.contains('abierto'), null, { timeout: 15000 }).catch(async () => console.log('DEP-OPOR-NOCIERRA', tag, await page.evaluate(() => [document.getElementById('op-e-err').textContent, document.getElementById('op-e-pnom').value, document.getElementById('op-e-tit').value, [...document.querySelectorAll('#op-e-quien .crm-chip')].map(b => b.className + ':' + b.textContent), getComputedStyle(document.getElementById('op-e-pros')).display]), page.__errores));
     if (movil) await page.click('[data-op-etapa="nuevo"]');
     await page.waitForSelector('[data-op-col="nuevo"] .op-card >> text=50 camisas bordadas');
     await page.waitForFunction(() => (JSON.parse(sessionStorage.getItem('__DB')).crm_oportunidades || []).some(o => o.prospecto_nombre === 'Ana López'), null, { timeout: 8000 }).catch(() => {});
     let db = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
     const ana = db.crm_oportunidades.find(o => o.prospecto_nombre === 'Ana López');
+    if (!ana && process.env.DEPURAR) console.log('DEP-OPOR', tag, JSON.stringify(db.crm_oportunidades.map(o => [o.titulo, o.prospecto_nombre, o.cliente_id, o.etapa])), await page.evaluate(() => document.getElementById('crm-oportunidades').textContent.slice(0, 300)));
     verificar(ana && ana.etapa === 'nuevo' && Number(ana.valor_estimado) === 1500 && ana.origen === 'facebook' && !ana.cliente_id, `${tag}: el prospecto queda en "Nuevo" con su valor y de dónde vino`);
     verificar((await page.textContent('#crm-oportunidades .op-kpis')).includes('En juego (2)'), `${tag}: "En juego" se actualiza`);
     // Pasar de etapa con el botón

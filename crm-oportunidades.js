@@ -197,7 +197,7 @@
       catch (e) { console.error('opor guardar:', e); err.textContent = 'No se pudo guardar. Intenta de nuevo.'; }
       finally { ok.disabled = false; }
     };
-    setTimeout(() => { const el = ov.querySelector(conCliente ? '#op-e-tit' : '#op-e-pnom'); el && el.focus(); }, 50);
+    setTimeout(() => { if (ov.contains(document.activeElement)) return; const el = ov.querySelector(conCliente ? '#op-e-tit' : '#op-e-pnom'); el && el.focus(); }, 50);   // no roba el cursor si ya se está escribiendo
   }
 
   // Prospecto → cliente (tabla clientes de siempre). Si ya existe alguien con ese teléfono, se usa ese.

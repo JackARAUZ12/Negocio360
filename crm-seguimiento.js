@@ -219,7 +219,7 @@
       } catch (e) { console.error('crm tarea:', e); err.textContent = 'No se pudo guardar. Intenta de nuevo.'; }
       finally { ok.disabled = false; }
     };
-    setTimeout(() => { const el = ov.querySelector('#crm-t-titulo'); el.focus(); el.select(); }, 50);
+    setTimeout(() => { if (ov.contains(document.activeElement)) return; const el = ov.querySelector('#crm-t-titulo'); el.focus(); el.select(); }, 50);
   }
 
   // ── Ventana: registro rápido (Llamé / Nota / Visita) con recordatorio opcional ──
@@ -252,7 +252,7 @@
       } catch (e) { console.error('crm rápido:', e); err.textContent = 'No se pudo guardar. Intenta de nuevo.'; }
       finally { ok.disabled = false; }
     };
-    setTimeout(() => ov.querySelector('#crm-r-texto').focus(), 50);
+    setTimeout(() => { if (!ov.contains(document.activeElement)) ov.querySelector('#crm-r-texto').focus(); }, 50);
   }
 
   // ── WhatsApp con mensajes guardados ──
@@ -288,7 +288,7 @@
       try { await registrar(cli, 'mensaje', 'WhatsApp', texto || null); } catch (e) { console.warn('crm wa registro:', e); }
       alGuardar && alGuardar();
     };
-    setTimeout(() => ta.focus(), 50);
+    setTimeout(() => { if (!ov.contains(document.activeElement)) ta.focus(); }, 50);
   }
   async function gestionarPlantillas({ alCerrar } = {}) {
     const propias = await cargarPlantillas(true);
