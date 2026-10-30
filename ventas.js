@@ -1932,7 +1932,26 @@ async function abrirNuevaVenta() {
 function cerrarModalVenta() {
   // En modo "Corregir venta" pide confirmacion si la original ya fue anulada
   if (window.N360Correccion && !window.N360Correccion.permitirCierre()) return;
+  liberarNumeroVentaNormal();
   closeModal('modal-venta');
+}
+
+/* El número de venta se reserva al abrir la pantalla. Si se cierra sin guardar, se
+   devuelve para que la próxima venta lo use (así no quedan huecos en la numeración).
+   El servidor nunca libera un número que ya tiene una venta, aunque se llame de más. */
+async function _liberarNumeroVenta(num) {
+  if (!num || !/^V-\d{1,9}$/.test(num)) return;
+  try { await sb.rpc('liberar_numero_venta', { p_user_id: S.userId, p_numero: num }); } catch (_) {}
+}
+function liberarNumeroVentaNormal() {
+  try {
+    if (S._guardandoVenta) return;                                   // se está guardando: no tocar
+    if (!document.getElementById('modal-venta')?.classList.contains('modal-open')) return;
+    const num = S.numeroVenta;
+    if (!num || S._numeroLiberado === num) return;
+    S._numeroLiberado = num;
+    _liberarNumeroVenta(num);
+  } catch (_) {}
 }
 
 async function generarNumeroVenta() {
@@ -1941,6 +1960,7 @@ async function generarNumeroVenta() {
     const { data, error } = await sb.rpc('generar_numero_venta', { p_user_id: S.userId });
     if (error) throw error;
     S.numeroVenta = data || `V-${Date.now()}`;
+    S._numeroLiberado = '';
     document.getElementById('mv-num').textContent = S.numeroVenta;
   } catch(e) {
     // Fallback local (no definitivo, se asigna al guardar)
@@ -7641,6 +7661,11 @@ function confirmarCerrarVentaRapida() {
   if (VR.carrito.length && !VR.procesando) {
     if (!confirm('Hay productos escaneados sin cobrar. ¿Cerrar Venta rápida de todos modos?')) return;
   }
+  if (!VR.procesando && VR.numeroVenta) {            // número reservado que no se usó: se devuelve
+    const _numVR = VR.numeroVenta;
+    VR.numeroVenta = '';
+    _liberarNumeroVenta(_numVR);
+  }
   closeModal('modal-vr-pos');
 }
 
@@ -8495,6 +8520,7 @@ document.addEventListener('click', e => {
    ============================================================ */
 document.addEventListener('keydown', e => {
   if (e.key==='Escape') {
+    liberarNumeroVentaNormal();
     closeModal('modal-venta');
     closeModal('modal-detalle');
     closeModal('modal-anular');
