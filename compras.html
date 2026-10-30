@@ -2363,6 +2363,12 @@
 <script src="series-proveedor.js?v=20261029h"></script>
 <script>N360Series.iniciarBoton("btn-series-garantias",function(){return {empresaConfig:STATE.empresaConfig}});</script>
 <script>
+// Entrada "Garantías de proveedor" del menú: abre el panel de series y garantías
+(function(){ if (!/[?&]garantias=1/.test(location.search)) return; var n=0, t=setInterval(function(){ n++;
+  try { if (STATE && STATE.empresaConfig && STATE.empresaConfig.usa_numero_serie===true && STATE.userId && window.N360Series) { clearInterval(t); N360Series.abrirPanel({sb:sbClient,userId:STATE.userId,empresaConfig:STATE.empresaConfig}); } } catch(e){}
+  if (n>40) clearInterval(t); }, 500); })();
+</script>
+<script>
   // Actualizar resumen-total-final en paso 7 cuando cambia el resumen
   const _nc7Sync = setInterval(() => {
     const src = document.getElementById('resumen-total');
@@ -2410,6 +2416,7 @@
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261025c"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

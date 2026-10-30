@@ -3851,6 +3851,8 @@ async function guardarProducto() {
       // con motivo (robo, daño, merma, etc.) que además pueden descontar
       // de caja automáticamente — ese flujo no cambia.
       const stockAntes = parseFloat(STATE.editTarget.stock_actual ?? 0);
+      // Si en esta edición se marcó "requiere número de serie" por primera vez, al guardar se abre la ventana para cargar sus series.
+      window.__serieActivadaEnEdicion = (STATE.editTarget.requiere_numero_serie !== true && $('inputRequiereSerieEdit')?.checked === true) ? STATE.editTarget.id : null;
 
       // Si cambia la existencia, se pregunta el motivo ANTES de guardar.
       // Cancelar = no se guarda nada (ni el producto ni el stock).
@@ -4039,6 +4041,12 @@ async function guardarProducto() {
       if (STATE.modalMode !== 'editar' && productoIdGuardado && STATE.usaNumeroSerie && tipo === 'producto'
           && $('inputRequiereSerie')?.checked === true && stockActual > 0) {
         setTimeout(() => abrirSeriesProducto(productoIdGuardado), 300);
+      }
+      // Producto existente al que se le acaba de marcar "requiere número de serie": abre la carga de series ahí mismo.
+      if (STATE.modalMode === 'editar' && window.__serieActivadaEnEdicion && STATE.usaNumeroSerie && tipo === 'producto') {
+        const idSerie = window.__serieActivadaEnEdicion;
+        window.__serieActivadaEnEdicion = null;
+        setTimeout(() => abrirSeriesProducto(idSerie), 300);
       }
     } catch (eSer) { console.warn('series del producto nuevo:', eSer); }
 
