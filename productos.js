@@ -694,6 +694,13 @@ function abrirSeriesProducto(id) {
   window.N360Series.abrirInventario({ sb: supabaseClient, userId: STATE.user.id, productoId: id, empresaConfig: STATE.empresa });
 }
 window.abrirSeriesProducto = abrirSeriesProducto;
+// Ver los números de serie de un producto: cuáles hay, estado (en stock / vendida / en reclamo),
+// de qué compra y proveedor vino y a qué cliente se vendió. Solo lee; desde ahí también se pueden registrar más.
+function verSeriesProducto(id) {
+  if (!STATE.usaNumeroSerie || !window.N360Series) return;
+  window.N360Series.abrirPanel({ sb: supabaseClient, userId: STATE.user.id, empresaConfig: STATE.empresa }, 'series', { productoId: id });
+}
+window.verSeriesProducto = verSeriesProducto;
 function abrirAsistenteSeries() {
   if (!STATE.usaNumeroSerie || !window.N360Series) return;
   window.N360Series.abrirAsistente({ sb: supabaseClient, userId: STATE.user.id, empresaConfig: STATE.empresa, alCambiar: () => { try { cargarProductos(); } catch (e) {} } });
@@ -2112,7 +2119,7 @@ function renderTablaProductos(tbody) {
             <div class="row-actions" style="opacity:1;">
               <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
               <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
-              ${(STATE.usaNumeroSerie && p.requiere_numero_serie === true && p.tipo === 'producto') ? `<button class="row-action-btn" title="Números de serie y garantía del proveedor" onclick="abrirSeriesProducto('${p.id}')">🔢</button>` : ''}
+              ${(STATE.usaNumeroSerie && p.requiere_numero_serie === true && p.tipo === 'producto') ? `<button class="row-action-btn" title="Ver sus números de serie (dónde está cada uno)" onclick="verSeriesProducto('${p.id}')">🔢</button>` : ''}
               <button class="row-action-btn dup"  title="Duplicar"      onclick="duplicarProducto('${p.id}')">📋</button>
               <button class="row-action-btn del"  title="Eliminar"      onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
             </div>

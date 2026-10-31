@@ -369,7 +369,7 @@
       '<div class="nsp-h"><span>🛡️ Series y garantías de proveedor</span><button class="nsp-x" data-x>✕</button></div>' +
       '<div class="nsp-tabs"><button class="nsp-tab on" data-t="series">Series</button><button class="nsp-tab" data-t="reclamos">Reclamos al proveedor</button><button class="nsp-tab" data-t="pend">Pendientes <span id="nsp-npend"></span></button></div>' +
       '<div class="nsp-b" id="nsp-cuerpo" style="min-height:260px"></div>', true);
-    var st = { tab: tabInicial || 'series', cargado: false, series: [], reclamos: [], pend: [], compras: {}, clientes: {}, prods: {}, q: '', est: '', prod: '', vence: '' };
+    var st = { tab: tabInicial || 'series', cargado: false, series: [], reclamos: [], pend: [], compras: {}, clientes: {}, prods: {}, q: '', est: '', prod: (inicial && inicial.productoId) || '', vence: '' };
     d.querySelector('[data-x]').onclick = function () { d.close(); };
     d.addEventListener('mousedown', function (e) { if (e.target === d) d.close(); });
     var cuerpo = d.querySelector('#nsp-cuerpo');
@@ -380,7 +380,7 @@
         st.series = await leerTodo(function () { return ctx.sb.from('numeros_serie').select('id,producto_id,numero_serie,estado,compra_id,proveedor_id,proveedor_nombre,fecha_compra,garantia_proveedor_meses,garantia_proveedor_vence,venta_id,cliente_id,fecha_venta,combo_nombre').eq('auth_user_id', ctx.userId); });
         st.reclamos = await leerTodo(function () { return ctx.sb.from('reclamos_proveedor').select('*').eq('auth_user_id', ctx.userId); });
         st.pend = await leerTodo(function () { return ctx.sb.from('series_compra_pendientes').select('*').eq('auth_user_id', ctx.userId); });
-        var pid = {}; st.series.forEach(function (s) { pid[s.producto_id] = 1; });
+        var pid = {}; st.series.forEach(function (s) { pid[s.producto_id] = 1; }); if (st.prod) pid[st.prod] = 1;
         var ids = Object.keys(pid), pr = [];
         for (var i = 0; i < ids.length; i += 80) { var r = await ctx.sb.from('productos').select('id,nombre,sku').eq('auth_user_id', ctx.userId).in('id', ids.slice(i, i + 80)); pr = pr.concat(r.data || []); }
         st.prods = {}; pr.forEach(function (p) { st.prods[p.id] = p; });
@@ -417,7 +417,7 @@
         return true;
       }).sort(function (a, b) { return String(b.fecha_compra || b.fecha_venta || '') < String(a.fecha_compra || a.fecha_venta || '') ? -1 : 1; });
       var cuenta = { en_stock: 0, vendida: 0, en_reclamo: 0 };
-      st.series.forEach(function (s) { var e = estadoReal(s); if (cuenta[e] !== undefined) cuenta[e]++; });
+      st.series.forEach(function (s) { if (st.prod && s.producto_id !== st.prod) return; var e = estadoReal(s); if (cuenta[e] !== undefined) cuenta[e]++; });
       var prodsOpt = Object.keys(st.prods).sort(function (a, b) { return nombreProd(a).localeCompare(nombreProd(b)); }).map(function (id) { return '<option value="' + id + '"' + (st.prod === id ? ' selected' : '') + '>' + esc(nombreProd(id)) + '</option>'; }).join('');
       var maxF = 200, corte = lista.slice(0, maxF);
       cuerpo.innerHTML =
@@ -435,9 +435,11 @@
               '<td>' + (e === 'vendida' ? (esc(st.clientes[s.cliente_id] || 'Sin cliente') + '<div class="nsp-muted">' + fc(s.fecha_venta) + '</div>') : '<span class="nsp-muted">—</span>') + '</td>' +
               '<td style="white-space:nowrap">' + ((e === 'en_stock' || e === 'vendida') ? '<button class="nsp-bt s" data-rec="' + s.id + '">Reclamar</button> ' : '') + ((s.estado === 'vendida') ? '<button class="nsp-bt s" data-vol="' + s.id + '" title="Si el cliente la devolvió">Volver a stock</button>' : '') + '</td></tr>';
           }).join('') + '</tbody></table></div>' + (lista.length > maxF ? '<div class="nsp-muted">Mostrando ' + maxF + ' de ' + lista.length + '. Usa los filtros para acotar.</div>' : '')
-          : '<div class="nsp-muted" style="padding:20px 0">No hay series con esos filtros. Las series se registran al guardar una compra de productos que requieren número de serie.</div>');
+          : '<div class="nsp-muted" style="padding:20px 0">' + (st.prod && !st.series.some(function (x) { return x.producto_id === st.prod; })
+              ? '<b>' + esc(nombreProd(st.prod)) + '</b> aún no tiene números de serie registrados. Se registran al guardar una compra, o con <b>+ Registrar series de inventario</b> para las unidades que ya tienes.'
+              : 'No hay series con esos filtros. Las series se registran al guardar una compra de productos que requieren número de serie.') + '</div>');
       var bExp = cuerpo.querySelector('#nsp-exp'); if (bExp) bExp.onclick = function () { window.abrirExportarSeries({ sb: ctx.sb, userId: ctx.userId, empresaConfig: ctx.empresaConfig }); };
-      cuerpo.querySelector('#nsp-inv').onclick = function () { abrirInventario(ctx, cargar); };
+      cuerpo.querySelector('#nsp-inv').onclick = function () { abrirInventario(Object.assign({}, ctx, { productoId: st.prod || ctx.productoId || null }), cargar); };
       var q2 = cuerpo.querySelector('#nsp-q');
       q2.oninput = function () { st.q = q2.value; clearTimeout(pintarSeries._t); pintarSeries._t = setTimeout(function () { var pos = q2.selectionStart; pintarSeries(); var n = cuerpo.querySelector('#nsp-q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 250); };
       cuerpo.querySelector('#nsp-est').onchange = function (e) { st.est = e.target.value; pintarSeries(); };
@@ -647,12 +649,14 @@
         var lista = st.prods.filter(function (p) { return p.requiere_numero_serie === true && (!q || (p.nombre + ' ' + (p.sku || '')).toLowerCase().indexOf(q) >= 0); });
         var totFalta = 0; lista.forEach(function (p) { totFalta += Math.max(0, Math.floor(Number(p.stock_actual) || 0) - (st.cnt[p.id] || 0)); });
         cuerpo.innerHTML = '<div class="nsp-muted">Cada producto que requiere serie debe tener cargadas las series de las unidades que tienes. Al vender, se elige entre las series cargadas. Cargarlas no cambia stock ni dinero.</div>' +
-          '<div class="nsp-row"><input class="nsp-in" id="as-q" placeholder="Buscar producto…" value="' + esc(st.q) + '" style="flex:1;min-width:200px"/><span class="nsp-bd ' + (totFalta ? 'y' : 'g') + '">Faltan por cargar: ' + totFalta + '</span></div>' +
+          '<div class="nsp-row"><input class="nsp-in" id="as-q" placeholder="Buscar producto…" value="' + esc(st.q) + '" style="flex:1;min-width:200px"/><span class="nsp-bd ' + (totFalta ? 'y' : 'g') + '">Faltan por cargar: ' + totFalta + '</span><button class="nsp-bt s" id="as-ver-todas">👁 Ver todas las series</button></div>' +
           (lista.length ? '<div class="nsp-tw"><table class="nsp-tbl"><thead><tr><th>Producto</th><th>Stock</th><th>Con serie</th><th>Faltan</th><th></th></tr></thead><tbody>' + lista.map(function (p) {
             var stock = Math.floor(Number(p.stock_actual) || 0), c = st.cnt[p.id] || 0, f = Math.max(0, stock - c);
-            return '<tr><td><b>' + esc(p.nombre) + '</b>' + (p.sku ? '<div class="nsp-muted">' + esc(p.sku) + '</div>' : '') + '</td><td>' + stock + '</td><td>' + c + '</td><td>' + (f ? '<span class="nsp-bd y">' + f + '</span>' : '<span class="nsp-bd g">Completo</span>') + '</td><td><button class="nsp-bt s p" data-cargar="' + p.id + '">Cargar series</button></td></tr>';
+            return '<tr><td><b>' + esc(p.nombre) + '</b>' + (p.sku ? '<div class="nsp-muted">' + esc(p.sku) + '</div>' : '') + '</td><td>' + stock + '</td><td>' + c + '</td><td>' + (f ? '<span class="nsp-bd y">' + f + '</span>' : '<span class="nsp-bd g">Completo</span>') + '</td><td style="white-space:nowrap"><button class="nsp-bt s" data-ver="' + p.id + '">👁 Ver series</button> <button class="nsp-bt s p" data-cargar="' + p.id + '">Cargar series</button></td></tr>';
           }).join('') + '</tbody></table></div>' : '<div class="nsp-muted" style="padding:20px 0">Aún no hay productos marcados con "requiere número de serie". Usa la pestaña <b>Marcar productos</b>.</div>');
         var qi = cuerpo.querySelector('#as-q'); qi.oninput = function () { st.q = qi.value; clearTimeout(pintar._t); pintar._t = setTimeout(function () { var pos = qi.selectionStart; pintar(); var n = cuerpo.querySelector('#as-q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }, 250); };
+        var bvt = cuerpo.querySelector('#as-ver-todas'); if (bvt) bvt.onclick = function () { abrirPanel({ sb: ctx.sb, userId: ctx.userId, empresaConfig: ctx.empresaConfig }, 'series'); };
+        cuerpo.querySelectorAll('[data-ver]').forEach(function (b) { b.onclick = function () { abrirPanel({ sb: ctx.sb, userId: ctx.userId, empresaConfig: ctx.empresaConfig }, 'series', { productoId: b.getAttribute('data-ver') }); }; });
         cuerpo.querySelectorAll('[data-cargar]').forEach(function (b) { b.onclick = function () { abrirInventario({ sb: ctx.sb, userId: ctx.userId, productoId: b.getAttribute('data-cargar'), empresaConfig: ctx.empresaConfig }, cargar); }; });
       } else {
         var cand = st.prods.filter(function (p) { return p.requiere_numero_serie !== true && p.activo !== false && (!q || (p.nombre + ' ' + (p.sku || '')).toLowerCase().indexOf(q) >= 0); });
