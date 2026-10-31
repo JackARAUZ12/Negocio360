@@ -115,7 +115,8 @@ TO.recargar = async function (id) {
       sb.from('taller_orden_historial').select('*').eq('auth_user_id', uid).eq('orden_id', oid).order('created_at', { ascending: false }).limit(40),
     ]);
     if (!o.data) { $('d-cuerpo').innerHTML = '<div class="tl-vacio">No se encontró la orden.</div>'; return; }
-    TO.actual = o.data; TO.lineas = l.data || []; TO.hist = h.data || []; TO.venta = null;
+    TO.actual = o.data; TO.lineas = l.data || []; TO.hist = h.data || []; TO.venta = null; TO.link = null;
+    try { const { data: lk } = await sb.from('taller_links').select('expira_at,revocado_at,vistas,visto_at,created_at').eq('auth_user_id', uid).eq('orden_id', oid).is('revocado_at', null).order('created_at', { ascending: false }).limit(1); TO.link = (lk && lk[0]) || null; } catch (_) {}
     if (TO.actual.venta_id) { const { data } = await sb.from('ventas').select('numero_venta').eq('id', TO.actual.venta_id).maybeSingle(); TO.venta = data; }
   } catch (e) { console.warn(e); $('d-cuerpo').innerHTML = '<div class="tl-vacio">No se pudo cargar la orden. Intenta de nuevo.</div>'; return; }
   const i = TO.ord.findIndex(x => x.id === TO.actual.id); if (i >= 0) TO.ord[i] = TO.actual; else TO.ord.unshift(TO.actual);
@@ -162,6 +163,7 @@ TO.pintarDetalle = function () {
         <div class="grande"><span>Total a cobrar</span><span>${fmt(o.total)}</span></div>${abierta && num(o.total_estimado) !== num(o.total) ? `<div class="tl-muted"><span>Si el cliente aprueba todo</span><span>${fmt(o.total_estimado)}</span></div>` : ''}</div>
       ${abierta ? TO.formLinea() : ''}</div>`);
   if (abierta) html.push(`<div class="tl-sec"><b>Siguiente paso</b><div class="tl-acc" style="margin:0">${sig}<button type="button" class="btn-secondary" style="margin-left:auto" onclick="TO.estado('cancelado')">Cancelar orden</button></div></div>`);
+  if (abierta) html.push(TO.seccionLink());
   if (o.estado === 'listo') html.push(TO.formEntrega());
   html.push(`<div class="tl-sec"><b>Historial</b><div class="tl-hist">${TO.hist.map(h => `<div>${tlFechaHora(h.created_at)} · <b>${esc(h.evento)}</b>${h.detalle ? ' · ' + esc(h.detalle) : ''}${h.por ? ' · ' + esc(h.por) : ''}</div>`).join('') || '—'}</div></div>`);
   $('d-cuerpo').innerHTML = html.join('');
@@ -386,4 +388,51 @@ TO.factura = async function () {
     doc.save(`Factura_${v.numero_venta}.pdf`);
   } catch (e) { console.warn(e); showToast('No se pudo generar la factura.', 'error'); }
   b.disabled = false; b.textContent = t;
+};
+
+/* ---------- Link de aprobación para el cliente (WhatsApp) ---------- */
+TO.seccionLink = function () {
+  const o = TO.actual, l = TO.link, pend = TO.lineas.filter(x => x.aprobacion === 'pendiente').length;
+  const vivo = l && new Date(l.expira_at) > new Date();
+  return `<div class="tl-sec"><b>📲 Aprobación del cliente por WhatsApp</b>
+    <div class="tl-muted">El cliente abre un link en su celular, ve el presupuesto y aprueba o rechaza cada trabajo. No necesita cuenta.</div>
+    ${vivo ? `<div class="tl-aviso ok">Hay un link activo hasta ${tlFecha(l.expira_at)} · ${l.vistas ? `lo han abierto ${l.vistas} vez(es), la última ${tlFechaHora(l.visto_at)}` : 'aún no lo ha abierto'}.</div>` : ''}
+    ${!TO.lineas.length ? '<div class="tl-aviso">Agrega primero los trabajos al presupuesto.</div>' : pend ? '' : '<div class="tl-muted">No hay trabajos pendientes. Si agregas uno nuevo, vuelve a enviar el link.</div>'}
+    <div class="tl-acc" style="margin:0"><button type="button" class="btn-primary" ${TO.lineas.length ? '' : 'disabled'} onclick="TO.crearLink()">${vivo ? '🔄 Crear link nuevo' : '📲 Preparar link'}</button>
+      ${vivo ? '<button type="button" class="btn-secondary" onclick="TO.revocarLink()">Desactivar link</button>' : ''}</div></div>`;
+};
+TO.telCliente = async function () {
+  const id = TO.actual.cliente_id; if (!id) return '';
+  try { const { data } = await sb.from('clientes').select('whatsapp,telefono').eq('id', id).eq('auth_user_id', TL.userId).maybeSingle(); return String((data && (data.whatsapp || data.telefono)) || '').replace(/\D/g, ''); } catch (_) { return ''; }
+};
+TO.crearLink = async function () {
+  const r = await TO.accion(() => tlRpc('taller_link_crear', { p_orden_id: TO.actual.id, p_dias: 7, p_por: TL.nombre }));
+  if (!r) return; if (!r.ok) { showToast(r.msg, 'error'); return; }
+  const base = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, ''), url = base + 'aprobar.html#t=' + r.token;
+  let tel = await TO.telCliente(); if (tel.length === 8) tel = '505' + tel;
+  const v = TO.veh[TO.actual.vehiculo_id] || {}, nombreNeg = (TL.empresaConfig && TL.empresaConfig.nombre_comercial) || 'el taller';
+  TO.linkUrl = url;
+  TO.linkMsg = `Hola${TO.actual.cliente_nombre ? ' ' + TO.actual.cliente_nombre.split(' ')[0] : ''}, te escribe ${nombreNeg}. Este es el presupuesto de tu ${[v.marca, v.modelo].filter(Boolean).join(' ') || 'vehículo'}${v.placa ? ' (' + v.placa + ')' : ''}. Entra aquí para aprobar o rechazar cada trabajo: ${url}`;
+  let m = $('lk-modal');
+  if (!m) { m = document.createElement('div'); m.id = 'lk-modal'; m.className = 'tl-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.style.zIndex = 450; document.body.appendChild(m); }
+  const wa = 'https://wa.me/' + (tel || '') + '?text=' + encodeURIComponent(TO.linkMsg);
+  m.innerHTML = `<div class="tl-modal-box" style="max-width:520px"><div class="tl-modal-cab"><h2>📲 Link listo</h2><button type="button" class="tl-x" onclick="TO.cerrarLink()" aria-label="Cerrar">✕</button></div>
+    <div class="tl-modal-cuerpo"><div class="tl-aviso ok">Vence en 7 días. Si creas otro, este deja de servir.</div>
+      <div class="tl-f"><label for="lk-url">Link para el cliente</label><input class="tl-inp" id="lk-url" readonly value="${esc(url)}" onclick="this.select()"></div>
+      ${tel ? '' : '<div class="tl-muted">Este cliente no tiene teléfono guardado: en WhatsApp podrás elegir a quién enviárselo.</div>'}
+      <div class="tl-acc" style="margin:0"><a class="btn-primary" style="text-decoration:none;display:inline-flex;align-items:center;padding:10px 16px;border-radius:10px" href="${esc(wa)}" target="_blank" rel="noopener">💬 Enviar por WhatsApp</a>
+        <button type="button" class="btn-secondary" onclick="TO.copiarLink()">📋 Copiar mensaje</button></div></div>
+    <div class="tl-modal-pie"><button type="button" class="btn-secondary" onclick="TO.cerrarLink()">Cerrar</button></div></div>`;
+  m.classList.add('abierto'); document.body.style.overflow = 'hidden';
+  await TO.recargar();
+};
+TO.cerrarLink = function () { const m = $('lk-modal'); if (m) m.classList.remove('abierto'); if (!$('d-modal').classList.contains('abierto')) document.body.style.overflow = ''; };
+TO.copiarLink = async function () {
+  try { await navigator.clipboard.writeText(TO.linkMsg); showToast('✅ Mensaje copiado'); }
+  catch (_) { const i = $('lk-url'); if (i) { i.select(); showToast('Copia el link seleccionado.', 'warning'); } }
+};
+TO.revocarLink = async function () {
+  if (!confirm('¿Desactivar el link? El cliente ya no podrá abrirlo.')) return;
+  const r = await TO.accion(() => tlRpc('taller_link_revocar', { p_orden_id: TO.actual.id, p_por: TL.nombre }));
+  if (!r) return; if (!r.ok) { showToast(r.msg, 'error'); return; } showToast('Link desactivado'); await TO.recargar();
 };
