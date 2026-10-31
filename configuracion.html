@@ -1382,6 +1382,16 @@
               <span class="cfg-switch-track" onclick="onToggleCicloProduccionClick(event)"></span>
             </label>
           </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Producir cuando baje del stock mínimo</div>
+              <div class="cfg-row-sub" id="sm-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="sm-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleStockMinProdClick(event)"></span>
+            </label>
+          </div>
           <div class="cfg-status" id="pp-status"></div>
         </div>
 
@@ -2459,6 +2469,39 @@ async function guardarCicloProduccion(activo) {
   } finally {
     toggle.disabled = false;
   }
+}
+
+/* ---------- Producir cuando baje del stock mínimo (opcional, apagado por defecto) ---------- */
+const SM_TXT_ON  = 'Activado — en Producción aparece el botón "Bajo el mínimo" para crear las órdenes de lo que está por debajo del stock mínimo. Necesita "Pedidos con producción" activo.';
+const SM_TXT_OFF = 'Desactivado — no cambia nada.';
+async function cargarStockMinProd() {
+  const toggle = document.getElementById('sm-toggle'), sub = document.getElementById('sm-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_stock_minimo_produccion').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_stock_minimo_produccion === true;
+    toggle.checked = activo; sub.textContent = activo ? SM_TXT_ON : SM_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarStockMinProd:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleStockMinProdClick(evt) {
+  const toggle = document.getElementById('sm-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarStockMinProd(toggle.checked);
+}
+async function guardarStockMinProd(activo) {
+  const toggle = document.getElementById('sm-toggle'), sub = document.getElementById('sm-row-sub'), statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_stock_minimo_produccion: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? SM_TXT_ON : SM_TXT_OFF;
+    setStatus(statusEl, activo ? 'Producción por stock mínimo activada.' : 'Producción por stock mínimo desactivada.', true);
+  } catch (e) {
+    console.error('guardarStockMinProd:', e); toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
 }
 
 async function cargarNumeroSerie() {
@@ -3732,6 +3775,7 @@ async function initConfiguracion() {
       cargarPresentaciones();
       cargarNumeroSerie();
       cargarCicloProduccion();
+      cargarStockMinProd();
       cargarModeloProducto();
       cargarModuloHotel();
       cargarModuloRestaurante();
