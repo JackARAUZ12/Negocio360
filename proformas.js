@@ -1439,6 +1439,7 @@ async function verDetalleProf(id) {
       </div>`;
     body.innerHTML = html;
     try { await window.N360ProfProd?.pintarDetalle(p, body); } catch (_) { /* ciclo de producción: opcional */ }
+    try { await window.N360ProfAnt?.pintar(p, body); } catch (_) { /* anticipo: opcional */ }
   } catch (e) {
     body.innerHTML = 'No se pudo cargar el detalle.';
   }
@@ -1455,6 +1456,13 @@ function abrirConvertirAVenta(id) {
   document.getElementById('cv-error').textContent = '';
   const wB = document.getElementById('cv-wrap-banco'); if (wB) wB.style.display = 'none';
   loadMetodosPago().then(() => onCambiarMetodoConvertir());
+  const avisoAnt = document.getElementById('cv-anticipo'); if (avisoAnt) { avisoAnt.style.display = 'none'; avisoAnt.textContent = ''; }
+  if (STATE.empresaConfig?.usa_modulo_certificados === true && avisoAnt) {
+    sbClient.rpc('proforma_anticipo_resumen', { p_proforma_id: p.id }).then(({ data }) => {
+      const ap = Number(data?.aplicable) || 0;
+      if (ap > 0) { avisoAnt.style.display = ''; avisoAnt.textContent = `💵 Esta proforma tiene un anticipo cobrado. Se aplicará ${fmt(ap)} como pago; en Caja se registra solo lo que falta cobrar (${fmt(Math.max(0, Number(p.total) - ap))}).`; }
+    }).catch(() => {});
+  }
   openModal('modal-convertir-venta');
 }
 
@@ -1794,7 +1802,9 @@ async function finalizarConversionProforma(ventaId, proformaId, metodoId, metodo
   for (let i = 0; i < 3; i++) {
     if (i) await new Promise(r => setTimeout(r, i === 1 ? 700 : 1500));
     try {
-      const { data, error } = await sbClient.rpc('proforma_finalizar_conversion', args);
+      // Función con soporte de anticipo (idéntica a la de siempre si no hay anticipo); si aún no existe, la de siempre.
+      let { data, error } = await sbClient.rpc('proforma_finalizar_conversion_anticipo', args);
+      if (error && (error.code === 'PGRST202' || error.code === '42883')) ({ data, error } = await sbClient.rpc('proforma_finalizar_conversion', args));
       if (!error) return { data, error: null };
       ultimo = error;
       // Errores de datos (no de conexión): no tiene sentido reintentar.
@@ -1862,6 +1872,21 @@ async function confirmarConvertirAVenta() {
     const bancoConvId = (wrapBancoConv && wrapBancoConv.style.display !== 'none')
       ? (document.getElementById('cv-banco')?.value || null) : null;
 
+    // Anticipo cobrado (certificado en modo anticipo): se aplica como pago parcial de esta venta.
+    let certsAnticipo = [];
+    if (STATE.empresaConfig?.usa_modulo_certificados === true) {
+      const { data: resA } = await sbClient.rpc('proforma_anticipo_resumen', { p_proforma_id: p.id });
+      let restante = Number(resA?.aplicable) || 0;
+      for (const c of (resA?.certificados || [])) {
+        if (restante <= 0.004) break;
+        if (c.estado !== 'activo' || !(Number(c.saldo) > 0)) continue;
+        const m = Math.round(Math.min(restante, Number(c.saldo)) * 100) / 100;
+        certsAnticipo.push({ certificado_id: c.id, monto: m, codigo: c.codigo });
+        restante = Math.round((restante - m) * 100) / 100;
+      }
+    }
+    const totalAnticipo = certsAnticipo.reduce((t, c) => t + c.monto, 0);
+
     // ---- B: número de venta ----
     const { data: numeroVenta } = await sbClient.rpc('generar_numero_venta', { p_user_id: STATE.userId });
 
@@ -1871,10 +1896,14 @@ async function confirmarConvertirAVenta() {
       cliente_id: p.cliente_id || null, cliente_nombre: p.cliente_nombre,
       fecha: todayISO(), subtotal: p.subtotal, descuento: p.descuento, impuesto: p.impuesto,
       total: p.total, costo_total: p.costo_total,
-      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
-      estado: 'completada', observaciones: p.observaciones || null,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre + (totalAnticipo > 0 ? ' + Certificado de regalo' : ''),
+      estado: 'completada',
+      observaciones: totalAnticipo > 0
+        ? [p.observaciones, `Anticipo aplicado ${certsAnticipo.map(c => c.codigo).join(', ')}: ${fmt(totalAnticipo)}`].filter(Boolean).join(' · ')
+        : (p.observaciones || null),
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_activo ? p.iva_porcentaje : 0,
       proforma_id: p.id,
+      ...(totalAnticipo > 0 ? { certificados_aplicados: certsAnticipo.map(c => ({ certificado_id: c.certificado_id, monto: c.monto })) } : {}),
       creado_por_nombre: obtenerNombrePerfilActivo(),
     };
     const { data: ventaNueva, error: errVenta } = await sbClient.from('ventas').insert(ventaPayload).select('id').single();

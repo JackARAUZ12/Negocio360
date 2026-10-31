@@ -1917,6 +1917,17 @@
         }
       } catch (_) { /* opcional */ }
     }
+    // Anticipo cobrado de la proforma: debe aplicarse al convertirla en venta (no a crédito), para no contar el dinero dos veces.
+    if (CS.proformaOrigenId) {
+      try {
+        const { data: _an } = await _sb.from('proforma_anticipos').select('certificado_id, certificados_regalo(estado,saldo)')
+          .eq('proforma_id', CS.proformaOrigenId).eq('auth_user_id', CS.userId);
+        if ((_an || []).some(a => a.certificados_regalo?.estado === 'activo' && Number(a.certificados_regalo?.saldo) > 0)) {
+          showToast('Esta proforma tiene un anticipo cobrado sin usar. Conviértela en venta (se aplica el anticipo) o anula el certificado antes.', 'error');
+          CS.creandoCredito = false; return;
+        }
+      } catch (_) { /* opcional */ }
+    }
     btn.disabled = true; btn.textContent = 'Creando…';
     try {
       let ventaId = null;

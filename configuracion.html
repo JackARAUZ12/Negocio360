@@ -1402,6 +1402,16 @@
               <span class="cfg-switch-track" onclick="onToggleOrdenAutoClick(event)"></span>
             </label>
           </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Cobrar anticipo del pedido</div>
+              <div class="cfg-row-sub" id="an-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="an-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleAnticipoPedidosClick(event)"></span>
+            </label>
+          </div>
           <div class="cfg-status" id="pp-status"></div>
         </div>
 
@@ -2543,6 +2553,39 @@ async function guardarOrdenAuto(activo) {
     setStatus(statusEl, activo ? 'Orden automática al aprobar activada.' : 'Orden automática al aprobar desactivada.', true);
   } catch (e) {
     console.error('guardarOrdenAuto:', e); toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+/* ---------- Anticipo del pedido (opcional, apagado por defecto) ---------- */
+const AN_TXT_ON  = 'Activado — en una proforma aprobada aparece "Cobrar anticipo". Entra a Caja pero no cuenta como venta hasta convertir la proforma. Necesita "Pedidos con producción" y el módulo de Certificados de regalo activos.';
+const AN_TXT_OFF = 'Desactivado — no cambia nada.';
+async function cargarAnticipoPedidos() {
+  const toggle = document.getElementById('an-toggle'), sub = document.getElementById('an-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_anticipo_pedidos').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_anticipo_pedidos === true;
+    toggle.checked = activo; sub.textContent = activo ? AN_TXT_ON : AN_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarAnticipoPedidos:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleAnticipoPedidosClick(evt) {
+  const toggle = document.getElementById('an-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarAnticipoPedidos(toggle.checked);
+}
+async function guardarAnticipoPedidos(activo) {
+  const toggle = document.getElementById('an-toggle'), sub = document.getElementById('an-row-sub'), statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_anticipo_pedidos: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? AN_TXT_ON : AN_TXT_OFF;
+    setStatus(statusEl, activo ? 'Anticipo de pedidos activado.' : 'Anticipo de pedidos desactivado. Los anticipos ya cobrados siguen disponibles al convertir.', true);
+  } catch (e) {
+    console.error('guardarAnticipoPedidos:', e); toggle.checked = !activo;
     setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
   } finally { toggle.disabled = false; }
 }
@@ -3820,6 +3863,7 @@ async function initConfiguracion() {
       cargarCicloProduccion();
       cargarStockMinProd();
       cargarOrdenAuto();
+      cargarAnticipoPedidos();
       cargarModeloProducto();
       cargarModuloHotel();
       cargarModuloRestaurante();
