@@ -1,0 +1,1995 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="movil-sin-zoom.css?v=20261021c" />
+  <script src="movil-recargar.js?v=20261021b" defer></script>
+  <title>Caja — Negocio360</title>
+
+  <!-- Supabase CDN -->
+  <script src="ver-como.js?v=20261023b"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261029a"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
+  <script src="cierre-pendiente.js?v=20261028a"></script>
+  <script src="auditoria-guard.js"></script>
+  <script src="tutorial-motor.js?v=20261013a"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* =====================================================
+       CSS VARIABLES — LIGHT & DARK
+    ===================================================== */
+    :root {
+      --bg-base:        #f5f5f7;
+      --bg-surface:     #ffffff;
+      --bg-surface-2:   #fafafa;
+      --bg-sidebar:     #ffffff;
+      --bg-header:      rgba(255,255,255,0.85);
+      --bg-hover:       #f0f0f5;
+      --bg-active:      #eff0ff;
+
+      --text-primary:   #0d0d14;
+      --text-secondary: #60607a;
+      --text-muted:     #9999b3;
+      --text-accent:    #5a5af4;
+
+      --border:         #e8e8ef;
+      --border-focus:   #5a5af4;
+
+      --accent:         #5a5af4;
+      --accent-soft:    #eff0ff;
+      --accent-2:       #22c55e;
+      --accent-2-soft:  #f0fdf4;
+      --accent-3:       #f97316;
+      --accent-3-soft:  #fff7ed;
+      --accent-4:       #8b5cf6;
+      --accent-4-soft:  #f5f3ff;
+      --accent-5:       #06b6d4;
+      --accent-5-soft:  #ecfeff;
+
+      --danger:         #ef4444;
+      --danger-soft:    #fef2f2;
+      --warning:        #f59e0b;
+      --warning-soft:   #fffbeb;
+      --success:        #22c55e;
+      --success-soft:   #f0fdf4;
+
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md:      0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+      --shadow-lg:      0 12px 32px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.05);
+
+      --radius-sm:      8px;
+      --radius-md:      12px;
+      --radius-lg:      16px;
+      --radius-xl:      20px;
+
+      --sidebar-w:      240px;
+      --header-h:       64px;
+
+      --font-main:      'Plus Jakarta Sans', sans-serif;
+      --font-mono:      'JetBrains Mono', monospace;
+      --transition:     0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    [data-theme="dark"] {
+      --bg-base:        #0c0c14;
+      --bg-surface:     #13131f;
+      --bg-surface-2:   #1a1a2a;
+      --bg-sidebar:     #13131f;
+      --bg-header:      rgba(19,19,31,0.9);
+      --bg-hover:       #1e1e30;
+      --bg-active:      #1e1e40;
+
+      --text-primary:   #f0f0fa;
+      --text-secondary: #9090b0;
+      --text-muted:     #5a5a7a;
+      --text-accent:    #7b7bff;
+
+      --border:         #1e1e30;
+      --border-focus:   #7b7bff;
+
+      --accent:         #7b7bff;
+      --accent-soft:    #1e1e40;
+      --accent-2:       #22c55e;
+      --accent-2-soft:  #0f2a1a;
+      --accent-3:       #f97316;
+      --accent-3-soft:  #2a1a0a;
+      --accent-4:       #a78bfa;
+      --accent-4-soft:  #1e1530;
+      --accent-5:       #22d3ee;
+      --accent-5-soft:  #0a1e25;
+
+      --danger:         #f87171;
+      --danger-soft:    #2a0f0f;
+      --warning:        #fbbf24;
+      --warning-soft:   #2a200a;
+      --success:        #4ade80;
+      --success-soft:   #0f2a1a;
+
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md:      0 4px 12px rgba(0,0,0,0.4);
+      --shadow-lg:      0 12px 32px rgba(0,0,0,0.5);
+    }
+
+    /* =====================================================
+       RESET & BASE
+    ===================================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-main);
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      transition: background var(--transition), color var(--transition);
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+    button { cursor: pointer; border: none; background: none; font-family: inherit; }
+    ul, ol { list-style: none; }
+    input, select, textarea {
+      font-family: var(--font-main);
+      font-size: 13.5px;
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      width: 100%;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239999b3' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+    label { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 5px; }
+    textarea { resize: vertical; min-height: 72px; }
+
+    /* =====================================================
+       APP LAYOUT
+    ===================================================== */
+    #app { display: flex; min-height: 100vh; }
+
+    /* =====================================================
+       SIDEBAR
+    ===================================================== */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 200;
+      transition: width var(--transition), transform var(--transition), background var(--transition);
+      overflow: hidden;
+    }
+    #sidebar.collapsed { width: 64px; }
+
+    .sidebar-logo {
+      display: flex; align-items: center; gap: 10px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+      min-height: var(--header-h);
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-icon svg { color: #fff; }
+    .logo-text { font-size: 16px; font-weight: 800; color: var(--text-primary); white-space: nowrap; transition: opacity var(--transition); flex: 1; overflow: hidden; text-overflow: ellipsis; }
+
+    #sidebar.collapsed .logo-text,
+    #sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-title,
+    #sidebar.collapsed .nav-badge { opacity: 0; pointer-events: none; width: 0; overflow: hidden; }
+
+    /* Botón de cierre del drawer — SOLO visible en móvil */
+    .sidebar-close-btn {
+      display: none;
+      width: 32px; height: 32px;
+      align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-secondary);
+      flex-shrink: 0;
+      transition: all var(--transition);
+    }
+    .sidebar-close-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .sidebar-nav { flex: 1; padding: 12px; overflow-y: auto; overflow-x: hidden; }
+
+    .nav-section-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--text-muted);
+      padding: 12px 8px 6px; white-space: nowrap;
+      transition: opacity var(--transition);
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 10px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      transition: all var(--transition);
+      cursor: pointer;
+      white-space: nowrap;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .nav-item svg { flex-shrink: 0; width: 18px; height: 18px; }
+    .nav-label { font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+
+    /* =====================================================
+       MAIN
+    ===================================================== */
+    #main {
+      flex: 1;
+      margin-left: var(--sidebar-w);
+      transition: margin-left var(--transition);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    #main.sidebar-collapsed { margin-left: 64px; }
+
+    /* =====================================================
+       HEADER
+    ===================================================== */
+    #header {
+      height: var(--header-h);
+      background: var(--bg-header);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 12px;
+      position: sticky; top: 0; z-index: 50;
+      flex-wrap: wrap;
+    }
+    .header-toggle {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-secondary);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .header-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .header-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .header-spacer { flex: 1; }
+    .plan-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      background: var(--accent-soft); border: 1px solid var(--border);
+      border-radius: 100px; font-size: 12px; font-weight: 600; color: var(--accent);
+      white-space: nowrap;
+    }
+    .theme-btn {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-secondary);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .theme-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .user-menu {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 10px 4px 4px;
+      border: 1px solid var(--border); border-radius: 100px;
+      transition: all var(--transition);
+    }
+    .user-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%; background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .user-info { display: flex; flex-direction: column; min-width: 0; }
+    .user-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+    .user-biz  { font-size: 11px; color: var(--text-muted); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+
+    /* =====================================================
+       PAGE CONTENT
+    ===================================================== */
+    #content { flex: 1; padding: 28px 28px 60px; max-width: 1440px; width: 100%; margin: 0 auto; }
+
+    /* =====================================================
+       GREETING
+    ===================================================== */
+    .greeting-row {
+      display: flex; align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
+    }
+    .greeting-text h1 { font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 3px; }
+    .greeting-text p  { font-size: 13.5px; color: var(--text-secondary); }
+    .greeting-actions { display: flex; align-items: center; gap: 10px; }
+
+    /* =====================================================
+       TABS DE SECCIÓN
+    ===================================================== */
+    .section-tabs {
+      display: flex; gap: 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      width: fit-content;
+      max-width: 100%;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      overflow-x: auto;
+    }
+    .section-tab {
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap;
+    }
+    .section-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+    .section-tab.active { background: var(--accent); color: #fff; }
+    .section-tab svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    /* =====================================================
+       KPI CARDS
+    ===================================================== */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      display: flex; align-items: flex-start; gap: 14px;
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition);
+      min-width: 0;
+    }
+    .kpi-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .kpi-icon {
+      width: 44px; height: 44px;
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .kpi-body { flex: 1; min-width: 0; }
+    .kpi-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; margin-bottom: 4px; }
+    .kpi-value { font-size: 20px; font-weight: 800; color: var(--text-primary); line-height: 1.1; margin-bottom: 5px; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+    .kpi-delta { font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 3px; }
+    .kpi-delta.positive { color: var(--success); }
+    .kpi-delta.negative { color: var(--danger); }
+    .kpi-delta.neutral  { color: var(--text-muted); }
+
+    /* =====================================================
+       PANEL CARD
+    ===================================================== */
+    .panel-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; gap: 10px;
+    }
+    .panel-title {
+      font-size: 15px; font-weight: 700; color: var(--text-primary);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+    .panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* =====================================================
+       BOTONES
+    ===================================================== */
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px;
+      background: var(--accent); color: #fff;
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      transition: opacity var(--transition), transform var(--transition);
+      white-space: nowrap;
+    }
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-primary svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      transition: all var(--transition);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .btn-secondary svg { width: 14px; height: 14px; }
+
+    .btn-ghost {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 10px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-size: 12.5px; font-weight: 600;
+      transition: all var(--transition);
+    }
+    .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .btn-icon {
+      width: 28px; height: 28px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .btn-icon-danger:hover  { background: var(--danger-soft);  color: var(--danger); }
+    .btn-icon-success:hover { background: var(--success-soft); color: var(--success); }
+
+    /* =====================================================
+       FILTROS
+    ===================================================== */
+    .filtros-row {
+      display: flex; align-items: center;
+      gap: 8px; padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12.5px; font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--bg-surface-2);
+      transition: all var(--transition);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .search-wrap {
+      display: flex; align-items: center; gap: 0;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg-surface); overflow: hidden;
+      transition: border-color var(--transition);
+      flex: 1; max-width: 280px;
+      min-width: 160px;
+    }
+    .search-wrap:focus-within { border-color: var(--border-focus); }
+    .search-wrap svg { flex-shrink: 0; margin-left: 10px; color: var(--text-muted); width: 14px; height: 14px; }
+    .search-wrap input {
+      border: none; box-shadow: none; padding: 8px 10px;
+      background: transparent;
+      min-width: 0;
+    }
+    .search-wrap input:focus { box-shadow: none; border-color: transparent; }
+
+    #custom-dates {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    #custom-dates input {
+      width: auto;
+      padding: 6px 8px;
+      font-size: 12.5px;
+    }
+
+    /* =====================================================
+       TABLA MOVIMIENTOS
+    ===================================================== */
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+    thead th {
+      padding: 10px 14px;
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+      background: var(--bg-surface-2);
+    }
+    tbody td {
+      padding: 11px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      color: var(--text-primary);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr.mov-row:hover { background: var(--bg-hover); }
+    tbody tr.mov-anulado { opacity: 0.45; }
+
+    .td-fecha    { white-space: nowrap; color: var(--text-secondary); font-size: 12.5px; }
+    .td-concepto { max-width: 220px; }
+    .td-metodo   { color: var(--text-secondary); font-size: 12.5px; white-space: nowrap; }
+    .td-monto    { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; font-weight: 600; }
+    .td-entrada  { color: var(--success); }
+    .td-salida   { color: var(--danger); }
+    .td-saldo    { color: var(--accent); }
+    .td-actions  { white-space: nowrap; }
+
+    .concepto-text { display: block; font-weight: 500; }
+    .concepto-obs  { display: block; font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+    .ref-badge {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      background: var(--accent-4-soft); color: var(--accent-4);
+      padding: 1px 6px; border-radius: 4px; margin-top: 2px;
+    }
+
+    /* =====================================================
+       BADGES
+    ===================================================== */
+    .tipo-badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 8px; border-radius: 5px;
+      font-size: 11px; font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge-ingreso { background: var(--success-soft); color: var(--success); }
+    .badge-egreso  { background: var(--danger-soft);  color: var(--danger); }
+
+    .status-badge {
+      display: inline-block; padding: 3px 8px; border-radius: 5px;
+      font-size: 11px; font-weight: 700;
+    }
+    .badge-active   { background: var(--success-soft); color: var(--success); }
+    .badge-inactive { background: var(--bg-hover);     color: var(--text-muted); }
+    .badge-default  {
+      display: inline-block; margin-left: 6px;
+      background: var(--accent-soft); color: var(--accent);
+      font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+    }
+    .badge-movs {
+      display: inline-block; padding: 3px 8px;
+      background: var(--accent-soft); color: var(--accent);
+      font-size: 11px; font-weight: 700; border-radius: 5px;
+    }
+    .anulado-label { font-size: 11px; color: var(--text-muted); }
+
+    /* =====================================================
+       MÉTODOS DE PAGO
+    ===================================================== */
+    .metodo-name-cell { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+    .metodo-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .action-cell { display: flex; align-items: center; gap: 4px; }
+
+    /* =====================================================
+       PAGINACIÓN
+    ===================================================== */
+    .paginacion-row {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap; gap: 8px;
+    }
+    #paginacion-info { font-size: 12.5px; color: var(--text-muted); }
+    .pag-btns { display: flex; gap: 6px; }
+    .pag-btns button {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12.5px; font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--bg-surface);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .pag-btns button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pag-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* =====================================================
+       EMPTY STATES
+    ===================================================== */
+    .empty-cell { text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px; }
+    .empty-state-mini { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+    /* =====================================================
+       MODALES
+    ===================================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      z-index: 500;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.modal-open { display: flex; }
+
+    .modal-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: modalIn 0.2s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    }
+    .modal-box.modal-sm { max-width: 380px; }
+    .modal-box.modal-lg { max-width: 560px; }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.94) translateY(12px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .modal-close {
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 7px; color: var(--text-muted);
+      transition: all var(--transition);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .modal-body { padding: 20px 24px; }
+    .modal-body .form-group { margin-bottom: 14px; }
+    .modal-body .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .modal-footer {
+      display: flex; align-items: center;
+      justify-content: flex-end; gap: 8px;
+      padding: 14px 24px 20px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    /* Modal capital inicial — especial */
+    .modal-capital-icon {
+      width: 56px; height: 56px;
+      background: var(--accent-soft); border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .modal-capital-icon svg { width: 28px; height: 28px; color: var(--accent); }
+
+    /* =====================================================
+       CHECKBOX PERSONALIZADO
+    ===================================================== */
+    .checkbox-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 4px;
+    }
+    .checkbox-row input[type="checkbox"] {
+      width: 16px; height: 16px;
+      padding: 0; cursor: pointer; accent-color: var(--accent);
+    }
+    .checkbox-row label { margin: 0; cursor: pointer; }
+
+    /* =====================================================
+       TOAST
+    ===================================================== */
+    .toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      padding: 12px 20px;
+      border-radius: var(--radius-md);
+      font-size: 13.5px; font-weight: 600;
+      box-shadow: var(--shadow-lg);
+      z-index: 999;
+      max-width: 340px;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    .toast.toast-show { opacity: 1; transform: translateY(0); }
+    .toast-success { background: var(--success); color: #fff; }
+    .toast-error   { background: var(--danger);  color: #fff; }
+
+    /* =====================================================
+       LOADER
+    ===================================================== */
+    #loader {
+      position: fixed; inset: 0;
+      background: var(--bg-base);
+      z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+      transition: opacity 0.4s;
+    }
+    #loader.hidden { opacity: 0; pointer-events: none; }
+    .loader-logo {
+      width: 48px; height: 48px;
+      background: var(--accent); border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .loader-spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* =====================================================
+       SCROLLBAR
+    ===================================================== */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* =====================================================
+       TOOLTIP
+    ===================================================== */
+    [data-tooltip] { position: relative; }
+    [data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute; left: 50%; bottom: calc(100% + 6px);
+      transform: translateX(-50%);
+      background: var(--text-primary); color: var(--bg-surface);
+      font-size: 11px; padding: 4px 8px; border-radius: 5px;
+      white-space: nowrap; pointer-events: none; opacity: 0;
+      transition: opacity var(--transition); z-index: 200;
+    }
+    [data-tooltip]:hover::after { opacity: 1; }
+
+    /* =====================================================
+       ANIMATE IN
+    ===================================================== */
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .stagger-1 { animation-delay: 0.05s; }
+    .stagger-2 { animation-delay: 0.10s; }
+    .stagger-3 { animation-delay: 0.15s; }
+    .stagger-4 { animation-delay: 0.20s; }
+    .stagger-5 { animation-delay: 0.25s; }
+
+    /* =====================================================
+       RESPONSIVE — TODOS LOS TAMAÑOS DE PANTALLA
+    ===================================================== */
+
+    /* Pantallas grandes / TV */
+    @media (min-width: 1600px) {
+      #content { max-width: 1680px; }
+      .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 18px; }
+    }
+
+    /* Laptops / escritorio mediano */
+    @media (max-width: 1100px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* Tablets */
+    @media (max-width: 900px) {
+      :root { --sidebar-w: 210px; }
+      #content { padding: 20px 16px 48px; }
+      #header { padding: 0 16px; }
+      .user-name, .user-biz { max-width: 110px; }
+    }
+
+    /* ============= MÓVIL: el sidebar se vuelve un drawer ============= */
+    @media (max-width: 768px) {
+      #sidebar {
+        transform: translateX(-100%);
+        width: 260px;
+        box-shadow: none;
+      }
+      #sidebar.mobile-open {
+        transform: translateX(0);
+        box-shadow: var(--shadow-lg);
+      }
+      .sidebar-close-btn { display: flex; }
+      #main { margin-left: 0 !important; width: 100%; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      #content { padding: 16px 16px 40px; }
+      .modal-body .form-row { grid-template-columns: 1fr; }
+      .filtros-row { gap: 6px; }
+      .header-title { display: none; }
+    }
+
+    /* Móviles */
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .kpi-card { padding: 14px; gap: 8px; }
+      .kpi-icon { width: 36px; height: 36px; }
+      .kpi-value { font-size: 16px; }
+      .kpi-label { font-size: 10.5px; }
+      .kpi-delta { font-size: 10px; }
+      .section-tabs { width: 100%; }
+      .section-tab { flex: 1; justify-content: center; padding: 8px 10px; font-size: 12px; }
+      .greeting-text h1 { font-size: 18px; }
+      .greeting-row { flex-direction: column; align-items: stretch; }
+      .greeting-actions .btn-primary { width: 100%; justify-content: center; }
+      #header { gap: 8px; padding: 0 12px; }
+      .plan-badge { display: none; }
+      #header-fecha { display: none; }
+      .user-info { display: none; }
+      .modal-box { max-width: 100%; margin: 0; border-radius: var(--radius-lg); }
+      .panel-header { padding: 14px 14px 12px; }
+      .filtros-row { padding: 12px 14px; }
+      .paginacion-row { padding: 10px 14px; flex-direction: column; align-items: stretch; text-align: center; }
+      .pag-btns { justify-content: center; }
+      .search-wrap { max-width: 100%; width: 100%; flex-basis: 100%; }
+      #custom-dates { width: 100%; justify-content: center; }
+      #custom-dates input { flex: 1; min-width: 0; }
+    }
+
+    /* Móviles muy pequeños */
+    @media (max-width: 360px) {
+      .kpi-grid { grid-template-columns: 1fr; }
+      #sidebar { width: 85vw; }
+    }
+
+    /* Orientación horizontal en móviles (poca altura) */
+    @media (max-height: 480px) and (orientation: landscape) {
+      #header { height: 52px; }
+      :root { --header-h: 52px; }
+      .modal-box { max-height: 96vh; }
+    }
+
+    /* Overlay para cerrar sidebar en móvil (tocar fuera del panel) */
+    .sidebar-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 150;
+    }
+    .sidebar-overlay.show, .sidebar-overlay.active { display: block; }
+    @media (min-width: 769px) { .sidebar-overlay { display: none !important; } }
+    .ticket-print { font-family: Arial, Helvetica, sans-serif; font-size: 12.5px; line-height: 1.6; }
+    .ticket-print .tp-row { display: flex; justify-content: space-between; gap: 10px; }
+    .ticket-print hr { border: none; border-top: 1px dashed var(--border); margin: 8px 0; }
+  </style>
+  <link rel="stylesheet" href="perfiles-guard.css" />
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-logo">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+      <rect x="1" y="4" width="22" height="16" rx="2"/>
+      <line x1="1" y1="10" x2="23" y2="10"/>
+    </svg>
+  </div>
+  <div class="loader-spinner"></div>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando Caja…</p>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast toast-success"></div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+
+  <!-- OVERLAY MÓVIL (cierra sidebar al tocar fuera) -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <span class="logo-text" id="sidebar-logo-text">Negocio360</span>
+      <!-- Botón de cierre — solo visible en móvil (drawer) -->
+      <button class="sidebar-close-btn" onclick="closeMobileSidebar()" aria-label="Cerrar menú">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">PRINCIPAL</div>
+
+      <div class="nav-item" onclick="navigate('dashboard.html')" data-tooltip="Dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('ventas.html')" data-tooltip="Ventas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Ventas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('clientes.html')" data-tooltip="Clientes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-label">Clientes</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('productos.html')" data-tooltip="Productos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <span class="nav-label">Productos / Servicios</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('compras.html')" data-tooltip="Compras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span class="nav-label">Compras</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('gastos.html')" data-tooltip="Gastos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="nav-label">Gastos</span>
+      </div>
+
+      <div class="nav-item active" onclick="navigate('caja.html')" data-tooltip="Caja">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span class="nav-label">Caja / Pagos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('cuentas-por-pagar.html')" data-tooltip="Cuentas por Pagar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+        <span class="nav-label">Cuentas por Pagar</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('salarios.html')" data-tooltip="Salarios">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+        <span class="nav-label">Salarios</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('auditoria.html')" data-tooltip="Auditoría">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-label">Auditoría</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('sucursales.html')" data-tooltip="Sucursales">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="9" y1="15" x2="9" y2="15.01"/></svg>
+        <span class="nav-label">Sucursales</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span class="nav-label">Contabilidad</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="nav-label">Consulta/Inventario</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5 2L9 4l6 16 5.5-2"/><circle cx="9" cy="4" r="1"/></svg>
+        <span class="nav-label">Rutas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('delivery.html')" data-tooltip="Delivery">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/><path d="M2 17.5h1.5l1.5-8h9l3.5 4h4.5v4H21"/><path d="M5 9.5h5"/></svg>
+        <span class="nav-label">Delivery</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('activos.html')" data-tooltip="Activos Fijos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="2" y1="13" x2="22" y2="13"/></svg>
+        <span class="nav-label">Activos Fijos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('agenda.html')" data-tooltip="Agenda">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="nav-label">Agenda</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('produccion.html')" data-tooltip="Producción">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
+        <span class="nav-label">Producción</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('servicio.html')" data-tooltip="Servicio Postventa">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span class="nav-label">Servicio Postventa</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('codigos-barras.html')" data-tooltip="Códigos de Barras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="2" height="12"/><rect x="6" y="6" width="1" height="12"/><rect x="9" y="6" width="3" height="12"/><rect x="14" y="6" width="1" height="12"/><rect x="17" y="6" width="2" height="12"/><rect x="21" y="6" width="1" height="12"/></svg>
+        <span class="nav-label">Códigos de Barras</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
+        <span class="nav-label">Créditos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('impuestos.html')" data-tooltip="Impuestos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="nav-label">Impuestos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('reportes.html')" data-tooltip="Reportes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-label">Reportes</span>
+      </div>
+      <div class="nav-item" onclick="navigate('estadisticas.html')" data-tooltip="Estadísticas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span class="nav-label">Estadísticas</span>
+      </div>
+      <div class="nav-item" onclick="navigate('notificaciones.html')" data-tooltip="Notificaciones">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="nav-label">Notificaciones</span>
+      </div>
+
+      <div class="nav-section-title" style="margin-top:8px">ACCESOS RÁPIDOS</div>
+
+      <div class="nav-item" onclick="navigate('ventas.html?action=new')" data-tooltip="Nueva venta">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Nueva venta</span>
+      </div>
+
+      <div class="nav-item" onclick="openNuevoMovimiento()" data-tooltip="Nuevo movimiento">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span class="nav-label">Nuevo movimiento</span>
+      </div>
+
+      <div class="nav-item" id="nav-admin" onclick="navigate('admin.html')" data-tooltip="Panel Admin" style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="nav-label">⚙️ Admin</span>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- HEADER -->
+    <header id="header">
+      <button class="header-toggle" onclick="toggleSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+
+      <span class="header-title">Caja / Pagos</span>
+
+      <div class="header-spacer"></div>
+
+      <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
+
+      <div class="plan-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span id="plan-text">Plan</span>
+      </div>
+
+      <button class="theme-btn" onclick="abrirModalMonedaVis()" data-tooltip="Cambiar moneda de visualización" style="font-size:11px;font-weight:700;width:auto;padding:0 8px">
+        <span id="btn-moneda-vis-texto">NIO</span>
+      </button>
+      <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
+        <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+
+      <div class="user-menu">
+        <div class="user-avatar" id="header-avatar">--</div>
+        <div class="user-info">
+          <span class="user-name" id="header-name">Cargando…</span>
+          <span class="user-biz"  id="header-biz">—</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- PAGE CONTENT -->
+    <div id="content">
+
+      <!-- GREETING -->
+      <div class="greeting-row fade-in">
+        <div class="greeting-text">
+          <h1>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="display:inline-block;vertical-align:middle;margin-right:6px"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <span id="greeting-text">Caja</span>
+          </h1>
+          <p>Centro financiero del negocio. Todos los movimientos de dinero en un lugar.</p>
+        </div>
+        <div class="greeting-actions">
+          <button class="btn-secondary" id="btn-exportar-caja" onclick="abrirExportarCaja()" title="Exportar movimientos de caja a Excel o PDF con filtros, saldos y totales">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar
+          </button>
+          <button class="btn-primary" onclick="openNuevoMovimiento()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nuevo movimiento
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI CARDS -->
+      <div class="kpi-grid">
+
+        <div class="kpi-card fade-in stagger-1">
+          <div class="kpi-icon" style="background:var(--accent-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Caja disponible</div>
+            <div class="kpi-value" id="kpi-caja">—</div>
+            <div class="kpi-delta neutral" id="kpi-caja-delta">Cargando…</div>
+          </div>
+        </div>
+
+        <div class="kpi-card fade-in stagger-2">
+          <div class="kpi-icon" style="background:var(--success-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Ingresos del mes</div>
+            <div class="kpi-value" id="kpi-ingresos">—</div>
+            <div class="kpi-delta neutral" id="kpi-ingresos-delta">Cargando…</div>
+          </div>
+        </div>
+
+        <div class="kpi-card fade-in stagger-3">
+          <div class="kpi-icon" style="background:var(--danger-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Egresos del mes</div>
+            <div class="kpi-value" id="kpi-egresos">—</div>
+            <div class="kpi-delta neutral" id="kpi-egresos-delta">Cargando…</div>
+          </div>
+        </div>
+
+        <div class="kpi-card fade-in stagger-4">
+          <div class="kpi-icon" style="background:var(--accent-3-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-3)" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Movimientos del mes</div>
+            <div class="kpi-value" id="kpi-movimientos">—</div>
+            <div class="kpi-delta neutral" id="kpi-movimientos-delta">Cargando…</div>
+          </div>
+        </div>
+
+        <!-- NUEVO: Otros ingresos — movimientos manuales de Caja (INGRESO)
+             que no están ligados a una venta ni a capital agregado -->
+        <div class="kpi-card fade-in stagger-5">
+          <div class="kpi-icon" style="background:var(--accent-5-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><polyline points="17 5 12 1 7 5"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Otros ingresos</div>
+            <div class="kpi-value" id="kpi-otros-ingresos">—</div>
+            <div class="kpi-delta neutral" id="kpi-otros-ingresos-delta">Cargando…</div>
+          </div>
+        </div>
+
+        <!-- NUEVO: Otros egresos — movimientos manuales de Caja (EGRESO)
+             que no están ligados a una compra de producto ni a un gasto -->
+        <div class="kpi-card fade-in stagger-5">
+          <div class="kpi-icon" style="background:var(--accent-4-soft)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-4)" stroke-width="2"><line x1="12" y1="23" x2="12" y2="1"/><polyline points="17 19 12 23 7 19"/></svg>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-label">Otros egresos</div>
+            <div class="kpi-value" id="kpi-otros-egresos">—</div>
+            <div class="kpi-delta neutral" id="kpi-otros-egresos-delta">Cargando…</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- TABS -->
+      <div class="section-tabs fade-in">
+        <button class="section-tab active" data-section="movimientos" onclick="setSection('movimientos')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Movimientos
+        </button>
+        <button class="section-tab" data-section="metodos" onclick="setSection('metodos')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Métodos de pago
+        </button>
+        <button class="section-tab" data-section="cierres" onclick="setSection('cierres')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Cierres diarios
+        </button>
+        <button class="section-tab" data-section="cajachica" onclick="setSection('cajachica')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>
+          Caja Chica
+        </button>
+        <button class="section-tab" data-section="bancos" onclick="setSection('bancos')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+          Bancos
+        </button>
+        <button class="section-tab" data-section="transferencias" onclick="setSection('transferencias')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Transferencias
+        </button>
+      </div>
+
+      <!-- ===== PANEL: MOVIMIENTOS ===== -->
+      <div class="section-panel fade-in" data-section="movimientos">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              Movimientos financieros
+            </div>
+            <div class="panel-actions">
+              <button class="btn-primary" onclick="openNuevoMovimiento()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Nuevo movimiento
+              </button>
+            </div>
+          </div>
+
+          <!-- FILTROS -->
+          <div class="filtros-row">
+            <button class="filter-btn" data-filtro="hoy"    onclick="setFiltro('hoy')">Hoy</button>
+            <button class="filter-btn" data-filtro="semana" onclick="setFiltro('semana')">Semana</button>
+            <button class="filter-btn active" data-filtro="mes" onclick="setFiltro('mes')">Mes</button>
+            <button class="filter-btn" data-filtro="año"    onclick="setFiltro('año')">Año</button>
+            <button class="filter-btn" data-filtro="custom" onclick="setFiltro('custom')">Personalizado</button>
+
+            <div id="custom-dates">
+              <input type="date" id="date-from" onchange="STATE.movDateFrom=this.value;loadMovimientos()" style="width:140px"/>
+              <span style="color:var(--text-muted);font-size:12px">—</span>
+              <input type="date" id="date-to"   onchange="STATE.movDateTo=this.value;loadMovimientos()"   style="width:140px"/>
+            </div>
+
+            <div class="search-wrap" style="margin-left:auto">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="mov-search" placeholder="Buscar concepto…" oninput="buscarMovimientos()" />
+            </div>
+          </div>
+
+          <!-- TABLA -->
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th>Concepto</th>
+                  <th>Método</th>
+                  <th>Entrada</th>
+                  <th>Salida</th>
+                  <th>Saldo</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="mov-tbody">
+                <tr><td colspan="8" class="empty-cell">Cargando movimientos…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- PAGINACIÓN -->
+          <div class="paginacion-row" id="paginacion">
+            <span id="paginacion-info" style="font-size:12.5px;color:var(--text-muted)">—</span>
+            <div class="pag-btns">
+              <button id="btn-pag-prev" onclick="paginaAnterior()" disabled>← Anterior</button>
+              <button id="btn-pag-next" onclick="paginaSiguiente()">Siguiente →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PANEL: MÉTODOS DE PAGO ===== -->
+      <div class="section-panel" data-section="metodos" style="display:none">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              Métodos de pago
+            </div>
+            <div class="panel-actions">
+              <button class="btn-primary" onclick="newMetodo()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Nuevo método
+              </button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Descripción</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="metodos-tbody">
+                <tr><td colspan="4" class="empty-cell">Cargando métodos…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PANEL: CIERRES DIARIOS ===== -->
+      <div class="section-panel" data-section="cierres" style="display:none">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Cierres de caja
+            </div>
+            <div class="panel-actions">
+              <button class="btn-primary" id="btn-cierre-diario" onclick="crearCierreDiario()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Cierre de hoy
+              </button>
+              <button class="btn-secondary" id="btn-cierre-mensual" onclick="crearCierreMensual()" title="Consolida todos los movimientos del mes en un solo cierre">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                Cierre del mes
+              </button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Saldo inicial</th>
+                  <th>Ingresos</th>
+                  <th>Egresos</th>
+                  <th>Saldo final</th>
+                  <th>Movimientos</th>
+                </tr>
+              </thead>
+              <tbody id="cierres-tbody">
+                <tr><td colspan="6" class="empty-cell">Cargando cierres…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PANEL: CAJA CHICA ===== -->
+      <div class="section-panel" data-section="cajachica" style="display:none">
+        <div class="panel-card fade-in" style="background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px">
+          <div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
+            💡 Caja Chica es el ritual diario de contar el dinero físico al abrir y al cerrar — nunca cambia el saldo de Caja general, solo lo compara con lo que debería haber.
+          </div>
+        </div>
+
+        <div class="panel-card" id="cc-estado-card">
+          <div class="panel-body" style="text-align:center;padding:30px">Cargando estado de hoy…</div>
+        </div>
+
+        <div class="panel-card" style="margin-top:16px">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Historial de cierres de Caja Chica
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Apertura</th>
+                  <th>Ingresos</th>
+                  <th>Egresos</th>
+                  <th>Cierre real</th>
+                  <th>Diferencia</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="cc-historial-tbody">
+                <tr><td colspan="7" class="empty-cell">Cargando historial…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PANEL: BANCOS ===== -->
+      <div class="section-panel" data-section="bancos" style="display:none">
+        <div class="panel-card fade-in" style="background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px">
+          <div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
+            💡 Aquí se junta el dinero que te entra por tarjeta o transferencia, separado por cada banco — Caja General sigue mostrando el total de todo junto, sin importar el método de pago.
+          </div>
+        </div>
+
+        <div class="panel-card" id="tasa-cambio-wrap" style="display:none">
+          <div class="panel-body" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap">💱 Tu tasa de cambio actual: 1 USD =</span>
+            <input type="number" id="input-tasa-cambio" step="0.01" min="0.01" style="max-width:110px" placeholder="36.60"/>
+            <span style="font-size:12.5px;color:var(--text-secondary)">córdobas</span>
+            <button class="btn-secondary btn-sm" onclick="guardarTasaCambio()">Guardar</button>
+            <span style="font-size:11px;color:var(--text-muted)">Se usa para convertir pagos entre cuentas en córdobas y en dólares. Actualízala cuando cambie.</span>
+          </div>
+        </div>
+
+        <!-- BANCOS DE LA EMPRESA (solo aparece si este negocio es parte de una empresa con bancos compartidos) -->
+        <div class="panel-card" id="empresa-bancos-panel" style="display:none;margin-bottom:16px">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+              Bancos de la empresa
+            </div>
+            <span style="font-size:12px;color:var(--text-muted)">Saldo real de cada banco = la parte de cada negocio sumada. Aquí se concilia contra el estado de cuenta.</span>
+          </div>
+          <div id="empresa-bancos-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;padding:16px"></div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+              Mis bancos
+            </div>
+            <button class="btn-primary btn-sm" onclick="abrirNuevoBanco()">+ Nuevo banco</button>
+          </div>
+          <div id="bancos-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;padding:16px">
+            <div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px">Cargando…</div>
+          </div>
+        </div>
+
+        <div class="panel-card" style="margin-top:16px">
+          <div class="panel-header">
+            <div class="panel-title">Tarjeta/Transferencia sin banco asignado</div>
+          </div>
+          <div class="panel-body" style="font-size:12.5px;color:var(--text-muted);padding-bottom:0">
+            Dinero que entró por tarjeta o transferencia antes de crear tus bancos, o sin elegir uno — puedes asignarlo después.
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Fecha</th><th>Concepto</th><th>Método</th><th>Monto</th><th></th></tr></thead>
+              <tbody id="bancos-sin-asignar-tbody"><tr><td colspan="5" class="empty-cell">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-panel" data-section="transferencias" style="display:none">
+        <div class="panel-card fade-in" style="background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px">
+          <div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
+            🔄 Mueve dinero entre tu efectivo y tus cuentas bancarias, o de un banco a otro, sin tener que hacerlo manualmente desde Movimientos y Conciliación. Cada transferencia descuenta de donde sale y suma a donde entra, de forma automática.
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              Transferencias entre cuentas propias
+            </div>
+            <button class="btn-primary btn-sm" onclick="abrirNuevaTransferencia()">+ Nueva transferencia</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Fecha</th><th>Desde</th><th>Hacia</th><th>Monto</th><th>Nota</th><th>Estado</th><th></th></tr></thead>
+              <tbody id="transferencias-tbody"><tr><td colspan="7" class="empty-cell">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- ===================================================
+     MODAL: NUEVA TRANSFERENCIA ENTRE CUENTAS PROPIAS
+=================================================== -->
+<div class="modal-overlay" id="modal-transferencia" onclick="if(event.target===this)closeModal('modal-transferencia')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">🔄 Nueva transferencia</span>
+      <button class="modal-close" onclick="closeModal('modal-transferencia')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Desde *</label>
+        <select id="tr-origen"></select>
+      </div>
+      <div class="form-group">
+        <label>Hacia *</label>
+        <select id="tr-destino"></select>
+      </div>
+      <div class="form-group">
+        <label>Monto *</label>
+        <input type="number" id="tr-monto" min="0.01" step="0.01" placeholder="0.00"/>
+      </div>
+      <div class="form-group">
+        <label>Nota (opcional)</label>
+        <input type="text" id="tr-nota" placeholder="Ej: Depósito de efectivo del día"/>
+      </div>
+      <p id="tr-error" style="color:var(--danger,#dc2626);font-size:12.5px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('modal-transferencia')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-transferencia" onclick="guardarTransferencia()">Transferir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     MODAL: CAPITAL INICIAL (obligatorio, primera vez)
+=================================================== -->
+<div class="modal-overlay" id="modal-capital-inicial">
+  <div class="modal-box modal-sm">
+    <div class="modal-body" style="text-align:center;padding-top:28px">
+      <div class="modal-capital-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </div>
+      <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;color:var(--text-primary)">¡Bienvenido a Caja!</h2>
+      <p style="font-size:13.5px;color:var(--text-secondary);margin-bottom:20px;line-height:1.6">Para comenzar, ingresa la caja inicial de tu negocio. Este será el punto de partida para todos tus movimientos.</p>
+
+      <div style="text-align:left;margin-bottom:4px">
+        <label>Caja inicial</label>
+        <input type="number" id="capital-inicial-monto" placeholder="0.00" min="0" step="0.01" style="font-size:18px;font-weight:700;text-align:center"/>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:center;padding-bottom:24px">
+      <button class="btn-primary" id="btn-guardar-capital-inicial" onclick="guardarCapitalInicialModal()" style="padding:10px 28px;font-size:14px">
+        Comenzar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     MODAL: NUEVO MOVIMIENTO
+=================================================== -->
+<div class="modal-overlay" id="modal-movimiento" onclick="if(event.target===this)closeModal('modal-movimiento')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Registrar movimiento</span>
+      <button class="modal-close" onclick="closeModal('modal-movimiento')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="mov-form" onsubmit="return false">
+        <input type="hidden" id="mov-id"/>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipo de flujo *</label>
+            <select id="mov-flujo" onchange="toggleTipoMovimiento(); actualizarBancoMovimiento()">
+              <option value="INGRESO">💚 Ingreso</option>
+              <option value="EGRESO">🔴 Egreso</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Categoría *</label>
+            <select id="mov-tipo">
+              <option value="VENTA">Venta</option>
+              <option value="COBRO">Cobro a cliente</option>
+              <option value="CAPITAL_AGREGADO">Capital agregado</option>
+              <option value="OTRO_INGRESO">Otro ingreso</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Concepto *</label>
+          <input type="text" id="mov-concepto" placeholder="Ej: Venta de mercancía al contado"/>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Monto *</label>
+            <input type="number" id="mov-monto" placeholder="0.00" min="0.01" step="0.01" oninput="actualizarHintBancoMovimiento()"/>
+          </div>
+          <div class="form-group">
+            <label>Método de pago</label>
+            <select id="mov-metodo" onchange="actualizarBancoMovimiento()">
+              <option value="">Cargando…</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group" id="mov-wrap-banco" style="display:none">
+          <label id="mov-banco-label">Banco *</label>
+          <select id="mov-banco" onchange="actualizarHintBancoMovimiento()"></select>
+          <p id="mov-banco-hint" style="font-size:11.5px;color:var(--text-muted);margin-top:4px"></p>
+        </div>
+
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" id="mov-fecha"/>
+        </div>
+
+        <div class="form-group">
+          <label>Observaciones</label>
+          <textarea id="mov-obs" placeholder="Notas opcionales sobre este movimiento…"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-movimiento')">Cancelar</button>
+      <button class="btn-primary" id="btn-save-mov" onclick="saveMovimiento()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        Guardar movimiento
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     MODAL: MÉTODO DE PAGO
+=================================================== -->
+<div class="modal-overlay" id="modal-detalle-cierre" onclick="if(event.target===this)closeModal('modal-detalle-cierre')">
+  <div class="modal-box modal-lg" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title" id="dc-titulo">Detalle del cierre</span>
+      <button class="modal-close" onclick="closeModal('modal-detalle-cierre')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="dc-resumen" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px"></div>
+      <div class="table-wrap" style="max-height:400px;overflow-y:auto">
+        <table class="data-table" style="width:100%">
+          <thead>
+            <tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th style="text-align:right">Monto</th></tr>
+          </thead>
+          <tbody id="dc-tbody">
+            <tr><td colspan="4" class="empty-cell">Cargando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('modal-detalle-cierre')">Cerrar</button>
+      <button class="btn-primary" id="dc-btn-pdf" onclick="exportarDetalleCierrePDF()">📄 Exportar PDF</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-metodo" onclick="if(event.target===this)closeModal('modal-metodo')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title" id="metodo-modal-title">Nuevo método de pago</span>
+      <button class="modal-close" onclick="closeModal('modal-metodo')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="metodo-id"/>
+      <div class="form-group">
+        <label>Nombre *</label>
+        <input type="text" id="metodo-nombre" placeholder="Ej: Efectivo, Transferencia…"/>
+      </div>
+      <div class="form-group">
+        <label>Descripción</label>
+        <input type="text" id="metodo-descripcion" placeholder="Descripción opcional"/>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="metodo-default"/>
+        <label for="metodo-default">Método predeterminado</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-metodo')">Cancelar</button>
+      <button class="btn-primary" id="btn-save-metodo" onclick="saveMetodo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     MODAL: CONFIRMAR ANULAR
+=================================================== -->
+<div class="modal-overlay" id="modal-confirmar" onclick="if(event.target===this)closeModal('modal-confirmar')">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <span class="modal-title">Anular movimiento</span>
+      <button class="modal-close" onclick="closeModal('modal-confirmar')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:13.5px;line-height:1.6">¿Confirmas que deseas anular este movimiento? La acción quedará registrada pero el movimiento no se eliminará del historial.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-confirmar')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-anular" onclick="anularMovimiento()" style="background:var(--danger)">
+        Sí, anular
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     MODAL: CONTEO DE BILLETES (Caja Chica — apertura y cierre)
+=================================================== -->
+<div class="modal-overlay" id="modal-conteo-billetes" onclick="if(event.target===this)closeModal('modal-conteo-billetes')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="cc-conteo-titulo">Contar dinero en caja</span>
+      <button class="modal-close" onclick="closeModal('modal-conteo-billetes')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">Cuenta cuántos billetes y monedas de cada denominación hay — el total se calcula solo.</p>
+      <div id="cc-denominaciones-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <span style="font-size:14px;font-weight:700">Total contado</span>
+        <span style="font-size:20px;font-weight:800;color:var(--accent)" id="cc-total-contado">C$ 0.00</span>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label>Observaciones (opcional)</label>
+        <textarea id="cc-conteo-observaciones" rows="2" placeholder="Ej: falta el cambio de monedas de 1"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-conteo-billetes')">Cancelar</button>
+      <button class="btn-primary" id="btn-confirmar-conteo" onclick="confirmarConteoBilletes()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     MODAL: REPORTE DE CIERRE DE CAJA CHICA
+=================================================== -->
+<div class="modal-overlay" id="modal-reporte-cc" onclick="if(event.target===this)closeModal('modal-reporte-cc')">
+  <div class="modal-box modal-sm" style="max-width:620px">
+    <div class="modal-header">
+      <span class="modal-title">Reporte de cierre</span>
+      <button class="modal-close" onclick="closeModal('modal-reporte-cc')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="cc-reporte-body">—</div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-reporte-cc')">Cerrar</button>
+      <button class="btn-secondary" onclick="imprimirReporteCC()">Imprimir</button>
+      <button class="btn-primary" onclick="exportarReporteCCPDF()">📄 Exportar PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: NUEVO BANCO
+=================================================== -->
+<div class="modal-overlay" id="modal-nuevo-banco" onclick="if(event.target===this)closeModal('modal-nuevo-banco')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="nb-titulo">Nuevo banco</span>
+      <button class="modal-close" onclick="closeModal('modal-nuevo-banco')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="nb-id"/>
+      <div class="form-group">
+        <label>Nombre del banco *</label>
+        <input type="text" id="nb-nombre" placeholder="Ej: BAC, Banpro, LAFISE"/>
+      </div>
+      <div class="form-group">
+        <label>Número de cuenta (opcional)</label>
+        <input type="text" id="nb-numero-cuenta" placeholder="Para tu referencia"/>
+      </div>
+      <div class="form-group">
+        <label>Moneda de esta cuenta</label>
+        <select id="nb-moneda">
+          <option value="NIO">Córdoba (NIO)</option>
+          <option value="USD">Dólar (USD)</option>
+        </select>
+        <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px" id="nb-moneda-aviso"></p>
+      </div>
+      <div class="form-group">
+        <label>Saldo inicial</label>
+        <input type="number" id="nb-saldo-inicial" step="0.01" placeholder="0.00"/>
+        <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Si el banco ya tenía dinero antes de empezar a usar el sistema, ponlo aquí — si no, déjalo en 0.</p>
+      </div>
+      <div class="form-group">
+        <label>Comisión del POS de tarjeta (%)</label>
+        <input type="number" id="nb-comision" min="0" max="100" step="0.01" placeholder="Ej: 4.5"/>
+        <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px">
+          Solo si este banco te cobra comisión por cobrar con tarjeta — cada banco cobra distinto. Se descuenta sola en cada venta con tarjeta de este banco. Déjalo vacío si no aplica o aún no lo sabes; se te pedirá la primera vez que lo uses en una venta.
+        </p>
+      </div>
+      <p id="nb-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-nuevo-banco')">Cancelar</button>
+      <button class="btn-primary" id="btn-guardar-banco" onclick="guardarNuevoBanco()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: VER MOVIMIENTOS DE UN BANCO
+=================================================== -->
+<div class="modal-overlay" id="modal-ver-banco" onclick="if(event.target===this)closeModal('modal-ver-banco')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title" id="vb-titulo">Banco</span>
+      <button class="modal-close" onclick="closeModal('modal-ver-banco')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th></tr></thead>
+          <tbody id="vb-tbody"><tr><td colspan="3" class="empty-cell">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-ver-banco')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     MODAL: CONCILIACIÓN BANCARIA
+=================================================== -->
+<div class="modal-overlay" id="modal-conciliar-banco" onclick="if(event.target===this)closeModal('modal-conciliar-banco')">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">Conciliar — <span id="cb-banco-nombre">Banco</span></span>
+      <button class="modal-close" onclick="closeModal('modal-conciliar-banco')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+        Marca cada movimiento que sí aparece en el estado de cuenta real de tu banco (o usa "Marcar hasta" con la fecha de corte de tu estado de cuenta). Lo que ya conciliaste antes no vuelve a aparecer aquí.
+      </p>
+
+      <div class="form-row">
+        <div><label>Saldo del banco en el sistema</label><div class="stat-readonly" id="cb-saldo-sistema" title="El mismo saldo que muestra la tarjeta del banco: saldo inicial + todos sus movimientos">—</div></div>
+        <div><label>Ya conciliado antes</label><div class="stat-readonly" id="cb-saldo-previo" title="Saldo inicial + lo que ya cerraste en conciliaciones anteriores">—</div></div>
+        <div><label>Pendiente de conciliar</label><div class="stat-readonly" id="cb-saldo-pendiente">—</div></div>
+      </div>
+
+      <div class="form-row">
+        <div><label>Saldo según tu banco *</label><input type="number" id="cb-saldo-banco" step="0.01" oninput="recalcularDiferenciaConciliacion()" onchange="autoMarcarSiCoincideConSistema()"/></div>
+        <div><label>Conciliado + lo marcado ahora</label><div class="stat-readonly" id="cb-saldo-calculado">—</div></div>
+        <div><label>Diferencia</label><div class="stat-readonly" id="cb-diferencia" style="font-weight:800">—</div></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 8px">
+        <label style="margin:0">Movimientos sin conciliar <span id="cb-marcados-info" style="font-weight:400;color:var(--text-muted)"></span></label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('todos')">Marcar todos</button>
+          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('ninguno')">Quitar marcas</button>
+          <input type="date" id="cb-hasta-fecha" style="width:auto;padding:5px 8px;font-size:12.5px" title="Fecha de corte de tu estado de cuenta"/>
+          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('hasta')">Marcar hasta esa fecha</button>
+          <button class="btn-secondary btn-sm" onclick="abrirAgregarAjusteConciliacion()">+ Agregar ajuste</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+        <table>
+          <thead><tr><th style="width:36px"></th><th>Fecha</th><th>Concepto</th><th>Monto</th></tr></thead>
+          <tbody id="cb-movimientos-tbody"><tr><td colspan="4" class="empty-cell">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div id="cb-ajuste-form" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px">
+        <div class="form-row">
+          <div><label>Concepto</label><input type="text" id="cb-ajuste-concepto" placeholder="Ej: Comisión bancaria"/></div>
+          <div><label>Tipo</label>
+            <select id="cb-ajuste-tipo"><option value="EGRESO">Egreso (ej. comisión, cargo)</option><option value="INGRESO">Ingreso (ej. interés ganado)</option></select>
+          </div>
+          <div><label id="cb-ajuste-monto-label">Monto</label><input type="number" id="cb-ajuste-monto" step="0.01" min="0.01"/></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn-ghost btn-sm" onclick="document.getElementById('cb-ajuste-form').style.display='none'">Cancelar</button>
+          <button class="btn-primary btn-sm" onclick="guardarAjusteConciliacion()">Agregar</button>
+        </div>
+      </div>
+
+      <p id="cb-auto-nota" style="display:none;color:var(--success);font-size:12.5px;margin-top:10px"></p>
+      <p id="cb-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
+
+      <div style="margin-top:14px">
+        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:8px">Conciliaciones anteriores de este banco</label>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Saldo banco</th><th>Saldo sistema</th><th>Diferencia</th></tr></thead>
+            <tbody id="cb-historial-tbody"><tr><td colspan="4" class="empty-cell">Sin conciliaciones todavía</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-conciliar-banco')">Cerrar</button>
+      <button class="btn-primary" id="btn-cerrar-conciliacion" onclick="cerrarConciliacion()">Cerrar conciliación</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     SCRIPT
+===================================================== -->
+  <script src="cajaAPI.js?v=20261007a"></script>
+  <script src="caja-segura.js?v=20261012a"></script>
+  <script src="moneda-alterna.js?v=20261021b"></script>
+  <script src="caja.js?v=20261029a"></script>
+  <script src="exportar-modulo.js?v=20261029b"></script>
+  <script src="exportar-caja.js?v=20261029a"></script>
+
+<script src="moneda-visualizacion.js?v=1"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261025c"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
+<div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">
+      <span style="font-weight:700;font-size:15px">💱 Moneda de visualización</span>
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-secondary,#666)">✕</button>
+    </div>
+    <div style="padding:16px 18px">
+      <p style="font-size:12.5px;color:var(--text-secondary,#666);margin-bottom:14px">
+        Tus datos siempre se guardan en tu moneda oficial (<b id="mv-moneda-oficial">—</b>). Esto solo cambia cómo se <b>muestran</b> los números en este dispositivo — nada se modifica de verdad.
+      </p>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Ver todo en</label>
+        <select id="mv-select-moneda" onchange="onCambiarSelectMonedaVis()" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-surface-2,#fafafa);color:var(--text-primary,#111);font-size:13.5px">
+          <option value="" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Mi moneda oficial (sin conversión)</option>
+          <option value="NIO" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Córdobas (NIO)</option>
+          <option value="USD" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Dólares (USD)</option>
+        </select>
+      </div>
+      <div id="mv-wrap-tasa" style="display:none;margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Tu tasa de cambio (córdobas por 1 dólar)</label>
+        <input type="number" id="mv-tasa" min="0.01" step="0.01" placeholder="Ej: 36.60" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-surface-2,#fafafa);color:var(--text-primary,#111);font-size:13.5px"/>
+      </div>
+      <p id="mv-error" style="color:#ef4444;font-size:12.5px"></p>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
+      <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

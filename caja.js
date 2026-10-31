@@ -2270,93 +2270,50 @@ async function verBanco(bancoId) {
 }
 
 /* =====================================================
-   CONCILIACIÓN BANCARIA — comparar lo que registró el sistema
-   contra el estado de cuenta real del banco. Solo se muestran los
-   movimientos que TODAVÍA no se han conciliado antes — lo ya
-   confirmado en conciliaciones anteriores no se vuelve a preguntar.
+   CONCILIACIÓN BANCARIA v2 (31-oct-2026) — como los sistemas especializados:
+   1) Tu estado de cuenta: fecha de corte + saldo final. Se marcan solos los
+      movimientos hasta esa fecha; lo que no marques queda "en tránsito".
+   2) Explicar la diferencia con registros REALES (nunca un ajuste suelto):
+      transferencias sin banco → asignarlas a este banco (no mueve dinero);
+      retiro del banco a efectivo / depósito de efectivo (Caja total igual);
+      comisión o cargo del banco = gasto con su egreso (y su asiento contable).
+   3) Cerrar: cuadrada, o con diferencia pendiente + nota (no toca dinero),
+      o guardar y seguir después (solo en este navegador).
+   Lo ya conciliado no vuelve a aparecer. Banco compartido de la empresa: se
+   concilia el banco completo; las herramientas registran en ESTE negocio.
 ===================================================== */
 let CONC = { bancoId: null, bancoNombre: null, movimientos: [], marcados: new Set(), saldoReconciliadoPrevio: 0 };
 
-// Si el saldo que escribes del banco es IGUAL al saldo que tiene el sistema y todavía no
-// marcaste nada, se marcan todos los movimientos pendientes (así no hay que marcarlos a
-// mano). Se avisa en pantalla y puedes quitar las marcas. Una sola vez por ventana.
-// Cerrar la conciliación sigue exigiendo diferencia 0 (y el servidor lo vuelve a comprobar).
-function autoMarcarSiCoincideConSistema() {
-  const inp = document.getElementById('cb-saldo-banco');
-  if (!inp || inp.value === '' || CONC._autoMarcado || CONC.marcados.size || !CONC.movimientos.length) return;
-  const pend = round2(CONC.movimientos.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? _montoConcMov(m) : -_montoConcMov(m)), 0));
-  const sistema = CONC.saldoSistema != null ? CONC.saldoSistema : round2(CONC.saldoReconciliadoPrevio + pend);
-  if (Math.abs(round2(parseFloat(inp.value) || 0) - sistema) >= 0.005) return;
-  CONC._autoMarcado = true;
-  CONC.marcados = new Set(CONC.movimientos.map(m => m.id));
-  renderMovimientosConciliacion();
-  recalcularDiferenciaConciliacion();
-  const nota = document.getElementById('cb-auto-nota');
-  if (nota) { nota.textContent = '✅ Tu saldo coincide con el del sistema, así que marqué todos los movimientos. Si algo no aparece en tu estado de cuenta, quítale la marca.'; nota.style.display = ''; }
+function _montoMovConc(m) {
+  if (m.monto_banco != null) return Number(m.monto_banco);   // banco de la empresa: ya viene en la moneda del banco
+  return CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto);
 }
+function _signoMovConc(m) { return m.tipo_flujo === 'INGRESO' ? 1 : -1; }
+function _claveBorradorConc() { return `n360_conc_borrador_${STATE.userId}_${CONC.empresa ? 'eb_' + CONC.empresa.id : CONC.bancoId}`; }
+function _leerBorradorConc() { try { return JSON.parse(localStorage.getItem(_claveBorradorConc()) || 'null'); } catch (_) { return null; } }
+function _borrarBorradorConc() { try { localStorage.removeItem(_claveBorradorConc()); } catch (_) {} }
 
-async function abrirConciliarBanco(bancoId, bancoNombre) {
-  const banco = STATE.bancos.find(b => b.id === bancoId);
-  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
-  const monedaBanco = banco?.moneda || 'NIO';
-  CONC = { bancoId, bancoNombre, movimientos: [], marcados: new Set(), saldoReconciliadoPrevio: 0, moneda: monedaBanco, esOtraMoneda: monedaBanco !== monedaBase };
-  // Banco compartido con otro negocio de la empresa: se concilia el banco COMPLETO.
-  const ebConc = STATE.empresaBancoPorBanco && STATE.empresaBancoPorBanco.get(bancoId);
-  if (ebConc) CONC.empresa = ebConc;
-  document.getElementById('cb-banco-nombre').textContent = ebConc ? `${bancoNombre} (banco completo: ${(ebConc.partes || []).map(p => p.negocio).join(' + ')})` : bancoNombre;
-  document.getElementById('cb-saldo-banco').value = '';
-  document.getElementById('cb-error').textContent = '';
-  { const n = document.getElementById('cb-auto-nota'); if (n) { n.style.display = 'none'; n.textContent = ''; } }
-  document.getElementById('cb-ajuste-form').style.display = 'none';
-  document.getElementById('cb-movimientos-tbody').innerHTML = '<tr><td colspan="4" class="empty-cell">Cargando…</td></tr>';
-  openModal('modal-conciliar-banco');
-
-  // El punto de partida es el saldo inicial del banco (si ya tenía
-  // dinero antes de empezar a usar el sistema) + todo lo ya
-  // conciliado antes — sin el saldo inicial, la conciliación nunca
-  // podría cuadrar si el banco no arrancó en cero. Todo esto en la
-  // MONEDA REAL del banco, nunca en la moneda base del negocio.
-  // Se calcula en la base (sin el límite de 1,000 filas); si no respondiera,
-  // se usa el cálculo de siempre.
-  const hastaEl = document.getElementById('cb-hasta-fecha'); if (hastaEl) hastaEl.value = '';
-  ['cb-saldo-sistema', 'cb-saldo-previo', 'cb-saldo-pendiente'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '…'; });
-  const saldoInicial = Number(banco?.saldo_inicial || 0);
+async function _cargarSaldosConc() {
+  const banco = STATE.bancos.find(b => b.id === CONC.bancoId);
   let srv = null;
   if (CONC.empresa) {
-    // Números frescos del banco completo (suma de las partes de cada negocio)
     try {
       const r = await sbClient.rpc('empresa_bancos_resumen');
       const eb = !r.error && Array.isArray(r.data) ? r.data.find(x => x.id === CONC.empresa.id) : null;
       if (eb) { CONC.empresa = eb; srv = { saldo: eb.saldo, saldo_conciliado: eb.saldo_conciliado }; }
     } catch (_) {}
-    if (!srv) { document.getElementById('cb-error').textContent = 'No se pudo cargar el banco de la empresa. Cierra y vuelve a intentar.'; return; }
-  }
-  try {
-    if (!srv) {
-      const r = await sbClient.rpc('bancos_saldos');
-      if (!r.error && Array.isArray(r.data)) srv = r.data.find(s => s.banco_id === bancoId) || null;
-    }
-  } catch (_) {}
-  if (srv) {
-    CONC.saldoReconciliadoPrevio = round2(Number(srv.saldo_conciliado));
-    CONC.saldoSistema = round2(Number(srv.saldo));
+    if (!srv) throw new Error('No se pudo cargar el banco de la empresa. Cierra y vuelve a intentar.');
   } else {
-    const previos = await traerTodasLasFilas(() => sbClient.from('movimientos_financieros')
-      .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', bancoId).eq('conciliado', true).eq('estado','completado').order('created_at').order('id'));
-    const montoDe = (m) => CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto);
-    const sumaConciliadoPrevio = (previos||[]).reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? montoDe(m) : -montoDe(m)), 0);
-    CONC.saldoReconciliadoPrevio = round2(saldoInicial + sumaConciliadoPrevio);
-    CONC.saldoSistema = null;
+    try { const r = await sbClient.rpc('bancos_saldos'); if (!r.error && Array.isArray(r.data)) srv = r.data.find(s => s.banco_id === CONC.bancoId) || null; } catch (_) {}
   }
-
-  await cargarMovimientosConciliacion();
-  pintarResumenConciliacion();
-  await cargarHistorialConciliaciones();
-  recalcularDiferenciaConciliacion();
+  if (srv) { CONC.saldoReconciliadoPrevio = round2(Number(srv.saldo_conciliado)); CONC.saldoSistema = round2(Number(srv.saldo)); return; }
+  const previos = await traerTodasLasFilas(() => sbClient.from('movimientos_financieros')
+    .select('tipo_flujo, monto, monto_moneda_banco').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId).eq('conciliado', true).eq('estado', 'completado').order('created_at').order('id'));
+  CONC.saldoReconciliadoPrevio = round2(Number(banco?.saldo_inicial || 0) + (previos || []).reduce((s, m) => s + _signoMovConc(m) * _montoMovConc(m), 0));
+  CONC.saldoSistema = null;
 }
 
 async function cargarMovimientosConciliacion() {
-  // En páginas de 1,000 (la base no entrega más por consulta).
   const todos = [];
   if (CONC.empresa) {
     for (let desde = 0; desde < 100000; desde += 1000) {
@@ -2365,201 +2322,343 @@ async function cargarMovimientosConciliacion() {
       todos.push(...(data || []));
       if (!data || data.length < 1000) break;
     }
-    CONC.movimientos = todos;
-    renderMovimientosConciliacion();
-    return;
-  }
-  for (let desde = 0; desde < 100000; desde += 1000) {
-    const { data, error } = await sbClient.from('movimientos_financieros')
-      .select('id, fecha, concepto, monto, monto_moneda_banco, tipo_flujo').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId)
-      .eq('conciliado', false).eq('estado','completado').order('fecha').order('created_at').order('id').range(desde, desde + 999);
-    if (error) { console.warn('cargarMovimientosConciliacion:', error); break; }
-    todos.push(...(data || []));
-    if (!data || data.length < 1000) break;
+  } else {
+    for (let desde = 0; desde < 100000; desde += 1000) {
+      const { data, error } = await sbClient.from('movimientos_financieros')
+        .select('id, fecha, concepto, monto, monto_moneda_banco, tipo_flujo').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId)
+        .eq('conciliado', false).eq('estado', 'completado').order('fecha').order('created_at').order('id').range(desde, desde + 999);
+      if (error) { console.warn('cargarMovimientosConciliacion:', error); break; }
+      todos.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
   }
   CONC.movimientos = todos;
-  renderMovimientosConciliacion();
 }
 
-// Los tres números de arriba: saldo del banco en el sistema, lo ya conciliado y lo pendiente.
-function pintarResumenConciliacion() {
-  const pend = round2(CONC.movimientos.reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? _montoConcMov(m) : -_montoConcMov(m)), 0));
-  const sistema = CONC.saldoSistema != null ? CONC.saldoSistema : round2(CONC.saldoReconciliadoPrevio + pend);
-  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
-  set('cb-saldo-sistema', fmtMoneda(sistema, CONC.moneda));
-  set('cb-saldo-previo', fmtMoneda(CONC.saldoReconciliadoPrevio, CONC.moneda));
-  set('cb-saldo-pendiente', `${fmtMoneda(pend, CONC.moneda)} (${CONC.movimientos.length} mov.)`);
-}
-
-// Marcar todos / ninguno / hasta la fecha de corte del estado de cuenta.
-function marcarConciliacion(modo) {
-  const errEl = document.getElementById('cb-error');
-  if (errEl) errEl.textContent = '';
-  if (modo === 'todos') CONC.marcados = new Set(CONC.movimientos.map(m => m.id));
-  else if (modo === 'ninguno') { CONC.marcados = new Set(); CONC._autoMarcado = true; }
-  else if (modo === 'hasta') {
-    const hasta = document.getElementById('cb-hasta-fecha')?.value;
-    if (!hasta) { if (errEl) errEl.textContent = 'Elige la fecha de corte de tu estado de cuenta.'; return; }
-    CONC.marcados = new Set(CONC.movimientos.filter(m => (m.fecha || '') <= hasta).map(m => m.id));
+async function abrirConciliarBanco(bancoId, bancoNombre) {
+  const banco = STATE.bancos.find(b => b.id === bancoId);
+  const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+  const monedaBanco = banco?.moneda || 'NIO';
+  CONC = { bancoId, bancoNombre, movimientos: [], marcados: new Set(), saldoReconciliadoPrevio: 0, saldoSistema: null,
+           moneda: monedaBanco, esOtraMoneda: monedaBanco !== monedaBase, herramienta: null, sinBanco: [], sinBancoSel: new Set() };
+  const ebConc = STATE.empresaBancoPorBanco && STATE.empresaBancoPorBanco.get(bancoId);
+  if (ebConc) CONC.empresa = ebConc;
+  const el = id => document.getElementById(id);
+  el('cb-banco-nombre').textContent = ebConc ? `${bancoNombre} ${monedaBanco} (banco completo: ${(ebConc.partes || []).map(p => p.negocio).join(' + ')})` : `${bancoNombre} ${monedaBanco}`;
+  el('cb-error').textContent = '';
+  el('cb-nota-wrap').style.display = 'none';
+  el('cb-nota').value = '';
+  el('cb-herramienta').innerHTML = '';
+  el('cb-movimientos-tbody').innerHTML = '<tr><td colspan="4" class="empty-cell">Cargando…</td></tr>';
+  const borrador = _leerBorradorConc();
+  el('cb-fecha-corte').value = borrador?.fecha || todayISO();
+  el('cb-saldo-banco').value = borrador?.saldo ?? '';
+  el('cb-simbolo').textContent = simboloMoneda(monedaBanco);
+  openModal('modal-conciliar-banco');
+  try { await _cargarSaldosConc(); }
+  catch (e) { el('cb-error').textContent = e.message || 'No se pudo cargar el banco.'; return; }
+  await cargarMovimientosConciliacion();
+  if (borrador && Array.isArray(borrador.marcados)) {
+    const vivos = new Set(CONC.movimientos.map(m => m.id));
+    CONC.marcados = new Set(borrador.marcados.filter(id => vivos.has(id)));
+    el('cb-borrador-nota').style.display = '';
+  } else {
+    el('cb-borrador-nota').style.display = 'none';
+    _marcarHastaCorte();
   }
   renderMovimientosConciliacion();
   recalcularDiferenciaConciliacion();
+  await cargarHistorialConciliaciones();
 }
 
-function _montoConcMov(m) {
-  if (m.monto_banco != null) return Number(m.monto_banco);   // ya viene en la moneda del banco (banco de la empresa)
-  return CONC.esOtraMoneda ? _montoMonedaBanco(m) : Number(m.monto);
+// Al cambiar la fecha de corte se marcan solos los movimientos hasta esa fecha.
+function _marcarHastaCorte() {
+  const corte = document.getElementById('cb-fecha-corte').value || todayISO();
+  CONC.marcados = new Set(CONC.movimientos.filter(m => (m.fecha || '') <= corte).map(m => m.id));
+}
+function concCambioFecha() { _marcarHastaCorte(); renderMovimientosConciliacion(); recalcularDiferenciaConciliacion(); }
+function marcarConciliacion(modo) {
+  if (modo === 'todos') CONC.marcados = new Set(CONC.movimientos.map(m => m.id));
+  else if (modo === 'ninguno') CONC.marcados = new Set();
+  else _marcarHastaCorte();
+  renderMovimientosConciliacion(); recalcularDiferenciaConciliacion();
+}
+function toggleMovConciliado(id, checked) {
+  if (checked) CONC.marcados.add(id); else CONC.marcados.delete(id);
+  const fila = document.getElementById('cbm-' + id);
+  if (fila) fila.classList.toggle('cb-transito', !checked);
+  recalcularDiferenciaConciliacion();
 }
 
 function renderMovimientosConciliacion() {
   const tbody = document.getElementById('cb-movimientos-tbody');
   if (!CONC.movimientos.length) {
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No hay movimientos pendientes de conciliar — todo al día 🎉</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No hay movimientos pendientes de conciliar.</td></tr>';
     return;
   }
-  tbody.innerHTML = CONC.movimientos.map(m => `
-    <tr>
-      <td><input type="checkbox" ${CONC.marcados.has(m.id)?'checked':''} onchange="toggleMovConciliado('${m.id}', this.checked)"/></td>
-      <td>${fmtDate(m.fecha)}</td>
-      <td>${CONC.empresa ? `<span style="font-size:11px;font-weight:700;color:var(--accent)">${esc(m.negocio || 'Este negocio')}</span> ` : ''}${esc(m.concepto||'—')}</td>
-      <td style="color:${m.tipo_flujo==='INGRESO'?'var(--success)':'var(--danger)'}">${m.tipo_flujo==='INGRESO'?'+':'-'}${fmtMoneda(_montoConcMov(m), CONC.moneda)}</td>
-    </tr>`).join('');
-}
-function toggleMovConciliado(id, checked) {
-  if (checked) CONC.marcados.add(id); else CONC.marcados.delete(id);
-  recalcularDiferenciaConciliacion();
+  tbody.innerHTML = CONC.movimientos.map(m => {
+    const marc = CONC.marcados.has(m.id);
+    const monto = _montoMovConc(m);
+    return `<tr id="cbm-${m.id}" class="${marc ? '' : 'cb-transito'}">
+      <td><input type="checkbox" ${marc ? 'checked' : ''} onchange="toggleMovConciliado('${m.id}', this.checked)" aria-label="Aparece en el estado de cuenta"/></td>
+      <td style="white-space:nowrap">${fmtDate(m.fecha)}</td>
+      <td>${CONC.empresa ? `<span style="font-size:11px;font-weight:700;color:var(--accent)">${esc(m.negocio || 'Este negocio')}</span> ` : ''}${esc(m.concepto || '—')}<span class="cb-tag-transito">en tránsito</span></td>
+      <td style="text-align:right;white-space:nowrap;color:${m.tipo_flujo === 'INGRESO' ? 'var(--success)' : 'var(--danger)'}">${m.tipo_flujo === 'INGRESO' ? '+' : '−'}${fmtMoneda(monto, CONC.moneda)}</td>
+    </tr>`;
+  }).join('');
 }
 
 function recalcularDiferenciaConciliacion() {
-  const sumaMarcados = CONC.movimientos.filter(m => CONC.marcados.has(m.id))
-    .reduce((s,m) => s + (m.tipo_flujo==='INGRESO' ? _montoConcMov(m) : -_montoConcMov(m)), 0);
-  const saldoCalculado = round2(CONC.saldoReconciliadoPrevio + sumaMarcados);
-  const saldoBanco = round2(parseFloat(document.getElementById('cb-saldo-banco').value) || 0);
-  const diferencia = round2(saldoBanco - saldoCalculado);
-
-  document.getElementById('cb-saldo-calculado').textContent = fmtMoneda(saldoCalculado, CONC.moneda);
-  const elDif = document.getElementById('cb-diferencia');
-  elDif.textContent = fmtMoneda(diferencia, CONC.moneda);
-  elDif.style.color = diferencia === 0 ? 'var(--success)' : 'var(--danger)';
-  CONC._saldoCalculado = saldoCalculado;
-  CONC._diferencia = diferencia;
-  const info = document.getElementById('cb-marcados-info');
-  if (info) info.textContent = CONC.movimientos.length ? `(${CONC.marcados.size} de ${CONC.movimientos.length} marcados)` : '';
-}
-
-function abrirAgregarAjusteConciliacion() {
-  document.getElementById('cb-ajuste-monto-label').textContent = `Monto (en ${simboloMoneda(CONC.moneda)})`;
-  document.getElementById('cb-ajuste-concepto').value = '';
-  document.getElementById('cb-ajuste-monto').value = '';
-  document.getElementById('cb-ajuste-tipo').value = 'EGRESO';
-  document.getElementById('cb-ajuste-form').style.display = 'block';
-}
-
-async function guardarAjusteConciliacion() {
-  const errEl = document.getElementById('cb-error');
-  errEl.textContent = '';
-  const concepto = document.getElementById('cb-ajuste-concepto').value.trim();
-  const tipo = document.getElementById('cb-ajuste-tipo').value;
-  const montoBanco = round2(parseFloat(document.getElementById('cb-ajuste-monto').value) || 0);
-  if (!concepto) { errEl.textContent = 'Escribe un concepto para el ajuste.'; return; }
-  if (montoBanco <= 0) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
-
-  // El monto que se escribe es en la MONEDA DEL BANCO (para que
-  // cuadre contra su estado de cuenta real) — si el banco es en otra
-  // moneda distinta a la base del negocio, se convierte para que
-  // Caja General/Dashboard sigan sumando correcto en su propia moneda.
-  let montoBase = montoBanco;
-  if (CONC.esOtraMoneda) {
-    const tasa = Number(STATE.empresaConfig?.tasa_cambio_usd || 0);
-    if (!tasa) { errEl.textContent = 'Primero configura tu tasa de cambio arriba, antes de agregar un ajuste en esta moneda.'; return; }
-    const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
-    montoBase = monedaBase === 'NIO' ? round2(montoBanco * tasa) : round2(montoBanco / tasa);
+  const marcados = CONC.movimientos.filter(m => CONC.marcados.has(m.id));
+  const transito = CONC.movimientos.filter(m => !CONC.marcados.has(m.id));
+  const sumMarc = round2(marcados.reduce((s, m) => s + _signoMovConc(m) * _montoMovConc(m), 0));
+  const sumTrans = round2(transito.reduce((s, m) => s + _signoMovConc(m) * _montoMovConc(m), 0));
+  const sistemaCorte = round2(CONC.saldoReconciliadoPrevio + sumMarc);
+  const txt = document.getElementById('cb-saldo-banco').value;
+  const hayBanco = txt !== '' && !isNaN(parseFloat(txt));
+  const saldoBanco = hayBanco ? round2(parseFloat(txt)) : null;
+  const dif = hayBanco ? round2(saldoBanco - sistemaCorte) : null;
+  CONC._sistemaCorte = sistemaCorte; CONC._diferencia = dif; CONC._saldoBanco = saldoBanco;
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  set('cb-v-banco', hayBanco ? fmtMoneda(saldoBanco, CONC.moneda) : '—');
+  set('cb-v-sistema', fmtMoneda(sistemaCorte, CONC.moneda));
+  set('cb-v-dif', hayBanco ? fmtMoneda(dif, CONC.moneda) : '—');
+  set('cb-v-sistema-sub', `${marcados.length} movimiento${marcados.length === 1 ? '' : 's'} marcado${marcados.length === 1 ? '' : 's'}${CONC.saldoReconciliadoPrevio ? ' + lo ya conciliado' : ''}`);
+  set('cb-transito-info', transito.length ? `En tránsito (no aparecen todavía en el banco): ${transito.length} movimiento${transito.length === 1 ? '' : 's'}, ${fmtMoneda(sumTrans, CONC.moneda)}` : 'Sin movimientos en tránsito');
+  set('cb-marcados-info', CONC.movimientos.length ? `(${marcados.length} de ${CONC.movimientos.length} marcados)` : '');
+  const caja = document.getElementById('cb-v-dif-caja');
+  const msg = document.getElementById('cb-mensaje');
+  const btnCerrar = document.getElementById('btn-cerrar-conciliacion');
+  const btnDif = document.getElementById('btn-cerrar-con-diferencia');
+  caja.classList.remove('cb-ok', 'cb-mal');
+  if (!hayBanco) {
+    msg.innerHTML = 'Escribe el <b>saldo final</b> de tu estado de cuenta para comparar.';
+    btnCerrar.disabled = true; btnDif.style.display = 'none';
+  } else if (Math.abs(dif) < 0.005) {
+    caja.classList.add('cb-ok');
+    msg.innerHTML = '✅ <b>Cuadra.</b> Ya puedes cerrar la conciliación.';
+    btnCerrar.disabled = false; btnDif.style.display = 'none';
+    document.getElementById('cb-nota-wrap').style.display = 'none';
+  } else {
+    caja.classList.add('cb-mal');
+    const abs = fmtMoneda(Math.abs(dif), CONC.moneda);
+    msg.innerHTML = dif < 0
+      ? `Tu banco tiene <b>${abs} menos</b> que el sistema. Suele ser por <b>retiros, pagos hechos desde el banco o comisiones</b> que no se registraron, o por movimientos marcados que el banco todavía no refleja (quítales la marca). Usa las herramientas de abajo.`
+      : `Tu banco tiene <b>${abs} más</b> que el sistema. Suele ser por <b>cobros por transferencia o tarjeta que quedaron sin banco</b>, o depósitos de efectivo que no se registraron. Usa las herramientas de abajo.`;
+    btnCerrar.disabled = true; btnDif.style.display = '';
   }
+}
 
+/* ---------- Herramientas para explicar la diferencia ---------- */
+function concHerramienta(cual) {
+  CONC.herramienta = CONC.herramienta === cual ? null : cual;
+  document.getElementById('cb-error').textContent = '';
+  const cont = document.getElementById('cb-herramienta');
+  document.querySelectorAll('.cb-tool-btn').forEach(b => b.classList.toggle('activo', b.dataset.tool === CONC.herramienta));
+  if (!CONC.herramienta) { cont.innerHTML = ''; return; }
+  const corte = document.getElementById('cb-fecha-corte').value || todayISO();
+  const negocio = CONC.empresa ? ' <span style="color:var(--text-muted)">(se registra en este negocio)</span>' : '';
+  const otraMoneda = CONC.esOtraMoneda;
+  if (cual === 'sinbanco') {
+    if (otraMoneda) { cont.innerHTML = `<div class="cb-tool-box">Este banco está en ${esc(CONC.moneda)}: los cobros sin banco son en la moneda del negocio y no se pueden asignar aquí.</div>`; return; }
+    cont.innerHTML = `<div class="cb-tool-box"><div style="font-weight:700;margin-bottom:4px">🔎 Transferencias y tarjetas que quedaron sin banco${negocio}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Marca las que sí aparecen en el estado de cuenta de este banco. <b>No mueve dinero</b>: solo dice en qué banco está.</div>
+      <div id="cb-sb-lista" style="max-height:220px;overflow-y:auto">Cargando…</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <span id="cb-sb-total" style="font-size:12.5px"></span>
+        <button class="btn-primary btn-sm" id="btn-cb-asignar" onclick="concAsignarSinBanco()">Asignar a ${esc(CONC.bancoNombre)}</button>
+      </div></div>`;
+    concCargarSinBanco(corte);
+  } else if (cual === 'efectivo') {
+    if (otraMoneda) { cont.innerHTML = `<div class="cb-tool-box">Para un banco en ${esc(CONC.moneda)} usa <b>Transferencias</b> en Caja.</div>`; return; }
+    cont.innerHTML = `<div class="cb-tool-box"><div style="font-weight:700;margin-bottom:4px">🏧 Retiro del banco a efectivo / depósito de efectivo al banco${negocio}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Mueve dinero entre el banco y tu efectivo. <b>La Caja total no cambia</b>, solo dónde está el dinero.</div>
+      <div class="form-row">
+        <div><label>Tipo</label><select id="cb-ef-tipo"><option value="retiro">Retiré del banco a efectivo</option><option value="deposito">Deposité efectivo al banco</option></select></div>
+        <div><label>Monto (${simboloMoneda(CONC.moneda)})</label><input type="number" id="cb-ef-monto" step="0.01" min="0.01"/></div>
+        <div><label>Fecha</label><input type="date" id="cb-ef-fecha" value="${corte}"/></div>
+      </div>
+      <div><label>Nota (opcional)</label><input type="text" id="cb-ef-nota" placeholder="Ej: retiro para pago de planilla"/></div>
+      <div style="text-align:right;margin-top:8px"><button class="btn-primary btn-sm" id="btn-cb-efectivo" onclick="concGuardarEfectivo()">Registrar</button></div></div>`;
+  } else if (cual === 'cargo') {
+    cont.innerHTML = `<div class="cb-tool-box"><div style="font-weight:700;margin-bottom:4px">💳 Comisión o cargo del banco${negocio}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Se registra como <b>gasto</b> (categoría Comisiones bancarias) con su salida del banco, igual que cualquier gasto: aparece en Gastos y en Contabilidad.</div>
+      <div class="form-row">
+        <div><label>Concepto</label><input type="text" id="cb-cg-concepto" placeholder="Ej: Comisión por manejo de cuenta"/></div>
+        <div><label>Monto (${simboloMoneda(CONC.moneda)})</label><input type="number" id="cb-cg-monto" step="0.01" min="0.01"/></div>
+        <div><label>Fecha</label><input type="date" id="cb-cg-fecha" value="${corte}"/></div>
+      </div>
+      <div style="text-align:right;margin-top:8px"><button class="btn-primary btn-sm" id="btn-cb-cargo" onclick="concGuardarCargo()">Registrar cargo</button></div></div>`;
+  }
+}
+
+async function concCargarSinBanco(hasta) {
+  const lista = document.getElementById('cb-sb-lista');
+  const { data, error } = await sbClient.rpc('conciliacion_movs_sin_banco', { p_desde: null, p_hasta: hasta });
+  if (error) { lista.textContent = 'No se pudo cargar: ' + (error.message || ''); return; }
+  CONC.sinBanco = data || []; CONC.sinBancoSel = new Set();
+  if (!CONC.sinBanco.length) { lista.innerHTML = '<div class="empty-cell">No hay transferencias ni tarjetas sin banco hasta esa fecha. 👍</div>'; concTotalSinBanco(); return; }
+  lista.innerHTML = `<table><tbody>${CONC.sinBanco.map(m => `<tr>
+      <td style="width:30px"><input type="checkbox" onchange="concSelSinBanco('${m.id}', this.checked)"/></td>
+      <td style="white-space:nowrap">${fmtDate(m.fecha)}</td><td>${esc(m.concepto || '—')} <span style="color:var(--text-muted);font-size:11px">${esc(m.metodo || '')}</span></td>
+      <td style="text-align:right;white-space:nowrap;color:${m.tipo_flujo === 'INGRESO' ? 'var(--success)' : 'var(--danger)'}">${m.tipo_flujo === 'INGRESO' ? '+' : '−'}${fmt(m.monto)}</td></tr>`).join('')}</tbody></table>`;
+  concTotalSinBanco();
+}
+function concSelSinBanco(id, on) { if (on) CONC.sinBancoSel.add(id); else CONC.sinBancoSel.delete(id); concTotalSinBanco(); }
+function concTotalSinBanco() {
+  const sel = CONC.sinBanco.filter(m => CONC.sinBancoSel.has(m.id));
+  const t = round2(sel.reduce((s, m) => s + _signoMovConc(m) * Number(m.monto), 0));
+  const el = document.getElementById('cb-sb-total');
+  if (el) el.textContent = sel.length ? `${sel.length} seleccionado${sel.length === 1 ? '' : 's'}: ${t >= 0 ? '+' : '−'}${fmt(Math.abs(t))}` : `${CONC.sinBanco.length} sin banco`;
+}
+
+// Tras registrar algo desde una herramienta: se recargan saldos y pendientes,
+// se conservan las marcas y lo nuevo queda marcado (aparece en el estado de cuenta).
+async function _recargarConc(idsNuevosMarcados) {
+  const antes = new Set(CONC.movimientos.map(m => m.id));
+  const marcas = new Set(CONC.marcados);
+  await _cargarSaldosConc();
+  await cargarMovimientosConciliacion();
+  const vivos = new Set(CONC.movimientos.map(m => m.id));
+  CONC.marcados = new Set([...marcas].filter(id => vivos.has(id)));
+  CONC.movimientos.forEach(m => { if (!antes.has(m.id) || (idsNuevosMarcados || []).includes(m.id)) CONC.marcados.add(m.id); });
+  renderMovimientosConciliacion();
+  recalcularDiferenciaConciliacion();
+}
+function _bancoPropioConc() { return CONC.bancoId; }   // en banco de empresa, la parte de ESTE negocio
+
+async function concAsignarSinBanco() {
+  const errEl = document.getElementById('cb-error'); errEl.textContent = '';
+  const ids = [...CONC.sinBancoSel];
+  if (!ids.length) { errEl.textContent = 'Marca al menos una transferencia que aparezca en este banco.'; return; }
+  setBtnLoading('btn-cb-asignar', true);
   try {
-    const { data: ultMov } = await sbClient.from('movimientos_financieros')
-      .select('saldo_resultante').eq('auth_user_id', STATE.userId).eq('estado','completado')
-      .order('created_at', { ascending:false }).limit(1).maybeSingle();
-    const saldoAnterior = ultMov?.saldo_resultante || 0;
-    const saldoResultante = tipo === 'INGRESO' ? saldoAnterior + montoBase : saldoAnterior - montoBase;
-
-    const { data: nuevo, error } = await sbClient.from('movimientos_financieros').insert({
-      auth_user_id: STATE.userId, tipo_flujo: tipo, tipo_movimiento: tipo === 'INGRESO' ? 'OTRO_INGRESO' : 'OTRO_EGRESO', concepto,
-      monto: montoBase, monto_moneda_banco: CONC.esOtraMoneda ? montoBanco : null,
-      saldo_anterior: saldoAnterior, saldo_resultante: saldoResultante,
-      metodo_pago_nombre: tipo === 'INGRESO' ? 'Transferencia' : 'Transferencia',
-      banco_id: CONC.bancoId, fecha: todayISO(), estado: 'completado',
-    }).select('id, fecha, concepto, monto, monto_moneda_banco, tipo_flujo').single();
+    const { data, error } = await sbClient.rpc('conciliacion_asignar_banco', { p_banco_id: _bancoPropioConc(), p_ids: ids });
     if (error) throw error;
+    showToast(`${data?.asignados || 0} movimiento(s) asignados a ${CONC.bancoNombre}`);
+    await _recargarConc(ids);
+    await concCargarSinBanco(document.getElementById('cb-fecha-corte').value || todayISO());
+    if (typeof loadBancos === 'function') loadBancos();
+  } catch (e) { errEl.textContent = 'No se pudo asignar: ' + (e.message || ''); }
+  finally { setBtnLoading('btn-cb-asignar', false); }
+}
 
-    CONC.movimientos.push(nuevo);
-    CONC.marcados.add(nuevo.id); // un ajuste que tú mismo agregas ya se da por conciliado de una vez
-    if (CONC.saldoSistema != null) CONC.saldoSistema = round2(CONC.saldoSistema + (tipo === 'INGRESO' ? montoBanco : -montoBanco));
-    pintarResumenConciliacion();
-    renderMovimientosConciliacion();
-    recalcularDiferenciaConciliacion();
-    document.getElementById('cb-ajuste-form').style.display = 'none';
-    showToast('Ajuste agregado');
+async function concGuardarEfectivo() {
+  const errEl = document.getElementById('cb-error'); errEl.textContent = '';
+  const tipo = document.getElementById('cb-ef-tipo').value;
+  const monto = round2(parseFloat(document.getElementById('cb-ef-monto').value) || 0);
+  const fecha = document.getElementById('cb-ef-fecha').value || todayISO();
+  const nota = document.getElementById('cb-ef-nota').value.trim();
+  if (monto <= 0) { errEl.textContent = 'El monto debe ser mayor que 0.'; return; }
+  const banco = _bancoPropioConc();
+  const extra = nota ? ` — ${nota}` : '';
+  const retiro = tipo === 'retiro';
+  setBtnLoading('btn-cb-efectivo', true);
+  try {
+    const { data, error } = await sbClient.rpc('registrar_transferencia_interna', {
+      p_transferencia_id: crypto.randomUUID(), p_monto: monto,
+      p_sale_origen_caja: retiro ? null : 'general', p_sale_banco: retiro ? banco : null,
+      p_entra_origen_caja: retiro ? 'general' : null, p_entra_banco: retiro ? null : banco,
+      p_concepto_sale: retiro ? `Retiro del banco ${CONC.bancoNombre} a efectivo${extra}` : `Depósito de efectivo al banco ${CONC.bancoNombre}${extra}`,
+      p_concepto_entra: retiro ? `Retiro del banco ${CONC.bancoNombre} a efectivo${extra}` : `Depósito de efectivo al banco ${CONC.bancoNombre}${extra}`,
+      p_es_reverso: false, p_fecha: fecha,
+    });
+    if (error) throw error;
+    if (!data?.ok) { errEl.textContent = data?.mensaje || 'No se pudo registrar.'; return; }
+    showToast(retiro ? 'Retiro registrado (la Caja total no cambia)' : 'Depósito registrado (la Caja total no cambia)');
+    concHerramienta(null);
+    await _recargarConc();
+    if (typeof refrescarTrasMovimiento === 'function') refrescarTrasMovimiento();
+  } catch (e) { errEl.textContent = 'No se pudo registrar: ' + (e.message || ''); }
+  finally { setBtnLoading('btn-cb-efectivo', false); }
+}
+
+async function concGuardarCargo() {
+  const errEl = document.getElementById('cb-error'); errEl.textContent = '';
+  const concepto = document.getElementById('cb-cg-concepto').value.trim();
+  const monto = round2(parseFloat(document.getElementById('cb-cg-monto').value) || 0);
+  const fecha = document.getElementById('cb-cg-fecha').value || todayISO();
+  if (!concepto) { errEl.textContent = 'Escribe el concepto del cargo (por ejemplo: comisión por manejo de cuenta).'; return; }
+  if (monto <= 0) { errEl.textContent = 'El monto debe ser mayor que 0.'; return; }
+  setBtnLoading('btn-cb-cargo', true);
+  try {
+    const { data, error } = await sbClient.rpc('conciliacion_cargo_bancario', { p_banco_id: _bancoPropioConc(), p_monto_banco: monto, p_fecha: fecha, p_concepto: concepto });
+    if (error) throw error;
+    showToast('Cargo registrado como gasto');
+    concHerramienta(null);
+    await _recargarConc(data?.movimiento_id ? [data.movimiento_id] : []);
+    if (typeof refrescarTrasMovimiento === 'function') refrescarTrasMovimiento();
+  } catch (e) { errEl.textContent = 'No se pudo registrar el cargo: ' + (e.message || ''); }
+  finally { setBtnLoading('btn-cb-cargo', false); }
+}
+
+/* ---------- Cerrar / guardar ---------- */
+function concGuardarBorrador() {
+  try {
+    localStorage.setItem(_claveBorradorConc(), JSON.stringify({
+      fecha: document.getElementById('cb-fecha-corte').value || todayISO(),
+      saldo: document.getElementById('cb-saldo-banco').value,
+      marcados: [...CONC.marcados], t: Date.now() }));
+    showToast('Guardado en este equipo. Cuando vuelvas a abrir la conciliación, sigue donde la dejaste.');
+  } catch (_) { showToast('No se pudo guardar en este navegador.', 'error'); return; }
+  closeModal('modal-conciliar-banco');
+}
+function concPrepararCierreConDiferencia() {
+  document.getElementById('cb-nota-wrap').style.display = '';
+  document.getElementById('cb-nota').focus();
+}
+
+async function cerrarConciliacion(conDiferencia) {
+  const errEl = document.getElementById('cb-error'); errEl.textContent = '';
+  recalcularDiferenciaConciliacion();
+  if (CONC._saldoBanco == null) { errEl.textContent = 'Escribe el saldo final de tu estado de cuenta.'; return; }
+  const corte = document.getElementById('cb-fecha-corte').value;
+  if (!corte) { errEl.textContent = 'Elige la fecha de corte de tu estado de cuenta.'; return; }
+  const cuadra = Math.abs(CONC._diferencia) < 0.005;
+  const nota = document.getElementById('cb-nota').value.trim();
+  if (!cuadra && !conDiferencia) { errEl.textContent = 'Todavía hay diferencia. Explícala con las herramientas, o usa "Cerrar con diferencia pendiente".'; return; }
+  if (!cuadra && !nota) { errEl.textContent = 'Escribe una nota que explique la diferencia.'; document.getElementById('cb-nota').focus(); return; }
+  if (cuadra && !CONC.marcados.size) { errEl.textContent = 'Marca al menos un movimiento que aparezca en tu estado de cuenta.'; return; }
+  const btnId = conDiferencia ? 'btn-cerrar-con-diferencia-ok' : 'btn-cerrar-conciliacion';
+  setBtnLoading(btnId, true);
+  try {
+    const ids = [...CONC.marcados];
+    const args = { p_ids: ids, p_saldo_banco: CONC._saldoBanco, p_fecha_corte: corte, p_con_diferencia: !cuadra, p_nota: cuadra ? null : nota };
+    const { error } = CONC.empresa
+      ? await sbClient.rpc('empresa_conciliacion_cerrar_v2', { p_empresa_banco_id: CONC.empresa.id, ...args })
+      : await sbClient.rpc('conciliacion_cerrar_v2', { p_banco_id: CONC.bancoId, ...args });
+    if (error) throw error;
+    _borrarBorradorConc();
+    showToast(cuadra ? 'Conciliación cerrada — todo cuadra' : 'Conciliación cerrada con diferencia pendiente (no se tocó ningún dinero)');
+    await abrirConciliarBanco(CONC.bancoId, CONC.bancoNombre);
+    if (typeof loadBancos === 'function') loadBancos();
   } catch (e) {
-    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+    errEl.textContent = 'No se pudo cerrar: ' + (e.message || '');
+  } finally {
+    setBtnLoading(btnId, false);
   }
 }
 
 async function cargarHistorialConciliaciones() {
+  const tbody = document.getElementById('cb-historial-tbody');
+  const fila = (fecha, banco, sistema, dif, nota) => {
+    const d = Number(dif || 0);
+    return `<tr><td>${fmtDate(fecha)}</td><td>${fmtMoneda(banco, CONC.moneda)}</td><td>${fmtMoneda(sistema, CONC.moneda)}</td>
+      <td style="color:${Math.abs(d) < 0.005 ? 'var(--success)' : 'var(--danger)'};font-weight:700">${Math.abs(d) < 0.005 ? '✓ Cuadró' : fmtMoneda(d, CONC.moneda)}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${esc(nota || '')}</td></tr>`;
+  };
   if (CONC.empresa) {
-    const { data: ec } = await sbClient.from('empresa_conciliaciones')
-      .select('periodo_hasta, saldo_banco_declarado, saldo_sistema_calculado').eq('empresa_banco_id', CONC.empresa.id).order('created_at', { ascending:false }).limit(12);
-    const tb = document.getElementById('cb-historial-tbody');
-    tb.innerHTML = (ec||[]).length ? ec.map(c => `
-      <tr><td>${fmtDate(c.periodo_hasta)}</td><td>${fmt(c.saldo_banco_declarado)}</td><td>${fmt(c.saldo_sistema_calculado)}</td>
-      <td style="color:var(--success)">${fmt(round2(Number(c.saldo_banco_declarado) - Number(c.saldo_sistema_calculado)))}</td></tr>`).join('')
-      : '<tr><td colspan="4" class="empty-cell">Sin conciliaciones del banco completo todavía</td></tr>';
+    const { data } = await sbClient.from('empresa_conciliaciones')
+      .select('periodo_hasta, fecha_corte, saldo_banco_declarado, saldo_sistema_calculado, diferencia, nota').eq('empresa_banco_id', CONC.empresa.id).order('created_at', { ascending: false }).limit(12);
+    tbody.innerHTML = (data || []).length ? data.map(c => fila(c.fecha_corte || c.periodo_hasta, c.saldo_banco_declarado, c.saldo_sistema_calculado, c.diferencia, c.nota)).join('')
+      : '<tr><td colspan="5" class="empty-cell">Sin conciliaciones del banco completo todavía</td></tr>';
     return;
   }
   const { data } = await sbClient.from('conciliaciones_bancarias')
-    .select('*').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId).order('created_at', { ascending:false }).limit(12);
-  const tbody = document.getElementById('cb-historial-tbody');
-  tbody.innerHTML = (data||[]).length ? data.map(c => `
-    <tr>
-      <td>${fmtDate(c.periodo_hasta)}</td>
-      <td>${fmt(c.saldo_banco_declarado)}</td>
-      <td>${fmt(c.saldo_sistema_calculado)}</td>
-      <td style="color:${c.diferencia===0?'var(--success)':'var(--danger)'}">${fmt(c.diferencia)}</td>
-    </tr>`).join('') : '<tr><td colspan="4" class="empty-cell">Sin conciliaciones todavía</td></tr>';
-}
-
-async function cerrarConciliacion() {
-  const errEl = document.getElementById('cb-error');
-  errEl.textContent = '';
-  const saldoBanco = round2(parseFloat(document.getElementById('cb-saldo-banco').value) || 0);
-  if (!document.getElementById('cb-saldo-banco').value) { errEl.textContent = 'Escribe el saldo que dice tu banco.'; return; }
-  if (!CONC.marcados.size) { errEl.textContent = 'Marca al menos un movimiento, o agrega un ajuste.'; return; }
-
-  recalcularDiferenciaConciliacion();
-  if (CONC._diferencia !== 0) {
-    errEl.textContent = `Todavía no cuadra: hay una diferencia de ${fmt(Math.abs(CONC._diferencia))}. Revisa si falta marcar algo o agregar un ajuste antes de cerrar.`;
-    return;
-  }
-
-  setBtnLoading('btn-cerrar-conciliacion', true);
-  try {
-    // Se guarda la conciliación y se marcan sus movimientos en UNA sola
-    // operación del servidor, que además vuelve a comprobar que cuadre.
-    const idsMarcados = Array.from(CONC.marcados);
-    const { error: errC } = CONC.empresa
-      // Banco compartido: se concilia el banco completo (los movimientos de los dos negocios)
-      ? await sbClient.rpc('empresa_conciliacion_cerrar', { p_empresa_banco_id: CONC.empresa.id, p_ids: idsMarcados, p_saldo_banco: saldoBanco })
-      : await sbClient.rpc('conciliacion_cerrar', { p_banco_id: CONC.bancoId, p_ids: idsMarcados, p_saldo_banco: saldoBanco });
-    if (errC) throw errC;
-
-    showToast('Conciliación cerrada — todo cuadra');
-    await abrirConciliarBanco(CONC.bancoId, CONC.bancoNombre); // se recarga fresco, ya sin lo que se acaba de conciliar
-    loadBancos(); // la tarjeta del banco actualiza "sin conciliar"
-  } catch (e) {
-    errEl.textContent = 'Error al cerrar: ' + (e.message||'');
-  } finally {
-    setBtnLoading('btn-cerrar-conciliacion', false);
-  }
+    .select('periodo_hasta, fecha_corte, saldo_banco_declarado, saldo_sistema_calculado, diferencia, nota').eq('auth_user_id', STATE.userId).eq('banco_id', CONC.bancoId)
+    .order('created_at', { ascending: false }).limit(12);
+  tbody.innerHTML = (data || []).length ? data.map(c => fila(c.fecha_corte || c.periodo_hasta, c.saldo_banco_declarado, c.saldo_sistema_calculado, c.diferencia, c.nota)).join('')
+    : '<tr><td colspan="5" class="empty-cell">Sin conciliaciones todavía</td></tr>';
 }
 
 async function loadCajaChica() {

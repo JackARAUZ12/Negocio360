@@ -891,6 +891,29 @@
     .ticket-print { font-family: Arial, Helvetica, sans-serif; font-size: 12.5px; line-height: 1.6; }
     .ticket-print .tp-row { display: flex; justify-content: space-between; gap: 10px; }
     .ticket-print hr { border: none; border-top: 1px dashed var(--border); margin: 8px 0; }
+
+    /* Conciliación bancaria v2 */
+    .cb-paso{display:flex;align-items:center;gap:8px;font-weight:800;font-size:13.5px;margin:6px 0 8px}
+    .cb-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px}
+    .cb-resumen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 6px}
+    .cb-cifra{border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:var(--bg-surface)}
+    .cb-cifra-lbl{font-size:11.5px;color:var(--text-muted)}
+    .cb-cifra-val{font-size:18px;font-weight:800;margin-top:2px;word-break:break-word}
+    .cb-cifra-sub{font-size:11px;color:var(--text-muted);margin-top:2px}
+    .cb-cifra.cb-ok{border-color:var(--success);background:var(--success-soft)} .cb-cifra.cb-ok .cb-cifra-val{color:var(--success)}
+    .cb-cifra.cb-mal{border-color:var(--danger);background:var(--danger-soft)} .cb-cifra.cb-mal .cb-cifra-val{color:var(--danger)}
+    .cb-mensaje{font-size:12.5px;margin:4px 0 14px;line-height:1.45}
+    .cb-tools{display:flex;gap:8px;flex-wrap:wrap}
+    .cb-tool-btn{border:1.5px solid var(--border);background:var(--bg-surface);color:var(--text-primary);border-radius:10px;padding:8px 12px;font:inherit;font-size:12.5px;cursor:pointer}
+    .cb-tool-btn.activo{border-color:var(--accent);color:var(--accent)}
+    .cb-tool-box{margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:10px;font-size:12.5px}
+    .cb-tool-box table{width:100%}
+    .cb-tag-transito{display:none;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--warning);background:var(--warning-soft);border-radius:5px;padding:1px 6px}
+    tr.cb-transito td{opacity:.6} tr.cb-transito .cb-tag-transito{display:inline}
+    .cb-footer{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+    #modal-conciliar-banco table{min-width:0;width:100%}
+    #cb-movimientos-tbody td:nth-child(3){word-break:break-word}
+    @media (max-width:640px){ .cb-resumen{grid-template-columns:1fr} }
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -1873,74 +1896,75 @@
   <div class="modal-box modal-lg">
     <div class="modal-header">
       <span class="modal-title">Conciliar — <span id="cb-banco-nombre">Banco</span></span>
-      <button class="modal-close" onclick="closeModal('modal-conciliar-banco')">
+      <button class="modal-close" onclick="closeModal('modal-conciliar-banco')" aria-label="Cerrar">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="modal-body">
-      <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-        Marca cada movimiento que sí aparece en el estado de cuenta real de tu banco (o usa "Marcar hasta" con la fecha de corte de tu estado de cuenta). Lo que ya conciliaste antes no vuelve a aparecer aquí.
-      </p>
+      <p id="cb-borrador-nota" style="display:none;font-size:12.5px;color:var(--accent);margin:0 0 10px">↩️ Seguiste donde la dejaste (guardada en este equipo).</p>
 
+      <div class="cb-paso"><span class="cb-num">1</span> Tu estado de cuenta</div>
       <div class="form-row">
-        <div><label>Saldo del banco en el sistema</label><div class="stat-readonly" id="cb-saldo-sistema" title="El mismo saldo que muestra la tarjeta del banco: saldo inicial + todos sus movimientos">—</div></div>
-        <div><label>Ya conciliado antes</label><div class="stat-readonly" id="cb-saldo-previo" title="Saldo inicial + lo que ya cerraste en conciliaciones anteriores">—</div></div>
-        <div><label>Pendiente de conciliar</label><div class="stat-readonly" id="cb-saldo-pendiente">—</div></div>
+        <div><label for="cb-fecha-corte">Fecha de corte</label><input type="date" id="cb-fecha-corte" onchange="concCambioFecha()"/></div>
+        <div><label for="cb-saldo-banco">Saldo final según tu banco (<span id="cb-simbolo">C$</span>) *</label><input type="number" id="cb-saldo-banco" step="0.01" inputmode="decimal" placeholder="Ej: 125000.00" oninput="recalcularDiferenciaConciliacion()"/></div>
       </div>
 
-      <div class="form-row">
-        <div><label>Saldo según tu banco *</label><input type="number" id="cb-saldo-banco" step="0.01" oninput="recalcularDiferenciaConciliacion()" onchange="autoMarcarSiCoincideConSistema()"/></div>
-        <div><label>Conciliado + lo marcado ahora</label><div class="stat-readonly" id="cb-saldo-calculado">—</div></div>
-        <div><label>Diferencia</label><div class="stat-readonly" id="cb-diferencia" style="font-weight:800">—</div></div>
+      <div class="cb-resumen">
+        <div class="cb-cifra"><div class="cb-cifra-lbl">Tu banco dice</div><div class="cb-cifra-val" id="cb-v-banco">—</div></div>
+        <div class="cb-cifra"><div class="cb-cifra-lbl">El sistema dice a esa fecha</div><div class="cb-cifra-val" id="cb-v-sistema">—</div><div class="cb-cifra-sub" id="cb-v-sistema-sub"></div></div>
+        <div class="cb-cifra" id="cb-v-dif-caja"><div class="cb-cifra-lbl">Diferencia</div><div class="cb-cifra-val" id="cb-v-dif">—</div></div>
       </div>
+      <p id="cb-mensaje" class="cb-mensaje"></p>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 8px">
+      <div class="cb-paso"><span class="cb-num">2</span> Explica la diferencia</div>
+      <div class="cb-tools">
+        <button type="button" class="cb-tool-btn" data-tool="sinbanco" onclick="concHerramienta('sinbanco')">🔎 Transferencias sin banco</button>
+        <button type="button" class="cb-tool-btn" data-tool="efectivo" onclick="concHerramienta('efectivo')">🏧 Retiro / depósito de efectivo</button>
+        <button type="button" class="cb-tool-btn" data-tool="cargo" onclick="concHerramienta('cargo')">💳 Comisión o cargo del banco</button>
+      </div>
+      <div id="cb-herramienta"></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 6px">
         <label style="margin:0">Movimientos sin conciliar <span id="cb-marcados-info" style="font-weight:400;color:var(--text-muted)"></span></label>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('todos')">Marcar todos</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('corte')">Marcar hasta la fecha de corte</button>
           <button class="btn-secondary btn-sm" onclick="marcarConciliacion('ninguno')">Quitar marcas</button>
-          <input type="date" id="cb-hasta-fecha" style="width:auto;padding:5px 8px;font-size:12.5px" title="Fecha de corte de tu estado de cuenta"/>
-          <button class="btn-secondary btn-sm" onclick="marcarConciliacion('hasta')">Marcar hasta esa fecha</button>
-          <button class="btn-secondary btn-sm" onclick="abrirAgregarAjusteConciliacion()">+ Agregar ajuste</button>
         </div>
       </div>
-      <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 6px">Deja marcado lo que <b>sí aparece</b> en tu estado de cuenta. Lo que quites queda <b>en tránsito</b> y vuelve a salir la próxima vez.</p>
+      <div class="table-wrap" style="max-height:300px;overflow-y:auto">
         <table>
-          <thead><tr><th style="width:36px"></th><th>Fecha</th><th>Concepto</th><th>Monto</th></tr></thead>
+          <thead><tr><th style="width:36px">✓</th><th style="width:96px">Fecha</th><th>Concepto</th><th style="text-align:right;width:130px">Monto</th></tr></thead>
           <tbody id="cb-movimientos-tbody"><tr><td colspan="4" class="empty-cell">Cargando…</td></tr></tbody>
         </table>
       </div>
+      <p id="cb-transito-info" style="font-size:12px;color:var(--text-muted);margin:6px 0 0"></p>
 
-      <div id="cb-ajuste-form" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px">
-        <div class="form-row">
-          <div><label>Concepto</label><input type="text" id="cb-ajuste-concepto" placeholder="Ej: Comisión bancaria"/></div>
-          <div><label>Tipo</label>
-            <select id="cb-ajuste-tipo"><option value="EGRESO">Egreso (ej. comisión, cargo)</option><option value="INGRESO">Ingreso (ej. interés ganado)</option></select>
-          </div>
-          <div><label id="cb-ajuste-monto-label">Monto</label><input type="number" id="cb-ajuste-monto" step="0.01" min="0.01"/></div>
-        </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button class="btn-ghost btn-sm" onclick="document.getElementById('cb-ajuste-form').style.display='none'">Cancelar</button>
-          <button class="btn-primary btn-sm" onclick="guardarAjusteConciliacion()">Agregar</button>
-        </div>
+      <div id="cb-nota-wrap" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:10px">
+        <label for="cb-nota">¿Por qué queda diferencia? *</label>
+        <input type="text" id="cb-nota" placeholder="Ej: faltan retiros de septiembre, revisar con el contador"/>
+        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0">Se guarda la conciliación con la diferencia en rojo en el historial. <b>No se toca ningún dinero.</b></p>
+        <div style="text-align:right;margin-top:8px"><button class="btn-primary btn-sm" id="btn-cerrar-con-diferencia-ok" onclick="cerrarConciliacion(true)">Cerrar con diferencia pendiente</button></div>
       </div>
 
-      <p id="cb-auto-nota" style="display:none;color:var(--success);font-size:12.5px;margin-top:10px"></p>
       <p id="cb-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
 
       <div style="margin-top:14px">
         <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:8px">Conciliaciones anteriores de este banco</label>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Fecha</th><th>Saldo banco</th><th>Saldo sistema</th><th>Diferencia</th></tr></thead>
-            <tbody id="cb-historial-tbody"><tr><td colspan="4" class="empty-cell">Sin conciliaciones todavía</td></tr></tbody>
+            <thead><tr><th>Corte</th><th>Banco</th><th>Sistema</th><th>Diferencia</th><th>Nota</th></tr></thead>
+            <tbody id="cb-historial-tbody"><tr><td colspan="5" class="empty-cell">Sin conciliaciones todavía</td></tr></tbody>
           </table>
         </div>
       </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn-ghost" onclick="closeModal('modal-conciliar-banco')">Cerrar</button>
-      <button class="btn-primary" id="btn-cerrar-conciliacion" onclick="cerrarConciliacion()">Cerrar conciliación</button>
+    <div class="modal-footer cb-footer">
+      <button class="btn-ghost" onclick="concGuardarBorrador()">Guardar y seguir después</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-secondary" id="btn-cerrar-con-diferencia" style="display:none" onclick="concPrepararCierreConDiferencia()">Cerrar con diferencia…</button>
+        <button class="btn-primary" id="btn-cerrar-conciliacion" onclick="cerrarConciliacion(false)" disabled>Cerrar conciliación</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1951,9 +1975,9 @@
   <script src="cajaAPI.js?v=20261007a"></script>
   <script src="caja-segura.js?v=20261012a"></script>
   <script src="moneda-alterna.js?v=20261021b"></script>
-  <script src="caja.js?v=20261029a"></script>
+  <script src="caja.js?v=20261031a"></script>
   <script src="exportar-modulo.js?v=20261029b"></script>
-  <script src="exportar-caja.js?v=20261029a"></script>
+  <script src="exportar-caja.js?v=20261031a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
