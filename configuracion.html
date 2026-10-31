@@ -1706,6 +1706,27 @@
           <div class="cfg-status" id="taller-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="mensajeria-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🛵</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Mensajería / Delivery</div>
+              <div class="cfg-card-desc">Para empresas de delivery y mensajería que reparten paquetes de comercios o personas: envíos con tarifa por zona, despacho a repartidores, entrega con foto y quién recibió, y cuadre diario del efectivo de cada repartidor.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Mensajería</div>
+              <div class="cfg-row-sub" id="mensajeria-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="mensajeria-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleMensajeriaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="mensajeria-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="comisiones-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">💵</div>
@@ -3401,6 +3422,45 @@ async function guardarModuloTransporte(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Modulo de Mensajeria / Delivery: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloMensajeria() {
+  const toggle = document.getElementById('mensajeria-toggle');
+  const sub = document.getElementById('mensajeria-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_mensajeria').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_mensajeria === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Mensajería aparece en el menú.' : 'Desactivado — el módulo de Mensajería no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloMensajeria:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleMensajeriaClick(evt) {
+  const toggle = document.getElementById('mensajeria-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloMensajeria(toggle.checked);
+}
+async function guardarModuloMensajeria(activo) {
+  const toggle = document.getElementById('mensajeria-toggle');
+  const sub = document.getElementById('mensajeria-row-sub');
+  const statusEl = document.getElementById('mensajeria-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_mensajeria: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Mensajería aparece en el menú.' : 'Desactivado — el módulo de Mensajería no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Mensajería activado. Recarga la página para ver el menú.' : 'Módulo de Mensajería desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloMensajeria:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Modulo de Taller mecanico: se activa/desactiva desde aqui. Apagado por defecto.
 async function cargarModuloTaller() {
   const toggle = document.getElementById('taller-toggle');
@@ -4038,6 +4098,7 @@ async function initConfiguracion() {
       cargarModuloInsumos();
       cargarModuloTransporte();
       cargarModuloTaller();
+      cargarModuloMensajeria();
       cargarModuloComisiones();
       cargarModuloDiseno();
       cargarModuloFiados();

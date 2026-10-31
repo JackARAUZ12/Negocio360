@@ -112,6 +112,12 @@
           .select('usa_modulo_taller').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_taller = ta?.usa_modulo_taller === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_taller = false; }
+      // Mensajería / Delivery: consulta aparte, mismo criterio.
+      try {
+        const { data: ms } = await client.from('configuracion_empresa')
+          .select('usa_modulo_mensajeria').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_mensajeria = ms?.usa_modulo_mensajeria === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_mensajeria = false; }
       // Comisiones: consulta aparte, mismo criterio.
       try {
         const { data: co } = await client.from('configuracion_empresa')

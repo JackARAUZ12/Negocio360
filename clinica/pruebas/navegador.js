@@ -2796,10 +2796,192 @@ async function regresion(browser, base) {
   await ctx.close();
 }
 
+// Mensajería / empresa de delivery: panel, zonas y tarifas, envío, despacho, repartidor (foto y cobro) y cuadre.
+function semillaMensajeria() {
+  const db = semilla();
+  Object.assign(db.configuracion_empresa[0], { usa_modulo_clinica: false, usa_modulo_mensajeria: true, nombre_comercial: 'Envíos Rápidos' });
+  db.tutoriales_vistos.push({ auth_user_id: UID, modulo_key: 'mensajeria_panel' });
+  db.mensajeria_zonas = []; db.mensajeria_repartidores = []; db.mensajeria_envios = []; db.mensajeria_cuadres = []; db.mensajeria_envio_eventos = []; db.mensajeria_tarifas_comercio = []; db.mensajeria_config = [];
+  return db;
+}
+async function pruebaMensajeria(browser, base) {
+  console.log('\n▶ Mensajería: panel, envíos, despacho, repartidor con foto y cuadre');
+  const MODS = ['mensajeria', 'mensajeria_envios', 'mensajeria_despacho', 'mensajeria_repartidor', 'mensajeria_cuadre', 'mensajeria_ajustes'];
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    let { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    const db0 = () => page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    await page.goto(base + '/mensajeria.html');
+    await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semillaMensajeria());
+    await page.goto(base + '/mensajeria.html');
+    await page.waitForSelector('#tln-tabs .tln-tab', { timeout: 20000 });
+    verificar(await page.locator('#tln-tabs .tln-tab').count() === 5, `${tag}: el Panel de Mensajería tiene sus 5 partes en la barra`);
+    await page.waitForFunction(() => /Paso 4/.test(document.getElementById('tln-ciclo').textContent), null, { timeout: 10000 });
+    const ciclo = await page.textContent('#tln-ciclo');
+    verificar(['Recibir envío', 'Despachar', 'Entregar', 'Cuadrar repartidor'].every(t => ciclo.includes(t)), `${tag}: el ciclo del envío en orden (recibir, despachar, entregar, cuadrar)`);
+    verificar((await page.textContent('#tln-preparar-estado')).includes('0 de 2'), `${tag}: "Prepara tu empresa" pide zonas y repartidores`);
+    verificar((await page.textContent('#tln-inicio-vista')).includes('no mueve Caja'), `${tag}: el panel explica que el cuadre por ahora no mueve Caja`);
+    await sinDesborde(page, `${tag} panel de Mensajería`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-panel-${ancho}.png`, fullPage: true });
+    await page.click('#tln-tabs [data-sub="envios"]');
+    let fr = null;
+    for (let i = 0; i < 100 && !fr; i++) { fr = page.frames().find(f => /mensajeria-envios\.html/.test(f.url())); if (!fr) await page.waitForTimeout(100); }
+    await fr.waitForSelector('#e-nuevo', { timeout: 15000 }); await page.waitForTimeout(300);
+    verificar(await fr.evaluate(() => getComputedStyle(document.getElementById('sidebar')).display === 'none'), `${tag}: "Envíos" se abre dentro del panel, sin su menú propio`);
+    verificar(page.__errores.length === 0, `${tag} panel: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+
+    // Ajustes: zona, recargos y repartidor ligado a un usuario
+    ({ ctx, page } = await nuevaPagina(browser, base, ancho, alto));
+    await page.goto(base + '/mensajeria-ajustes.html');
+    await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semillaMensajeria());
+    await page.goto(base + '/mensajeria-ajustes.html');
+    await page.waitForSelector('text=+ Nueva zona', { timeout: 20000 });
+    await page.click('text=+ Nueva zona'); await page.fill('#z-nom', 'Managua Centro'); await page.fill('#z-tar', '80'); await page.click('#z-ok');
+    await page.waitForSelector('#a-cuerpo .tl-card');
+    await page.click('text=+ Nueva zona'); await page.fill('#z-nom', 'managua  centro'); await page.fill('#z-tar', '90'); await page.click('#z-ok');
+    await page.waitForFunction(() => /Ya tienes una zona/.test(document.getElementById('z-av').textContent));
+    verificar(true, `${tag}: no deja dos zonas con el mismo nombre`);
+    await page.click('#a-zona [data-cerrar]');
+    await page.click('[data-tab="recargos"]'); await page.fill('#r-urg', '20'); await page.fill('#r-rei', '10'); await page.fill('#r-tope', '500'); await page.click('#r-ok');
+    await page.waitForTimeout(400);
+    await page.click('[data-tab="repartidores"]'); await page.click('text=+ Nuevo repartidor');
+    await page.fill('#rp-nom', 'Juan Pérez'); await page.fill('#rp-tel', '88880000'); await page.selectOption('#rp-usr', 'perf-caja'); await page.click('#rp-ok');
+    await page.waitForFunction(() => /Juan Pérez/.test(document.getElementById('a-cuerpo').textContent));
+    await sinDesborde(page, `${tag} ajustes`);
+    let db = await db0();
+    const zona = db.mensajeria_zonas[0], rep = db.mensajeria_repartidores[0];
+    verificar(db.mensajeria_zonas.length === 1 && Number(zona.tarifa) === 80 && db.mensajeria_config[0].recargo_urgente === 20 && rep.perfil_id === 'perf-caja', `${tag}: zona (C$ 80), recargos y repartidor ligado a su usuario guardados`);
+    verificar(page.__errores.length === 0, `${tag} ajustes: sin errores (${page.__errores.join(' | ')})`);
+
+    // Envíos: tarifa automática (zona 80 + urgente 20), quién paga el envío y etiqueta
+    await page.goto(base + '/mensajeria-envios.html'); await page.waitForSelector('#e-nuevo', { timeout: 20000 });
+    await page.click('#e-nuevo'); await page.selectOption('#f-comercio', 'cli-1');
+    verificar(await page.inputValue('#f-rem') === 'Cliente Existente', `${tag}: al elegir el comercio se llena quién envía`);
+    await page.fill('#f-des', 'Ana López'); await page.fill('#f-destel', '88112233'); await page.fill('#f-dir', 'Bello Horizonte casa 5'); await page.fill('#f-ref', XSS);
+    await page.selectOption('#f-zona', zona.id); await page.fill('#f-cobrar', '500'); await page.selectOption('#f-paga', 'destinatario'); await page.check('#f-urg');
+    await page.waitForFunction(() => /100/.test(document.getElementById('f-tarifa').textContent) && /600/.test(document.getElementById('f-tarifa').textContent), null, { timeout: 8000 });
+    verificar(true, `${tag}: la tarifa sale sola (80 + 20 urgente = 100) y avisa que el repartidor cobra 600`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-envio-${ancho}.png` });
+    await page.fill('#f-ubic', 'esto no es un lugar'); await page.click('#e-guardar');
+    verificar((await page.textContent('#e-aviso')).includes('ubicación'), `${tag}: una ubicación mal escrita no se guarda`);
+    await page.fill('#f-ubic', 'https://www.google.com/maps/@12.1364,-86.2514,17z'); await page.click('#e-guardar');
+    await page.waitForSelector('#e-listo.abierto', { timeout: 10000 });
+    verificar((await page.textContent('#e-listo')).includes('ENV-000001'), `${tag}: el envío ENV-000001 se registró y ofrece imprimir etiqueta y avisar por WhatsApp`);
+    await page.click('#e-listo [data-cerrar]');
+    await page.click('#e-nuevo'); await page.fill('#f-rem', 'Tienda Rosa'); await page.fill('#f-des', 'Luis Mora'); await page.fill('#f-dir', 'Altamira de este 2'); await page.selectOption('#f-zona', zona.id); await page.check('#f-bodega'); await page.click('#e-guardar');
+    await page.waitForSelector('#e-listo.abierto', { timeout: 10000 }); await page.click('#e-listo [data-cerrar]');
+    db = await db0();
+    const e1 = db.mensajeria_envios.find(e => e.numero === 'ENV-000001'), e2 = db.mensajeria_envios.find(e => e.numero === 'ENV-000002');
+    verificar(e1 && Number(e1.tarifa) === 100 && e1.envio_lo_paga === 'destinatario' && e1.lat === 12.1364 && e2 && e2.estado === 'en_bodega' && Number(e2.tarifa) === 80, `${tag}: los dos envíos quedaron bien (tarifa 100 y 80, ubicación del enlace, uno ya en bodega)`);
+    await page.waitForSelector('#e-lista .tl-card'); await sinDesborde(page, `${tag} envíos`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-lista-${ancho}.png`, fullPage: true });
+    verificar(await page.evaluate(() => window.__xss === undefined), `${tag}: el texto peligroso en la referencia no se ejecuta`);
+    verificar(page.__errores.length === 0, `${tag} envíos: sin errores (${page.__errores.join(' | ')})`);
+
+    // Despacho: marcar los dos y asignarlos a Juan
+    await page.goto(base + '/mensajeria-despacho.html'); await page.waitForSelector('#d-tablero .ms-sel', { timeout: 20000 });
+    verificar(await page.locator('#d-tablero .ms-sel').count() === 2 && (await page.textContent('#d-reps')).includes('Juan Pérez'), `${tag}: el tablero muestra los 2 envíos por asignar y al repartidor`);
+    await page.click('text=☑ Marcar todos'); await page.click('text=🤖 Sugerir');
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-despacho-${ancho}.png`, fullPage: true });
+    verificar(await page.inputValue('#d-rep') === rep.id, `${tag}: "Sugerir" elige al repartidor con menos entregas`);
+    await page.click('#d-ok'); await page.waitForFunction(() => document.getElementById('d-asignar').style.display === 'none', null, { timeout: 8000 });
+    db = await db0();
+    verificar(db.mensajeria_envios.every(e => e.estado === 'asignado' && e.repartidor_id === rep.id), `${tag}: los 2 envíos quedaron asignados a Juan`);
+    await sinDesborde(page, `${tag} despacho`);
+    verificar(page.__errores.length === 0, `${tag} despacho: sin errores (${page.__errores.join(' | ')})`);
+    const dbAhora = await db0(); await ctx.close();
+
+    // Repartidor: entra con SU usuario y ve solo lo suyo; entrega con foto y efectivo; el otro no se pudo
+    ({ ctx, page } = await nuevaPagina(browser, base, ancho, alto));
+    await page.goto(base + '/mensajeria-repartidor.html');
+    await page.evaluate(({ db, MODS, UID }) => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]');
+      sessionStorage.setItem('n360_perfil_activo', JSON.stringify({ id: 'perf-caja', nombre: 'Cajera', tipo: 'restringido', modulos: MODS, authUserId: UID })); }, { db: dbAhora, MODS, UID });
+    await page.goto(base + '/mensajeria-repartidor.html'); await page.waitForSelector('.ms-ent', { timeout: 20000 });
+    verificar(!(await page.locator('#r-rep').count()) && (await page.textContent('#r-quien')).includes('Juan Pérez') && await page.locator('.ms-ent').count() === 2, `${tag}: el repartidor ve sus 2 entregas sin tener que elegir quién es`);
+    verificar((await page.textContent('.ms-ent >> nth=0')).includes('600') && await page.locator('.ms-ent >> nth=0 >> a[href*="waze.com"]').count() === 1 && await page.locator('.ms-ent >> nth=0 >> a[href^="tel:"]').count() === 1, `${tag}: la tarjeta muestra cuánto cobrar (600), Waze, Maps, llamar y WhatsApp`);
+    await sinDesborde(page, `${tag} mis entregas`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-repartidor-${ancho}.png`, fullPage: true });
+    const tarjeta1 = page.locator('.ms-ent', { hasText: 'Ana López' });
+    await tarjeta1.locator('text=🛵 Voy en camino').click(); await page.waitForSelector('.ms-ent:has-text("Ana López") >> text=✅ Entregado', { timeout: 8000 });
+    await page.locator('.ms-ent', { hasText: 'Ana López' }).locator('text=✅ Entregado').click();
+    await page.waitForSelector('#msx-entregar.abierto'); await page.click('#msx-ok');
+    verificar((await page.textContent('#msx-av')).includes('efectivo o transferencia'), `${tag}: no deja confirmar sin decir cómo pagó`);
+    await page.click('[data-met="efectivo"]'); await page.setInputFiles('#msx-foto', { name: 'entrega.png', mimeType: 'image/png', buffer: PNG_PRUEBA });
+    await page.waitForSelector('#msx-prev', { state: 'visible', timeout: 8000 });
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-entregar-${ancho}.png` });
+    await page.click('#msx-ok');
+    await page.waitForFunction(() => !document.querySelector('#msx-entregar.abierto'), null, { timeout: 10000 });
+    await page.locator('.ms-ent', { hasText: 'Luis Mora' }).locator('text=⚠️ No se pudo').click();
+    await page.click('[data-mot="No estaba nadie"]'); await page.click('#msn-ok');
+    await page.waitForFunction(() => !document.querySelector('#msn-no.abierto'), null, { timeout: 10000 });
+    db = await db0();
+    const a1 = db.mensajeria_envios.find(e => e.numero === 'ENV-000001'), a2 = db.mensajeria_envios.find(e => e.numero === 'ENV-000002');
+    const alm = await page.evaluate(() => JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'));
+    verificar(a1.estado === 'entregado' && a1.metodo_cobro === 'efectivo' && Number(a1.cobrado_cod) === 500 && Number(a1.cobrado_envio) === 100 && a1.recibio_nombre === 'Ana López', `${tag}: entregado: cobró 500 del producto + 100 del envío en efectivo`);
+    verificar(a1.foto_path && alm['mensajeria-pruebas/' + a1.foto_path] && alm['mensajeria-pruebas/' + a1.foto_path].tipo === 'image/webp' && a1.foto_path.startsWith(UID + '/'), `${tag}: la foto se achicó (webp) y se guardó en la carpeta privada del negocio`);
+    verificar(a2.estado === 'no_entregado' && a2.motivo_no_entrega === 'No estaba nadie' && a2.intentos === 1, `${tag}: "No se pudo" guarda el motivo y cuenta el intento`);
+    await page.waitForFunction(() => /600/.test(document.getElementById('r-resumen').textContent), null, { timeout: 8000 });
+    verificar((await page.textContent('#r-resumen')).includes('efectivo en mano'), `${tag}: el repartidor ve el efectivo que lleva en mano (600)`);
+    verificar(await page.locator('#r-resumen .alerta').count() > 0, `${tag}: pasa su tope (500) y se le avisa que vaya a cuadrar`);
+    verificar(page.__errores.length === 0, `${tag} mis entregas: sin errores (${page.__errores.join(' | ')})`);
+    const dbRep = await db0(); await ctx.close();
+
+    // Reintento (recargo 10) y cuadre con faltante, abono
+    ({ ctx, page } = await nuevaPagina(browser, base, ancho, alto));
+    await page.goto(base + '/mensajeria-despacho.html');
+    await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, dbRep);
+    await page.goto(base + '/mensajeria-despacho.html'); await page.waitForSelector('#d-tablero .ms-sel', { timeout: 20000 });
+    verificar((await page.textContent('#d-reps')).includes('Pasó su tope'), `${tag}: el despacho avisa que Juan pasó su tope de efectivo`);
+    await page.locator('#d-tablero .ms-sel').first().check(); await page.selectOption('#d-rep', rep.id); await page.click('#d-ok');
+    await page.waitForFunction(() => document.getElementById('d-asignar').style.display === 'none', null, { timeout: 8000 });
+    db = await db0();
+    verificar(Number(db.mensajeria_envios.find(e => e.numero === 'ENV-000002').recargo_reintentos) === 10, `${tag}: al reintentar se suma el recargo de reintento (10)`);
+    await page.goto(base + '/mensajeria-cuadre.html'); await page.waitForSelector('text=💵 Cuadrar', { timeout: 20000 });
+    verificar((await page.textContent('#c-reps')).includes('600'), `${tag}: el cuadre dice que Juan debe entregar 600`);
+    await page.click('text=💵 Cuadrar'); await page.fill('#cq-ent', '550');
+    verificar((await page.textContent('#cq-dif')).includes('Faltan'), `${tag}: al escribir 550 avisa que faltan 50`);
+    await sinDesborde(page, `${tag} cuadre`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-cuadre-${ancho}.png` });
+    await page.click('#cq-ok'); await page.waitForFunction(() => !document.querySelector('#cq-modal.abierto'), null, { timeout: 10000 });
+    await page.waitForSelector('text=➕ Registrar abono', { timeout: 8000 });
+    db = await db0();
+    const q = db.mensajeria_cuadres[0];
+    verificar(q && Number(q.esperado) === 600 && Number(q.diferencia) === -50 && db.mensajeria_envios.find(e => e.numero === 'ENV-000001').cuadre_id === q.id, `${tag}: cuadre CQ-000001: debía 600, entregó 550, faltan 50 y la entrega quedó cuadrada`);
+    const r2 = await page.evaluate(id => window.supabase.createClient().rpc('msj_cuadre_registrar', { p_repartidor: id, p_envio_ids: [], p_entregado: 0 }), rep.id);
+    verificar(r2.data && r2.data.ok === false && r2.data.motivo === 'nada_por_cuadrar', `${tag}: una entrega no se cuadra dos veces`);
+    await page.click('text=➕ Registrar abono'); await page.fill('#ab-monto', '80'); await page.click('#ab-ok');
+    verificar((await page.textContent('#ab-av')).includes('no puede ser mayor'), `${tag}: el abono no puede pasar de lo que debe`);
+    await page.fill('#ab-monto', '50'); await page.click('#ab-ok'); await page.waitForFunction(() => !document.querySelector('#ab-modal.abierto'), null, { timeout: 8000 });
+    await page.waitForFunction(() => document.querySelectorAll('#c-hist tbody tr').length === 2, null, { timeout: 8000 });
+    db = await db0();
+    verificar(db.mensajeria_cuadres.reduce((x, c) => x + Number(c.diferencia), 0) === 0 && !(await page.locator('text=➕ Registrar abono').count()), `${tag}: con el abono de 50 la deuda queda en cero`);
+    verificar(!(db.ventas || []).length && !(db.movimientos_financieros || []).length, `${tag}: nada de esto tocó Ventas ni Caja`);
+    verificar(page.__errores.length === 0, `${tag} cuadre: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+  // Apagado: no se puede usar; y el menú muestra un solo "Panel"
+  let { ctx, page } = await nuevaPagina(browser, base, 360, 740);
+  await page.goto(base + '/mensajeria-envios.html');
+  await page.evaluate(db => { db.configuracion_empresa[0].usa_modulo_mensajeria = false; sessionStorage.setItem('__DB', JSON.stringify(db)); }, semillaMensajeria());
+  await page.goto(base + '/mensajeria-envios.html');
+  await page.waitForFunction(() => /dashboard\.html/.test(location.href) || !!document.querySelector('.tl-apagado'), null, { timeout: 15000 });
+  verificar(/dashboard\.html/.test(page.url()) || (await page.textContent('.tl-apagado')).includes('Mensajería está apagada'), 'Mensajería apagada: no se puede entrar a sus pantallas (manda al inicio, como los demás módulos)');
+  await ctx.close();
+  ({ ctx, page } = await nuevaPagina(browser, base, 1280, 900));
+  await page.goto(base + '/clientes.html');
+  await page.evaluate(db => sessionStorage.setItem('__DB', JSON.stringify(db)), semillaMensajeria());
+  await page.goto(base + '/clientes.html'); await page.waitForTimeout(2500);
+  const destinos = await page.$$eval('#sidebar a[href], #sidebar [onclick]', els => els.map(e => (e.getAttribute('href') || '') + ' ' + (e.getAttribute('onclick') || '')).filter(t => /mensajeria/.test(t)));
+  verificar(destinos.length === 1 && /mensajeria\.html/.test(destinos[0]), `con Mensajería encendida el menú muestra solo su Panel (${destinos.join(', ')})`);
+  await ctx.close();
+}
+
 (async () => {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
+    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); throw 'fin'; }
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
     if (process.env.SOLO_AUD) { await pruebaAuditoria90(browser, base); throw 'fin'; }
     if (process.env.SOLO_DEMOSALIR) { await pruebaDemoSalir(browser, base); throw 'fin'; }
@@ -2848,6 +3030,7 @@ async function regresion(browser, base) {
     await pruebaPagoSeparadoVariosBancos(browser, base);
     await pruebaDemoSalir(browser, base);
     await pruebaAuditoria90(browser, base);
+    await pruebaMensajeria(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

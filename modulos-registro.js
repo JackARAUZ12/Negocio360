@@ -207,6 +207,20 @@
     'transporte-reportes.html': { key: 'transporte_reportes', label: 'Transporte · Reportes e indicadores', icon: '📈', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Viajes, ingresos, costos, utilidad, cumplimiento, mantenimiento e incidencias por cliente, ruta, unidad y conductor.' },
 
+    // ---- Mensajería / empresa de delivery: el Panel es la entrada única; las partes se abren dentro de él ----
+    'mensajeria.html': { key: 'mensajeria', label: 'Mensajería · Panel', icon: '🛵', obligatorio: false, flagPropio: 'usa_modulo_mensajeria',
+                       desc: 'Toda la empresa de delivery en un solo lugar y en orden: recibir el envío, despachar, entregar con foto y cuadrar el efectivo de cada repartidor.' },
+    'mensajeria-envios.html': { key: 'mensajeria_envios', label: 'Mensajería · Envíos', icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Guías de envío: quién manda, a quién va, dirección, cuánto cobrar contra entrega y la tarifa por zona calculada sola.' },
+    'mensajeria-despacho.html': { key: 'mensajeria_despacho', label: 'Mensajería · Despacho', icon: '🗂️', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Tablero por estado: asigna envíos a repartidores (uno o varios a la vez) y sigue cada entrega.' },
+    'mensajeria-repartidor.html': { key: 'mensajeria_repartidor', label: 'Mensajería · Mis entregas', icon: '🛵', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'La pantalla del repartidor en su celular: sus entregas, Waze o Google Maps, llamar o WhatsApp, y marcar entregado con foto.' },
+    'mensajeria-cuadre.html': { key: 'mensajeria_cuadre', label: 'Mensajería · Cuadre de repartidores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Cuánto efectivo debe entregar cada repartidor, cuánto entregó y la diferencia (faltantes y abonos).' },
+    'mensajeria-ajustes.html': { key: 'mensajeria_ajustes', label: 'Mensajería · Zonas, tarifas y repartidores', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Zonas con su tarifa, precios especiales por comercio, recargos, tope de efectivo y tus repartidores.' },
+
     // ---- Diseño (secundario: herramientas para diseñadores; interruptor propio) ----
     'diseno-marca-agua.html': { key: 'diseno_marca_agua', label: 'Diseño · Marca de agua', icon: '💧', obligatorio: false, flagPropio: 'usa_modulo_diseno',
                        desc: 'Pon tu logo o tu texto como marca de agua a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' },

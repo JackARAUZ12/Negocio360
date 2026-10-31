@@ -1,0 +1,52 @@
+/* mensajeria.css — estilos propios de Mensajería / Delivery (se suman a los del Taller: tl-*) */
+.ms-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:800;background:var(--bg-hover);color:var(--text-secondary);white-space:nowrap}
+.ms-chip.por_recoger{background:var(--warning-soft);color:var(--warning)}
+.ms-chip.en_bodega{background:var(--accent-soft);color:var(--accent)}
+.ms-chip.asignado{background:var(--info-soft,var(--accent-soft));color:var(--info,var(--accent))}
+.ms-chip.en_ruta{background:var(--accent-soft);color:var(--accent)}
+.ms-chip.entregado{background:var(--success-soft);color:var(--success)}
+.ms-chip.no_entregado,.ms-chip.urg{background:var(--danger-soft);color:var(--danger)}
+.ms-chip.devuelto,.ms-chip.cancelado{background:var(--bg-hover);color:var(--text-muted)}
+.ms-num{font-family:'JetBrains Mono',monospace;font-weight:800;font-size:13px}
+.ms-linea{display:flex;gap:6px;align-items:flex-start;font-size:13px;color:var(--text-secondary);min-width:0;overflow-wrap:anywhere}
+.ms-linea b{color:var(--text-primary)}
+.ms-monto{font-weight:800;color:var(--text-primary)}
+.ms-cobrar{display:inline-flex;align-items:center;gap:6px;background:var(--warning-soft);color:var(--warning);border-radius:10px;padding:4px 10px;font-weight:800;font-size:13.5px}
+.ms-tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:2px}
+.ms-tab{flex:none;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-secondary);border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.ms-tab.activa{background:var(--accent);border-color:var(--accent);color:#fff}
+.ms-res{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.ms-res>div{border:1px solid var(--border);background:var(--bg-surface);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.ms-res b{font-size:18px;font-weight:800}.ms-res span{font-size:12px;color:var(--text-muted)}
+.ms-res .alerta{border-color:var(--danger);background:var(--danger-soft)}
+.ms-sel{width:20px;height:20px;flex:none;accent-color:var(--accent)}
+.ms-ot{position:relative}
+.ms-ot .ms-ot-cab{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ms-asignar{position:sticky;bottom:0;z-index:20;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--bg-surface);border:1px solid var(--accent);border-radius:14px;padding:10px;margin-top:10px;box-shadow:var(--shadow-md)}
+.ms-asignar select{flex:1 1 180px;min-width:0}
+.ms-reps{display:flex;gap:8px;overflow-x:auto;margin-bottom:12px;padding-bottom:2px}
+.ms-rep{flex:none;min-width:170px;border:1px solid var(--border);background:var(--bg-surface);border-radius:12px;padding:8px 10px;font-size:12.5px;display:flex;flex-direction:column;gap:2px}
+.ms-rep b{font-size:13.5px}.ms-rep.alerta{border-color:var(--danger)}
+/* Pantalla del repartidor (celular primero) */
+.ms-ent{border:1px solid var(--border);background:var(--bg-surface);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.ms-ent.urg{border-left:5px solid var(--danger)}
+.ms-ent h3{font-size:17px;font-weight:800;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;overflow-wrap:anywhere}
+.ms-ent .ms-dir{font-size:14.5px;font-weight:600;color:var(--text-primary);overflow-wrap:anywhere}
+.ms-ir{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.ms-ir a,.ms-ir button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-decoration:none;border:1px solid var(--border);background:var(--bg-hover);color:var(--text-primary);border-radius:12px;padding:8px 4px;font:inherit;font-size:11.5px;font-weight:700;min-height:54px;cursor:pointer}
+.ms-ir a span,.ms-ir button span{font-size:19px}
+.ms-ir .off{opacity:.4;pointer-events:none}
+.ms-acc-grande{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ms-acc-grande button{min-height:48px;font-size:14.5px!important;font-weight:800!important}
+.ms-opciones{display:flex;gap:8px;flex-wrap:wrap}
+.ms-opcion{flex:1 1 130px;border:2px solid var(--border);background:var(--bg-surface);color:var(--text-primary);border-radius:12px;padding:12px;font:inherit;font-weight:800;cursor:pointer;text-align:center}
+.ms-opcion.activa{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.ms-foto-prev{max-width:100%;max-height:220px;border-radius:12px;border:1px solid var(--border);object-fit:contain;background:var(--bg-hover)}
+.ms-total{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:4px 0}
+.ms-total.grande{font-size:18px;font-weight:800;border-top:1px solid var(--border);padding-top:8px}
+.ms-dif{border-radius:12px;padding:10px 12px;font-weight:800;font-size:15px;text-align:center}
+.ms-dif.ok{background:var(--success-soft);color:var(--success)}.ms-dif.mal{background:var(--danger-soft);color:var(--danger)}.ms-dif.mas{background:var(--warning-soft);color:var(--warning)}
+.ms-nota{border:1px dashed var(--border);border-radius:12px;padding:10px 12px;font-size:12.5px;color:var(--text-secondary);line-height:1.5}
+@media (max-width:640px){.ms-acc-grande{grid-template-columns:1fr}.ms-res{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:360px){.ms-ir{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tl-card.urg{border-left:4px solid var(--danger)}
