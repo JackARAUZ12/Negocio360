@@ -2522,14 +2522,16 @@ function concPrevisualizar(cual) {
   }
   const mejora = Math.abs(p.despues) < Math.abs(p.antes) - 0.004;
   el.classList.add(mejora ? 'cb-prev-ok' : 'cb-prev-mal');
-  el.innerHTML = `Con esto la diferencia pasa de <b>${fmtMoneda(p.antes, CONC.moneda)}</b> a <b>${fmtMoneda(p.despues, CONC.moneda)}</b>.`
+  const sisAntes = CONC._sistemaCorte, sisDesp = round2(CONC._saldoBanco - p.despues);
+  el.innerHTML = `El saldo del banco en el sistema ${sisDesp < sisAntes ? 'baja' : 'sube'} de <b>${fmtMoneda(sisAntes, CONC.moneda)}</b> a <b>${fmtMoneda(sisDesp, CONC.moneda)}</b>. `
+    + `Tu estado de cuenta dice <b>${fmtMoneda(CONC._saldoBanco, CONC.moneda)}</b>, así que lo que falta cuadrar pasa de <b>${fmtMoneda(p.antes, CONC.moneda)}</b> a <b>${fmtMoneda(p.despues, CONC.moneda)}</b>.`
     + (Math.abs(p.despues) < 0.005 ? ' ✅ Quedaría cuadrado.'
-      : mejora ? '' : ' ⚠️ <b>La diferencia aumenta.</b> Revisa si elegiste bien: si tu banco tiene más que el sistema, lo normal es un depósito, no un retiro.');
+      : mejora ? '' : ' ⚠️ <b>Se aleja de cuadrar.</b> Revisa si elegiste bien: si tu estado de cuenta tiene más que el sistema, lo normal es un depósito, no un retiro.');
 }
 function _confirmarSiEmpeoraConc(cual) {
   const p = _difDespuesConc(cual);
   if (!p || Math.abs(p.despues) < Math.abs(p.antes) - 0.004 || Math.abs(p.despues) < 0.005) return true;
-  return confirm(`Ojo: con esto la diferencia AUMENTA de ${fmtMoneda(p.antes, CONC.moneda)} a ${fmtMoneda(p.despues, CONC.moneda)}.\n\n¿Seguro que quieres registrarlo así?`);
+  return confirm(`Ojo: con esto lo que falta cuadrar AUMENTA de ${fmtMoneda(p.antes, CONC.moneda)} a ${fmtMoneda(p.despues, CONC.moneda)}.\n\n¿Seguro que quieres registrarlo así?`);
 }
 
 async function concCargarSinBanco(hasta) {
