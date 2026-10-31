@@ -128,7 +128,8 @@ TO.pintarDetalle = function () {
   const sig = (SIGUIENTES[o.estado] || []).map(s => `<button type="button" class="${s.p ? 'btn-primary' : 'btn-secondary'}" onclick="TO.estado('${s.a}')">${s.t}</button>`).join('');
   const html = [];
   html.push(`<div class="tl-sec"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
-      <div><b>${esc([v.marca, v.modelo, v.anio].filter(Boolean).join(' ') || 'Vehículo')}</b> <span class="tl-muted">${esc(v.color || '')}</span><div class="tl-muted">${o.cliente_nombre ? '👤 ' + esc(o.cliente_nombre) + ' · ' : ''}Ingreso ${tlFechaHora(o.fecha_ingreso)}${o.km_ingreso != null ? ' · ' + Number(o.km_ingreso).toLocaleString('es-NI') + ' km' : ''}</div></div>
+      <div><b>${esc([v.marca, v.modelo, v.anio].filter(Boolean).join(' ') || 'Vehículo')}</b> <span class="tl-muted">${esc(v.color || '')}</span><div class="tl-muted">${o.cliente_nombre ? '👤 ' + esc(o.cliente_nombre) + ' · ' : ''}Ingreso ${tlFechaHora(o.fecha_ingreso)}${o.km_ingreso != null ? ' · ' + Number(o.km_ingreso).toLocaleString('es-NI') + ' km' : ''}</div>
+      ${abierta ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><select class="tl-sel" id="c-sel" style="max-width:260px" aria-label="Cliente"><option value="">${o.cliente_id ? '— Cambiar cliente —' : '— Elegir cliente —'}</option>${Object.entries(TO.cli).sort((a, b) => a[1].localeCompare(b[1])).map(([id, n]) => `<option value="${id}" ${id === o.cliente_id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><button type="button" class="btn-secondary" onclick="TO.asignarCliente()">Asignar</button><button type="button" class="btn-secondary" onclick="TO.clienteNuevo()">➕ Cliente nuevo</button></div>` : ''}</div>
       <span class="badge ${o.estado === 'entregado' ? 'badge-success' : o.estado === 'cancelado' ? 'badge-neutral' : 'badge-accent'}">${ETQ_ESTADO[o.estado]}</span></div>
       ${o.estado === 'entregado' ? `<div class="tl-aviso ok">Entregado ${tlFechaHora(o.fecha_entrega)} · Venta ${esc(TO.venta?.numero_venta || '')} · Total ${fmt(o.total)}</div>` : ''}
     </div>`);
@@ -164,6 +165,7 @@ TO.pintarDetalle = function () {
   if (o.estado === 'listo') html.push(TO.formEntrega());
   html.push(`<div class="tl-sec"><b>Historial</b><div class="tl-hist">${TO.hist.map(h => `<div>${tlFechaHora(h.created_at)} · <b>${esc(h.evento)}</b>${h.detalle ? ' · ' + esc(h.detalle) : ''}${h.por ? ' · ' + esc(h.por) : ''}</div>`).join('') || '—'}</div></div>`);
   $('d-cuerpo').innerHTML = html.join('');
+  if ($('l-tipo')) TO.cambioTipo();
   TO.stocks();
 };
 TO.stocks = async function () {
@@ -181,7 +183,7 @@ TO.formLinea = function () {
     ${!e && TO.lineas.some(l => l.aprobacion === 'aprobada') ? '<div class="tl-aviso">Esta orden ya tiene trabajos aprobados: la nueva línea será un <b>trabajo adicional</b> y necesita su propia aprobación.</div>' : ''}
     <div class="tl-grid">
       <div class="tl-f"><label for="l-tipo">Tipo</label><select class="tl-sel" id="l-tipo" onchange="TO.cambioTipo()">${Object.entries(ETQ_TIPO).map(([k, t]) => `<option value="${k}" ${(e?.tipo || 'mano_obra') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-      <div class="tl-f" id="l-bus-wrap"><label for="l-bus">Buscar repuesto en tu inventario</label><input class="tl-inp" id="l-bus" type="search" autocomplete="off" placeholder="Nombre o código…" oninput="TO.buscarProd()"><div id="l-res"></div></div>
+      <div class="tl-f" id="l-bus-wrap"><label for="l-bus" id="l-bus-lbl">Buscar repuesto en tu inventario</label><input class="tl-inp" id="l-bus" type="search" autocomplete="off" placeholder="Nombre o código…" oninput="TO.buscarProd()"><div id="l-res"></div></div>
       <div class="tl-f full"><label for="l-desc">Descripción</label><input class="tl-inp" id="l-desc" maxlength="300" value="${esc(e?.descripcion || '')}" placeholder="Ej. Cambio de aceite y filtro"></div>
       <div class="tl-f"><label for="l-cant">Cantidad</label><input class="tl-inp" id="l-cant" type="number" inputmode="decimal" min="0.001" step="any" value="${e ? num(e.cantidad) : 1}"></div>
       <div class="tl-f"><label for="l-precio">Precio unitario</label><input class="tl-inp" id="l-precio" type="number" inputmode="decimal" min="0" step="0.01" value="${e ? num(e.precio_unitario) : ''}"></div>
@@ -191,9 +193,13 @@ TO.formLinea = function () {
 };
 TO.cambioTipo = function () {
   const t = $('l-tipo').value;
-  $('l-bus-wrap').style.display = t === 'repuesto' ? '' : 'none';
-  $('l-costo-wrap').style.display = t === 'mano_obra' ? 'none' : '';
-  if (t !== 'repuesto') TO.prodSel = null;
+  const rep = t === 'repuesto', mo = t === 'mano_obra';
+  $('l-bus-wrap').style.display = (rep || mo) ? '' : 'none';
+  $('l-bus-lbl').textContent = mo ? 'Buscar en tus servicios (mano de obra)' : 'Buscar repuesto en tu inventario';
+  $('l-bus').placeholder = mo ? 'Ej. cambio de aceite, alineación…' : 'Nombre o código…';
+  $('l-res').innerHTML = '';
+  $('l-costo-wrap').style.display = mo ? 'none' : '';
+  if (!rep) TO.prodSel = null;
 };
 setTimeout(() => {}, 0);
 TO.buscarProd = function () {
@@ -201,15 +207,16 @@ TO.buscarProd = function () {
   TO._bt = setTimeout(async () => {
     const q = ($('l-bus').value || '').trim().replace(/[,()%*\\]/g, ' ');
     if (q.length < 2) { $('l-res').innerHTML = ''; return; }
-    const { data } = await sb.from('productos').select('id,nombre,sku,precio,costo,stock_actual').eq('auth_user_id', TL.userId).eq('tipo', 'producto').eq('activo', true).or(`nombre.ilike.%${q}%,sku.ilike.%${q}%`).order('nombre').limit(8);
+    const { data } = await sb.from('productos').select('id,nombre,sku,precio,costo,stock_actual').eq('auth_user_id', TL.userId).eq('tipo', ($('l-tipo').value === 'mano_obra' ? 'servicio' : 'producto')).eq('activo', true).or(`nombre.ilike.%${q}%,sku.ilike.%${q}%`).order('nombre').limit(8);
     TO._res = data || [];
-    $('l-res').innerHTML = TO._res.length ? TO._res.map((p, i) => `<button type="button" class="tl-ot" style="margin-top:4px" onclick="TO.elegirProd(${i})"><b>${esc(p.nombre)}</b><span class="tl-muted">${p.sku ? esc(p.sku) + ' · ' : ''}Stock ${num(p.stock_actual)} · Precio ${fmt(p.precio)}</span></button>`).join('') : '<div class="tl-muted">Sin resultados. Crea el repuesto en Productos o agrégalo como “Otro”.</div>';
+    $('l-res').innerHTML = TO._res.length ? TO._res.map((p, i) => `<button type="button" class="tl-ot" style="margin-top:4px" onclick="TO.elegirProd(${i})"><b>${esc(p.nombre)}</b><span class="tl-muted">${p.sku ? esc(p.sku) + ' · ' : ''}${$('l-tipo').value === 'mano_obra' ? '' : 'Stock ' + num(p.stock_actual) + ' · '}Precio ${fmt(p.precio)}</span></button>`).join('') : '<div class="tl-muted">' + ($('l-tipo').value === 'mano_obra' ? 'Sin resultados. Escribe la descripción y el precio abajo.' : 'Sin resultados. Crea el repuesto en Productos o agrégalo como “Otro”.') + '</div>';
   }, 250);
 };
 TO.elegirProd = function (i) {
   const p = TO._res[i]; if (!p) return;
-  TO.prodSel = p.id; $('l-desc').value = p.nombre; $('l-precio').value = num(p.precio); $('l-costo').value = num(p.costo);
-  $('l-res').innerHTML = `<div class="tl-aviso ok">Repuesto elegido: ${esc(p.nombre)} · stock ${num(p.stock_actual)}</div>`; $('l-bus').value = '';
+  const mo = $('l-tipo').value === 'mano_obra';
+  TO.prodSel = mo ? null : p.id; $('l-desc').value = p.nombre; $('l-precio').value = num(p.precio); $('l-costo').value = mo ? 0 : num(p.costo);
+  $('l-res').innerHTML = mo ? `<div class="tl-aviso ok">Servicio elegido: ${esc(p.nombre)}</div>` : `<div class="tl-aviso ok">Repuesto elegido: ${esc(p.nombre)} · stock ${num(p.stock_actual)}</div>`; $('l-bus').value = '';
 };
 TO.editarLinea = function (id) {
   TO.editLinea = id; const l = TO.lineas.find(x => x.id === id); TO.prodSel = l?.producto_id || null; TO.pintarDetalle();
@@ -257,6 +264,21 @@ TO.estado = async function (nuevo) {
   if (!r) return; if (!r.ok) { showToast(r.msg, 'error'); return; }
   showToast('✅ Estado: ' + ETQ_ESTADO[nuevo]); await TO.recargar();
 };
+/* ---------- Cliente ---------- */
+TO.asignarCliente = async function () {
+  const id = $('c-sel').value; if (!id) { showToast('Elige un cliente de la lista.', 'warning'); return; }
+  const r = await TO.accion(() => tlRpc('taller_orden_cliente', { p_orden_id: TO.actual.id, p_cliente_id: id, p_por: TL.nombre }));
+  if (!r) return; if (!r.ok) { showToast(r.msg, 'error'); return; }
+  showToast('✅ Cliente asignado'); await TO.cargar(); await TO.recargar();
+};
+TO.clienteNuevo = function () {
+  tlCrearCliente(async c => {
+    TO.cli[c.id] = c.nombre;
+    const r = await TO.accion(() => tlRpc('taller_orden_cliente', { p_orden_id: TO.actual.id, p_cliente_id: c.id, p_por: TL.nombre }));
+    if (r && !r.ok) showToast(r.msg, 'error'); else showToast('✅ Cliente creado y asignado');
+    await TO.cargar(); await TO.recargar();
+  });
+};
 /* ---------- Entrega y cobro ---------- */
 TO.formEntrega = function () {
   const o = TO.actual, reps = TO.lineas.filter(l => l.aprobacion === 'aprobada' && l.tipo === 'repuesto' && l.producto_id).length;
@@ -283,4 +305,65 @@ TO.entregar = async function () {
   showToast('✅ Entregado y cobrado' + (r.numero_venta ? ' · Venta ' + r.numero_venta : ''));
   try { window.parent !== window && window.parent.postMessage({ tipo: 'n360_operacion_completada', nota: 'Entrega cobrada' }, '*'); } catch (_) {}
   await TO.recargar();
+  TO.exito(r.venta_id);
+};
+
+/* ---------- Pantalla de éxito: ticket y factura SIN salir del taller ---------- */
+TO.exito = async function (ventaId) {
+  if (!ventaId) return;
+  let v = null, items = [];
+  try {
+    const [a, b] = await Promise.all([
+      sb.from('ventas').select('*').eq('id', ventaId).eq('auth_user_id', TL.userId).maybeSingle(),
+      sb.from('venta_detalles').select('*').eq('venta_id', ventaId).eq('auth_user_id', TL.userId)]);
+    v = a.data; items = b.data || [];
+  } catch (e) { console.warn(e); }
+  if (!v) return;
+  TO.ventaExito = { v, items };
+  let m = $('x-modal');
+  if (!m) { m = document.createElement('div'); m.id = 'x-modal'; m.className = 'tl-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); document.body.appendChild(m); }
+  m.style.zIndex = 400;
+  m.innerHTML = `<div class="tl-modal-box" style="max-width:520px"><div class="tl-modal-cab"><h2>✅ Cobrado · ${esc(v.numero_venta)}</h2><button type="button" class="tl-x" onclick="TO.cerrarExito()" aria-label="Cerrar">✕</button></div>
+    <div class="tl-modal-cuerpo"><div class="tl-aviso ok">Total cobrado <b>${fmt(v.total)}</b> con ${esc(v.metodo_pago_nombre || '')}. La venta ya está en Ventas y en Caja.</div>
+      <div id="x-ticket"></div>
+      <div class="tl-acc" style="margin:0"><button type="button" class="btn-primary" onclick="TO.imprimirTicket()">🖨️ Imprimir ticket</button>
+        <button type="button" class="btn-secondary" onclick="TO.verTicket()">🧾 Ver ticket</button>
+        <button type="button" class="btn-secondary" id="x-fac" onclick="TO.factura()">📄 Factura (PDF)</button></div></div>
+    <div class="tl-modal-pie"><button type="button" class="btn-secondary" onclick="TO.cerrarExito()">Cerrar</button></div></div>`;
+  m.classList.add('abierto'); document.body.style.overflow = 'hidden'; TO.verTicket();
+};
+TO.cerrarExito = function () { const m = $('x-modal'); if (m) m.classList.remove('abierto'); if (!$('d-modal').classList.contains('abierto')) document.body.style.overflow = ''; };
+TO.ticketHtml = function () {
+  const { v, items } = TO.ventaExito, emp = TL.empresaConfig || {}, f = x => fmt(x);
+  const filas = items.map(i => `<tr><td>${esc(i.producto_nombre || 'Ítem')}<br><small>${num(i.cantidad)} x ${f(i.precio)}</small></td><td style="text-align:right;vertical-align:bottom">${f(i.subtotal)}</td></tr>`).join('');
+  const o = TO.actual, ve = TO.veh[o?.vehiculo_id] || {};
+  return `<!doctype html><meta charset="utf-8"><style>body{font:12px/1.35 monospace;margin:8px;color:#000;max-width:300px}h1{font-size:14px;text-align:center;margin:0}table{width:100%;border-collapse:collapse}td{padding:2px 0}hr{border:0;border-top:1px dashed #000}.t{font-weight:bold;font-size:14px}p{margin:2px 0;text-align:center}</style>
+  <h1>${esc(emp.nombre_comercial || 'Mi Negocio')}</h1>${emp.telefono ? `<p>${esc(emp.telefono)}</p>` : ''}<hr>
+  <p>Ticket ${esc(v.numero_venta)} · ${new Date(v.fecha || Date.now()).toLocaleDateString('es-NI')}</p>${v.cliente_nombre ? `<p>${esc(v.cliente_nombre)}</p>` : ''}${ve.placa ? `<p>Vehículo: ${esc(ve.placa)} ${esc([ve.marca, ve.modelo].filter(Boolean).join(' '))}</p>` : ''}<hr>
+  <table>${filas}</table><hr><table>
+  <tr><td>Subtotal</td><td style="text-align:right">${f(v.subtotal)}</td></tr>${num(v.descuento) ? `<tr><td>Descuento</td><td style="text-align:right">-${f(v.descuento)}</td></tr>` : ''}${num(v.impuesto) ? `<tr><td>IVA</td><td style="text-align:right">${f(v.impuesto)}</td></tr>` : ''}
+  <tr class="t"><td>TOTAL</td><td style="text-align:right">${f(v.total)}</td></tr><tr><td>Pago</td><td style="text-align:right">${esc(v.metodo_pago_nombre || '')}</td></tr></table><hr><p>¡Gracias por su preferencia!</p>`;
+};
+TO.verTicket = function () {
+  const fr = document.createElement('iframe'); fr.title = 'Ticket'; fr.id = 'x-ticket-fr'; fr.style.cssText = 'width:100%;height:340px;border:1px solid var(--border);border-radius:10px;background:#fff';
+  fr.srcdoc = TO.ticketHtml(); const c = $('x-ticket'); c.innerHTML = ''; c.appendChild(fr);
+};
+TO.imprimirTicket = function () {
+  if (!$('x-ticket-fr')) TO.verTicket();
+  const fr = $('x-ticket-fr'); const go = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { showToast('No se pudo imprimir desde aquí. Usa “Factura (PDF)”.', 'warning'); } };
+  fr.contentDocument && fr.contentDocument.readyState === 'complete' ? go() : setTimeout(go, 300);
+};
+TO.factura = async function () {
+  const { v, items } = TO.ventaExito, emp = TL.empresaConfig || {}; const b = $('x-fac');
+  if (typeof generarComprobanteCartaPDF !== 'function' || !window.jspdf) { showToast('La factura no está disponible en este momento. Recarga la pantalla.', 'error'); return; }
+  b.disabled = true; const t = b.textContent; b.textContent = 'Generando…';
+  try {
+    const doc = await generarComprobanteCartaPDF('venta', {
+      userId: TL.userId, numero: v.numero_venta, fecha: tlFecha(v.fecha), cliente_nombre: v.cliente_nombre, cliente_id: v.cliente_id || null,
+      subtotal: v.subtotal, descuento: v.descuento, impuesto: v.impuesto, iva_porcentaje: v.iva_porcentaje, total: v.total, metodo_pago: v.metodo_pago_nombre, observaciones: v.observaciones,
+      empresaNombre: emp.nombre_comercial || 'Mi Negocio', empresaDireccion: emp.direccion || '', empresaTelefono: emp.telefono || emp.whatsapp || '', empresaRuc: emp.ruc || '', moneda_simbolo: emp.moneda_simbolo || undefined,
+    }, items.map(i => ({ nombre: i.producto_nombre, cantidad: i.cantidad, precio: i.precio, descuento: i.descuento || 0, subtotal: i.subtotal, sku: i.producto_sku || null, producto_id: i.producto_id || null })));
+    doc.save(`Factura_${v.numero_venta}.pdf`);
+  } catch (e) { console.warn(e); showToast('No se pudo generar la factura.', 'error'); }
+  b.disabled = false; b.textContent = t;
 };

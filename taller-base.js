@@ -201,3 +201,37 @@ async function initTaller() {
 window.TL = TL;
 sb.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') window.location.href = 'login.html'; });
 document.addEventListener('DOMContentLoaded', () => { initTaller(); if (window.lucide) lucide.createIcons(); });
+
+/* Crear cliente al vuelo (sin salir de la pantalla). cb({id,nombre}) al guardar. */
+function tlCrearCliente(cb) {
+  let m = document.getElementById('cn-modal');
+  if (!m) { m = document.createElement('div'); m.id = 'cn-modal'; m.className = 'tl-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.style.zIndex = 500; document.body.appendChild(m); }
+  m.innerHTML = `<div class="tl-modal-box" style="max-width:420px"><div class="tl-modal-cab"><h2>➕ Cliente nuevo</h2><button type="button" class="tl-x" id="cn-x" aria-label="Cerrar">✕</button></div>
+    <div class="tl-modal-cuerpo"><div class="tl-f"><label for="cn-nom">Nombre *</label><input class="tl-inp" id="cn-nom" maxlength="120" autocomplete="off"></div>
+      <div class="tl-f"><label for="cn-ape">Apellido</label><input class="tl-inp" id="cn-ape" maxlength="120" autocomplete="off"></div>
+      <div class="tl-f"><label for="cn-tel">Teléfono</label><input class="tl-inp" id="cn-tel" type="tel" inputmode="tel" maxlength="30" autocomplete="off"></div><div id="cn-av"></div></div>
+    <div class="tl-modal-pie"><button type="button" class="btn-secondary" id="cn-can">Cancelar</button><button type="button" class="btn-primary" id="cn-ok">Guardar cliente</button></div></div>`;
+  const cerrar = () => { m.classList.remove('abierto'); };
+  document.getElementById('cn-x').onclick = cerrar; document.getElementById('cn-can').onclick = cerrar;
+  let ocupado = false, forzar = false;
+  document.getElementById('cn-ok').onclick = async () => {
+    if (ocupado) return;
+    const nombre = document.getElementById('cn-nom').value.trim(), ape = document.getElementById('cn-ape').value.trim(), tel = document.getElementById('cn-tel').value.trim();
+    const av = document.getElementById('cn-av');
+    if (nombre.length < 2) { av.innerHTML = '<div class="tl-aviso">Escribe el nombre del cliente.</div>'; return; }
+    ocupado = true; const btn = document.getElementById('cn-ok'); btn.disabled = true;
+    try {
+      if (!forzar) {
+        const { data: dup } = await sb.from('clientes').select('id,nombre,apellido,telefono').eq('auth_user_id', TL.userId).eq('activo', true).ilike('nombre', nombre).limit(3);
+        const igual = (dup || []).find(c => (tel && c.telefono && c.telefono.replace(/\D/g, '') === tel.replace(/\D/g, '')) || String(c.apellido || '').toLowerCase() === ape.toLowerCase());
+        if (igual) { av.innerHTML = `<div class="tl-aviso">Ya existe “${esc(igual.nombre + ' ' + (igual.apellido || ''))}”${igual.telefono ? ' · ' + esc(igual.telefono) : ''}. Si es otra persona, toca Guardar otra vez.</div>`; forzar = true; return; }
+      }
+      const { data, error } = await sb.from('clientes').insert({ auth_user_id: TL.userId, nombre, apellido: ape || null, telefono: tel || null, activo: true }).select('id,nombre,apellido').single();
+      if (error || !data) throw error || new Error('sin datos');
+      cerrar(); showToast('✅ Cliente guardado');
+      cb && cb({ id: data.id, nombre: [data.nombre, data.apellido].filter(Boolean).join(' ') });
+    } catch (e) { console.warn(e); av.innerHTML = '<div class="tl-aviso">No se pudo guardar el cliente. Intenta de nuevo.</div>'; }
+    finally { ocupado = false; btn.disabled = false; }
+  };
+  m.classList.add('abierto'); setTimeout(() => document.getElementById('cn-nom').focus(), 50);
+}

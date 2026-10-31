@@ -99,3 +99,10 @@ TV.archivar = async function (id, activo) {
   if (!r.ok) { showToast(r.msg, 'error'); return; }
   showToast(activo ? '✅ Vehículo reactivado' : '✅ Vehículo archivado'); await TV.cargar();
 };
+
+TV.clienteNuevo = function () {
+  tlCrearCliente(c => {
+    TV.clientes.push({ id: c.id, nombre: c.nombre });
+    const sel = $('f-cliente'); const op = document.createElement('option'); op.value = c.id; op.textContent = c.nombre; sel.appendChild(op); sel.value = c.id;
+  });
+};
