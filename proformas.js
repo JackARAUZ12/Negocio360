@@ -1141,8 +1141,15 @@ async function guardarProforma() {
 
     await window.N360ProfVarios?.guardarDestinatarios?.(proformaId);
 
+    // Opcional (apagado por defecto): al pasar a "aprobada", crea sola la orden de producción.
+    let ordenesAuto = null;
+    if (estado === 'aprobada' && STATE.proformaActual?.estado !== 'aprobada' && window.N360ProfProd?.autoAlAprobar) {
+      ordenesAuto = await window.N360ProfProd.autoAlAprobar(proformaId);
+    }
+
     closeModal('modal-nueva-proforma');
     showToast(`Proforma ${numero} guardada correctamente`);
+    if (ordenesAuto && ordenesAuto.length) showToast(`🏭 Se crearon ${ordenesAuto.length} orden(es) de producción (${ordenesAuto.map(o => o.numero).join(', ')})`);
     await Promise.allSettled([loadProformas(), loadKPIsProf()]);
   } catch (e) {
     console.error('guardarProforma:', e);

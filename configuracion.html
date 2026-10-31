@@ -1392,6 +1392,16 @@
               <span class="cfg-switch-track" onclick="onToggleStockMinProdClick(event)"></span>
             </label>
           </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Crear la orden de producción al aprobar</div>
+              <div class="cfg-row-sub" id="oa-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="oa-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleOrdenAutoClick(event)"></span>
+            </label>
+          </div>
           <div class="cfg-status" id="pp-status"></div>
         </div>
 
@@ -2500,6 +2510,39 @@ async function guardarStockMinProd(activo) {
     setStatus(statusEl, activo ? 'Producción por stock mínimo activada.' : 'Producción por stock mínimo desactivada.', true);
   } catch (e) {
     console.error('guardarStockMinProd:', e); toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+/* ---------- Crear la orden de producción al aprobar la proforma (opcional, apagado por defecto) ---------- */
+const OA_TXT_ON  = 'Activado — al marcar una proforma como Aprobada se crean solas las órdenes de producción de sus productos con receta. Necesita "Pedidos con producción" activo.';
+const OA_TXT_OFF = 'Desactivado — las órdenes se crean con el botón "Pasar a producción".';
+async function cargarOrdenAuto() {
+  const toggle = document.getElementById('oa-toggle'), sub = document.getElementById('oa-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_orden_auto_al_aprobar').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_orden_auto_al_aprobar === true;
+    toggle.checked = activo; sub.textContent = activo ? OA_TXT_ON : OA_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarOrdenAuto:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleOrdenAutoClick(evt) {
+  const toggle = document.getElementById('oa-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarOrdenAuto(toggle.checked);
+}
+async function guardarOrdenAuto(activo) {
+  const toggle = document.getElementById('oa-toggle'), sub = document.getElementById('oa-row-sub'), statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_orden_auto_al_aprobar: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? OA_TXT_ON : OA_TXT_OFF;
+    setStatus(statusEl, activo ? 'Orden automática al aprobar activada.' : 'Orden automática al aprobar desactivada.', true);
+  } catch (e) {
+    console.error('guardarOrdenAuto:', e); toggle.checked = !activo;
     setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
   } finally { toggle.disabled = false; }
 }
@@ -3776,6 +3819,7 @@ async function initConfiguracion() {
       cargarNumeroSerie();
       cargarCicloProduccion();
       cargarStockMinProd();
+      cargarOrdenAuto();
       cargarModeloProducto();
       cargarModuloHotel();
       cargarModuloRestaurante();

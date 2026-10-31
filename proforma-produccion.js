@@ -219,10 +219,25 @@
     cargar().then(function () { try { renderTablaProf(); } catch (_) { /* nada */ } });
   });
 
+
+  // Opción "crear la orden sola al aprobar": se llama justo después de guardar una proforma que
+  // acaba de pasar a "aprobada". Usa la misma función de servidor del botón manual (evita duplicados).
+  // Si algo falla, la proforma queda aprobada igual y el botón manual sigue disponible.
+  async function autoAlAprobar(proformaId) {
+    try {
+      var c = STATE.empresaConfig || {};
+      if (!(c.usa_ciclo_produccion_pedidos === true && c.usa_orden_auto_al_aprobar === true)) return null;
+      var usuario = (STATE.currentUser && STATE.currentUser.nombre) || (STATE.userEmail || '').split('@')[0] || 'Usuario';
+      var r = await sbClient.rpc('proforma_pasar_a_produccion', { p_proforma_id: proformaId, p_fecha_entrega: null, p_usuario: usuario });
+      if (r.error || !r.data || !r.data.ok) return null;
+      return (r.data.creadas || []);
+    } catch (err) { console.error('N360ProfProd.autoAlAprobar:', err); return null; }
+  }
+
   window.N360ProfProd = {
     activo: activo, cargar: cargar, bloqueada: bloqueada, pendiente: pendiente,
     chip: chip, pintarDetalle: pintarDetalle, abrir: abrir, confirmar: confirmar,
-    verFaltantes: verFaltantes, verFaltantesNuevas: verFaltantesNuevas
+    verFaltantes: verFaltantes, verFaltantesNuevas: verFaltantesNuevas, autoAlAprobar: autoAlAprobar
   };
 
   // Si las proformas ya se pintaron antes de que este módulo existiera, se completa ahora.
