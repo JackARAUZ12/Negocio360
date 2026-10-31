@@ -1706,6 +1706,27 @@
           <div class="cfg-status" id="taller-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="comisiones-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">💵</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Comisiones</div>
+              <div class="cfg-card-desc">Comisión por cada venta de tus vendedores, separada de Salarios: se calcula sola con el porcentaje del día, se paga junta y el pago sale de Caja. Apagado por defecto.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Comisiones</div>
+              <div class="cfg-row-sub" id="comisiones-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="comisiones-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleComisionesClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="comisiones-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="diseno-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🎨</div>
@@ -3419,6 +3440,45 @@ async function guardarModuloTaller(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Modulo de Comisiones: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloComisiones() {
+  const toggle = document.getElementById('comisiones-toggle');
+  const sub = document.getElementById('comisiones-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_comisiones').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_comisiones === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Comisiones aparece en el menú.' : 'Desactivado — el módulo de Comisiones no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloComisiones:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleComisionesClick(evt) {
+  const toggle = document.getElementById('comisiones-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloComisiones(toggle.checked);
+}
+async function guardarModuloComisiones(activo) {
+  const toggle = document.getElementById('comisiones-toggle');
+  const sub = document.getElementById('comisiones-row-sub');
+  const statusEl = document.getElementById('comisiones-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_comisiones: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Comisiones aparece en el menú.' : 'Desactivado — el módulo de Comisiones no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Comisiones activado. Recarga la página para ver el menú.' : 'Módulo de Comisiones desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloComisiones:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Programa de puntos: se activa/desactiva desde aqui. Apagado por
 // defecto -- sin activarlo, el modulo no aparece ni cambia nada.
 async function cargarModuloPuntos() {
@@ -3978,6 +4038,7 @@ async function initConfiguracion() {
       cargarModuloInsumos();
       cargarModuloTransporte();
       cargarModuloTaller();
+      cargarModuloComisiones();
       cargarModuloDiseno();
       cargarModuloFiados();
       cargarModuloCotizaciones();

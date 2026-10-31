@@ -112,6 +112,12 @@
           .select('usa_modulo_taller').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_taller = ta?.usa_modulo_taller === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_taller = false; }
+      // Comisiones: consulta aparte, mismo criterio.
+      try {
+        const { data: co } = await client.from('configuracion_empresa')
+          .select('usa_modulo_comisiones').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_comisiones = co?.usa_modulo_comisiones === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_comisiones = false; }
       // Diseño: consulta aparte, mismo criterio.
       try {
         const { data: di } = await client.from('configuracion_empresa')

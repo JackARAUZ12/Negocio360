@@ -126,6 +126,9 @@ function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 
 /* ---------- Llamadas al servidor ---------- */
 const TL_MOTIVOS = {
+  nombre_duplicado: 'Ya tienes una persona con ese nombre.', nombre: 'Escribe el nombre (mínimo 2 letras).', valor: 'El valor no es válido: el porcentaje va de 0 a 100 y los montos deben ser mayores que cero.',
+  base: 'Elige cómo se calcula la comisión.', no_pendiente: 'Esa comisión ya no está pendiente (ya se pagó o se quitó).', sin_seleccion: 'Elige al menos una comisión.',
+  cambiaron: 'Algunas comisiones ya cambiaron (se pagaron o se quitaron desde otra pantalla). Actualiza e intenta de nuevo.', fechas: 'Las fechas no son válidas.',
   credito_sin_cliente: 'Para vender a crédito asigna primero un cliente a la orden.', retencion: 'El porcentaje de retención no es válido (de 1 a 100) o deja la venta sin cobro.',
   desactivado: 'El Taller mecánico está apagado. Actívalo en Configuración.',
   tipo: 'Tipo de vehículo no válido.', sin_identificacion: 'Escribe la placa o el número de chasis (VIN).',
@@ -186,9 +189,10 @@ async function initTaller() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
     try { if (window.ModulosGuard) TL.cfgModulos = await ModulosGuard.cargarConfigModulos(sb, user.id); } catch (_) {}
-    if (TL.empresaConfig.usa_modulo_taller !== true) {
-      const c = document.getElementById('content');
-      if (c) c.innerHTML = '<div class="tl-apagado"><div style="font-size:42px">🔧</div><h2>El Taller mecánico está apagado</h2><p>Actívalo en <b>Configuración → Taller mecánico</b> para empezar a recibir vehículos.</p><button class="btn-primary" onclick="(window.top||window).location.href=\'configuracion.html\'">Ir a Configuración</button></div>';
+    const FLAG = window.TL_FLAG || 'usa_modulo_taller';
+    if (TL.empresaConfig[FLAG] !== true) {
+      const c = document.getElementById('content'); const A = window.TL_APAGADO || { i: '🔧', t: 'El Taller mecánico está apagado', d: 'Actívalo en <b>Configuración → Taller mecánico</b> para empezar a recibir vehículos.' };
+      if (c) c.innerHTML = '<div class="tl-apagado"><div style="font-size:42px">' + A.i + '</div><h2>' + A.t + '</h2><p>' + A.d + '</p><button class="btn-primary" onclick="(window.top||window).location.href=\'configuracion.html\'">Ir a Configuración</button></div>';
       return;
     }
     if (typeof window.tallerListo === 'function') await window.tallerListo();

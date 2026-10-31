@@ -61,6 +61,8 @@
                                desc: 'Compras a crédito a proveedores y sus pagos.' },
     'salarios.html':         { key: 'salarios',         label: 'Salarios',            icon: '🧑‍💼', obligatorio: false,
                                desc: 'Empleados, pagos, adelantos y bonificaciones.' },
+    'comisiones.html':       { key: 'comisiones',       label: 'Comisiones',          icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_comisiones',
+                               desc: 'Comisión por cada venta de tus vendedores, aparte de Salarios: se calcula sola, se paga junta y sale de Caja.' },
     'auditoria.html':        { key: 'auditoria',        label: 'Auditoría',           icon: '🕵️', obligatorio: false, soloAdmin: true,
                                desc: 'Registro de movimientos por usuario, con fecha y hora. Requiere código de administrador.' },
     'personalizacion.html':  { key: 'personalizacion',  label: 'Personalización',     icon: '🎨', obligatorio: false,
