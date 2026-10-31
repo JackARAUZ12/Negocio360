@@ -443,7 +443,7 @@ declare
   v_uid uuid := auth.uid(); o record; li record; r record; prod record; v_venta uuid; v_num text; v_hoy date := (now() at time zone 'America/Managua')::date;
   v_pend integer; v_apr integer; v_metodo text := nullif(btrim(coalesce(p ->> 'metodo_pago_nombre', '')), ''); v_metodo_id uuid := nullif(p ->> 'metodo_pago_id', '')::uuid;
   v_banco uuid := nullif(p ->> 'banco_id', '')::uuid; v_por text := left(coalesce(nullif(btrim(coalesce(p ->> 'creado_por', '')), ''), 'Usuario'), 120);
-  v_km numeric := nullif(p ->> 'km_salida', '')::numeric; v_caja numeric; v_mov uuid; v_saldo_imp numeric; v_gan numeric;
+  v_km numeric := nullif(p ->> 'km_salida', '')::numeric; v_caja numeric; v_mov uuid; v_saldo_imp numeric;
   v_cnom text;
 begin
   if v_uid is null then raise exception 'no autenticado'; end if;
@@ -479,14 +479,12 @@ begin
   if o.total <= 0 then return jsonb_build_object('ok', false, 'motivo', 'total_cero'); end if;
   v_caja := round(o.total - o.impuesto, 2);
   if v_caja <= 0 then return jsonb_build_object('ok', false, 'motivo', 'total_cero'); end if;
-  select coalesce(sum(round(cantidad * precio_unitario - descuento - cantidad * costo_unitario, 2)), 0) into v_gan
-    from public.taller_orden_lineas where orden_id = o.id and aprobacion = 'aprobada';
   select nombre into v_cnom from public.clientes where id = o.cliente_id and auth_user_id = v_uid;
 
   v_num := public.generar_numero_venta(v_uid);
-  insert into public.ventas(auth_user_id, numero_venta, cliente_id, cliente_nombre, fecha, subtotal, descuento, impuesto, total, costo_total, ganancia,
+  insert into public.ventas(auth_user_id, numero_venta, cliente_id, cliente_nombre, fecha, subtotal, descuento, impuesto, total, costo_total,
                             metodo_pago_id, metodo_pago_nombre, estado, observaciones, iva_activo, iva_porcentaje, creado_por_nombre)
-  values (v_uid, v_num, o.cliente_id, coalesce(v_cnom, o.cliente_nombre, 'Cliente final'), now(), o.subtotal, o.descuento, o.impuesto, o.total, o.costo_total, v_gan,
+  values (v_uid, v_num, o.cliente_id, coalesce(v_cnom, o.cliente_nombre, 'Cliente final'), now(), o.subtotal, o.descuento, o.impuesto, o.total, o.costo_total,
           v_metodo_id, v_metodo, 'completada', 'Taller · Orden ' || o.numero, o.iva_activo, case when o.iva_activo then o.iva_porcentaje else 0 end, v_por)
   returning id into v_venta;
 
