@@ -19,7 +19,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="reloj-sesion.js?v=20261028b"></script>
   <script src="demo-salir.js?v=20261030a"></script>
-<script src="modulos-registro.js?v=20261029a"></script>
+<script src="modulos-registro.js?v=20261031a"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
@@ -1683,6 +1683,27 @@
             </label>
           </div>
           <div class="cfg-status" id="transporte-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="taller-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🔧</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Taller mecánico</div>
+              <div class="cfg-card-desc">Para talleres de vehículos terrestres (autos, motos, camionetas, camiones, buses): vehículos, órdenes, presupuestos que el cliente aprueba línea por línea, repuestos de tu inventario y entrega con cobro conectado a Ventas y Caja.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Taller mecánico</div>
+              <div class="cfg-row-sub" id="taller-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="taller-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleTallerClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="taller-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="diseno-card">
@@ -3359,6 +3380,45 @@ async function guardarModuloTransporte(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Modulo de Taller mecanico: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloTaller() {
+  const toggle = document.getElementById('taller-toggle');
+  const sub = document.getElementById('taller-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_taller').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_taller === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Taller mecánico aparece en el menú.' : 'Desactivado — el módulo de Taller mecánico no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloTaller:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleTallerClick(evt) {
+  const toggle = document.getElementById('taller-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloTaller(toggle.checked);
+}
+async function guardarModuloTaller(activo) {
+  const toggle = document.getElementById('taller-toggle');
+  const sub = document.getElementById('taller-row-sub');
+  const statusEl = document.getElementById('taller-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_taller: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Taller mecánico aparece en el menú.' : 'Desactivado — el módulo de Taller mecánico no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Taller mecánico activado. Recarga la página para ver el menú.' : 'Módulo de Taller mecánico desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloTaller:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Programa de puntos: se activa/desactiva desde aqui. Apagado por
 // defecto -- sin activarlo, el modulo no aparece ni cambia nada.
 async function cargarModuloPuntos() {
@@ -3917,6 +3977,7 @@ async function initConfiguracion() {
       cargarModuloClinica();
       cargarModuloInsumos();
       cargarModuloTransporte();
+      cargarModuloTaller();
       cargarModuloDiseno();
       cargarModuloFiados();
       cargarModuloCotizaciones();
@@ -3948,7 +4009,7 @@ document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
-<script src="modulos-guard.js?v=20261025c"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>

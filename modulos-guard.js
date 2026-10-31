@@ -106,6 +106,12 @@
           .select('usa_modulo_transporte').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_transporte = tr?.usa_modulo_transporte === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_transporte = false; }
+      // Taller mecánico: consulta aparte, mismo criterio.
+      try {
+        const { data: ta } = await client.from('configuracion_empresa')
+          .select('usa_modulo_taller').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_taller = ta?.usa_modulo_taller === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_taller = false; }
       // Diseño: consulta aparte, mismo criterio.
       try {
         const { data: di } = await client.from('configuracion_empresa')

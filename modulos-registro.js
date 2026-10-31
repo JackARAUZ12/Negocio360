@@ -167,6 +167,13 @@
     // ("enPanel"), pero conservan su propia llave para los permisos por usuario.
     'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Todo el transporte en un solo lugar y en orden: orden, despacho, viaje, entrega, cobro (aquí mismo, conectado con Ventas y Caja) y pago al conductor.' },
+    // Taller mecánico (vehículos terrestres): el Panel es la entrada única; las partes se abren dentro de él.
+    'taller.html': { key: 'taller', label: 'Taller mecánico · Panel', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_taller',
+                       desc: 'Todo el taller en un solo lugar: recepción, diagnóstico, presupuesto aprobado línea por línea, reparación, control de calidad y entrega con cobro.' },
+    'taller-vehiculos.html': { key: 'taller_vehiculos', label: 'Taller · Vehículos y flotas', icon: '🚗', obligatorio: false, flagPropio: 'usa_modulo_taller', enPanel: 'taller.html',
+                       desc: 'Autos, camionetas, motos, camiones, buses y pesados con placa, VIN, kilometraje y dueño.' },
+    'taller-ordenes.html': { key: 'taller_ordenes', label: 'Taller · Órdenes y presupuestos', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_taller', enPanel: 'taller.html',
+                       desc: 'Tablero por estado, presupuesto por líneas con aprobación del cliente, repuestos del inventario y entrega con cobro.' },
     'flota.html': { key: 'transporte_flota', label: 'Transporte · Flota', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Tus cabezales, camiones, furgones y plataformas con fotos, documentos con vencimiento y estado.' },
     'conductores.html': { key: 'transporte_conductores', label: 'Transporte · Conductores', icon: '🧑‍✈️', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
