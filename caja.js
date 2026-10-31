@@ -2474,22 +2474,62 @@ function concHerramienta(cual) {
     cont.innerHTML = `<div class="cb-tool-box"><div style="font-weight:700;margin-bottom:4px">🏧 Retiro del banco a efectivo / depósito de efectivo al banco${negocio}</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Mueve dinero entre el banco y tu efectivo. <b>La Caja total no cambia</b>, solo dónde está el dinero.</div>
       <div class="form-row">
-        <div><label>Tipo</label><select id="cb-ef-tipo"><option value="retiro">Retiré del banco a efectivo</option><option value="deposito">Deposité efectivo al banco</option></select></div>
-        <div><label>Monto (${simboloMoneda(CONC.moneda)})</label><input type="number" id="cb-ef-monto" step="0.01" min="0.01"/></div>
+        <div><label>Tipo</label><select id="cb-ef-tipo" onchange="concPrevisualizar('efectivo')"><option value="retiro"${(CONC._diferencia || 0) > 0 ? '' : ' selected'}>Retiro: banco → efectivo</option><option value="deposito"${(CONC._diferencia || 0) > 0 ? ' selected' : ''}>Depósito: efectivo → banco</option></select></div>
+        <div><label>Monto (${simboloMoneda(CONC.moneda)})</label><input type="number" id="cb-ef-monto" step="0.01" min="0.01" oninput="concPrevisualizar('efectivo')"/></div>
         <div><label>Fecha</label><input type="date" id="cb-ef-fecha" value="${corte}"/></div>
       </div>
       <div><label>Nota (opcional)</label><input type="text" id="cb-ef-nota" placeholder="Ej: retiro para pago de planilla"/></div>
+      <div id="cb-prev-efectivo" class="cb-prev"></div>
       <div style="text-align:right;margin-top:8px"><button class="btn-primary btn-sm" id="btn-cb-efectivo" onclick="concGuardarEfectivo()">Registrar</button></div></div>`;
+    concPrevisualizar('efectivo');
   } else if (cual === 'cargo') {
     cont.innerHTML = `<div class="cb-tool-box"><div style="font-weight:700;margin-bottom:4px">💳 Comisión o cargo del banco${negocio}</div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Se registra como <b>gasto</b> (categoría Comisiones bancarias) con su salida del banco, igual que cualquier gasto: aparece en Gastos y en Contabilidad.</div>
       <div class="form-row">
         <div><label>Concepto</label><input type="text" id="cb-cg-concepto" placeholder="Ej: Comisión por manejo de cuenta"/></div>
-        <div><label>Monto (${simboloMoneda(CONC.moneda)})</label><input type="number" id="cb-cg-monto" step="0.01" min="0.01"/></div>
+        <div><label>Monto (${simboloMoneda(CONC.moneda)})</label><input type="number" id="cb-cg-monto" step="0.01" min="0.01" oninput="concPrevisualizar('cargo')"/></div>
         <div><label>Fecha</label><input type="date" id="cb-cg-fecha" value="${corte}"/></div>
       </div>
+      <div id="cb-prev-cargo" class="cb-prev"></div>
       <div style="text-align:right;margin-top:8px"><button class="btn-primary btn-sm" id="btn-cb-cargo" onclick="concGuardarCargo()">Registrar cargo</button></div></div>`;
+    concPrevisualizar('cargo');
   }
+}
+
+// Antes de guardar: cómo quedará la diferencia. Retiro y cargo BAJAN el saldo del
+// banco en el sistema (la diferencia sube); el depósito lo SUBE (la diferencia baja).
+function _difDespuesConc(cual) {
+  const dif = CONC._diferencia;
+  if (dif === null || dif === undefined) return null;
+  const montoEl = document.getElementById(cual === 'cargo' ? 'cb-cg-monto' : 'cb-ef-monto');
+  const monto = round2(parseFloat(montoEl?.value) || 0);
+  if (monto <= 0) return null;
+  const baja = cual === 'cargo' || document.getElementById('cb-ef-tipo')?.value === 'retiro';
+  return { antes: dif, despues: round2(dif + (baja ? monto : -monto)), monto };
+}
+function concPrevisualizar(cual) {
+  const el = document.getElementById('cb-prev-' + cual);
+  if (!el) return;
+  const p = _difDespuesConc(cual);
+  el.classList.remove('cb-prev-ok', 'cb-prev-mal');
+  if (CONC._diferencia === null || CONC._diferencia === undefined) { el.innerHTML = 'Escribe primero el saldo de tu banco arriba para ver cómo cambia la diferencia.'; return; }
+  if (!p) {
+    const dif = CONC._diferencia;
+    el.innerHTML = Math.abs(dif) < 0.005 ? 'Ya cuadra: no hace falta registrar nada.'
+      : dif > 0 ? `💡 Tu banco tiene <b>más</b> que el sistema: normalmente es un <b>depósito</b> (o cobros sin banco), no un retiro.`
+                : `💡 Tu banco tiene <b>menos</b> que el sistema: normalmente es un <b>retiro</b> o una <b>comisión</b>.`;
+    return;
+  }
+  const mejora = Math.abs(p.despues) < Math.abs(p.antes) - 0.004;
+  el.classList.add(mejora ? 'cb-prev-ok' : 'cb-prev-mal');
+  el.innerHTML = `Con esto la diferencia pasa de <b>${fmtMoneda(p.antes, CONC.moneda)}</b> a <b>${fmtMoneda(p.despues, CONC.moneda)}</b>.`
+    + (Math.abs(p.despues) < 0.005 ? ' ✅ Quedaría cuadrado.'
+      : mejora ? '' : ' ⚠️ <b>La diferencia aumenta.</b> Revisa si elegiste bien: si tu banco tiene más que el sistema, lo normal es un depósito, no un retiro.');
+}
+function _confirmarSiEmpeoraConc(cual) {
+  const p = _difDespuesConc(cual);
+  if (!p || Math.abs(p.despues) < Math.abs(p.antes) - 0.004 || Math.abs(p.despues) < 0.005) return true;
+  return confirm(`Ojo: con esto la diferencia AUMENTA de ${fmtMoneda(p.antes, CONC.moneda)} a ${fmtMoneda(p.despues, CONC.moneda)}.\n\n¿Seguro que quieres registrarlo así?`);
 }
 
 async function concCargarSinBanco(hasta) {
@@ -2553,6 +2593,7 @@ async function concGuardarEfectivo() {
   const banco = _bancoPropioConc();
   const extra = nota ? ` — ${nota}` : '';
   const retiro = tipo === 'retiro';
+  if (!_confirmarSiEmpeoraConc('efectivo')) return;
   setBtnLoading('btn-cb-efectivo', true);
   try {
     const { data, error } = await sbClient.rpc('registrar_transferencia_interna', {
@@ -2565,7 +2606,7 @@ async function concGuardarEfectivo() {
     });
     if (error) throw error;
     if (!data?.ok) { errEl.textContent = data?.mensaje || 'No se pudo registrar.'; return; }
-    showToast(retiro ? 'Retiro registrado (la Caja total no cambia)' : 'Depósito registrado (la Caja total no cambia)');
+    showToast((retiro ? 'Retiro registrado' : 'Depósito registrado') + ' (la Caja total no cambia). Si te equivocaste: Caja › Transferencias › ↩️ Revertir.');
     concHerramienta(null);
     await _recargarConc();
     if (typeof refrescarTrasMovimiento === 'function') refrescarTrasMovimiento();
@@ -2580,6 +2621,7 @@ async function concGuardarCargo() {
   const fecha = document.getElementById('cb-cg-fecha').value || todayISO();
   if (!concepto) { errEl.textContent = 'Escribe el concepto del cargo (por ejemplo: comisión por manejo de cuenta).'; return; }
   if (monto <= 0) { errEl.textContent = 'El monto debe ser mayor que 0.'; return; }
+  if (!_confirmarSiEmpeoraConc('cargo')) return;
   setBtnLoading('btn-cb-cargo', true);
   try {
     const { data, error } = await sbClient.rpc('conciliacion_cargo_bancario', { p_banco_id: _bancoPropioConc(), p_monto_banco: monto, p_fecha: fecha, p_concepto: concepto });

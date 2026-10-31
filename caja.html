@@ -914,7 +914,10 @@
     #modal-conciliar-banco table{min-width:0;width:100%}
     #cb-movimientos-tbody td:nth-child(3){word-break:break-word}
     @media (max-width:640px){ .cb-resumen{grid-template-columns:1fr} }
-  </style>
+  .cb-prev{font-size:12.5px;margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary,rgba(127,127,127,.08));color:var(--text-muted)}
+.cb-prev.cb-prev-ok{background:rgba(16,185,129,.10);color:var(--text-primary,inherit)}
+.cb-prev.cb-prev-mal{background:rgba(245,158,11,.14);color:var(--text-primary,inherit);border:1px solid rgba(245,158,11,.5)}
+</style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
 <body>
@@ -1975,9 +1978,9 @@
   <script src="cajaAPI.js?v=20261007a"></script>
   <script src="caja-segura.js?v=20261012a"></script>
   <script src="moneda-alterna.js?v=20261021b"></script>
-  <script src="caja.js?v=20261031a"></script>
+  <script src="caja.js?v=20261031b"></script>
   <script src="exportar-modulo.js?v=20261029b"></script>
-  <script src="exportar-caja.js?v=20261031a"></script>
+  <script src="exportar-caja.js?v=20261031b"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
