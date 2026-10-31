@@ -889,7 +889,8 @@ function renderClientes() {
     const nombre = d.clientesMap[clienteId] || 'Cliente sin nombre';
     if (!porCliente[clienteId]) porCliente[clienteId] = { nombre, cuotas: 0, saldo: 0 };
     porCliente[clienteId].cuotas += 1;
-    porCliente[clienteId].saldo += parseFloat(c.saldo || 0);
+    // Lo que falta de la cuota (c.saldo es el saldo del cronograma: en la última cuota siempre es 0).
+    porCliente[clienteId].saldo += Math.max(0, parseFloat(c.monto_total || 0) - parseFloat(c.monto_pagado || 0));
   });
   const filas = Object.values(porCliente).sort((a, b) => b.saldo - a.saldo);
 
@@ -1040,7 +1041,7 @@ function renderAlertas() {
   // Cuotas vencidas
   d.creditosCuotas.filter(c => c.estado === 'vencida').forEach(c => {
     const nombre = d.clientesMap[c.creditos?.cliente_id] || 'Cliente';
-    alertas.push({ tag: '', tagText: 'CRÉDITO VENCIDO', icon: '⏰', bg: 'var(--danger-soft)', title: `Cuota #${c.numero} vencida — ${nombre}`, text: `Monto pendiente: ${fmt(c.saldo)}. Venció el ${c.fecha_vencimiento}.` });
+    alertas.push({ tag: '', tagText: 'CRÉDITO VENCIDO', icon: '⏰', bg: 'var(--danger-soft)', title: `Cuota #${c.numero} vencida — ${nombre}`, text: `Monto pendiente: ${fmt(Math.max(0, parseFloat(c.monto_total || 0) - parseFloat(c.monto_pagado || 0)))}. Venció el ${c.fecha_vencimiento}.` });
   });
 
   // Clientes con saldo pendiente alto

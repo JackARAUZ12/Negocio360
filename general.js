@@ -1769,7 +1769,8 @@ async function fetchCreditosHistorialPagos() {
       fecha_venc:     cu.fecha_vencimiento,
       monto_cuota:    Number(cu.monto_total||0),
       pagado:         Number(cu.monto_pagado||0),
-      saldo:          Number(cu.saldo||0),
+      // Lo que falta de ESTA cuota (cu.saldo es el saldo del cronograma: en la última cuota siempre es 0).
+      saldo:          Math.max(0, Number(cu.monto_total||0) - Number(cu.monto_pagado||0)),
       estado:         cu.estado,
       fecha_estado:   cu.updated_at,
     };
