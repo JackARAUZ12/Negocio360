@@ -1873,7 +1873,15 @@ async function guardarNuevoProveedorDirectaCompra() {
   }
 }
 
+let _guardandoCompraDirecta = false;
 async function guardarCompraDirecta() {
+  if (_guardandoCompraDirecta) return;
+  _guardandoCompraDirecta = true;
+  const b = document.getElementById('cd-btn-guardar'); if (b) b.disabled = true;
+  try { await _guardarCompraDirectaInterno(); }
+  finally { _guardandoCompraDirecta = false; if (b) { b.disabled = false; b.style.opacity = ''; } }
+}
+async function _guardarCompraDirectaInterno() {
   const errEl = document.getElementById('cd-error');
   errEl.textContent = '';
 
@@ -2002,7 +2010,18 @@ async function registrarComisionTarjetaCompra(comision, d) {
   if (!r.ok) { console.error('Comisión por pago con tarjeta:', r.error); showToast('La compra se guardó, pero no se pudo registrar la comisión de la tarjeta. Regístrala en Gastos.', 'warning'); }
 }
 
+// Evita guardar la misma compra dos veces con doble clic: el botón se apagaba recién
+// después de varias revisiones (banco, aviso de efectivo) y un segundo clic rápido
+// alcanzaba a entrar (pasó el 29-oct: C-000315 quedó dos veces, a 0.14 s).
+let _guardandoCompra = false;
 async function guardarCompra() {
+  if (_guardandoCompra) return;
+  _guardandoCompra = true;
+  const b = document.getElementById('nc-btn-save'); if (b) b.disabled = true;
+  try { await _guardarCompraInterno(); }
+  finally { _guardandoCompra = false; if (b) { b.disabled = false; b.style.opacity = ''; } }
+}
+async function _guardarCompraInterno() {
   if (STATE.carrito.length === 0) {
     showToast('El carrito está vacío', 'error');
     return;
