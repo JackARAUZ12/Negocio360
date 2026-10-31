@@ -126,6 +126,7 @@ function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 
 /* ---------- Llamadas al servidor ---------- */
 const TL_MOTIVOS = {
+  credito_sin_cliente: 'Para vender a crédito asigna primero un cliente a la orden.', retencion: 'El porcentaje de retención no es válido (de 1 a 100) o deja la venta sin cobro.',
   desactivado: 'El Taller mecánico está apagado. Actívalo en Configuración.',
   tipo: 'Tipo de vehículo no válido.', sin_identificacion: 'Escribe la placa o el número de chasis (VIN).',
   cliente: 'Ese cliente no existe en tu negocio.', placa_duplicada: 'Ya tienes un vehículo con esa placa.',

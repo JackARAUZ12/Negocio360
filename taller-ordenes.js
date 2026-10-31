@@ -286,22 +286,42 @@ TO.formEntrega = function () {
   if (!TO.metodos.length) return '<div class="tl-sec"><b>💳 Entrega y cobro</b><div class="tl-aviso">Primero crea un método de pago en Configuración para poder cobrar.</div></div>';
   return `<div class="tl-sec"><b>💳 Entrega y cobro</b>
     ${pend ? `<div class="tl-aviso">Hay ${pend} línea(s) sin decidir. Apruébalas o recházalas antes de entregar.</div>` : ''}
-    <div class="tl-aviso ok">Se cobrará <b>${fmt(o.total)}</b>${o.iva_activo ? ` (incluye IVA ${fmt(o.impuesto)})` : ''}${reps ? ` y se descontarán ${reps} repuesto(s) del inventario` : ''}. Se crea una venta normal y el dinero entra a Caja.</div>
+    <div class="tl-aviso ok">Se cobrará <b>${fmt(o.total)}</b>${o.iva_activo ? ` (incluye IVA ${fmt(o.impuesto)})` : ''}${reps ? ` y se descontarán ${reps} repuesto(s) del inventario` : ''}. Se crea una venta normal.</div>
     <div class="tl-grid">
-      <div class="tl-f"><label for="x-met">Método de pago</label><select class="tl-sel" id="x-met"><option value="">— Elige —</option>${TO.metodos.map(m => `<option value="${m.id}">${esc(m.nombre)}</option>`).join('')}</select></div>
-      <div class="tl-f"><label for="x-banco">Banco (si aplica)</label><select class="tl-sel" id="x-banco"><option value="">Ninguno</option>${TO.bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('')}</select></div>
+      <div class="tl-f full"><label>Forma de pago</label><div style="display:flex;gap:14px;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="x-forma" value="contado" checked onchange="TO.cambioForma()"> Contado</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="x-forma" value="credito" onchange="TO.cambioForma()"> A crédito (fiado)</label></div></div>
+      <div class="tl-f" id="x-w-met"><label for="x-met">Método de pago</label><select class="tl-sel" id="x-met"><option value="">— Elige —</option>${TO.metodos.map(m => `<option value="${m.id}">${esc(m.nombre)}</option>`).join('')}</select></div>
+      <div class="tl-f" id="x-w-banco"><label for="x-banco">Banco (si aplica)</label><select class="tl-sel" id="x-banco"><option value="">Ninguno</option>${TO.bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('')}</select></div>
+      <div class="tl-f" id="x-w-ret"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="x-ret-on" onchange="TO.cambioForma()"> El cliente me retiene IR</label><input class="tl-inp" id="x-ret" type="number" inputmode="decimal" min="0.01" max="100" step="0.01" value="2" oninput="TO.cambioForma()" style="display:none" aria-label="Porcentaje de retención IR"></div>
       <div class="tl-f"><label for="x-km">Kilometraje de salida</label><input class="tl-inp" id="x-km" type="number" inputmode="decimal" min="0" step="0.1" value="${o.km_ingreso != null ? num(o.km_ingreso) : ''}"></div></div>
+    <div id="x-resumen"></div>
+    ${o.cliente_id ? '' : '<div class="tl-muted">Para vender a crédito, primero asigna un cliente a la orden.</div>'}
     <div><button type="button" class="btn-primary" id="x-entregar" onclick="TO.entregar()" ${pend ? 'disabled' : ''}>Entregar y cobrar</button></div></div>`;
 };
+TO.forma = () => (document.querySelector('input[name="x-forma"]:checked') || {}).value || 'contado';
+TO.retPct = () => (TO.forma() === 'contado' && $('x-ret-on').checked) ? num($('x-ret').value) : 0;
+TO.cambioForma = function () {
+  const cr = TO.forma() === 'credito', o = TO.actual;
+  $('x-w-met').style.display = cr ? 'none' : ''; $('x-w-banco').style.display = cr ? 'none' : ''; $('x-w-ret').style.display = cr ? 'none' : '';
+  $('x-ret').style.display = (!cr && $('x-ret-on').checked) ? '' : 'none';
+  const pct = TO.retPct(), ret = Math.round((num(o.subtotal) - num(o.descuento)) * pct) / 100, entra = Math.round((num(o.total) - ret) * 100) / 100;
+  $('x-resumen').innerHTML = cr ? `<div class="tl-aviso">Se registra la venta y queda <b>${fmt(o.total)}</b> por cobrar en Fiados${o.cliente_id ? '' : '. <b>Falta asignar el cliente.</b>'}. No entra dinero a Caja hasta que el cliente pague.</div>`
+    : pct > 0 ? `<div class="tl-aviso">Total de la venta ${fmt(o.total)} · Retención IR ${pct}%: −${fmt(ret)} · <b>Cobras ${fmt(entra)}</b>. La retención queda anotada en Impuestos como crédito a tu favor.</div>` : '';
+  $('x-entregar').textContent = cr ? 'Entregar a crédito' : 'Entregar y cobrar';
+};
 TO.entregar = async function () {
-  const sel = $('x-met'); if (!sel.value) { showToast('Elige el método de pago.', 'warning'); return; }
-  const nombre = sel.options[sel.selectedIndex].text;
-  if (!confirm(`¿Entregar el vehículo y cobrar ${fmt(TO.actual.total)} con ${nombre}? Esta acción crea la venta y no se puede repetir.`)) return;
+  const cr = TO.forma() === 'credito', sel = $('x-met'), pct = TO.retPct();
+  if (cr && !TO.actual.cliente_id) { showToast('Para vender a crédito asigna primero un cliente a la orden.', 'warning'); return; }
+  if (!cr && !sel.value) { showToast('Elige el método de pago.', 'warning'); return; }
+  if (!cr && $('x-ret-on').checked && !(pct > 0 && pct <= 100)) { showToast('Escribe un porcentaje de retención válido (1 a 100).', 'warning'); return; }
+  const nombre = cr ? 'crédito (fiado)' : sel.options[sel.selectedIndex].text;
+  if (!confirm(`¿Entregar el vehículo y ${cr ? 'dejar ' + fmt(TO.actual.total) + ' a crédito' : 'cobrar ' + fmt(TO.actual.total) + ' con ' + nombre + (pct ? ' (retención IR ' + pct + '%)' : '')}? Esta acción crea la venta y no se puede repetir.`)) return;
   $('x-entregar').disabled = true; $('x-entregar').textContent = 'Entregando…';
-  const p = { metodo_pago_id: sel.value, metodo_pago_nombre: nombre, banco_id: $('x-banco').value || null, km_salida: $('x-km').value, creado_por: TL.nombre };
+  const p = cr ? { credito: true, km_salida: $('x-km').value, creado_por: TL.nombre }
+    : { metodo_pago_id: sel.value, metodo_pago_nombre: nombre, banco_id: $('x-banco').value || null, km_salida: $('x-km').value, creado_por: TL.nombre, retencion_ir_porcentaje: pct || 0 };
   const r = await TO.accion(() => tlRpc('taller_orden_entregar', { p_orden_id: TO.actual.id, p }));
   if (!r) return;
-  if (!r.ok) { showToast(r.msg, 'error'); $('x-entregar').disabled = false; $('x-entregar').textContent = 'Entregar y cobrar'; return; }
+  if (!r.ok) { showToast(r.msg, 'error'); $('x-entregar').disabled = false; TO.cambioForma(); return; }
   showToast('✅ Entregado y cobrado' + (r.numero_venta ? ' · Venta ' + r.numero_venta : ''));
   try { window.parent !== window && window.parent.postMessage({ tipo: 'n360_operacion_completada', nota: 'Entrega cobrada' }, '*'); } catch (_) {}
   await TO.recargar();
@@ -324,7 +344,7 @@ TO.exito = async function (ventaId) {
   if (!m) { m = document.createElement('div'); m.id = 'x-modal'; m.className = 'tl-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); document.body.appendChild(m); }
   m.style.zIndex = 400;
   m.innerHTML = `<div class="tl-modal-box" style="max-width:520px"><div class="tl-modal-cab"><h2>✅ Cobrado · ${esc(v.numero_venta)}</h2><button type="button" class="tl-x" onclick="TO.cerrarExito()" aria-label="Cerrar">✕</button></div>
-    <div class="tl-modal-cuerpo"><div class="tl-aviso ok">Total cobrado <b>${fmt(v.total)}</b> con ${esc(v.metodo_pago_nombre || '')}. La venta ya está en Ventas y en Caja.</div>
+    <div class="tl-modal-cuerpo"><div class="tl-aviso ok">${String(v.metodo_pago || '') === 'fiado' ? `Venta a crédito por <b>${fmt(v.total)}</b>. Quedó por cobrar en Fiados; aún no entra a Caja.` : `Total <b>${fmt(v.total)}</b> con ${esc(v.metodo_pago_nombre || '')}${num(v.retencion_ir_monto) ? ` · retención IR −${fmt(v.retencion_ir_monto)} · cobraste <b>${fmt(num(v.total) - num(v.retencion_ir_monto))}</b>` : ''}. La venta ya está en Ventas y en Caja.`}</div>
       <div id="x-ticket"></div>
       <div class="tl-acc" style="margin:0"><button type="button" class="btn-primary" onclick="TO.imprimirTicket()">🖨️ Imprimir ticket</button>
         <button type="button" class="btn-secondary" onclick="TO.verTicket()">🧾 Ver ticket</button>
@@ -342,7 +362,7 @@ TO.ticketHtml = function () {
   <p>Ticket ${esc(v.numero_venta)} · ${new Date(v.fecha || Date.now()).toLocaleDateString('es-NI')}</p>${v.cliente_nombre ? `<p>${esc(v.cliente_nombre)}</p>` : ''}${ve.placa ? `<p>Vehículo: ${esc(ve.placa)} ${esc([ve.marca, ve.modelo].filter(Boolean).join(' '))}</p>` : ''}<hr>
   <table>${filas}</table><hr><table>
   <tr><td>Subtotal</td><td style="text-align:right">${f(v.subtotal)}</td></tr>${num(v.descuento) ? `<tr><td>Descuento</td><td style="text-align:right">-${f(v.descuento)}</td></tr>` : ''}${num(v.impuesto) ? `<tr><td>IVA</td><td style="text-align:right">${f(v.impuesto)}</td></tr>` : ''}
-  <tr class="t"><td>TOTAL</td><td style="text-align:right">${f(v.total)}</td></tr><tr><td>Pago</td><td style="text-align:right">${esc(v.metodo_pago_nombre || '')}</td></tr></table><hr><p>¡Gracias por su preferencia!</p>`;
+  <tr class="t"><td>TOTAL</td><td style="text-align:right">${f(v.total)}</td></tr>${num(v.retencion_ir_monto) ? `<tr><td>Retención IR</td><td style="text-align:right">-${f(v.retencion_ir_monto)}</td></tr><tr><td>A cobrar</td><td style="text-align:right">${f(num(v.total) - num(v.retencion_ir_monto))}</td></tr>` : ''}<tr><td>Pago</td><td style="text-align:right">${String(v.metodo_pago || '') === 'fiado' ? 'A CRÉDITO' : esc(v.metodo_pago_nombre || '')}</td></tr></table><hr><p>¡Gracias por su preferencia!</p>`;
 };
 TO.verTicket = function () {
   const fr = document.createElement('iframe'); fr.title = 'Ticket'; fr.id = 'x-ticket-fr'; fr.style.cssText = 'width:100%;height:340px;border:1px solid var(--border);border-radius:10px;background:#fff';
@@ -360,7 +380,7 @@ TO.factura = async function () {
   try {
     const doc = await generarComprobanteCartaPDF('venta', {
       userId: TL.userId, numero: v.numero_venta, fecha: tlFecha(v.fecha), cliente_nombre: v.cliente_nombre, cliente_id: v.cliente_id || null,
-      subtotal: v.subtotal, descuento: v.descuento, impuesto: v.impuesto, iva_porcentaje: v.iva_porcentaje, total: v.total, metodo_pago: v.metodo_pago_nombre, observaciones: v.observaciones,
+      subtotal: v.subtotal, descuento: v.descuento, impuesto: v.impuesto, iva_porcentaje: v.iva_porcentaje, total: v.total, metodo_pago: String(v.metodo_pago || '') === 'fiado' ? 'Crédito' : v.metodo_pago_nombre, observaciones: v.observaciones,
       empresaNombre: emp.nombre_comercial || 'Mi Negocio', empresaDireccion: emp.direccion || '', empresaTelefono: emp.telefono || emp.whatsapp || '', empresaRuc: emp.ruc || '', moneda_simbolo: emp.moneda_simbolo || undefined,
     }, items.map(i => ({ nombre: i.producto_nombre, cantidad: i.cantidad, precio: i.precio, descuento: i.descuento || 0, subtotal: i.subtotal, sku: i.producto_sku || null, producto_id: i.producto_id || null })));
     doc.save(`Factura_${v.numero_venta}.pdf`);
