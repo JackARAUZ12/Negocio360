@@ -1412,6 +1412,16 @@
               <span class="cfg-switch-track" onclick="onToggleAnticipoPedidosClick(event)"></span>
             </label>
           </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Reservar el producto terminado para el pedido</div>
+              <div class="cfg-row-sub" id="rv-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="rv-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleReservaClick(event)"></span>
+            </label>
+          </div>
           <div class="cfg-status" id="pp-status"></div>
         </div>
 
@@ -2586,6 +2596,39 @@ async function guardarAnticipoPedidos(activo) {
     setStatus(statusEl, activo ? 'Anticipo de pedidos activado.' : 'Anticipo de pedidos desactivado. Los anticipos ya cobrados siguen disponibles al convertir.', true);
   } catch (e) {
     console.error('guardarAnticipoPedidos:', e); toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+/* ---------- Reserva del producto terminado (opcional, apagado por defecto) ---------- */
+const RV_TXT_ON  = 'Activado — al terminar la producción de un pedido, esas unidades quedan reservadas: otras ventas no pueden llevárselas. Necesita "Pedidos con producción" activo.';
+const RV_TXT_OFF = 'Desactivado — no cambia nada.';
+async function cargarReserva() {
+  const toggle = document.getElementById('rv-toggle'), sub = document.getElementById('rv-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_reserva_producto_terminado').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_reserva_producto_terminado === true;
+    toggle.checked = activo; sub.textContent = activo ? RV_TXT_ON : RV_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarReserva:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleReservaClick(evt) {
+  const toggle = document.getElementById('rv-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarReserva(toggle.checked);
+}
+async function guardarReserva(activo) {
+  const toggle = document.getElementById('rv-toggle'), sub = document.getElementById('rv-row-sub'), statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_reserva_producto_terminado: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? RV_TXT_ON : RV_TXT_OFF;
+    setStatus(statusEl, activo ? 'Reserva de producto terminado activada.' : 'Reserva desactivada: ya no se bloquean ventas.', true);
+  } catch (e) {
+    console.error('guardarReserva:', e); toggle.checked = !activo;
     setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
   } finally { toggle.disabled = false; }
 }
@@ -3864,6 +3907,7 @@ async function initConfiguracion() {
       cargarStockMinProd();
       cargarOrdenAuto();
       cargarAnticipoPedidos();
+      cargarReserva();
       cargarModeloProducto();
       cargarModuloHotel();
       cargarModuloRestaurante();

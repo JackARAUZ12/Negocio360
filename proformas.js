@@ -1440,6 +1440,7 @@ async function verDetalleProf(id) {
     body.innerHTML = html;
     try { await window.N360ProfProd?.pintarDetalle(p, body); } catch (_) { /* ciclo de producción: opcional */ }
     try { await window.N360ProfAnt?.pintar(p, body); } catch (_) { /* anticipo: opcional */ }
+    try { await window.N360ProfReserva?.pintar(p, body); } catch (_) { /* reserva: opcional */ }
   } catch (e) {
     body.innerHTML = 'No se pudo cargar el detalle.';
   }

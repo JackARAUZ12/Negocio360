@@ -1348,6 +1348,14 @@ async function confirmarCompletarOrden() {
     if (!r || !r.ok) { errEl.textContent = textoMotivoProduccion(r); if (r && r.motivo === 'ya_completada') { await cargarOrdenes(); } return; }
 
     showToast('🏭 Producción completada' + textoCostoNuevo(r));
+    // Opcional (apagado por defecto): reserva lo producido para la proforma que lo pidió.
+    if (STATE.empresaConfig?.usa_ciclo_produccion_pedidos === true && STATE.empresaConfig?.usa_reserva_producto_terminado === true) {
+      try {
+        const { data: rv } = await sb.rpc('proforma_reservar_por_orden', { p_orden_id: ordenId });
+        const n = (rv?.proformas || []).reduce((t, x) => t + (x.creadas || []).length, 0);
+        if (n) showToast('🔒 Producto reservado para el pedido del cliente');
+      } catch (_) { /* la reserva se puede hacer a mano desde la proforma */ }
+    }
     closeModal('modal-completar-orden');
     await Promise.all([cargarOrdenes(), cargarProductosCache()]);
     actualizarKPIsProduccion();
