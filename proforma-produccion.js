@@ -95,7 +95,8 @@
       '<div class="table-wrap"><table><thead><tr><th>Orden</th><th>Producto</th><th class="th-right">Cant.</th><th>Estado</th><th class="th-right">Avance</th></tr></thead><tbody>' + filas + '</tbody></table></div>' +
       '<p style="margin-top:8px;font-size:12.5px;color:' + (hayPend ? 'var(--warning)' : 'var(--success)') + '">' +
       (hayPend ? 'Cuando la producción esté completada podrás convertir la proforma en venta. Las órdenes se completan en <a href="produccion.html" style="font-weight:700">Producción</a>.'
-               : '✅ Producción terminada: el producto ya está en inventario y la proforma se puede convertir en venta.') + '</p></div>';
+               : '✅ Producción terminada: el producto ya está en inventario y la proforma se puede convertir en venta.') + '</p>' +
+      (hayPend && window.N360Faltantes ? '<button class="btn-secondary" style="margin-top:8px" onclick="N360ProfProd.verFaltantes(\'' + e(p.id) + '\')">🛒 Materia prima: qué falta y comprar</button>' : '') + '</div>';
     var viejo = $('pfp-detalle'); if (viejo) viejo.remove();
     body.insertAdjacentHTML('beforeend', html);
   }
@@ -188,6 +189,8 @@
         : '<p>No se creó ninguna orden nueva.</p>';
       var raros = om.filter(function (o) { return o.motivo !== 'sin_receta'; });
       if (raros.length) html += '<ul style="padding-left:18px;font-size:12.5px;color:var(--text-secondary)">' + raros.map(function (o) { return '<li>' + e(o.producto) + ': ' + e(MOTIVO[o.motivo] || o.motivo) + '</li>'; }).join('') + '</ul>';
+      ultimasCreadas = cre.map(function (c) { return c.orden_id; });
+      if (cre.length && window.N360Faltantes) html += '<button class="btn-secondary" style="margin-top:8px" onclick="N360ProfProd.verFaltantesNuevas()">🛒 Revisar si falta materia prima</button>';
       $('pfp-cuerpo').innerHTML = html;
       if (bt) bt.style.display = 'none';
       await cargar();
@@ -200,6 +203,16 @@
     } finally { ocupado = false; }
   }
 
+  function verFaltantes(pid) {
+    var ords = vivas(pid).filter(function (l) { var s = l.ordenes_produccion.estado; return s === 'pendiente' || s === 'en_proceso'; }).map(function (l) { return l.orden_id; });
+    var pf = (STATE.proformas || []).filter(function (x) { return x.id === pid; })[0];
+    if (window.N360Faltantes) window.N360Faltantes.abrir(ords, pf ? pf.numero_proforma : '');
+  }
+  var ultimasCreadas = [];
+  function verFaltantesNuevas() {
+    if (window.N360Faltantes) window.N360Faltantes.abrir(ultimasCreadas, STATE.proformaActual ? STATE.proformaActual.numero_proforma : '');
+  }
+
   // Si el negocio completa la producción en otra pestaña y vuelve, se refresca el estado.
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible' || !activo()) return;
@@ -208,7 +221,8 @@
 
   window.N360ProfProd = {
     activo: activo, cargar: cargar, bloqueada: bloqueada, pendiente: pendiente,
-    chip: chip, pintarDetalle: pintarDetalle, abrir: abrir, confirmar: confirmar
+    chip: chip, pintarDetalle: pintarDetalle, abrir: abrir, confirmar: confirmar,
+    verFaltantes: verFaltantes, verFaltantesNuevas: verFaltantesNuevas
   };
 
   // Si las proformas ya se pintaron antes de que este módulo existiera, se completa ahora.

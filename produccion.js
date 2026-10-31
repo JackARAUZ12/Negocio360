@@ -841,6 +841,7 @@ function renderTablaOrdenes() {
       <td>${o.fecha_entrega ? fmtFechaCorta(o.fecha_entrega) : '—'}</td>
       <td>
         <button class="row-action-btn" title="Ver detalle" onclick="verDetalleOrden('${o.id}')">👁️</button>
+        ${((o.estado==='pendiente'||o.estado==='en_proceso') && !esDespiece && STATE.empresaConfig?.usa_ciclo_produccion_pedidos === true && window.N360Faltantes) ? `<button class="row-action-btn" title="Materia prima: qué falta y comprar" onclick="N360Faltantes.abrir(['${o.id}'],'${esc(o.numero)}')">🛒</button>` : ''}
         ${o.estado==='pendiente' ? `<button class="row-action-btn" title="Iniciar producción" onclick="marcarOrdenEnProceso('${o.id}')" style="color:var(--accent)">▶️</button>` : ''}
         ${o.estado==='en_proceso' ? `<button class="row-action-btn" title="Actualizar avance" onclick="abrirModalProgreso('${o.id}')" style="color:var(--accent)">📈</button>` : ''}
         ${(o.estado==='pendiente'||o.estado==='en_proceso') ? `<button class="row-action-btn" title="Completar" onclick="completarOrdenPlanificada('${o.id}')" style="color:var(--success)">✅</button>` : ''}
