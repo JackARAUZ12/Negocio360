@@ -2725,6 +2725,53 @@ async function pruebaDemoSalir(browser, base) {
   }
 }
 
+// Auditoría: 90 días, por partes, rangos rápidos y Excel del período.
+async function pruebaAuditoria90(browser, base) {
+  console.log('\n▶ Auditoría: 90 días por partes, rangos rápidos y Excel');
+  for (const [ancho, alto] of [[1280, 900], [360, 740]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    await page.goto(base + '/auditoria.html');
+    await page.evaluate(() => { const x = JSON.parse(JSON.stringify(window.__SEED)); const U = x.usuarios[0].auth_user_id; x.auditoria_log = []; x.tutoriales_vistos.push({ auth_user_id: U, modulo_key: 'auditoria' });
+      const hace = (d, m) => new Date(Date.now() - d * 864e5 - (m || 0) * 6e4).toISOString();
+      for (let i = 0; i < 2300; i++) x.auditoria_log.push({ id: 'a' + String(i).padStart(5, '0'), auth_user_id: U, perfil_nombre: i % 2 ? 'Luis' : 'Ana', perfil_tipo: 'restringido', modulo: 'ventas', tabla: 'ventas', accion: 'INSERT', resumen: 'total: ' + i, created_at: hace(0, i * 2) });
+      for (let i = 0; i < 5; i++) x.auditoria_log.push({ id: 'b' + i, auth_user_id: U, perfil_nombre: 'Marta', perfil_tipo: 'restringido', modulo: 'gastos', tabla: 'gastos', accion: 'UPDATE', resumen: 'estado: cancelado', created_at: hace(20, i * 30) });
+      for (let i = 0; i < 3; i++) x.auditoria_log.push({ id: 'c' + i, auth_user_id: U, perfil_nombre: 'Pedro', perfil_tipo: 'restringido', modulo: 'compras', tabla: 'compras', accion: 'INSERT', resumen: 'numero: C-' + i, created_at: hace(60, i * 30) });
+      x.auditoria_log.push({ id: 'z0', auth_user_id: 'otro-negocio', perfil_nombre: 'Ajeno', modulo: 'ventas', tabla: 'ventas', accion: 'INSERT', resumen: 'no es mío', created_at: hace(1) });
+      sessionStorage.setItem('__DB', JSON.stringify(x)); });
+    await page.reload(); await page.waitForTimeout(1500);
+    await page.waitForFunction(() => typeof cargarAuditoria === 'function' && STATE.userId, null, { timeout: 15000 });
+    await page.evaluate(async () => { document.getElementById('loader')?.classList.add('hidden'); document.getElementById('app').style.display = 'flex';
+      document.querySelectorAll('[id^="pg-"], .pg-overlay').forEach(e => e.remove()); rangoFechasPorDefecto(); await cargarAuditoria(); });
+    let st = await page.evaluate(() => ({ logs: STATE.logs.length, mas: getComputedStyle(document.getElementById('aud-mas-wrap')).display, siete: document.querySelector('[data-aud-rango="7"]').classList.contains('active'), min: document.getElementById('aud-fecha-desde').min }));
+    verificar(st.siete && st.logs === 2000 && st.mas !== 'none', `${tag}: abre en "7 días" y carga por partes (primera parte ${st.logs}, botón "más antiguos" visible)`);
+    const h = new Date(); h.setDate(h.getDate() - 89);
+    verificar(st.min === `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`, `${tag}: el calendario deja elegir hasta 90 días atrás (${st.min})`);
+    await page.click('#aud-mas'); await page.waitForTimeout(800);
+    st = await page.evaluate(() => ({ logs: STATE.logs.length, mas: getComputedStyle(document.getElementById('aud-mas-wrap')).display }));
+    verificar(st.logs === 2300 && st.mas === 'none', `${tag}: "Cargar movimientos más antiguos" trae el resto (${st.logs}) y se oculta al terminar`);
+    await page.click('[data-aud-rango="90"]'); await page.waitForTimeout(1500);
+    verificar(await page.evaluate(() => STATE.logs.length === 2000 && getComputedStyle(document.getElementById('aud-mas-wrap')).display !== 'none'), `${tag}: "90 días" también empieza por la parte más reciente`);
+    await page.click('#aud-mas'); await page.waitForTimeout(1200);
+    st = await page.evaluate(() => ({ n: STATE.logs.length, perfiles: [...new Set(STATE.logs.map(l => l.perfil_nombre))].sort().join(','), ajeno: STATE.logs.some(l => l.perfil_nombre === 'Ajeno') }));
+    verificar(st.perfiles.includes('Marta') && st.perfiles.includes('Pedro') && !st.ajeno, `${tag}: "90 días" muestra lo de hace 20 y 60 días, solo de este negocio (${st.perfiles})`);
+    // Excel del período con el filtro de usuario puesto
+    await page.evaluate(() => { window.__xlsx = null; window.XLSX = { utils: { json_to_sheet: f => f, book_new: () => ({ h: [] }), book_append_sheet: (l, h, n) => l.h.push(h) }, writeFile: (l, n) => { window.__xlsx = { n, filas: l.h[0] }; } };
+      document.getElementById('aud-filtro-usuario').value = 'Marta'; filtrarPorSelectAud(); });
+    await page.click('#aud-excel'); await page.waitForFunction(() => window.__xlsx, null, { timeout: 8000 }).catch(() => {});
+    const xl = await page.evaluate(() => window.__xlsx);
+    verificar(xl && /^auditoria_.*\.xlsx$/.test(xl.n) && xl.filas.length >= 1 && xl.filas.every(f => f.Usuario === 'Marta') && 'Qué hizo' in xl.filas[0], `${tag}: Excel del período con los filtros puestos (${xl && xl.filas.length} filas de Marta)`);
+    await page.click('[data-aud-rango="30"]'); await page.waitForTimeout(1500);
+    await page.click('#aud-mas'); await page.waitForTimeout(1200);
+    st = await page.evaluate(() => [...new Set(STATE.logs.map(l => l.perfil_nombre))]);
+    verificar(st.includes('Marta') && !st.includes('Pedro'), `${tag}: "30 días" no trae lo de hace 60 días`);
+    verificar((await page.textContent('#app')).includes('90 días'), `${tag}: la pantalla explica que se guardan 90 días`);
+    verificar(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tag}: Auditoría sin desbordarse`);
+    verificar(page.__errores.length === 0, `${tag} Auditoría: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 // Regresión: las páginas existentes cargan igual, sin errores nuevos, y sin "Clínica" en el menú si está apagado.
 async function regresion(browser, base) {
   console.log('\n▶ Regresión de páginas existentes (Clínica apagada)');
@@ -2754,6 +2801,7 @@ async function regresion(browser, base) {
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
+    if (process.env.SOLO_AUD) { await pruebaAuditoria90(browser, base); throw 'fin'; }
     if (process.env.SOLO_DEMOSALIR) { await pruebaDemoSalir(browser, base); throw 'fin'; }
     if (process.env.SOLO_PS) { await pruebaPagoSeparadoClinica(browser, base); await pruebaPagoSeparadoVariosBancos(browser, base); throw 'fin'; }
     if (process.env.SOLO_TX) { await pruebaTransporte(browser, base); await pruebaCuadreTransporte(browser, base); throw 'fin'; }
@@ -2799,6 +2847,7 @@ async function regresion(browser, base) {
     await pruebaPagoSeparadoClinica(browser, base);
     await pruebaPagoSeparadoVariosBancos(browser, base);
     await pruebaDemoSalir(browser, base);
+    await pruebaAuditoria90(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

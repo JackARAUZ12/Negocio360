@@ -35,7 +35,13 @@
   // 'usuarios' se excluye porque perfiles-guard.js la actualiza cada ~45s
   // (latido de presencia / última conexión) — eso no es un "movimiento"
   // que le importe al dueño del negocio, solo ensuciaría el registro.
-  const TABLAS_EXCLUIDAS = new Set(['auditoria_log', 'perfiles_acceso', 'codigos_acceso', 'admin_usuarios', 'usuarios']);
+  const TABLAS_EXCLUIDAS = new Set(['auditoria_log', 'perfiles_acceso', 'codigos_acceso', 'admin_usuarios', 'usuarios',
+    // Piezas internas de una operación (ya quedan en el documento principal, que es permanente).
+    // El servidor también las descarta (trg_auditoria_omitir_detalle); aquí solo se evita el envío.
+    'venta_detalles', 'proforma_detalles', 'detalle_compras', 'cotizacion_detalles',
+    'precios_escala', 'producto_presentaciones', 'producto_lotes',
+    'creditos_cuotas', 'cuentas_por_pagar_cuotas', 'asientos_detalle',
+    'receta_componentes', 'venta_impuestos', 'series_compra_pendientes']);
 
   // Campos que sí sirven como "resumen" legible de un movimiento.
   // Deliberadamente NO se incluye el payload completo (podría traer
