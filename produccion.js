@@ -785,6 +785,15 @@ async function cargarOrdenes() {
     const { data } = await sb.from('ordenes_produccion').select('*')
       .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
     STATE.ordenes = data || [];
+    // Ciclo opcional proforma -> producción: de qué proforma viene cada orden (solo si el negocio lo activó).
+    STATE.ordenProforma = {};
+    if (STATE.empresaConfig?.usa_ciclo_produccion_pedidos === true) {
+      try {
+        const { data: ls } = await sb.from('proforma_produccion').select('orden_id,proformas(numero_proforma,cliente_nombre)')
+          .eq('auth_user_id', STATE.userId).limit(1000);
+        (ls || []).forEach(l => { if (l.proformas) STATE.ordenProforma[l.orden_id] = l.proformas; });
+      } catch (_) { /* opcional */ }
+    }
     renderTablaOrdenes();
   } catch (e) { console.error('cargarOrdenes:', e); }
 }
@@ -819,7 +828,7 @@ function renderTablaOrdenes() {
       ? `🍗 ${esc(STATE.recetas.find(r => r.id === o.receta_id)?.nombre || 'Despiece')}`
       : esc(nombreProducto(o.producto_terminado_id));
     return `<tr>
-      <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(o.numero)}</span></td>
+      <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(o.numero)}</span>${STATE.ordenProforma?.[o.id] ? `<div style="font-size:11px;color:var(--text-muted);white-space:nowrap" title="Pedido de un cliente">📄 ${esc(STATE.ordenProforma[o.id].numero_proforma)} · ${esc(STATE.ordenProforma[o.id].cliente_nombre || 'Cliente')}</div>` : ''}</td>
       <td>${nombreCol}</td>
       <td>${fmtNum(o.cantidad_planificada)} ${esDespiece ? 'lote(s)' : 'unidades'}</td>
       <td><span class="status-badge ${ESTADO_ORDEN_CLASE[o.estado]}">${ESTADO_ORDEN_LABEL[o.estado]}</span></td>
@@ -1348,7 +1357,9 @@ async function confirmarCompletarOrden() {
 }
 
 async function cancelarOrden(ordenId) {
-  if (!confirm('¿Cancelar esta orden pendiente? No se ha consumido ningún material todavía, así que no hay nada que revertir.')) return;
+  const _pf = STATE.ordenProforma?.[ordenId];
+  if (!confirm('¿Cancelar esta orden pendiente? No se ha consumido ningún material todavía, así que no hay nada que revertir.' +
+      (_pf ? `\n\nViene de la proforma ${_pf.numero_proforma}: después podrás volver a pasarla a producción.` : ''))) return;
   try {
     await sb.from('ordenes_produccion').update({ estado: 'cancelada', updated_at: new Date().toISOString() })
       .eq('id', ordenId).eq('auth_user_id', STATE.userId);

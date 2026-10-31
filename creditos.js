@@ -1905,6 +1905,18 @@
 
     if (plan.fija && !plan.fecha) { showToast('Elige la fecha de pago', 'error'); CS.creandoCredito = false; return; }
     aplicarFechaFija(cuotas, plan);
+    // Ciclo opcional proforma -> producción: no se cobra a crédito una proforma con producción sin terminar
+    // (el inventario se descuadraría). Sin producción de por medio, esto no hace nada.
+    if (CS.proformaOrigenId) {
+      try {
+        const { data: _pp } = await _sb.from('proforma_produccion').select('ordenes_produccion(estado)')
+          .eq('proforma_id', CS.proformaOrigenId).eq('auth_user_id', CS.userId);
+        if ((_pp || []).some(l => ['pendiente', 'en_proceso'].includes(l.ordenes_produccion?.estado))) {
+          showToast('Esta proforma tiene producción sin terminar. Complétala (o cancélala) en Producción antes de cobrarla.', 'error');
+          CS.creandoCredito = false; return;
+        }
+      } catch (_) { /* opcional */ }
+    }
     btn.disabled = true; btn.textContent = 'Creando…';
     try {
       let ventaId = null;

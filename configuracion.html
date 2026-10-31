@@ -1363,6 +1363,28 @@
           <div class="cfg-status" id="ns-status"></div>
         </div>
 
+        <!-- PEDIDOS CON PRODUCCIÓN (proforma -> producción -> inventario -> venta) -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🏭</div>
+            <div>
+              <div class="cfg-card-title">Pedidos con producción</div>
+              <div class="cfg-card-desc">Para negocios que fabrican lo que el cliente pide. Una proforma aprobada se pasa a producción con un botón; al completar la orden, el producto entra al inventario y recién entonces se convierte en venta.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar pedidos con producción</div>
+              <div class="cfg-row-sub" id="pp-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="pp-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCicloProduccionClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="pp-status"></div>
+        </div>
+
         <!-- MODELO DE PRODUCTO -->
         <div class="cfg-card fade-in stagger-1">
           <div class="cfg-card-header">
@@ -2381,6 +2403,57 @@ async function guardarPresentaciones(activo) {
     setStatus(statusEl, activo ? 'Presentaciones de venta activado.' : 'Presentaciones de venta desactivado.', true);
   } catch (e) {
     console.error('guardarPresentaciones:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+/* ---------- Pedidos con producción (opcional, apagado por defecto) ---------- */
+const PP_TXT_ON  = 'Activado — las proformas aprobadas muestran el botón "Pasar a producción". Una proforma con producción sin terminar no se puede convertir en venta.';
+const PP_TXT_OFF = 'Desactivado — el sistema funciona exactamente igual que hoy.';
+async function cargarCicloProduccion() {
+  const toggle = document.getElementById('pp-toggle');
+  const sub    = document.getElementById('pp-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_ciclo_produccion_pedidos')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_ciclo_produccion_pedidos === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? PP_TXT_ON : PP_TXT_OFF;
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarCicloProduccion:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+function onToggleCicloProduccionClick(evt) {
+  const toggle = document.getElementById('pp-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarCicloProduccion(toggle.checked);
+}
+async function guardarCicloProduccion(activo) {
+  const toggle = document.getElementById('pp-toggle');
+  const sub = document.getElementById('pp-row-sub');
+  const statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_ciclo_produccion_pedidos: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? PP_TXT_ON : PP_TXT_OFF;
+    setStatus(statusEl, activo ? 'Pedidos con producción activado.' : 'Pedidos con producción desactivado. Las órdenes ya creadas siguen en Producción.', true);
+  } catch (e) {
+    console.error('guardarCicloProduccion:', e);
     toggle.checked = !activo;
     setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
   } finally {
@@ -3658,6 +3731,7 @@ async function initConfiguracion() {
       cargarCostoPromedio();
       cargarPresentaciones();
       cargarNumeroSerie();
+      cargarCicloProduccion();
       cargarModeloProducto();
       cargarModuloHotel();
       cargarModuloRestaurante();
