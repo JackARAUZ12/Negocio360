@@ -15,6 +15,7 @@
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101a"></script>
   <script src="demo-salir.js?v=20261030a"></script>
   <script src="modulos-registro.js?v=20261031a"></script>
   <script src="auditoria-guard.js"></script>
@@ -872,6 +873,19 @@
             <input type="text" class="form-input" id="inputSku"
                    placeholder="Ej: CAM-POLO-M-001" maxlength="100" />
           </div>
+          <div class="form-group" id="crProdWrap" style="display:none">
+            <label class="form-label" for="inputCabys">Código CAByS <span style="color:var(--text-muted);font-weight:400">(Costa Rica · 13 dígitos)</span></label>
+            <input type="text" class="form-input" id="inputCabys" inputmode="numeric" maxlength="13" placeholder="Ej: 6221100000000" autocomplete="off" />
+            <div id="errCabys" style="color:var(--danger,#e5484d);font-size:12px;margin-top:4px"></div>
+          </div>
+          <div class="form-group" id="crProdWrap2" style="display:none">
+            <label class="form-label" for="inputIvaTarifa">Tarifa de IVA del producto <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <select class="form-select" id="inputIvaTarifa">
+              <option value="">Sin definir</option>
+              <option value="13">13 %</option><option value="4">4 %</option><option value="2">2 %</option><option value="1">1 %</option><option value="0">0 % / exento</option>
+            </select>
+            <div style="color:var(--text-muted);font-size:11.5px;margin-top:4px">Se guarda para la factura electrónica. Por ahora, en las ventas el IVA sigue siendo el general del negocio.</div>
+          </div>
           <div class="form-group">
             <label class="form-label" for="inputMarca">Marca / Proveedor <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
             <select class="form-select" id="inputMarca">
@@ -1559,11 +1573,11 @@
 <script src="ajuste-existencia.js?v=20261014d"></script>
 <script src="paginar-lectura.js?v=20261029d"></script>
 <script src="series-proveedor.js?v=20261031a"></script>
-<script src="productos.js?v=20261031a"></script>
+<script src="productos.js?v=20261101a"></script>
 <script src="productos-importar.js?v=20261021a"></script>
 <script src="productos-traslados.js?v=20261012a"></script>
 <script src="productos-permisos.js?v=20261021a"></script>
-<script src="empresa-productos.js?v=20261021a"></script>
+<script src="empresa-productos.js?v=20261101a"></script>
 
 <!-- Preview margen en modal (helper inline) -->
 <script>

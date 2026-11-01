@@ -800,13 +800,25 @@ function escAttr(s) {
   return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Costa Rica (colones): el cliente tiene tipo de identificación (cédula física, jurídica, DIMEX, NITE). En otras cuentas no se muestra.
+const TIPOS_ID_CR = { '01': 'Cédula física', '02': 'Cédula jurídica', '03': 'DIMEX', '04': 'NITE' };
+function crClientes() { try { return !!(window.N360CR && window.N360CR.activo()); } catch (_) { return false; } }
+function aplicarCamposCR() {
+  const cr = crClientes();
+  const w = document.getElementById('fc-tipo-id-wrap'); if (w) w.style.display = cr ? '' : 'none';
+  const l = document.getElementById('fc-ruc-label'); if (l) l.textContent = cr ? 'Número de cédula / ID fiscal' : 'RUC';
+  const pl = document.getElementById('perfil-ruc-label'); if (pl) pl.textContent = cr ? 'Cédula / ID fiscal' : 'RUC';
+}
+if (window.N360CR && window.N360CR.listo) window.N360CR.listo.then(aplicarCamposCR);
+
 function limpiarFormCliente() {
   ['fc-nombre','fc-telefono','fc-correo','fc-empresa','fc-direccion','fc-observaciones',
    'fc-monto-recurrente','fc-dia-mes',
-   'fc-ruc','fc-direccion-factura','fc-fecha-aniversario'].forEach(id => {
+   'fc-ruc','fc-tipo-id','fc-direccion-factura','fc-fecha-aniversario'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  aplicarCamposCR();
   CONTACTOS_CLIENTE = [];
   renderContactosCliente();
   const est = document.getElementById('fc-estado');
@@ -840,6 +852,8 @@ function rellenarFormCliente(c) {
   set('fc-direccion',    c.direccion);
   set('fc-observaciones',c.observaciones);
   set('fc-ruc',                c.ruc);
+  set('fc-tipo-id',            c.tipo_identificacion);
+  aplicarCamposCR();
   set('fc-direccion-factura',  c.direccion_factura);
   set('fc-fecha-aniversario',  c.fecha_aniversario);
   CONTACTOS_CLIENTE = Array.isArray(c.contactos) ? [...c.contactos] : [];
@@ -899,6 +913,7 @@ async function guardarCliente() {
     direccion:     document.getElementById('fc-direccion')?.value.trim()|| null,
     observaciones: document.getElementById('fc-observaciones')?.value.trim() || null,
     ruc:               document.getElementById('fc-ruc')?.value.trim() || null,
+    ...(crClientes() ? { tipo_identificacion: document.getElementById('fc-tipo-id')?.value || null } : {}),
     direccion_factura: document.getElementById('fc-direccion-factura')?.value.trim() || null,
     fecha_aniversario: document.getElementById('fc-fecha-aniversario')?.value || null,
     contactos:         (CONTACTOS_CLIENTE || []).filter(c => (c.nombre || '').trim()),
@@ -1240,7 +1255,8 @@ async function abrirPerfil(clienteId) {
   setPerfilField('perfil-empresa-val', cl.empresa);
   setPerfilField('perfil-observaciones', cl.observaciones);
   setPerfilField('perfil-creado',   fmtFecha(cl.created_at));
-  setPerfilField('perfil-ruc', cl.ruc);
+  setPerfilField('perfil-ruc', cl.ruc ? ((crClientes() && TIPOS_ID_CR[cl.tipo_identificacion]) ? TIPOS_ID_CR[cl.tipo_identificacion] + ' · ' : '') + cl.ruc : cl.ruc);
+  aplicarCamposCR();
   setPerfilField('perfil-aniversario', cl.fecha_aniversario ? fmtFecha(cl.fecha_aniversario) : null);
   setPerfilField('perfil-direccion-factura', cl.direccion_factura);
   const contactos = Array.isArray(cl.contactos) ? cl.contactos.filter(c => (c.nombre||'').trim()) : [];

@@ -2349,6 +2349,7 @@ function abrirModalNuevo(tipo = 'producto') {
   STATE.editTarget = null;
 
   resetFormulario();
+  aplicarCamposCRProd();
   setTipoModal(tipo, true);
   configurarCamposSegunModo('crear');
 
@@ -2368,6 +2369,7 @@ function abrirEditar(id) {
 
   resetFormulario();
   cargarFormulario(p);
+  aplicarCamposCRProd();
   setTipoModal(p.tipo, false);
   configurarCamposSegunModo('editar');
   cargarLotesDelProducto(p);
@@ -3547,6 +3549,14 @@ function resetFormulario() {
   if (inputFecha) inputFecha.value = ymdLocal(new Date());
 }
 
+// Costa Rica (colones): código CAByS y tarifa de IVA por producto. En otras cuentas estos campos ni se muestran ni se guardan.
+function crProductos() { try { return !!(window.N360CR && window.N360CR.activo()); } catch (_) { return false; } }
+function aplicarCamposCRProd() {
+  const cr = crProductos();
+  ['crProdWrap', 'crProdWrap2'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = cr ? '' : 'none'; });
+}
+if (window.N360CR && window.N360CR.listo) window.N360CR.listo.then(aplicarCamposCRProd);
+
 function cargarFormulario(p) {
   const campos = [
     ['inputNombre',          p.nombre        || ''],
@@ -3555,6 +3565,8 @@ function cargarFormulario(p) {
     ['inputMarca',           p.proveedor_id  || ''],
     ['inputSku',             p.sku           || ''],
     ['inputCodBarras',       p.codigo_barras || ''],
+    ['inputCabys',           p.cabys         || ''],
+    ['inputIvaTarifa',       p.iva_tarifa != null ? String(Number(p.iva_tarifa)) : ''],
     ['inputCosto',           p.costo         ?? ''],
     ['inputPrecio',          p.precio        ?? ''],
     ['inputStockMinimo',     p.stock_minimo  ?? ''],
@@ -3677,6 +3689,13 @@ async function guardarProducto() {
   const activoVal   = $('inputActivo')?.value;
   const activo      = activoVal === 'true';
   const fechaCreacionRaw = ($('inputFechaCreacion')?.value || '').trim(); // yyyy-mm-dd
+
+  // Costa Rica: CAByS opcional, pero si se escribe debe tener 13 dígitos.
+  const cabysCR = crProductos() ? (($('inputCabys')?.value || '').trim() || null) : null;
+  const ivaTarifaCR = crProductos() ? ($('inputIvaTarifa')?.value ?? '') : '';
+  const errCabys = $('errCabys'); if (errCabys) errCabys.textContent = '';
+  if (cabysCR && !/^[0-9]{13}$/.test(cabysCR)) { if (errCabys) errCabys.textContent = 'El código CAByS debe tener exactamente 13 números.'; $('inputCabys')?.focus(); return; }
+  const camposCR = crProductos() ? { cabys: cabysCR, iva_tarifa: ivaTarifaCR === '' ? null : Number(ivaTarifaCR) } : {};
 
   const errUC = $('errUnidadCompra');
   if (errUC) errUC.textContent = '';
@@ -3808,6 +3827,7 @@ async function guardarProducto() {
         proveedor_nombre:  proveedorNombre,
         sku:           sku         || null,
         codigo_barras: codBarras   || null,
+        ...camposCR,
         costo:         isNaN(costo)       ? 0 : costo,
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
@@ -3883,6 +3903,7 @@ async function guardarProducto() {
         proveedor_nombre:  proveedorNombre,
         sku:           sku         || null,
         codigo_barras: codBarras   || null,
+        ...camposCR,
         costo:         isNaN(costo)  ? 0 : costo,
         precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
         tipo_precio:   tipoPrecio,
