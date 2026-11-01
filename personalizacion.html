@@ -13,6 +13,7 @@
 <script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="pais-config.js?v=20261101a"></script>
   <script src="demo-salir.js?v=20261030a"></script>
 <script src="clinica-comun.js?v=20261029b"></script>
 
@@ -691,7 +692,41 @@ textarea { resize:vertical; min-height:88px }
           </div>
         </div>
         <div class="card-body">
-          <div class="section-divider" style="margin-top:0"><span>¿Cuál es tu negocio? *</span></div>
+          <div class="section-divider" style="margin-top:0"><span>¿En qué país trabajará tu negocio? *</span></div>
+          <div class="fields-grid cols-2" style="margin-bottom:6px">
+            <div class="field">
+              <label>País <span class="req">*</span></label>
+              <select id="pais" onchange="onPaisCambio()">
+                <option value="">Selecciona país…</option>
+                <option value="NI">🇳🇮 Nicaragua</option>
+                <option value="GT">🇬🇹 Guatemala</option>
+                <option value="SV">🇸🇻 El Salvador</option>
+                <option value="HN">🇭🇳 Honduras</option>
+                <option value="CR">🇨🇷 Costa Rica</option>
+                <option value="PA">🇵🇦 Panamá</option>
+                <option value="MX">🇲🇽 México</option>
+                <option value="CO">🇨🇴 Colombia</option>
+                <option value="PE">🇵🇪 Perú</option>
+                <option value="CL">🇨🇱 Chile</option>
+                <option value="AR">🇦🇷 Argentina</option>
+                <option value="EC">🇪🇨 Ecuador</option>
+                <option value="VE">🇻🇪 Venezuela</option>
+                <option value="BO">🇧🇴 Bolivia</option>
+                <option value="PY">🇵🇾 Paraguay</option>
+                <option value="UY">🇺🇾 Uruguay</option>
+                <option value="DO">🇩🇴 Rep. Dominicana</option>
+                <option value="CU">🇨🇺 Cuba</option>
+                <option value="ES">🇪🇸 España</option>
+                <option value="US">🇺🇸 Estados Unidos</option>
+                <option value="otro">🌎 Otro</option>
+              </select>
+            </div>
+            <div class="field" style="display:flex;align-items:flex-end">
+              <div id="pais_resumen" style="font-size:.82rem;color:var(--muted);line-height:1.4;min-height:20px"></div>
+            </div>
+          </div>
+          <div style="font-size:.78rem;color:var(--muted);margin:-2px 0 14px">Con tu país proponemos la moneda, la zona horaria y los impuestos. Todo se puede cambiar en los pasos siguientes y después en Configuración.</div>
+          <div class="section-divider" style="margin-top:6px"><span>¿Cuál es tu negocio? *</span></div>
           <div id="negocioTiposWrap"></div>
           <div class="fields-grid cols-2">
             <div class="field">
@@ -745,33 +780,6 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-body">
           <div class="fields-grid cols-2">
-            <div class="field">
-              <label>País <span class="req">*</span></label>
-              <select id="pais" onchange="autoTimezone()">
-                <option value="">Selecciona país…</option>
-                <option value="NI">🇳🇮 Nicaragua</option>
-                <option value="GT">🇬🇹 Guatemala</option>
-                <option value="SV">🇸🇻 El Salvador</option>
-                <option value="HN">🇭🇳 Honduras</option>
-                <option value="CR">🇨🇷 Costa Rica</option>
-                <option value="PA">🇵🇦 Panamá</option>
-                <option value="MX">🇲🇽 México</option>
-                <option value="CO">🇨🇴 Colombia</option>
-                <option value="PE">🇵🇪 Perú</option>
-                <option value="CL">🇨🇱 Chile</option>
-                <option value="AR">🇦🇷 Argentina</option>
-                <option value="EC">🇪🇨 Ecuador</option>
-                <option value="VE">🇻🇪 Venezuela</option>
-                <option value="BO">🇧🇴 Bolivia</option>
-                <option value="PY">🇵🇾 Paraguay</option>
-                <option value="UY">🇺🇾 Uruguay</option>
-                <option value="DO">🇩🇴 Rep. Dominicana</option>
-                <option value="CU">🇨🇺 Cuba</option>
-                <option value="ES">🇪🇸 España</option>
-                <option value="US">🇺🇸 Estados Unidos</option>
-                <option value="otro">🌎 Otro</option>
-              </select>
-            </div>
             <div class="field">
               <label>Zona horaria <span class="req">*</span></label>
               <select id="zona_horaria">
@@ -1221,8 +1229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 4e. Pre-seleccionar Nicaragua (detección por IP sería ideal,
   //     pero como el usuario es de Managua pre-seleccionamos)
-  document.getElementById('pais').value         = 'NI';
-  document.getElementById('zona_horaria').value = 'America/Managua';
+  // El país ya no se preselecciona: es la primera pregunta y la elige la persona (de ahí salen moneda y zona horaria).
 });
 
 /* ════════════════════════════════════════════════════════════
@@ -1291,6 +1298,7 @@ function prevStep() {
 function validateStep(step) {
   const required = {
     1: [
+      { id: 'pais',             msg: 'Selecciona el país donde trabajará tu negocio' },
       { id: 'nombre_comercial', msg: 'El nombre comercial es obligatorio' },
       { id: 'tipo_negocio',     msg: 'Selecciona el tipo de negocio' },
     ],
@@ -1331,6 +1339,7 @@ const gi = (id) => { const v = g(id); return v ? parseInt(v) : null; };
 function collectStep(step) {
   if (step === 1) {
     Object.assign(formData, {
+      pais:               g('pais')                 || null,
       nombre_comercial:   g('nombre_comercial'),
       razon_social:       g('razon_social')        || null,
       tipo_negocio:       g('tipo_negocio')         || null,
@@ -1941,6 +1950,20 @@ const TIMEZONE_MAP = {
   ES: 'Europe/Madrid',
   US: 'America/New_York',
 };
+
+async function onPaisCambio() {
+  const cod = document.getElementById('pais').value;
+  const res = document.getElementById('pais_resumen');
+  if (!cod || cod === 'otro') { if (res) res.textContent = ''; return; }
+  let p = null;
+  try { p = await window.N360Pais.obtener(db, cod); } catch (_) {}
+  const zona = (p && p.zona_horaria) || TIMEZONE_MAP[cod];
+  const mon  = p && p.moneda;
+  if (zona) document.getElementById('zona_horaria').value = zona;
+  const selMon = document.getElementById('moneda');
+  if (mon && selMon && [...selMon.options].some(o => o.value === mon)) selMon.value = mon;
+  if (res) res.textContent = p ? 'Propuesta: ' + window.N360Pais.resumen(p) + ' · ' + zona : '';
+}
 
 function autoTimezone() {
   const pais = document.getElementById('pais').value;
