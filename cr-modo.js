@@ -38,7 +38,8 @@
   function arreglar(s) {
     return s.replace(/C\$/g, '₡')
       .replace(/Córdobas|Cordobas/g, 'Colones').replace(/córdobas|cordobas/g, 'colones')
-      .replace(/Córdoba\b|Cordoba\b/g, 'Colón').replace(/córdoba\b|cordoba\b/g, 'colón')
+      .replace(/Córdoba(?=\s*\((?:NIO|C\$|₡)\))|Cordoba(?=\s*\((?:NIO|C\$|₡)\))/g, 'Colón')   // solo cuando es el nombre de la moneda: "Córdoba (NIO)"
+      .replace(/córdoba\b|cordoba\b/g, 'colón')   // "Córdoba" con mayúscula NO se toca: puede ser un apellido o una ciudad
       .replace(/\bNIO\b/g, 'CRC');
   }
   var OMITIR = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, INPUT: 1, NOSCRIPT: 1, CODE: 1 };
