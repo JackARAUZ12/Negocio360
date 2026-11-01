@@ -13,6 +13,7 @@
 <script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101a"></script>
 <script src="pais-config.js?v=20261101a"></script>
   <script src="demo-salir.js?v=20261030a"></script>
 <script src="clinica-comun.js?v=20261029b"></script>
@@ -1538,6 +1539,9 @@ async function finalizarOnboarding() {
       logo_url:         formData.logo_principal_url,
       tipo_negocio:     formData.tipo_negocio,
     }));
+
+    // Recuerda el país y la moneda en este navegador (activa los ajustes de Costa Rica al instante si aplica).
+    try { if (window.N360CR) window.N360CR.guardar(currentUser.id, formData.pais, formData.moneda); } catch (_) {}
 
     // 11e. Ocultar overlay, mostrar pantalla de éxito
     hideSaving();

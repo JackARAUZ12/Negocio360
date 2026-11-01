@@ -1205,6 +1205,36 @@ const PLANTILLAS_PAIS = {
     ],
   },
 };
+// Costa Rica: cargas sociales de la CCSS con los porcentajes de REFERENCIA 2026. NO incluye el impuesto de renta de salarios
+// ni el aporte del INS (riesgos del trabajo), que varían: el contador del negocio debe validarlos y completarlos desde "Editar".
+PLANTILLAS_PAIS.CR = {
+  nombre: 'Costa Rica (valores 2026 de referencia: valídalos con tu contador; no incluye renta de salarios ni INS)',
+  conceptos: [
+    { nombre: 'CCSS Seguro de Salud (SEM) obrero',        tipo: 'deduccion',        metodo_calculo: 'porcentaje', valor: 5.5,  obligatorio: true },
+    { nombre: 'CCSS Invalidez, Vejez y Muerte (IVM) obrero', tipo: 'deduccion',     metodo_calculo: 'porcentaje', valor: 4.33, obligatorio: true },
+    { nombre: 'Banco Popular obrero',                     tipo: 'deduccion',        metodo_calculo: 'porcentaje', valor: 1,    obligatorio: true },
+    { nombre: 'CCSS Seguro de Salud (SEM) patronal',      tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 9.25, obligatorio: true },
+    { nombre: 'CCSS Invalidez, Vejez y Muerte (IVM) patronal', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 5.58, obligatorio: true },
+    { nombre: 'Fondo de Capitalización Laboral (FCL)',    tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 1.5,  obligatorio: true },
+    { nombre: 'Operadora de Pensiones Complementaria (OPC)', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 2,  obligatorio: true },
+    { nombre: 'FODESAF',                                  tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 5,    obligatorio: true },
+    { nombre: 'IMAS',                                     tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 0.5,  obligatorio: true },
+    { nombre: 'INA',                                      tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 1.5,  obligatorio: true },
+    { nombre: 'Banco Popular patronal',                   tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 0.25, obligatorio: true },
+    { nombre: 'Banco Popular (Ley de Protección al Trabajador)', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 0.25, obligatorio: true },
+  ],
+};
+// Cada país ve solo SU botón de plantilla.
+function aplicarBotonesPlantillaPais() {
+  let cr = false; try { cr = !!(window.N360CR && window.N360CR.activo()); } catch (_) {}
+  const ni = document.getElementById('btn-plantilla-ni'), c = document.getElementById('btn-plantilla-cr');
+  if (c) c.style.display = cr ? '' : 'none';
+  const oc = document.getElementById('emp-pais-cr'); if (oc) { oc.hidden = !cr; oc.disabled = !cr; }
+  if (ni && cr) ni.style.display = 'none';
+}
+if (window.N360CR && window.N360CR.listo) window.N360CR.listo.then(aplicarBotonesPlantillaPais);
+document.addEventListener('DOMContentLoaded', aplicarBotonesPlantillaPais);
+
 async function cargarPlantillaConceptos(pais) {
   const plantilla = PLANTILLAS_PAIS[pais];
   if (!plantilla) { showToast('Todavía no hay plantilla para ese país', 'error'); return; }

@@ -18,6 +18,7 @@
 <script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101a"></script>
   <script src="demo-salir.js?v=20261030a"></script>
 <script src="modulos-registro.js?v=20261031a"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
@@ -1725,6 +1726,38 @@
             </label>
           </div>
           <div class="cfg-status" id="mensajeria-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="cr-fiscal-card" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🇨🇷</div>
+            <div>
+              <div class="cfg-card-title">Datos fiscales de Costa Rica</div>
+              <div class="cfg-card-desc">Datos de tu negocio que pide Hacienda en la factura electrónica. Son opcionales por ahora: se guardan para cuando se active esa función. Tu número de cédula se escribe en el campo RUC / identificación de tu empresa.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Tipo de identificación del negocio</div>
+              <div class="cfg-row-sub">Cédula física, jurídica, DIMEX o NITE.</div>
+            </div>
+            <select id="crf-tipo-id" disabled style="width:auto;min-width:170px">
+              <option value="">Sin definir</option>
+              <option value="01">Cédula física</option>
+              <option value="02">Cédula jurídica</option>
+              <option value="03">DIMEX</option>
+              <option value="04">NITE</option>
+            </select>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Código de actividad económica</div>
+              <div class="cfg-row-sub">Solo números (de 4 a 8 dígitos), como aparece en tu inscripción de Hacienda.</div>
+            </div>
+            <input type="text" id="crf-actividad" inputmode="numeric" maxlength="8" disabled placeholder="Ej: 471101" style="width:auto;min-width:150px" />
+          </div>
+          <button class="cfg-btn-neutral" id="crf-guardar" disabled onclick="guardarDatosFiscalesCR()">Guardar datos fiscales</button>
+          <div class="cfg-status" id="crf-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="comisiones-card">
@@ -3501,6 +3534,36 @@ async function guardarModuloTaller(activo) {
 }
 
 // Modulo de Comisiones: se activa/desactiva desde aqui. Apagado por defecto.
+// ---------- Costa Rica: datos fiscales del negocio (solo se muestra a cuentas de Costa Rica con colones) ----------
+async function cargarDatosFiscalesCR() {
+  const card = document.getElementById('cr-fiscal-card'); if (!card) return;
+  let cr = false; try { cr = !!(window.N360CR && window.N360CR.activo()); } catch (_) {}
+  card.style.display = cr ? '' : 'none';
+  if (!cr || !currentAuthUserId) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('actividad_economica, emisor_tipo_identificacion').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    document.getElementById('crf-tipo-id').value = data?.emisor_tipo_identificacion || '';
+    document.getElementById('crf-actividad').value = data?.actividad_economica || '';
+    ['crf-tipo-id', 'crf-actividad', 'crf-guardar'].forEach(id => { document.getElementById(id).disabled = false; });
+  } catch (e) { console.error('cargarDatosFiscalesCR:', e); setStatus(document.getElementById('crf-status'), 'No se pudieron cargar los datos. Recarga la página.', false); }
+}
+async function guardarDatosFiscalesCR() {
+  const st = document.getElementById('crf-status');
+  const tipo = document.getElementById('crf-tipo-id').value || null;
+  const act = (document.getElementById('crf-actividad').value || '').trim() || null;
+  if (act && !/^[0-9]{4,8}$/.test(act)) { setStatus(st, 'El código de actividad debe tener solo números (de 4 a 8 dígitos).', false); return; }
+  const btn = document.getElementById('crf-guardar'); btn.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ emisor_tipo_identificacion: tipo, actividad_economica: act }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    setStatus(st, 'Datos fiscales guardados.', true);
+  } catch (e) { console.error('guardarDatosFiscalesCR:', e); setStatus(st, 'No se pudieron guardar. Intenta de nuevo.', false); }
+  finally { btn.disabled = false; }
+}
+if (window.N360CR && window.N360CR.listo) window.N360CR.listo.then(() => { try { cargarDatosFiscalesCR(); } catch (_) {} });
+
 async function cargarModuloComisiones() {
   const toggle = document.getElementById('comisiones-toggle');
   const sub = document.getElementById('comisiones-row-sub');
@@ -4100,6 +4163,7 @@ async function initConfiguracion() {
       cargarModuloTaller();
       cargarModuloMensajeria();
       cargarModuloComisiones();
+      cargarDatosFiscalesCR();
       cargarModuloDiseno();
       cargarModuloFiados();
       cargarModuloCotizaciones();
