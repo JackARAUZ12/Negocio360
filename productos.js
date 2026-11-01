@@ -877,7 +877,7 @@ function renderCatalogoGridCombos(items) {
   grid.innerHTML = items.map(c => {
     const itemsCombo = STATE.comboItemsPorCombo[c.id] || [];
     const foto = c.imagen_url
-      ? `<img src="${escHtml(c.imagen_url)}" class="catalogo-card-foto" alt="">`
+      ? `<img src="${escHtml(c.imagen_url)}" class="catalogo-card-foto" alt="" loading="lazy" decoding="async">`
       : `<div class="catalogo-card-foto-placeholder">📦</div>`;
     return `
       <div class="catalogo-card" data-id="${c.id}">
@@ -1860,6 +1860,47 @@ function aplicarFiltros() {
 // RENDER TABLA
 // FIX: usa helper esStockBajo() para bandera por fila
 // ============================================================
+// ============================================================
+// CELULAR: LISTA POR TANDAS (solo cómo se DIBUJA, nunca los datos)
+// En el teléfono, con cientos de productos y fotos, dibujar todo de una
+// vez puede dejar el navegador sin memoria y la página se recarga o se
+// congela. Aquí solo se dibujan las primeras filas y un botón "Ver más"
+// agrega otras. STATE.filtrados (búsqueda, totales, exportaciones,
+// edición) NO cambia: sigue teniendo TODOS los resultados.
+// En computadora no cambia nada.
+// ============================================================
+const PV = { tanda: 60, mostrar: 60, firma: '' };
+function esCelularPV() {
+  try { return window.matchMedia('(hover: none) and (pointer: coarse)').matches; } catch (_) { return false; }
+}
+function vistaCel(lista) {
+  const total = lista.length;
+  // La tanda vuelve a empezar solo cuando cambia la búsqueda, la pestaña, el filtro o el orden.
+  const firma = [STATE.busqueda, STATE.categoriaActiva, STATE.filtroActivo, STATE.filtroMarca, STATE.ordenActivo].join('|');
+  if (firma !== PV.firma) { PV.firma = firma; PV.mostrar = PV.tanda; }
+  let r = lista;
+  if (esCelularPV() && total > PV.mostrar) r = lista.slice(0, PV.mostrar);
+  try { actualizarVerMasPV(r.length, total); } catch (_) {}
+  return r;
+}
+function actualizarVerMasPV(visibles, total) {
+  let box = document.getElementById('pvVerMas');
+  if (!esCelularPV() || visibles >= total) { if (box) box.style.display = 'none'; return; }
+  const grid = document.getElementById('catalogoGrid');
+  const ancla = (grid && grid.style.display !== 'none') ? grid : document.getElementById('tableCardProductos');
+  if (!ancla || !ancla.parentNode) return;
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'pvVerMas';
+    box.style.cssText = 'text-align:center;padding:14px 12px';
+    box.innerHTML = '<div id="pvVerMasTxt" style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px"></div><button type="button" id="pvVerMasBtn" class="btn btn-secondary" style="min-width:160px">Ver más</button>';
+    box.querySelector('#pvVerMasBtn').addEventListener('click', () => { PV.mostrar += PV.tanda; renderTabla(); });
+  }
+  if (box.previousSibling !== ancla) ancla.parentNode.insertBefore(box, ancla.nextSibling);
+  box.style.display = '';
+  box.querySelector('#pvVerMasTxt').textContent = `Mostrando ${visibles} de ${total}`;
+}
+
 function renderTabla() {
   const tbody = $('productosTbody');
   if (!tbody) return;
@@ -1918,7 +1959,7 @@ function celdaNombreConFoto(p) {
   const nombreHtml = `<div class="td-nombre">${escHtml(p.nombre)}</div>${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}`;
   if (!STATE.empresa?.usa_inventario_imagenes) return nombreHtml;
   const foto = p.imagen_url
-    ? `<img src="${escHtml(p.imagen_url)}" class="item-foto-thumb" alt="">`
+    ? `<img src="${escHtml(p.imagen_url)}" class="item-foto-thumb" alt="" loading="lazy" decoding="async">`
     : `<div class="item-foto-placeholder">🖼️</div>`;
   return `<div style="display:flex;align-items:center;gap:8px">${foto}<div>${nombreHtml}</div></div>`;
 }
@@ -1942,7 +1983,7 @@ function renderCatalogoGrid(items, mostrarStock) {
   }
   grid.innerHTML = items.map(p => {
     const foto = p.imagen_url
-      ? `<img src="${escHtml(p.imagen_url)}" class="catalogo-card-foto" alt="">`
+      ? `<img src="${escHtml(p.imagen_url)}" class="catalogo-card-foto" alt="" loading="lazy" decoding="async">`
       : `<div class="catalogo-card-foto-placeholder">🖼️</div>`;
     const precioHtml = p.tipo_precio === 'escala'
       ? `<b>${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</b>`
@@ -2032,7 +2073,7 @@ function renderTablaServiciosDinamico(tbody, orden) {
     tbody.innerHTML = estadoVacioTabla(cols.length, 'servicios', "abrirModalNuevo('servicio')");
     return;
   }
-  tbody.innerHTML = STATE.filtrados.map(p => `<tr data-id="${p.id}">${cols.map(c => COLUMNAS_SERVICIOS_DISPONIBLES[c.clave].td(p)).join('')}</tr>`).join('');
+  tbody.innerHTML = vistaCel(STATE.filtrados).map(p => `<tr data-id="${p.id}">${cols.map(c => COLUMNAS_SERVICIOS_DISPONIBLES[c.clave].td(p)).join('')}</tr>`).join('');
   activarHoverFilas(tbody);
 }
 
@@ -2044,14 +2085,14 @@ function renderTablaProductosDinamico(tbody, orden) {
     tbody.innerHTML = estadoVacioTabla(cols.length, 'productos', "abrirModalNuevo('producto')");
     return;
   }
-  tbody.innerHTML = STATE.filtrados.map(p => `<tr data-id="${p.id}">${cols.map(c => COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave].td(p)).join('')}</tr>`).join('');
+  tbody.innerHTML = vistaCel(STATE.filtrados).map(p => `<tr data-id="${p.id}">${cols.map(c => COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave].td(p)).join('')}</tr>`).join('');
   activarHoverFilas(tbody);
 }
 
 function renderTablaProductos(tbody) {
   if (STATE.empresa?.usa_inventario_imagenes) {
     mostrarCatalogoOTabla(true);
-    renderCatalogoGrid(STATE.filtrados, true);
+    renderCatalogoGrid(vistaCel(STATE.filtrados), true);
     return;
   }
   mostrarCatalogoOTabla(false);
@@ -2078,7 +2119,7 @@ function renderTablaProductos(tbody) {
     return;
   }
 
-  tbody.innerHTML = STATE.filtrados.map(p => {
+  tbody.innerHTML = vistaCel(STATE.filtrados).map(p => {
     const stockBajo = esStockBajo(p);
     const stockHtml = `<div class="td-stock">
          <span>${fmtNum(p.stock_actual)}</span>
@@ -2140,7 +2181,7 @@ function renderTablaProductos(tbody) {
 function renderTablaServicios(tbody) {
   if (STATE.empresa?.usa_inventario_imagenes) {
     mostrarCatalogoOTabla(true);
-    renderCatalogoGrid(STATE.filtrados, false);
+    renderCatalogoGrid(vistaCel(STATE.filtrados), false);
     return;
   }
   mostrarCatalogoOTabla(false);
@@ -2161,7 +2202,7 @@ function renderTablaServicios(tbody) {
     return;
   }
 
-  tbody.innerHTML = STATE.filtrados.map(p => `
+  tbody.innerHTML = vistaCel(STATE.filtrados).map(p => `
     <tr data-id="${p.id}">
       <td>
         ${celdaNombreConFoto(p)}
@@ -2222,7 +2263,7 @@ function irAIngresarMateriaPrima() {
 function renderTablaMateriaPrima(tbody) {
   if (STATE.empresa?.usa_inventario_imagenes) {
     mostrarCatalogoOTabla(true);
-    renderCatalogoGrid(STATE.filtrados, true);
+    renderCatalogoGrid(vistaCel(STATE.filtrados), true);
     return;
   }
   mostrarCatalogoOTabla(false);
@@ -2244,7 +2285,7 @@ function renderTablaMateriaPrima(tbody) {
     return;
   }
 
-  tbody.innerHTML = STATE.filtrados.map(p => {
+  tbody.innerHTML = vistaCel(STATE.filtrados).map(p => {
     const stockBajo = esStockBajo(p);
     return `
       <tr data-id="${p.id}">
@@ -4815,7 +4856,7 @@ function renderCatalogoGridPromos(items) {
   }
   grid.innerHTML = items.map(p => {
     const foto = p.imagen_url
-      ? `<img src="${escHtml(p.imagen_url)}" class="catalogo-card-foto" alt="">`
+      ? `<img src="${escHtml(p.imagen_url)}" class="catalogo-card-foto" alt="" loading="lazy" decoding="async">`
       : `<div class="catalogo-card-foto-placeholder">🎉</div>`;
     return `
       <div class="catalogo-card" data-id="${p.id}">
