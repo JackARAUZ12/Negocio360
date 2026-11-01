@@ -1630,13 +1630,18 @@
           </div>
           <div class="form-group">
             <label>Categoría *</label>
-            <select id="mov-tipo">
+            <select id="mov-tipo" onchange="actualizarAvisoVentaCaja()">
               <option value="VENTA">Venta</option>
               <option value="COBRO">Cobro a cliente</option>
               <option value="CAPITAL_AGREGADO">Capital agregado</option>
               <option value="OTRO_INGRESO">Otro ingreso</option>
             </select>
           </div>
+        </div>
+        <div id="mov-aviso-venta" style="display:none;margin:2px 0 12px;padding:11px 13px;border-radius:10px;border:1.5px solid #e08e0b;background:rgba(224,142,11,.10);font-size:13px;line-height:1.45;color:var(--text-primary)">
+          <b>⚠️ Venta registrada desde Caja = "solamente registra dinero".</b><br>
+          Se crea una <b>venta del día</b> (sin productos, sin inventario y sin IVA) y el dinero entra a caja. Aparece en <b>Ventas</b> y en <b>Reportes</b>.<br>
+          <b>Para vender productos con inventario, hazlo en el módulo de <a href="ventas.html" style="color:var(--accent);font-weight:700">Ventas</a>.</b>
         </div>
 
         <div class="form-group">
@@ -1979,9 +1984,9 @@
   <script src="cajaAPI.js?v=20261007a"></script>
   <script src="caja-segura.js?v=20261012a"></script>
   <script src="moneda-alterna.js?v=20261021b"></script>
-  <script src="caja.js?v=20261031c"></script>
+  <script src="caja.js?v=20261101a"></script>
   <script src="exportar-modulo.js?v=20261029b"></script>
-  <script src="exportar-caja.js?v=20261031c"></script>
+  <script src="exportar-caja.js?v=20261101a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
