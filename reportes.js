@@ -127,6 +127,15 @@ function startOfMonthISO() {
 }
 function startOfYearISO() { return `${new Date().getFullYear()}-01-01`; }
 
+
+// Fecha calendario LOCAL de un timestamp (created_at viene en UTC: de noche caía en el día siguiente).
+function fechaLocalDe(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? String(ts).slice(0, 10) : ymd(d);
+}
+function enPeriodo(ts, from, to) { const f = fechaLocalDe(ts); return !!f && f >= from && f <= to; }
+
 function getDateRange() {
   const today = todayISO();
   switch (R.periodo) {
@@ -135,7 +144,12 @@ function getDateRange() {
     case 'semana': return { from: startOfWeekISO(),  to: today };
     case 'mes':    return { from: startOfMonthISO(), to: today };
     case 'anio':   return { from: startOfYearISO(),  to: today };
-    case 'mesant': { // mes calendario anterior completo
+    case 'mesant': { // mes anterior completo (si el negocio eligió un día de cierre, el período anterior COMPLETO según ese cierre)
+      const rc = window.N360PeriodoMes && N360PeriodoMes.rangoActual();
+      if (rc) {
+        const ini = new Date(rc.desde + 'T12:00:00');
+        return { from: ymd(new Date(ini.getFullYear(), ini.getMonth()-1, ini.getDate())), to: ymd(new Date(ini.getFullYear(), ini.getMonth(), ini.getDate()-1)) };
+      }
       const n = new Date(), ini = new Date(n.getFullYear(), n.getMonth()-1, 1), fin = new Date(n.getFullYear(), n.getMonth(), 0);
       return { from: ymd(ini), to: ymd(fin) };
     }
@@ -863,6 +877,18 @@ async function fetchGastos() {
    la nómina, igual que ya pasa con la tabla "gastos". Solo LEE de
    empleados_pagos — el módulo Salarios es quien crea esos registros
    (y su propio egreso en Caja); aquí no se duplica ni se modifica nada. */
+/* Pagos del módulo Comisiones (separado de Salarios). Solo lectura; si la tabla no existe o falla, no afecta nada. */
+async function fetchComisionPagos() {
+  const { from, to } = getDateRange();
+  try {
+    const { data, error } = await sb.from('comision_pagos')
+      .select('id, fecha, total, metodo_pago_nombre, beneficiario_id')
+      .eq('auth_user_id', R.userId).gte('fecha', from).lte('fecha', to).order('id').limit(5000);
+    if (error) return [];
+    return data || [];
+  } catch (e) { return []; }
+}
+
 async function fetchSalariosPagados() {
   const { from, to } = getDateRange();
   try {
@@ -870,7 +896,8 @@ async function fetchSalariosPagados() {
       .select('id, total_pagado, fecha')
       .eq('auth_user_id', R.userId).neq('estado', 'anulado')
       .gte('fecha', from).lte('fecha', to).order('id'), 'pagos de salarios');
-    return (data || []).reduce((s,p) => s+Number(p.total_pagado||0), 0);
+    const comis = (await fetchComisionPagos()).reduce((s,p) => s+Number(p.total||0), 0);
+    return (data || []).reduce((s,p) => s+Number(p.total_pagado||0), 0) + comis;
   } catch (e) {
     console.warn('fetchSalariosPagados:', e);   // leerTodo ya avisó en pantalla y marcó R.fallaLectura
     return 0;
@@ -918,7 +945,17 @@ async function fetchSalarios() {
       };
     });
 
-    R.cache.salarios = [...filasEmp, ...filasFrl].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    let filasCom = [];
+    try {
+      const pc = await fetchComisionPagos();
+      if (pc.length) {
+        const { data: bn } = await sb.from('comision_beneficiarios').select('id, nombre').eq('auth_user_id', R.userId).limit(5000);
+        const nom = {}; (bn || []).forEach(b => { nom[b.id] = b.nombre; });
+        filasCom = pc.map(p => ({ nombre: nom[p.beneficiario_id] || 'Comisionista', tipo: 'Comisión', fecha: p.fecha,
+          monto: Number(p.total || 0), metodo_pago: p.metodo_pago_nombre || 'Efectivo' }));
+      }
+    } catch (e) { filasCom = []; }
+    R.cache.salarios = [...filasEmp, ...filasFrl, ...filasCom].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   } catch (e) {
     console.warn('fetchSalarios:', e);
     R.cache.salarios = [];
@@ -1152,8 +1189,8 @@ async function loadEjecutivo() {
     const valorInventario = prods.reduce((s,p) => s+(Number(p.stock_actual||0)*Number(p.costo||0)),0);
     const stockBajo = prods.filter(esStockBajo);
 
-    const { from } = getDateRange();
-    const clientesNuevos = (clientes||[]).filter(c => c.created_at?.slice(0,10) >= from).length;
+    const { from, to } = getDateRange();
+    const clientesNuevos = (clientes||[]).filter(c => enPeriodo(c.created_at, from, to)).length;
 
     // Unidades vendidas
     const unidsVendidas = detalles.filter(d=>d.tipo_item==='producto').reduce((s,d) => s+Number(d.cantidad),0);
@@ -1891,10 +1928,10 @@ function renderInventarioTablaCompleta(activos, filtroProveedorId) {
 async function loadClientesTab() {
   try {
     const [clientes] = await Promise.all([fetchClientes()]);
-    const { from } = getDateRange();
+    const { from, to } = getDateRange();
     const hace60   = ymd(new Date(Date.now()-60*86400000));
 
-    const nuevos    = (clientes||[]).filter(c=>c.created_at?.slice(0,10)>=from).length;
+    const nuevos    = (clientes||[]).filter(c=>enPeriodo(c.created_at, from, to)).length;
     const activos   = (clientes||[]).filter(c=>c.ultima_compra && c.ultima_compra>=hace60).length;
     const frecuentes= (clientes||[]).filter(c=>Number(c.num_compras)>=5).length;
     const inactivos = (clientes||[]).filter(c=>c.ultima_compra && c.ultima_compra<hace60).length;
@@ -1962,8 +1999,8 @@ async function mapaProformasCreditos(lista) {
 async function fetchCreditosReporte() {
   const creditos = await leerTodo(() => sb.from('creditos').select('*')
     .eq('auth_user_id', R.userId)
-    .gte('fecha_inicio', R.fechaDesde || '1970-01-01')
-    .lte('fecha_inicio', R.fechaHasta || todayISO()).order('id'), 'créditos');
+    .gte('fecha_inicio', getDateRange().from)
+    .lte('fecha_inicio', getDateRange().to).order('id'), 'créditos');
 
   const lista = creditos || [];
   if (!lista.length) return [];
@@ -2021,8 +2058,8 @@ async function fetchCreditosReporte() {
 async function fetchCreditosHistorialPagos() {
   const creditos = await leerTodo(() => sb.from('creditos').select('id,numero_credito,tipo,cliente_id,num_cuotas,venta_id')
     .eq('auth_user_id', R.userId)
-    .gte('fecha_inicio', R.fechaDesde || '1970-01-01')
-    .lte('fecha_inicio', R.fechaHasta || todayISO()).order('id'), 'créditos');
+    .gte('fecha_inicio', getDateRange().from)
+    .lte('fecha_inicio', getDateRange().to).order('id'), 'créditos');
 
   const lista = creditos || [];
   if (!lista.length) { R.cache.creditosProductos = new Map(); return []; }
@@ -2450,7 +2487,7 @@ async function loadHotelTab() {
     const [reservas, habitaciones] = await Promise.all([
       leerTodo(() => sb.from('hotel_reservaciones').select('*, hotel_habitaciones(numero)')
         .eq('auth_user_id', R.userId).neq('estado', 'cancelada')
-        .gte('fecha_entrada', from).lte('fecha_entrada', to)
+        .lte('fecha_entrada', to).gt('fecha_salida', from)
         .order('fecha_entrada', { ascending: false }).order('id'), 'reservaciones'),
       leerTodo(() => sb.from('hotel_habitaciones').select('id').eq('auth_user_id', R.userId).eq('activo', true).order('id'), 'habitaciones'),
     ]);
@@ -2462,9 +2499,15 @@ async function loadHotelTab() {
     const diasPeriodo = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
     const nochesDisponibles = totalHabitaciones * diasPeriodo;
 
+    // Solo cuentan las noches que caen DENTRO del período (una estadía que cruza el límite se parte).
+    const nochesEnPeriodo = r => {
+      const ini = Math.max(Date.parse(String(r.fecha_entrada).slice(0, 10) + 'T00:00:00Z'), Date.parse(from + 'T00:00:00Z'));
+      const fin = Math.min(Date.parse(String(r.fecha_salida).slice(0, 10) + 'T00:00:00Z'), Date.parse(to + 'T00:00:00Z') + 86400000);
+      return Math.max(0, Math.round((fin - ini) / 86400000));
+    };
     let nochesVendidas = 0, ingresoHabitacion = 0;
     lista.forEach(r => {
-      const noches = Math.round((new Date(r.fecha_salida) - new Date(r.fecha_entrada)) / 86400000);
+      const noches = nochesEnPeriodo(r);
       nochesVendidas += noches;
       ingresoHabitacion += noches * Number(r.tarifa_acordada || 0);
     });
@@ -2482,7 +2525,7 @@ async function loadHotelTab() {
 
     const ESTADO_LABEL_REP = { confirmada:'Confirmada', pendiente:'Pendiente', completada:'Completada' };
     tbody.innerHTML = lista.length ? lista.map(r => {
-      const noches = Math.round((new Date(r.fecha_salida) - new Date(r.fecha_entrada)) / 86400000);
+      const noches = nochesEnPeriodo(r);
       return `<tr>
         <td>${esc(r.cliente_nombre)}</td>
         <td>Hab. ${esc(r.hotel_habitaciones?.numero || '—')}</td>
