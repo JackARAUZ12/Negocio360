@@ -828,6 +828,14 @@ function actualizarHintBancoMovimiento() {
   hint.textContent = r.convertido != null ? `Se registrará en el banco como ${simboloMoneda(r.banco.moneda)} ${r.convertido.toLocaleString('es-NI', { minimumFractionDigits: 2 })}` : '';
 }
 
+// Aviso destacado: elegir "Venta" en Caja crea una venta del día (solo dinero), no una venta con inventario.
+function actualizarAvisoVentaCaja() {
+  const aviso = document.getElementById('mov-aviso-venta');
+  if (!aviso) return;
+  const esVenta = document.getElementById('mov-flujo')?.value === 'INGRESO' && document.getElementById('mov-tipo')?.value === 'VENTA';
+  aviso.style.display = esVenta ? '' : 'none';
+}
+
 function toggleTipoMovimiento() {
   const flujo = document.getElementById('mov-flujo').value;
   const selTipo = document.getElementById('mov-tipo');
@@ -852,6 +860,7 @@ function toggleTipoMovimiento() {
 
   const list = opciones[flujo] || opciones.INGRESO;
   selTipo.innerHTML = list.map(o => `<option value="${o.v}">${o.l}</option>`).join('');
+  actualizarAvisoVentaCaja();
 }
 
 async function saveMovimiento() {
@@ -882,6 +891,16 @@ async function saveMovimiento() {
 
   try {
     setBtnLoading('btn-save-mov', true);
+
+    // Ingreso de tipo "Venta": se crea una VENTA del día de verdad (aparece en Ventas y Reportes), sin productos ni inventario.
+    // Todo en una sola operación del servidor (venta + dinero en caja, todo o nada).
+    if (flujo === 'INGRESO' && tipo === 'VENTA') {
+      await registrarVentaDesdeCaja({ concepto, monto, metodoPagoId, metodoPagoNombre, bancoId, montoMonedaBanco, observaciones, fecha });
+      closeModal('modal-movimiento');
+      showToast('Venta registrada: ya aparece en Ventas y Reportes');
+      await refrescarTrasMovimiento();
+      return;
+    }
 
     const { data: ultMov } = await sbClient
       .from('movimientos_financieros')
@@ -928,6 +947,54 @@ async function saveMovimiento() {
     showToast('Error al guardar el movimiento', 'error');
   } finally {
     setBtnLoading('btn-save-mov', false);
+  }
+}
+
+/* =====================================================
+   VENTA DESDE CAJA (venta del día, sin inventario)
+   Usa la misma operación atómica que Ventas (venta_registrar_atomica): la venta, su línea y el dinero en caja
+   se guardan juntos o no se guarda nada, y reintentar nunca la duplica. Sin productos: no toca inventario ni IVA.
+===================================================== */
+async function registrarVentaDesdeCaja(d) {
+  const uid = STATE.userId;
+  let numero = null;
+  try {
+    const { data: nv, error: eNum } = await sbClient.rpc('generar_numero_venta', { p_user_id: uid });
+    if (eNum || !nv) throw (eNum || new Error('No se pudo generar el número de venta'));
+    numero = nv;
+    const ventaPayload = {
+      auth_user_id: uid, numero_venta: numero, cliente_id: null, cliente_nombre: 'Consumidor Final',
+      fecha: d.fecha, subtotal: d.monto, descuento: 0, impuesto: 0, total: d.monto, costo_total: 0,
+      metodo_pago_id: d.metodoPagoId || null, metodo_pago_nombre: d.metodoPagoNombre,
+      estado: 'completada', categoria: 'venta_caja', iva_activo: false, iva_porcentaje: 0,
+      observaciones: ['Venta registrada desde Caja', d.observaciones].filter(Boolean).join(' · '),
+    };
+    const detalles = [{
+      auth_user_id: uid, venta_id: null, producto_id: null, producto_nombre: d.concepto, producto_sku: null,
+      tipo_item: 'servicio', cantidad: 1, precio: d.monto, costo: 0, descuento: 0, subtotal: d.monto, ganancia: d.monto,
+      vendido_sin_stock: false, es_regalia: false,
+    }];
+    const caja = [{
+      concepto: `Venta ${numero} · ${d.concepto}`, monto: d.monto, metodo_pago_id: d.metodoPagoId || null,
+      metodo_pago_nombre: d.metodoPagoNombre, banco_id: d.bancoId, monto_moneda_banco: d.montoMonedaBanco,
+      observaciones: d.observaciones || null, fecha: d.fecha,
+    }];
+    const args = { p_venta: ventaPayload, p_detalles: detalles, p_stock: [], p_caja: caja, p_cliente_total: null, p_fiado: null };
+    let ultimo = null, ok = false;
+    for (let i = 0; i < 3 && !ok; i++) {
+      if (i) await new Promise(res => setTimeout(res, i === 1 ? 800 : 1800));
+      try {
+        const { data, error } = await sbClient.rpc('venta_registrar_atomica', args);
+        if (!error && data && data.venta_id) { ok = true; break; }
+        ultimo = error || new Error('Sin respuesta del servidor');
+        if (error && error.code && !/^(08|57|53|40)/.test(error.code)) break;   // error de datos: no se reintenta
+      } catch (e) { ultimo = e; }
+    }
+    if (!ok) throw (ultimo || new Error('No se pudo registrar la venta'));
+  } catch (e) {
+    // Si falló antes de guardar, se devuelve el número para no dejar huecos (si no existe esa función, se ignora).
+    if (numero) { try { await sbClient.rpc('liberar_numero_venta', { p_user_id: uid, p_numero: numero }); } catch (_) {} }
+    throw e;
   }
 }
 
