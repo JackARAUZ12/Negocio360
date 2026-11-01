@@ -1,4 +1,4 @@
--- ⚠ PENDIENTE DE APLICAR: este archivo NO está aplicado todavía en la base (la herramienta esperó una confirmación que no llegó). No asumir que existe.
+-- APLICADA el 2026-11-01 (verificada: columnas, disparador y cuenta CR en 13%).
 -- 1) IVA POR DEFECTO SEGÚN EL PAÍS. Hasta hoy toda cuenta nacía con IVA 15% (el de Nicaragua), también las de Costa Rica (13%).
 --    Ahora, cuando una cuenta se crea o cambia a un país VERIFICADO de paises_config cuyo IVA es distinto de 15, y su IVA por defecto
 --    sigue siendo el 15 original (nadie lo tocó), se pone el del país. Nicaragua (15) no cambia. Nunca bloquea el guardado.
