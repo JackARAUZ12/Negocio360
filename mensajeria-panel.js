@@ -18,7 +18,7 @@ const TPN_SUBS = [
   { id: 'liquidar', archivo: 'mensajeria-liquidaciones.html', key: 'mensajeria_liquidaciones', icono: '🤝', nombre: 'Liquidar comercios', grupo: 'dia', desc: 'Entrega a cada comercio lo cobrado a su nombre menos tus tarifas, con su estado de cuenta para imprimir o mandar por WhatsApp.' },
   { id: 'pagos', archivo: 'mensajeria-pagos.html', key: 'mensajeria_pagos', icono: '💼', nombre: 'Pago a repartidores', grupo: 'cierre', desc: 'Lo que ganó cada repartidor por entrega o por porcentaje, descontando su deuda si tiene. Queda como gasto.' },
   { id: 'reportes', archivo: 'mensajeria-reportes.html', key: 'mensajeria_reportes', icono: '📊', nombre: 'Reportes', grupo: 'cierre', desc: 'Envíos recibidos y entregados, porcentaje a la primera, tiempo de entrega, tarifas y detalle por repartidor, zona y comercio. Exporta a Excel.' },
-  { id: 'ajustes', archivo: 'mensajeria-ajustes.html', key: 'mensajeria_ajustes', icono: '🗺️', nombre: 'Zonas, tarifas y repartidores', grupo: 'base', desc: 'Zonas con su precio, precios especiales por comercio, recargos (urgente, grande, reintento), tope de efectivo y tus repartidores.' },
+  { id: 'ajustes', archivo: 'mensajeria-ajustes.html', key: 'mensajeria_ajustes', icono: '🗺️', nombre: 'Zonas, tarifas y repartidores', grupo: 'base', desc: 'Zonas con su precio, precios especiales por comercio, recargos (urgente, grande, reintento), tope de efectivo, tus repartidores y el portal de comercios.' },
 ];
 const TPN_GRUPOS = { dia: '☀️ Día a día (el ciclo del envío)', cierre: '📅 Cada semana o quincena', base: '🧰 Lo que preparas una vez' };
 // El ciclo de cada envío, en orden.
@@ -266,6 +266,7 @@ const TPN_RECORRIDO = [
   { icono: '💵', titulo: '4. Cuadrar repartidor', texto: 'Al final del día el sistema dice cuánto efectivo debe entregar cada repartidor. Las tarifas que cobró entran a Caja como venta; lo de productos es de los comercios y queda aparte. Si falta dinero, queda como deuda del repartidor.' },
   { icono: '🤝', titulo: '5. Liquidar comercio', texto: 'Le entregas al comercio lo cobrado a su nombre menos tus tarifas. Tus tarifas entran a Ventas y Caja. Imprime o manda por WhatsApp su estado de cuenta. Cada envío se liquida una sola vez.' },
   { icono: '🔗', titulo: 'Rastreo y Excel', texto: 'Cada envío tiene un enlace para que quien espera el paquete vea en qué paso va, sin cuenta (va en el WhatsApp y en el QR de la etiqueta). Si un comercio manda muchos envíos, cárgalos desde Excel.' },
+  { icono: '🌐', titulo: 'Portal de comercios y ubicación', texto: 'Dale a cada comercio su enlace privado (en Zonas, tarifas y repartidores → Portal): desde su celular pide envíos, los sigue y ve cuánto le toca. El repartidor puede tocar "Compartir mi ubicación" y en Despacho ves dónde va en Google Maps. Todo gratis.' },
   { icono: '💼', titulo: 'Pago a repartidores', texto: 'Cada semana o quincena pagas a los repartidores que cobran por entrega o por porcentaje. Queda como gasto, y se les puede descontar su deuda.' },
 ];
 function tpnRecorrido(forzar) {
@@ -277,4 +278,9 @@ function tpnRecorrido(forzar) {
 }
 
 // Arranque: taller-base.js llama a esta función cuando la sesión y la opción de Mensajería están listas.
-window.tallerListo = function () { tpnIniciar(); };
+// En la cuenta demo, cada día aparecen envíos nuevos (en una cuenta real no hace nada).
+window.tallerListo = async function () {
+  try { const r = await sb.rpc('msj_demo_preparar'); if (r && r.data && r.data.creados > 0) TPN.demoNuevos = r.data.creados; } catch (_) {}
+  tpnIniciar();
+  if (TPN.demoNuevos && typeof showToast === 'function') showToast(`🛵 Cuenta demo: llegaron ${TPN.demoNuevos} envíos nuevos de hoy`);
+};

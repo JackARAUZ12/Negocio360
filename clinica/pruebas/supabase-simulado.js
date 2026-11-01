@@ -429,7 +429,7 @@
         const id = uuid(), numero = num('mensajeria_envios', 'ENV-');
         const rastreo_token = Array.from({ length: 40 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
         T('mensajeria_envios').push({ id, auth_user_id: UID, numero, rastreo_token, ...datos, recargo_reintentos: 0, estado: p.en_bodega ? 'en_bodega' : 'por_recoger', repartidor_id: null, intentos: 0, cobrado_cod: 0, cobrado_envio: 0, cuadre_id: null, creado_por: p.por || null, created_at: ahora });
-        evt(id, 'creado', 'Tarifa ' + t, p.por); out = { ok: true, id, numero, tarifa: t }; break; }
+        evt(id, 'creado', 'Tarifa ' + t, p.por); out = { ok: true, id, numero, tarifa: t, rastreo_token }; break; }
       case 'msj_envios_asignar': { const r = T('mensajeria_repartidores').find(x => x.id === a.p_repartidor); if (!r) return NO('repartidor'); if (!r.activo) return NO('repartidor_inactivo');
         const l = T('mensajeria_envios').filter(e => (a.p_ids || []).includes(e.id)); if (!l.length) return NO('sin_seleccion');
         const malo = l.find(e => !['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado)); if (malo) return { ok: false, motivo: 'no_asignable', numero: malo.numero };
@@ -534,6 +534,36 @@
           Object.assign(db, leerDB()); nums.push(r.numero);
         }
         return { ok: true, creados: lista.length, desde: nums[0], hasta: nums[nums.length - 1] }; }
+      // Fase 4: portal del comercio (enlace privado), ubicación del repartidor y demo.
+      case 'msj_portal_link': { if (!['obtener', 'nuevo', 'apagar'].includes(a.p_accion)) return NO('valor'); if (!T('clientes').some(c => c.id === a.p_comercio)) return NO('cliente');
+        const L = T('mensajeria_portal_links'), act = L.find(x => x.comercio_id === a.p_comercio && x.activo);
+        if (a.p_accion === 'apagar') { if (act) act.activo = false; out = { ok: true, token: null }; break; }
+        if (act && a.p_accion === 'obtener') return { ok: true, token: act.token };
+        if (act) act.activo = false;
+        const token = Array.from({ length: 40 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
+        L.push({ id: uuid(), auth_user_id: UID, comercio_id: a.p_comercio, token, activo: true, created_at: ahora }); out = { ok: true, token, nuevo: true }; break; }
+      case 'msj_portal_ver': case 'msj_portal_crear': {
+        const l = /^[0-9a-f]{40}$/.test(a.p_token || '') && T('mensajeria_portal_links').find(x => x.token === a.p_token && x.activo);
+        const cfgE = (db.configuracion_empresa || [])[0] || {}; if (!l || cfgE.usa_modulo_mensajeria !== true) return NO('invalido');
+        const c = T('clientes').find(x => x.id === l.comercio_id) || {};
+        if (nombre === 'msj_portal_crear') { const p = a.p || {};
+          if (T('mensajeria_envios').filter(e => e.comercio_id === l.comercio_id && /^Portal/.test(e.creado_por || '') && String(e.created_at).slice(0, 10) === hoy).length >= 150) return NO('limite');
+          guardarDB(db); const r = rpcMensajeria('msj_envio_guardar', { p: { ...p, id: null, comercio_id: l.comercio_id, remitente_nombre: '', en_bodega: false, por: ('Portal · ' + [c.nombre, c.apellido].filter(Boolean).join(' ')).slice(0, 120) } });
+          if (!r || !r.ok) return r; return { ok: true, numero: r.numero, tarifa: r.tarifa, rastreo_token: r.rastreo_token }; }
+        const c2 = cfg(); const esp = z => (T('mensajeria_tarifas_comercio').find(t => t.zona_id === z.id && t.comercio_id === l.comercio_id && t.activo !== false) || {}).tarifa;
+        const lq = liqLista(l.comercio_id);
+        return { ok: true, negocio: cfgE.nombre_comercial || 'Mensajería', whatsapp: cfgE.whatsapp || cfgE.telefono || null, moneda: 'NIO', logo: null, color: null, comercio: [c.nombre, c.apellido].filter(Boolean).join(' '),
+          recargo_urgente: Number(c2.recargo_urgente || 0), recargo_grande: Number(c2.recargo_grande || 0),
+          zonas: T('mensajeria_zonas').filter(z => z.activo !== false).sort((x, y) => x.nombre.localeCompare(y.nombre)).map(z => ({ id: z.id, nombre: z.nombre, tarifa: esp(z) ?? Number(z.tarifa) })),
+          envios: T('mensajeria_envios').filter(e => e.comercio_id === l.comercio_id).sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))).slice(0, 200)
+            .map(e => ({ numero: e.numero, destinatario: e.destinatario_nombre, direccion: e.direccion, zona: e.zona_nombre, estado: e.estado, monto_cobrar: e.monto_cobrar, tarifa: Number(e.tarifa) + Number(e.recargo_reintentos || 0),
+              envio_lo_paga: e.envio_lo_paga, creado_at: e.created_at, entregado_at: e.entregado_at || null, recibio: e.recibio_nombre || null, motivo: e.motivo_no_entrega || null, rastreo: e.rastreo_token, liquidado: !!e.liquidacion_id })),
+          por_liquidar: { envios: lq.length, cod: r2(lq.reduce((x, e) => x + e.cod, 0)), tarifas: r2(lq.reduce((x, e) => x + e.tarifa, 0)) },
+          liquidaciones: T('mensajeria_liquidaciones').filter(q => q.comercio_id === l.comercio_id).map(q => ({ numero: q.numero, fecha: q.created_at, envios: q.envios, cod: q.cod_total, tarifas: q.tarifas_total, neto: q.neto })) }; }
+      case 'msj_ubicacion_enviar': { if (a.p_lat == null || a.p_lng == null || Math.abs(a.p_lat) > 90 || Math.abs(a.p_lng) > 180) return NO('ubicacion');
+        const r = T('mensajeria_repartidores').find(x => x.id === a.p_repartidor && x.activo !== false); if (!r) return NO('repartidor');
+        Object.assign(r, { ubic_lat: a.p_lat, ubic_lng: a.p_lng, ubic_precision: a.p_precision ?? null, ubic_at: ahora }); out = { ok: true }; break; }
+      case 'msj_demo_preparar': return window.__DEMO_MSJ === true ? { ok: true, creados: 0 } : NO('solo_demo');
       case 'msj_rastreo': {
         const e = T('mensajeria_envios').find(x => x.rastreo_token === a.p_token && /^[0-9a-f]{40}$/.test(a.p_token || ''));
         const cfgE = (db.configuracion_empresa || [])[0] || {};

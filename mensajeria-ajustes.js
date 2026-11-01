@@ -2,7 +2,8 @@
    MENSAJERIA-AJUSTES.JS — NEGOCIO360 · Mensajería: Zonas, tarifas y repartidores
    Zonas con su precio, precios especiales por comercio, recargos
    (urgente, grande, reintento), tope de efectivo, y repartidores
-   (con su usuario del sistema para que cada uno vea solo lo suyo).
+   (con su usuario del sistema para que cada uno vea solo lo suyo),
+   y el enlace del portal para que cada comercio pida sus envíos.
    Todo cambio pasa por funciones del servidor (msj_*).
 ===================================================== */
 'use strict';
@@ -12,7 +13,7 @@ const $a = id => document.getElementById(id);
 TA.tab = function (t) {
   TA.tabActual = t;
   document.querySelectorAll('#a-tabs .ms-tab').forEach(b => { const si = b.dataset.tab === t; b.classList.toggle('activa', si); b.setAttribute('aria-selected', si ? 'true' : 'false'); });
-  ({ zonas: TA.pintarZonas, precios: TA.pintarPrecios, recargos: TA.pintarRecargos, repartidores: TA.pintarReps })[t]();
+  ({ zonas: TA.pintarZonas, precios: TA.pintarPrecios, recargos: TA.pintarRecargos, repartidores: TA.pintarReps, portal: TA.pintarPortal })[t]();
 };
 TA.recargar = async function () {
   const [z, r, c] = await Promise.all([msZonas(false), msRepartidores(false), msConfig()]);
@@ -164,13 +165,44 @@ TA.repActivar = async function (id, activo) {
   TA.recargar();
 };
 
+/* ---------- Portal de comercios (enlace privado por comercio) ---------- */
+TA.portalUrl = tok => new URL('portal-comercio.html#t=' + tok, location.href).href;
+TA.pintarPortal = async function () {
+  if (!TA.comercios.length) TA.comercios = await msComercios();
+  $a('a-cuerpo').innerHTML = `<div class="tl-muted" style="margin-bottom:10px">Dale a cada comercio su enlace privado: desde su celular pide envíos, los sigue y ve cuánto le toca en la liquidación. No necesita usuario ni contraseña. Si el enlace se comparte con quien no debe, crea uno nuevo y el anterior deja de servir.</div>
+    ${!TA.zonas.some(z => z.activo) ? '<div class="tl-aviso">Primero crea tus zonas: el comercio las elige al pedir.</div>' : !TA.comercios.length ? '<div class="tl-aviso">Aún no tienes comercios. Regístralos en Clientes o al crear un envío.</div>' : `
+    <div class="tl-bar"><select class="tl-sel" id="pt-com" onchange="TA.portalVer()" aria-label="Comercio"><option value="">Elige el comercio…</option>${TA.comercios.map(c => `<option value="${c.id}">${esc(c.completo)}</option>`).join('')}</select></div>
+    <div id="pt-caja"></div>`}`;
+};
+TA.portalVer = async function (accion) {
+  const com = $a('pt-com').value, caja = $a('pt-caja'); if (!com) { caja.innerHTML = ''; return; }
+  if (TA.ocupado) return; TA.ocupado = true;
+  const r = await msRpc('msj_portal_link', { p_comercio: com, p_accion: accion || 'obtener' }); TA.ocupado = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  const c = TA.comercios.find(x => x.id === com) || {}, tok = r.token;
+  if (!tok) { caja.innerHTML = `<div class="tl-card"><div class="tl-muted">El portal de este comercio está apagado.</div><div class="tl-acc"><button type="button" class="btn-primary" onclick="TA.portalVer('nuevo')">🌐 Crear enlace</button></div></div>`; if (accion === 'apagar') showToast('Enlace apagado: ya no sirve'); return; }
+  const url = TA.portalUrl(tok), tel = String(c.telefono || '').replace(/\D/g, '');
+  const wa = 'https://wa.me/' + (tel.length === 8 ? '505' + tel : tel) + '?text=' + encodeURIComponent(`Hola ${c.nombre || ''}, este es tu enlace para pedir y seguir tus envíos: ${url}`);
+  caja.innerHTML = `<div class="tl-card"><h3><span>${esc(c.completo || '')}</span><span class="ms-chip entregado">Activo</span></h3>
+    <input class="tl-inp" id="pt-url" readonly value="${esc(url)}" aria-label="Enlace del portal" onclick="this.select()">
+    <div class="tl-acc"><button type="button" class="btn-primary" onclick="TA.portalCopiar()">📋 Copiar</button>
+      <a class="btn-secondary" href="${esc(wa)}" target="_blank" rel="noopener">💬 Enviar por WhatsApp</a>
+      <a class="btn-secondary" href="${esc(url)}" target="_blank" rel="noopener">👁 Abrir</a>
+      <button type="button" class="btn-secondary" onclick="TA.portalNuevo()">🔄 Nuevo enlace</button>
+      <button type="button" class="btn-secondary" onclick="TA.portalApagar()">⏸ Apagar</button></div></div>`;
+  if (r.nuevo) showToast('✅ Enlace listo');
+};
+TA.portalCopiar = async function () { const u = $a('pt-url').value; try { await navigator.clipboard.writeText(u); showToast('Enlace copiado'); } catch (_) { $a('pt-url').select(); showToast('Selecciona y copia el enlace'); } };
+TA.portalNuevo = function () { if (confirm('¿Crear un enlace nuevo? El anterior deja de servir.')) TA.portalVer('nuevo'); };
+TA.portalApagar = function () { if (confirm('¿Apagar el portal de este comercio? El enlace deja de servir.')) TA.portalVer('apagar'); };
+
 window.tallerListo = async function () {
   try {
     let { data, error } = await sb.rpc('listar_perfiles_del_grupo_v2');
     if (error) ({ data, error } = await sb.rpc('listar_perfiles_del_grupo'));
     TA.usuarios = (data || []).filter(u => u.activo !== false).map(u => ({ id: u.id, nombre: u.nombre, tipo: u.tipo }));
   } catch (_) { TA.usuarios = []; }
-  try { const t = new URLSearchParams(location.search).get('tab'); if (['zonas', 'precios', 'recargos', 'repartidores'].includes(t)) TA.tabActual = t; } catch (_) {}
+  try { const t = new URLSearchParams(location.search).get('tab'); if (['zonas', 'precios', 'recargos', 'repartidores', 'portal'].includes(t)) TA.tabActual = t; } catch (_) {}
   await TA.recargar();
 };
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') document.querySelectorAll('.tl-modal.abierto').forEach(m => m.classList.remove('abierto')); });

@@ -3145,11 +3145,81 @@ async function pruebaMensajeriaFase3(browser, base) {
   }
 }
 
+async function pruebaMensajeriaFase4(browser, base) {
+  console.log('\n▶ Mensajería Fase 4: portal del comercio, ubicación del repartidor y cuenta demo');
+  for (const [ancho, alto] of [[360, 740], [1280, 900]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    const leer = p => (p || page).evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const poner = async (p, db) => { await p.evaluate(d => sessionStorage.setItem('__DB', d), JSON.stringify(db)); };
+    await page.goto(base + '/mensajeria-ajustes.html');
+    await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semillaMensajeriaDinero());
+    // 1) Ajustes → Portal: enlace privado del comercio
+    await page.goto(base + '/mensajeria-ajustes.html?tab=portal'); await page.waitForSelector('#pt-com', { timeout: 20000 });
+    await page.selectOption('#pt-com', 'cli-1'); await page.waitForSelector('#pt-url', { timeout: 8000 });
+    const url1 = await page.inputValue('#pt-url');
+    verificar(/portal-comercio\.html#t=[0-9a-f]{40}$/.test(url1) && await page.locator('#pt-caja a[href^="https://wa.me/"]').count() === 1, `${tag}: Ajustes crea el enlace del portal del comercio, con botón de WhatsApp`);
+    await sinDesborde(page, `${tag} ajustes portal`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-ajustes-portal-${ancho}.png`, fullPage: true });
+    await page.selectOption('#pt-com', ''); await page.selectOption('#pt-com', 'cli-1'); await page.waitForSelector('#pt-url');
+    verificar(await page.inputValue('#pt-url') === url1, `${tag}: al volver a abrirlo, el enlace es el mismo`);
+    await page.click('#pt-caja button:has-text("Nuevo enlace")'); await page.waitForFunction(u => document.getElementById('pt-url') && document.getElementById('pt-url').value !== u, url1, { timeout: 8000 });
+    const url = await page.inputValue('#pt-url');
+    // 2) Portal público: el enlace viejo ya no sirve; el nuevo pide un envío
+    const pub = await ctx.newPage(); pub.__errores = []; pub.on('pageerror', e => pub.__errores.push(String(e))); pub.on('dialog', d => d.accept());
+    await pub.addInitScript(d => { try { if (!sessionStorage.getItem('__DB')) sessionStorage.setItem('__DB', d); } catch (_) {} }, JSON.stringify(await leer()));
+    await pub.goto(url1); await pub.waitForFunction(() => /no sirve/.test(document.body.textContent), null, { timeout: 15000 });
+    verificar(true, `${tag}: el enlace anterior dice "Este enlace no sirve"`);
+    await pub.goto(url); await pub.reload(); await pub.waitForSelector('#p-form', { timeout: 15000 });
+    verificar((await pub.textContent('header')).includes('Cliente Existente') && (await pub.textContent('header')).includes('Envíos Rápidos'), `${tag}: el portal muestra el nombre del comercio y de la empresa de envíos`);
+    await pub.click('#p-ok');
+    verificar((await pub.textContent('#p-av')).includes('Escribe a quién'), `${tag}: sin datos, el portal pide a quién va el envío`);
+    await pub.fill('#p-des', 'Lucía Méndez'); await pub.fill('#p-tel', '88776655'); await pub.fill('#p-dir', 'Bello Horizonte, casa 12');
+    await pub.selectOption('#p-zona', 'z-1'); await pub.fill('#p-cobrar', '450'); await pub.click('[data-o="paga:destinatario"]');
+    verificar((await pub.textContent('#p-tar')).includes('80.00') && (await pub.textContent('#p-tar')).includes('530.00'), `${tag}: el portal muestra el precio del envío (80) y lo que paga quien recibe (530)`);
+    await sinDesborde(pub, `${tag} portal pedir envío`);
+    if (process.env.FOTO_MSJ) await pub.screenshot({ path: `${process.env.FOTO_MSJ}-portal-${ancho}.png`, fullPage: true });
+    await pub.click('#p-ok'); await pub.waitForSelector('.aviso.ok', { timeout: 10000 });
+    let db = await leer(pub); const nuevo = db.mensajeria_envios.find(e => e.destinatario_nombre === 'Lucía Méndez');
+    verificar(nuevo && nuevo.comercio_id === 'cli-1' && nuevo.estado === 'por_recoger' && Number(nuevo.tarifa) === 80 && Number(nuevo.monto_cobrar) === 450 && nuevo.envio_lo_paga === 'destinatario' && /^Portal · Cliente Existente/.test(nuevo.creado_por || ''),
+      `${tag}: el envío pedido desde el portal llega por recoger, a nombre del comercio, con tarifa 80, cobro 450 y marcado "Portal"`);
+    verificar((await pub.textContent('main')).includes(nuevo.numero) && await pub.locator('a[href*="wa.me/50588776655"]').count() === 1, `${tag}: después de pedir, puede mandarle a su cliente el enlace de rastreo por WhatsApp`);
+    await pub.click('text=Ver mis envíos'); await pub.waitForSelector('.env', { timeout: 8000 });
+    verificar((await pub.textContent('main')).includes('Lucía Méndez') && await pub.locator('.env a[href*="rastreo.html#t="]').count() >= 1, `${tag}: "Envíos" lista sus envíos con enlace para seguirlos`);
+    await pub.click('.tabs button:has-text("Mi cuenta")'); await pub.waitForSelector('.fila.g', { timeout: 8000 });
+    verificar(/Te entregamos|Nos debes/.test(await pub.textContent('main')), `${tag}: "Mi cuenta" muestra lo pendiente de liquidar`);
+    await sinDesborde(pub, `${tag} portal mi cuenta`);
+    verificar(pub.__errores.length === 0, `${tag} portal: sin errores (${pub.__errores.join(' | ')})`);
+    await pub.close();
+    // 3) En Envíos aparece marcado "Portal"
+    await poner(page, db); await page.goto(base + '/mensajeria-envios.html'); await page.waitForSelector('#e-lista .tl-card', { timeout: 20000 });
+    verificar(await page.locator('.tl-card', { hasText: 'Lucía Méndez' }).locator('.ms-chip.portal').count() === 1, `${tag}: en Envíos, el pedido del comercio se ve con la marca "🌐 Portal"`);
+    // 4) Repartidor comparte su ubicación (GPS del celular) y Despacho la ve en Google Maps
+    await ctx.grantPermissions(['geolocation'], { origin: base }); await ctx.setGeolocation({ latitude: 12.1364, longitude: -86.2514 });
+    await page.goto(base + '/mensajeria-repartidor.html'); await page.waitForSelector('#r-rep', { timeout: 20000 });
+    await page.selectOption('#r-rep', 'r-1'); await page.waitForSelector('#r-gps button', { timeout: 8000 });
+    await page.click('#r-gps button'); await page.waitForFunction(() => /Enviada/.test(document.getElementById('r-gps').textContent), null, { timeout: 10000 });
+    db = await leer(); const rep = db.mensajeria_repartidores.find(r => r.id === 'r-1');
+    verificar(rep && Math.abs(rep.ubic_lat - 12.1364) < 1e-6 && Math.abs(rep.ubic_lng + 86.2514) < 1e-6, `${tag}: "Compartir mi ubicación" guarda dónde va el repartidor`);
+    await sinDesborde(page, `${tag} repartidor con ubicación`);
+    await page.goto(base + '/mensajeria-despacho.html'); await page.waitForSelector('#d-reps .ms-rep', { timeout: 20000 });
+    const mapa = await page.getAttribute('#d-reps .ms-ubic', 'href');
+    verificar(/google\.com\/maps\/search\/\?api=1&query=12\.1364%2C-86\.2514/.test(mapa || '') && (await page.textContent('#d-reps')).includes('Ver en el mapa'), `${tag}: Despacho muestra "📍 Ver en el mapa" con la ubicación del repartidor`);
+    await sinDesborde(page, `${tag} despacho con ubicación`);
+    verificar(page.__errores.length === 0, `${tag} fase 4: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+  // 5) Cuenta demo: el inicio de sesión ofrece "Delivery"
+  const lg = fs.readFileSync(path.join(RAIZ, 'login.html'), 'utf8');
+  verificar(/slug: 'mensajeria'[^}]*demo-mensajeria@negocio360oficial\.com/.test(lg), 'login: la demo de Delivery aparece en la lista de demos');
+}
+
 (async () => {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
-    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); await pruebaMensajeriaDinero(browser, base); await pruebaMensajeriaFase3(browser, base); throw 'fin'; }
+    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); await pruebaMensajeriaDinero(browser, base); await pruebaMensajeriaFase3(browser, base); await pruebaMensajeriaFase4(browser, base); throw 'fin'; }
+    if (process.env.SOLO_MSJ4) { await pruebaMensajeriaFase4(browser, base); throw 'fin'; }
     if (process.env.SOLO_MSJ3) { await pruebaMensajeriaFase3(browser, base); throw 'fin'; }
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
     if (process.env.SOLO_AUD) { await pruebaAuditoria90(browser, base); throw 'fin'; }
@@ -3202,6 +3272,7 @@ async function pruebaMensajeriaFase3(browser, base) {
     await pruebaMensajeria(browser, base);
     await pruebaMensajeriaDinero(browser, base);
     await pruebaMensajeriaFase3(browser, base);
+    await pruebaMensajeriaFase4(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

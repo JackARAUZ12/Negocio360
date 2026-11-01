@@ -31,7 +31,7 @@ TD.pintarReps = function () {
     const mano = TD.mano[r.id] || 0, tope = msTope(r, TD.cfg), pasa = tope > 0 && mano > tope;
     return `<div class="ms-rep${pasa ? ' alerta' : ''}"><b>${esc(MS_VEHICULOS[r.vehiculo]?.split(' ')[0] || '🛵')} ${esc(r.nombre)}</b>
       <span>${TD.carga(r.id)} por entregar · ${TD.lista.filter(e => e.repartidor_id === r.id && e.estado === 'entregado').length} hoy</span>
-      <span>💵 En mano: <b>${fmt(mano)}</b>${tope ? ' / ' + fmt(tope) : ''}</span>${pasa ? '<span style="color:var(--danger);font-weight:800">⚠️ Pasó su tope: que venga a cuadrar</span>' : ''}</div>`;
+      <span>💵 En mano: <b>${fmt(mano)}</b>${tope ? ' / ' + fmt(tope) : ''}</span>${msUbicLink(r)}${pasa ? '<span style="color:var(--danger);font-weight:800">⚠️ Pasó su tope: que venga a cuadrar</span>' : ''}</div>`;
   }).join('') : '<div class="tl-aviso">No tienes repartidores activos. Regístralos en “Zonas, tarifas y repartidores”.</div>';
   $d('d-rep').innerHTML = '<option value="">Elige el repartidor…</option>' + act.map(r => `<option value="${r.id}">${esc(r.nombre)} (${TD.carga(r.id)} por entregar)</option>`).join('');
   const zs = [...new Set(TD.lista.map(e => e.zona_nombre).filter(Boolean))].sort();

@@ -56,7 +56,7 @@ TE.pintar = function () {
     const puedeEditar = ['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado) && !e.tarifa_venta_id && !e.liquidacion_id;
     const puedeCobrar = e.envio_lo_paga === 'comercio' && !e.tarifa_venta_id && !e.liquidacion_id && e.estado !== 'cancelado' && Number(e.tarifa) + Number(e.recargo_reintentos || 0) > 0;
     return `<div class="tl-card ms-ot${e.urgente ? ' urg' : ''}">
-      <h3><span class="ms-num">${esc(e.numero)}</span><span>${e.urgente ? '<span class="ms-chip urg">🚨 Urgente</span> ' : ''}${msChip(e.estado)}</span></h3>
+      <h3><span class="ms-num">${esc(e.numero)}</span><span>${/^Portal/.test(e.creado_por || '') ? '<span class="ms-chip portal">🌐 Portal</span> ' : ''}${e.urgente ? '<span class="ms-chip urg">🚨 Urgente</span> ' : ''}${msChip(e.estado)}</span></h3>
       <div class="ms-linea">👤 <span><b>${esc(e.destinatario_nombre)}</b>${e.destinatario_telefono ? ' · ' + esc(e.destinatario_telefono) : ''}</span></div>
       <div class="ms-linea">📍 <span>${esc(e.direccion)}${e.zona_nombre ? ' · <b>' + esc(e.zona_nombre) + '</b>' : ''}</span></div>
       <div class="ms-linea">📤 <span>${esc(e.remitente_nombre)}</span></div>

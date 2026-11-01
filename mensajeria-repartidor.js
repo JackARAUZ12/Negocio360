@@ -5,9 +5,11 @@
    entregas; si no (administración), elige el repartidor.
    Waze / Google Maps, llamar, WhatsApp, "Salir a ruta", "Entregado"
    (foto, quién recibió, cómo pagó) y "No se pudo" (motivo).
+   "Compartir mi ubicación": usa el GPS del celular (gratis) y la
+   oficina lo ve en Despacho con un enlace a Google Maps.
 ===================================================== */
 'use strict';
-const TR = { reps: [], cfg: {}, rep: null, fijo: false, lista: [], hoy: [], mano: 0, ocupado: false };
+const TR = { reps: [], cfg: {}, rep: null, fijo: false, lista: [], hoy: [], mano: 0, ocupado: false, gps: null, gpsUlt: 0, gpsEstado: '' };
 const $r = id => document.getElementById(id);
 const TR_GUARDADO = 'n360_msj_repartidor';
 
@@ -26,10 +28,35 @@ TR.pintarQuien = function () {
     ? `<select class="tl-sel" id="r-rep" aria-label="Repartidor" onchange="TR.cambiar(this.value)"><option value="">¿Quién eres? Elige el repartidor…</option>${act.map(r => `<option value="${r.id}" ${TR.rep && TR.rep.id === r.id ? 'selected' : ''}>${esc(r.nombre)}</option>`).join('')}</select>`
     : '<div class="tl-aviso">Aún no hay repartidores. Regístralos en “Zonas, tarifas y repartidores”.</div>';
 };
-TR.cambiar = function (id) { TR.rep = TR.reps.find(r => r.id === id) || null; try { localStorage.setItem(TR_GUARDADO, id || ''); } catch (_) {} TR.cargar(); };
+TR.pintarGps = function () {
+  const el = $r('r-gps'); if (!el) return;
+  if (!TR.rep || !('geolocation' in navigator)) { el.innerHTML = ''; return; }
+  const on = !!TR.gps;
+  el.innerHTML = `<button type="button" class="${on ? 'btn-primary' : 'btn-secondary'}" style="min-height:44px" aria-pressed="${on}" onclick="TR.gpsCambiar()">📍 ${on ? 'Compartiendo mi ubicación' : 'Compartir mi ubicación'}</button>
+    <span class="tl-muted" style="font-size:13px">${esc(TR.gpsEstado || (on ? 'Buscando señal…' : 'La oficina ve dónde vas. Solo mientras esta pantalla esté abierta.'))}</span>`;
+};
+TR.gpsCambiar = function () {
+  if (TR.gps) { navigator.geolocation.clearWatch(TR.gps); TR.gps = null; TR.gpsEstado = 'Ubicación apagada.'; TR.pintarGps(); return; }
+  TR.gpsEstado = 'Buscando señal…'; TR.gpsUlt = 0;
+  TR.gps = navigator.geolocation.watchPosition(TR.gpsLlego, err => {
+    TR.gpsEstado = err && err.code === 1 ? 'Permite la ubicación en tu celular para compartirla.' : 'No se pudo leer el GPS. Intenta al aire libre.';
+    if (err && err.code === 1 && TR.gps) { navigator.geolocation.clearWatch(TR.gps); TR.gps = null; }
+    TR.pintarGps();
+  }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 30000 });
+  TR.pintarGps();
+};
+TR.gpsLlego = async function (p) {
+  if (!TR.rep || Date.now() - TR.gpsUlt < 120000) return; // cada 2 minutos basta
+  TR.gpsUlt = Date.now();
+  const r = await msRpc('msj_ubicacion_enviar', { p_repartidor: TR.rep.id, p_lat: p.coords.latitude, p_lng: p.coords.longitude, p_precision: Math.round(p.coords.accuracy || 0) });
+  TR.gpsEstado = r.ok ? `✅ Enviada a las ${new Date().toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}` : 'No se pudo enviar. Se reintenta solo.';
+  if (!r.ok) TR.gpsUlt = 0;
+  TR.pintarGps();
+};
+TR.cambiar = function (id) { TR.rep = TR.reps.find(r => r.id === id) || null; TR.gpsUlt = 0; try { localStorage.setItem(TR_GUARDADO, id || ''); } catch (_) {} TR.cargar(); };
 
 TR.cargar = async function () {
-  TR.pintarQuien();
+  TR.pintarQuien(); TR.pintarGps();
   if (!TR.rep) { $r('r-lista').innerHTML = '<div class="tl-vacio">Elige el repartidor para ver sus entregas.</div>'; $r('r-resumen').innerHTML = ''; $r('r-salir').innerHTML = ''; $r('r-hoy').innerHTML = ''; $r('r-hoy-n').textContent = ''; return; }
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const [pend, ent, mano] = await Promise.all([

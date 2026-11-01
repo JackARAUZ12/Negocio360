@@ -98,6 +98,15 @@ async function msZonas(soloActivas) {
   if (soloActivas) q = q.eq('activo', true);
   const { data } = await q; return data || [];
 }
+// Ubicación del repartidor (GPS del celular, gratis): "hace X min" y enlace a Google Maps.
+function msHace(d) {
+  if (!d) return ''; const m = Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / 60000));
+  return m < 1 ? 'ahora' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.floor(m / 60)} h` : `hace ${Math.floor(m / 1440)} d`;
+}
+function msUbicLink(r) {
+  if (!r || r.ubic_lat == null || r.ubic_lng == null) return '';
+  return `<a class="ms-ubic" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.ubic_lat + ',' + r.ubic_lng)}" target="_blank" rel="noopener">📍 ${esc(msHace(r.ubic_at))} · Ver en el mapa</a>`;
+}
 async function msRepartidores(soloActivos) {
   let q = sb.from('mensajeria_repartidores').select('*').eq('auth_user_id', TL.userId).order('nombre');
   if (soloActivos) q = q.eq('activo', true);
