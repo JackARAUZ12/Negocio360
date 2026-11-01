@@ -2845,7 +2845,8 @@
     return (texto.trim() || 'cero') + ' córdobas';
   }
 
-  async function enriquecerItemsConCombo(items) {
+  async function enriquecerItemsConCombo(items) { const r = await _enriquecerItemsConComboBase(items); return (window.N360CR && window.N360CR.conCabys) ? window.N360CR.conCabys(r) : r; }
+  async function _enriquecerItemsConComboBase(items) {
     const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
     if (!combosIds.length) return items;
     try {

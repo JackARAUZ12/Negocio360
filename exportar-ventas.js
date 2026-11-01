@@ -173,12 +173,12 @@
         var ids = filas.filter(function (r) { return !r.esDev; }).map(function (r) { return r.id; });
         var idsOk = {}; filas.forEach(function (r) { idsOk[r.id] = r; });
         var dets = ids.length ? await E.leerPorIds(ids, function (parte) {
-          return ctx.sb.from('venta_detalles').select('id,venta_id,producto_nombre,producto_sku,cantidad,precio,descuento,subtotal,ganancia,es_regalia,presentacion_nombre')
+          return ctx.sb.from('venta_detalles').select('id,venta_id,producto_nombre,producto_sku,cabys,cantidad,precio,descuento,subtotal,ganancia,es_regalia,presentacion_nombre')
             .eq('auth_user_id', ctx.userId).in('venta_id', parte);
         }, 'productos vendidos') : [];
         var lineas = dets.map(function (x) {
           var vr = idsOk[x.venta_id] || {};
-          return { cliente: vr.cliente || '', fecha: vr.fecha || '', numero: vr.numero || '', producto: (x.producto_nombre || '—') + (x.presentacion_nombre ? ' (' + x.presentacion_nombre + ')' : ''), sku: x.producto_sku || '',
+          return { cliente: vr.cliente || '', fecha: vr.fecha || '', numero: vr.numero || '', producto: (x.producto_nombre || '—') + (x.presentacion_nombre ? ' (' + x.presentacion_nombre + ')' : ''), sku: x.producto_sku || '', cabys: x.cabys || '',
             cantidad: E.num(x.cantidad), precio: E.r2(E.cv(x.precio)), descuento: E.r2(E.cv(x.descuento || 0)), subtotal: E.r2(E.cv(x.subtotal)), ganancia: E.r2(E.cv(x.ganancia || 0)), regalia: x.es_regalia ? 'Sí' : '' };
         }).sort(function (a, b) { return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : (a.numero < b.numero ? 1 : -1); });
         var mp = {};
@@ -190,6 +190,7 @@
         hojas.push({ nombre: 'Líneas de productos', titulo: 'Líneas de productos vendidos', pdf: false, tablas: [{
           etiquetaTotal: 'TOTAL', sumar: ['cantidad', 'subtotal', 'ganancia'], filas: lineas,
           columnas: [{ k: 'fecha', t: 'Fecha', w: 12, fecha: true }, { k: 'numero', t: 'No. venta', w: 18 }, { k: 'cliente', t: 'Cliente', w: 28 }, { k: 'producto', t: 'Producto', w: 38 }, { k: 'sku', t: 'SKU', w: 14 },
+            ...((window.N360CR && window.N360CR.activo && window.N360CR.activo()) ? [{ k: 'cabys', t: 'CAByS', w: 16 }] : []),
             { k: 'cantidad', t: 'Cantidad', w: 11, num: true, cant: true }, { k: 'precio', t: 'Precio', w: 14, num: true, din: true }, { k: 'descuento', t: 'Descuento', w: 13, num: true, din: true },
             { k: 'subtotal', t: 'Importe', w: 15, num: true, din: true }, { k: 'ganancia', t: 'Ganancia', w: 15, num: true, din: true }, { k: 'regalia', t: 'Regalía', w: 9 }] }] });
         notas.push('El importe de las líneas es antes de descuento general e IVA de la venta, por eso puede diferir de la venta neta.');

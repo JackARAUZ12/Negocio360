@@ -189,7 +189,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   // Costa Rica (solo cuentas CR/CRC): el CAByS de cada línea sale bajo la descripción. Se usa el guardado en la línea;
   // si es una venta anterior sin ese dato, se completa con el del producto. Sin CAByS no se muestra nada.
   const crCabys = !!(window.N360CR && window.N360CR.activo && window.N360CR.activo());
-  if (crCabys && Array.isArray(items) && items.some(it => !it.cabys && it.producto_id)) {
+  if (crCabys && Array.isArray(items) && items.some(it => !it.cabys && it.producto_id && !/CAByS:/.test(it.nombre || ''))) {
     try {
       const ids = [...new Set(items.filter(it => !it.cabys && it.producto_id).map(it => it.producto_id))];
       const sbc = await _cc_clienteSupabase();
@@ -325,7 +325,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   encabezado.push('Subtotal');
 
   const filas = (items||[]).map(it => {
-    const fila = [(it.nombre || 'Ítem') + (crCabys && it.cabys ? '\nCAByS: ' + it.cabys : '')];
+    const fila = [(it.nombre || 'Ítem') + (crCabys && it.cabys && !/CAByS:/.test(it.nombre || '') ? '\nCAByS: ' + it.cabys : '')];
     if (colSku) fila.push(it.sku || '—');
     if (colBarras) fila.push(it.codigo_barras || '—');
     fila.push(

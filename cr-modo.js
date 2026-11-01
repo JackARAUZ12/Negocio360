@@ -223,7 +223,36 @@
       if (r && r.data) guardar(uid, r.data.pais, r.data.moneda);
     } catch (_) { /* sin red: se queda lo guardado */ }
   }
-  window.N360CR = { activo: activo, refrescar: refrescar, guardar: guardar, arreglar: arreglar, arreglarPlano: arreglarPlano, arreglarHtml: arreglarHtml };
+  // ---------- CAByS en las líneas de los comprobantes (solo cuentas CR/CRC) ----------
+  // Devuelve las líneas con el CAByS: el guardado en la línea, o (ventas anteriores / proformas) el del producto.
+  // Lo agrega al nombre como una línea más ("CAByS: 1234567890123"), igual que el detalle de los combos, para que
+  // salga en CUALQUIER ticket o comprobante que ya sepa imprimir ese detalle. Si no hay CAByS, no cambia nada.
+  async function conCabys(items) {
+    try {
+      if (!activo() || !Array.isArray(items) || !items.length) return items;
+      var yaTiene = function (it) { return /CAByS:/.test(String((it && (it.nombre || it.producto_nombre)) || '')); };
+      var idDe = function (it) { return it && (it.producto_id || it.id); };
+      var faltan = items.filter(function (it) { return it && !it.cabys && idDe(it) && !yaTiene(it); });
+      var mapa = {};
+      if (faltan.length && window.supabase) {
+        var cli = window.__n360PeriodoCli || (window.__n360PeriodoCli = window.supabase.createClient(URL_SB, KEY_SB));
+        var ids = []; faltan.forEach(function (it) { if (ids.indexOf(idDe(it)) < 0) ids.push(idDe(it)); });
+        var r = await cli.from('productos').select('id, cabys').in('id', ids);
+        ((r && r.data) || []).forEach(function (p) { if (p.cabys) mapa[p.id] = p.cabys; });
+      }
+      return items.map(function (it) {
+        if (!it || yaTiene(it)) return it;
+        var c = it.cabys || mapa[idDe(it)];
+        if (!c) return it;
+        var o = Object.assign({}, it, { cabys: c }), suf = '\nCAByS: ' + c;
+        if (it.nombre) o.nombre = it.nombre + suf;
+        if (it.producto_nombre) o.producto_nombre = it.producto_nombre + suf;
+        return o;
+      });
+    } catch (_) { return items; }
+  }
+
+  window.N360CR = { activo: activo, refrescar: refrescar, guardar: guardar, arreglar: arreglar, arreglarPlano: arreglarPlano, arreglarHtml: arreglarHtml, conCabys: conCabys };
   window.N360CR.listo = refrescar().then(function () { if (document.readyState !== 'loading') arrancar(); });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arrancar); else arrancar();
 })();

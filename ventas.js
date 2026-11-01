@@ -972,7 +972,7 @@ async function abrirDetalle(ventaId) {
             <tbody>
               ${(items||[]).map(it => `
               <tr>
-                <td style="font-weight:500">${esc(it.producto_nombre)}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
+                <td style="font-weight:500">${esc(it.producto_nombre)}${it.cabys && window.N360CR && window.N360CR.activo && window.N360CR.activo() ? `<div style="font-size:11px;color:var(--text-muted);font-weight:400">CAByS: ${esc(it.cabys)}</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
                 <td><span class="tipo-item-badge ${it.tipo_item==='producto'?'badge-prod':'badge-serv'}">${it.tipo_item}</span></td>
                 <td>${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:3})}</td>
                 <td>${fmt(it.precio)}</td>
@@ -5471,7 +5471,6 @@ function dibujarRecibo(doc, venta, items) {
     doc.setTextColor(0, 0, 0);
     doc.text(`${cant} x ${fmt(precioTicket(it))}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, M, y);
     linea(4.6);
-    if (it.cabys && window.N360CR && window.N360CR.activo && window.N360CR.activo()) { doc.setFontSize(7); doc.text('CAByS: ' + it.cabys, M, y); linea(3.8); }
   });
 
   linea(1);
@@ -5570,7 +5569,8 @@ function entregarPDFRecibo(doc, nombreArchivo, descargarAutomatico) {
 // nombre la lista de productos que incluye (solo texto, no toca
 // precios ni cálculos). comprobante-carta.js no necesita ningún
 // cambio porque simplemente imprime el nombre tal cual llega.
-async function enriquecerItemsConCombo(items) {
+async function enriquecerItemsConCombo(items) { const r = await _enriquecerItemsConComboBase(items); return (window.N360CR && window.N360CR.conCabys) ? window.N360CR.conCabys(r) : r; }
+async function _enriquecerItemsConComboBase(items) {
   const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
   if (!combosIds.length) return items;
   try {
@@ -5602,18 +5602,6 @@ async function enriquecerItemsConCombo(items) {
 // pestaña con el PDF (antes se abría igual para imprimir). El ticket impreso
 // sigue saliendo por su propia vía, como siempre. El botón "Descargar recibo"
 // del detalle (opciones.manual) siempre descarga, porque lo pide la persona.
-// Costa Rica (solo CR/CRC): completa el CAByS de las líneas que aún no lo traen, tomándolo del producto.
-async function crCompletarCabysItems(items) {
-  try {
-    if (!(window.N360CR && window.N360CR.activo && window.N360CR.activo()) || !Array.isArray(items)) return items;
-    const ids = [...new Set(items.filter(it => !it.cabys && (it.producto_id || it.id)).map(it => it.producto_id || it.id))];
-    if (!ids.length) return items;
-    const { data } = await sb.from('productos').select('id,cabys').eq('auth_user_id', S.userId).in('id', ids);
-    const m = {}; (data || []).forEach(p => { if (p.cabys) m[p.id] = p.cabys; });
-    return items.map(it => it.cabys || !m[it.producto_id || it.id] ? it : { ...it, cabys: m[it.producto_id || it.id] });
-  } catch (_) { return items; }
-}
-
 async function descargarReciboDeVenta(venta, items, opciones = {}) {
   // En el cobro de la Clínica el recibo no se descarga solo: la Clínica ofrece ticket, PDF y WhatsApp.
   if (opciones.manual !== true && S._motorClinica === true) return;
@@ -5622,7 +5610,6 @@ async function descargarReciboDeVenta(venta, items, opciones = {}) {
     const cfg = VR.config || {};
     if (opciones.manual !== true && cfg.descargar_pdf_automatico === false) return;
     items = await enriquecerItemsConCombo(items);
-    items = await crCompletarCabysItems(items);
     const descargarAutomatico = true;
     if (cfg.ancho_ticket === 'carta') {
       const doc = await generarComprobanteCartaPDF('venta', {
