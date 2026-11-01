@@ -2815,12 +2815,12 @@ async function pruebaMensajeria(browser, base) {
     await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semillaMensajeria());
     await page.goto(base + '/mensajeria.html');
     await page.waitForSelector('#tln-tabs .tln-tab', { timeout: 20000 });
-    verificar(await page.locator('#tln-tabs .tln-tab').count() === 5, `${tag}: el Panel de Mensajería tiene sus 5 partes en la barra`);
-    await page.waitForFunction(() => /Paso 4/.test(document.getElementById('tln-ciclo').textContent), null, { timeout: 10000 });
+    verificar(await page.locator('#tln-tabs .tln-tab').count() === 7, `${tag}: el Panel de Mensajería tiene sus 7 partes en la barra`);
+    await page.waitForFunction(() => /Paso 5/.test(document.getElementById('tln-ciclo').textContent), null, { timeout: 10000 });
     const ciclo = await page.textContent('#tln-ciclo');
-    verificar(['Recibir envío', 'Despachar', 'Entregar', 'Cuadrar repartidor'].every(t => ciclo.includes(t)), `${tag}: el ciclo del envío en orden (recibir, despachar, entregar, cuadrar)`);
+    verificar(['Recibir envío', 'Despachar', 'Entregar', 'Cuadrar repartidor', 'Liquidar comercio'].every(t => ciclo.includes(t)), `${tag}: el ciclo del envío en orden (recibir, despachar, entregar, cuadrar, liquidar)`);
     verificar((await page.textContent('#tln-preparar-estado')).includes('0 de 2'), `${tag}: "Prepara tu empresa" pide zonas y repartidores`);
-    verificar((await page.textContent('#tln-inicio-vista')).includes('no mueve Caja'), `${tag}: el panel explica que el cuadre por ahora no mueve Caja`);
+    verificar((await page.textContent('#tln-inicio-vista')).includes('dinero del comercio'), `${tag}: el panel explica qué es tuyo (tarifa) y qué es del comercio`);
     await sinDesborde(page, `${tag} panel de Mensajería`);
     if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-panel-${ancho}.png`, fullPage: true });
     await page.click('#tln-tabs [data-sub="envios"]');
@@ -2948,7 +2948,9 @@ async function pruebaMensajeria(browser, base) {
     db = await db0();
     const q = db.mensajeria_cuadres[0];
     verificar(q && Number(q.esperado) === 600 && Number(q.diferencia) === -50 && db.mensajeria_envios.find(e => e.numero === 'ENV-000001').cuadre_id === q.id, `${tag}: cuadre CQ-000001: debía 600, entregó 550, faltan 50 y la entrega quedó cuadrada`);
-    const r2 = await page.evaluate(id => window.supabase.createClient().rpc('msj_cuadre_registrar', { p_repartidor: id, p_envio_ids: [], p_entregado: 0 }), rep.id);
+    verificar((await page.textContent('#cq-listo')).includes('V-00001') && (await page.textContent('#cq-listo')).includes('por liquidar'), `${tag}: al cuadrar se registra la venta de la tarifa (100) y queda el dinero del comercio por liquidar (500)`);
+    await page.click('#cq-listo [data-cerrar]');
+    const r2 = await page.evaluate(id => window.supabase.createClient().rpc('msj_cuadre_cerrar', { p: { repartidor_id: id, envio_ids: [], entregado: 0 } }), rep.id);
     verificar(r2.data && r2.data.ok === false && r2.data.motivo === 'nada_por_cuadrar', `${tag}: una entrega no se cuadra dos veces`);
     await page.click('text=➕ Registrar abono'); await page.fill('#ab-monto', '80'); await page.click('#ab-ok');
     verificar((await page.textContent('#ab-av')).includes('no puede ser mayor'), `${tag}: el abono no puede pasar de lo que debe`);
@@ -2956,7 +2958,8 @@ async function pruebaMensajeria(browser, base) {
     await page.waitForFunction(() => document.querySelectorAll('#c-hist tbody tr').length === 2, null, { timeout: 8000 });
     db = await db0();
     verificar(db.mensajeria_cuadres.reduce((x, c) => x + Number(c.diferencia), 0) === 0 && !(await page.locator('text=➕ Registrar abono').count()), `${tag}: con el abono de 50 la deuda queda en cero`);
-    verificar(!(db.ventas || []).length && !(db.movimientos_financieros || []).length, `${tag}: nada de esto tocó Ventas ni Caja`);
+    const movs = db.movimientos_financieros || [], neto = movs.reduce((x, m) => x + (m.tipo_flujo === 'INGRESO' ? 1 : -1) * Number(m.monto), 0);
+    verificar((db.ventas || []).length === 1 && Number(db.ventas[0].total) === 100 && neto === 100, `${tag}: Ventas tiene solo la tarifa (100) y Caja cuadra: +100 venta − 50 faltante + 50 abono = ${neto}`);
     verificar(page.__errores.length === 0, `${tag} cuadre: sin errores (${page.__errores.join(' | ')})`);
     await ctx.close();
   }
@@ -2977,11 +2980,108 @@ async function pruebaMensajeria(browser, base) {
   await ctx.close();
 }
 
+// Mensajería Fase 2: el dinero (cobrar envío, cuadre con venta, liquidar al comercio y pagar al repartidor).
+function semillaMensajeriaDinero() {
+  const db = semillaMensajeria(); const ahora = new Date().toISOString();
+  db.bancos = [{ id: 'bco-1', auth_user_id: UID, nombre: 'BAC', activo: true, moneda: 'NIO' }];
+  db.mensajeria_config = [{ auth_user_id: UID, recargo_urgente: 0, recargo_grande: 0, recargo_reintento: 0, tope_efectivo: 0, iva_incluido: false, iva_porcentaje: 15, cobrar_devueltos: true }];
+  db.mensajeria_zonas = [{ id: 'z-1', auth_user_id: UID, nombre: 'Centro', tarifa: 80, activo: true }];
+  db.mensajeria_repartidores = [{ id: 'r-1', auth_user_id: UID, nombre: 'Pedro Ruiz', activo: true, tipo: 'independiente', vehiculo: 'moto', pago_tipo: 'por_entrega', pago_valor: 30 }];
+  const base = { auth_user_id: UID, zona_id: 'z-1', zona_nombre: 'Centro', paquetes: 1, tamano: 'pequeno', urgente: false, tarifa: 80, recargo_reintentos: 0, intentos: 1, cuadre_id: null, liquidacion_id: null, tarifa_venta_id: null, pago_id: null, created_at: ahora };
+  db.mensajeria_envios = [
+    { ...base, id: 'm-a', numero: 'ENV-000001', comercio_id: 'cli-1', remitente_nombre: 'Cliente Existente', destinatario_nombre: 'Ana', direccion: 'Calle 1', monto_cobrar: 500, envio_lo_paga: 'destinatario', estado: 'entregado', repartidor_id: 'r-1', metodo_cobro: 'efectivo', cobrado_cod: 500, cobrado_envio: 80, recibio_nombre: 'Ana', entregado_at: ahora },
+    { ...base, id: 'm-b', numero: 'ENV-000002', comercio_id: 'cli-1', remitente_nombre: 'Cliente Existente', destinatario_nombre: 'Beto', direccion: 'Calle 2', monto_cobrar: 300, envio_lo_paga: 'comercio', estado: 'entregado', repartidor_id: 'r-1', metodo_cobro: 'transferencia', cobrado_cod: 300, cobrado_envio: 0, recibio_nombre: 'Beto', entregado_at: ahora },
+    { ...base, id: 'm-c', numero: 'ENV-000003', comercio_id: 'cli-1', remitente_nombre: 'Cliente Existente', destinatario_nombre: 'Carla', direccion: 'Calle 3', monto_cobrar: 0, envio_lo_paga: 'comercio', estado: 'devuelto', repartidor_id: null, cobrado_cod: 0, cobrado_envio: 0, motivo_no_entrega: 'Dirección incorrecta' },
+    { ...base, id: 'm-d', numero: 'ENV-000004', comercio_id: null, remitente_nombre: 'Rosa Particular', destinatario_nombre: 'Dora', direccion: 'Calle 4', monto_cobrar: 0, envio_lo_paga: 'comercio', estado: 'por_recoger', repartidor_id: null, cobrado_cod: 0, cobrado_envio: 0, intentos: 0 },
+  ];
+  db.ventas = []; db.venta_detalles = []; db.movimientos_financieros = []; db.gastos = []; db.movimientos_impuestos = [];
+  return db;
+}
+async function pruebaMensajeriaDinero(browser, base) {
+  console.log('\n▶ Mensajería Fase 2: cobrar envío, cuadre con venta, liquidar comercio y pagar repartidor');
+  for (const [ancho, alto] of [[360, 740], [1280, 900]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    const leer = () => page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    await page.goto(base + '/mensajeria-envios.html');
+    await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semillaMensajeriaDinero());
+    await page.goto(base + '/mensajeria-envios.html'); await page.waitForSelector('#e-lista .tl-card', { timeout: 20000 });
+    // 1) Cobrar envío por adelantado (paga quien lo deja): venta normal, una sola vez
+    const tarjD = page.locator('.tl-card', { hasText: 'ENV-000004' });
+    await tarjD.locator('text=💳 Cobrar envío').click(); await page.waitForSelector('#e-cobrar.abierto');
+    await page.click('#e-cobrar [data-m="transferencia"]'); await page.click('#e-cob-ok');
+    verificar((await page.textContent('#e-cob-av')).includes('banco'), `${tag}: por transferencia pide el banco`);
+    await page.selectOption('#e-cobrar [data-banco]', 'bco-1'); await page.click('#e-cob-ok');
+    await page.waitForFunction(() => !document.querySelector('#e-cobrar.abierto'), null, { timeout: 8000 });
+    await page.waitForFunction(() => /cobrada/.test([...document.querySelectorAll('#e-lista .tl-card')].find(c => /ENV-000004/.test(c.textContent))?.textContent || ''), null, { timeout: 8000 });
+    const tD = await page.locator('.tl-card', { hasText: 'ENV-000004' }).textContent();
+    verificar(!tD.includes('Cobrar envío') && !tD.includes('Cancelar') && !tD.includes('Editar'), `${tag}: ya cobrado: no se vuelve a cobrar, ni se cancela, ni se edita`);
+    let db = await leer();
+    verificar(db.ventas.length === 1 && Number(db.ventas[0].total) === 80 && db.movimientos_financieros.some(m => m.banco_id === 'bco-1' && Number(m.monto) === 80), `${tag}: el envío cobrado es una venta de 80 que entró al banco`);
+    // Contra entrega sin comercio registrado: no se deja
+    await page.click('#e-nuevo'); await page.fill('#f-rem', 'Persona'); await page.fill('#f-des', 'Eva'); await page.fill('#f-dir', 'Calle 9'); await page.fill('#f-cobrar', '200'); await page.click('#e-guardar');
+    verificar((await page.textContent('#e-aviso')).includes('registrado como comercio'), `${tag}: cobrar contra entrega pide que quien envía sea comercio registrado`);
+    await page.click('#e-modal .tl-x');
+    // 2) Cuadre: la tarifa que pagó quien recibió se vende; lo de productos queda por liquidar
+    await page.goto(base + '/mensajeria-cuadre.html'); await page.waitForSelector('text=💵 Cuadrar', { timeout: 20000 });
+    await page.click('text=💵 Cuadrar');
+    const cq = await page.textContent('#cq-modal');
+    verificar(cq.includes('entra a Caja como venta') && cq.includes('queda por liquidar') && cq.includes('580'), `${tag}: el cuadre separa lo tuyo (80, a Caja) de lo del comercio (500): debe entregar 580`);
+    await page.fill('#cq-ent', '580'); await sinDesborde(page, `${tag} cuadre fase 2`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-cuadre2-${ancho}.png` });
+    await page.click('#cq-ok'); await page.waitForSelector('#cq-listo.abierto', { timeout: 10000 });
+    verificar((await page.textContent('#cq-listo')).includes('Cuadró exacto'), `${tag}: cuadró exacto y muestra la venta registrada`);
+    await page.click('#cq-listo [data-cerrar]');
+    // 3) Liquidar al comercio: su dinero menos tus tarifas; tus tarifas son venta al comercio
+    await page.goto(base + '/mensajeria-liquidaciones.html'); await page.waitForSelector('#q-lista button', { timeout: 20000 });
+    const tarjeta = await page.textContent('#q-lista');
+    verificar(tarjeta.includes('800') && tarjeta.includes('160') && tarjeta.includes('Le pagas') && tarjeta.includes('640'), `${tag}: el comercio: cobrado 800, tus tarifas 160 (incluye el devuelto), le pagas 640`);
+    await sinDesborde(page, `${tag} liquidaciones`);
+    await page.click('#q-lista button:has-text("Liquidar")'); await page.waitForSelector('#q-modal .tl-tabla', { timeout: 10000 });
+    verificar(await page.locator('#q-modal .tl-tabla tbody tr').count() === 3, `${tag}: la liquidación trae los 3 envíos (2 entregados cuadrados y 1 devuelto)`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-liquidar-${ancho}.png` });
+    await page.click('#q-ok'); await page.waitForSelector('#q-listo.abierto', { timeout: 10000 });
+    const [popup] = await Promise.all([page.waitForEvent('popup', { timeout: 8000 }), page.click('#q-listo >> text=🖨️ Estado de cuenta')]);
+    await popup.waitForLoadState(); const hoja = await popup.textContent('body');
+    verificar(hoja.includes('LQ-000001') && hoja.includes('Le entregamos') && hoja.includes('640') && hoja.includes('ENV-000003'), `${tag}: estado de cuenta para imprimir con el detalle y el neto`);
+    await popup.close(); await page.click('#q-listo [data-cerrar]');
+    db = await leer();
+    const vLiq = db.ventas.find(v => /Liquidación/.test(v.observaciones || ''));
+    verificar(vLiq && Number(vLiq.total) === 160 && vLiq.cliente_id === 'cli-1' && db.mensajeria_envios.filter(e => e.comercio_id === 'cli-1').every(e => e.liquidacion_id), `${tag}: tus tarifas (160) quedaron como venta al comercio y sus envíos quedaron liquidados`);
+    await page.waitForFunction(() => !document.querySelector('#q-lista button'), null, { timeout: 8000 });
+    verificar(true, `${tag}: después de liquidar ya no hay nada pendiente con ese comercio`);
+    // 4) Pagar al repartidor: gasto normal
+    await page.goto(base + '/mensajeria-pagos.html'); await page.waitForSelector('#p-lista button', { timeout: 20000 });
+    verificar((await page.textContent('#p-lista')).includes('60'), `${tag}: Pedro ganó 60 (2 entregas × 30)`);
+    await page.click('#p-lista button:has-text("Pagar")'); await page.waitForSelector('#p-modal.abierto'); await sinDesborde(page, `${tag} pago a repartidor`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-pago-${ancho}.png` });
+    await page.click('#p-ok'); await page.waitForFunction(() => !document.querySelector('#p-modal.abierto'), null, { timeout: 8000 });
+    db = await leer();
+    const g = db.gastos.find(x => x.origen_tipo === 'mensajeria_pago');
+    verificar(g && Number(g.monto) === 60 && g.categoria === 'Pago a repartidores' && db.movimientos_financieros.some(m => m.tipo_movimiento === 'GASTO' && Number(m.monto) === 60), `${tag}: el pago quedó como gasto de 60 en Gastos y Caja`);
+    // 5) Todo cuadra: ventas = 80 + 80 + 160; Caja efectivo = +80 +160 −60; banco = +80
+    const totVentas = db.ventas.reduce((x, v) => x + Number(v.total), 0), det = db.venta_detalles.reduce((x, d) => x + Number(d.subtotal), 0);
+    const ef = db.movimientos_financieros.filter(m => !m.banco_id).reduce((x, m) => x + (m.tipo_flujo === 'INGRESO' ? 1 : -1) * Number(m.monto), 0);
+    const bco = db.movimientos_financieros.filter(m => m.banco_id).reduce((x, m) => x + (m.tipo_flujo === 'INGRESO' ? 1 : -1) * Number(m.monto), 0);
+    verificar(totVentas === 320 && det === 320 && ef === 180 && bco === 80, `${tag}: todo cuadra: ventas ${totVentas} = detalle ${det}; Caja efectivo ${ef} (80+160−60); banco ${bco}; los 800 de los comercios nunca entraron como ganancia`);
+    // 6) Ajustes: forma de pago del repartidor e IVA
+    await page.goto(base + '/mensajeria-ajustes.html?tab=repartidores'); await page.waitForSelector('text=✏️ Editar', { timeout: 20000 });
+    await page.click('text=✏️ Editar'); await page.selectOption('#rp-ptipo', 'porcentaje'); await page.fill('#rp-pval', '150'); await page.click('#rp-ok');
+    verificar((await page.textContent('#rp-av')).includes('de 1 a 100'), `${tag}: el porcentaje de pago no pasa de 100`);
+    await page.fill('#rp-pval', '25'); await page.click('#rp-ok'); await page.waitForFunction(() => /25%/.test(document.getElementById('a-cuerpo').textContent), null, { timeout: 8000 });
+    await page.click('[data-tab="recargos"]'); await page.check('#r-iva'); await page.click('#r-ok'); await page.waitForTimeout(400);
+    db = await leer();
+    verificar(db.mensajeria_repartidores[0].pago_tipo === 'porcentaje' && Number(db.mensajeria_repartidores[0].pago_valor) === 25 && db.mensajeria_config[0].iva_incluido === true, `${tag}: se guardan la forma de pago del repartidor (25 %) y "mis tarifas incluyen IVA"`);
+    verificar(page.__errores.length === 0, `${tag} fase 2: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 (async () => {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
-    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); throw 'fin'; }
+    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); await pruebaMensajeriaDinero(browser, base); throw 'fin'; }
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
     if (process.env.SOLO_AUD) { await pruebaAuditoria90(browser, base); throw 'fin'; }
     if (process.env.SOLO_DEMOSALIR) { await pruebaDemoSalir(browser, base); throw 'fin'; }
@@ -3031,6 +3131,7 @@ async function pruebaMensajeria(browser, base) {
     await pruebaDemoSalir(browser, base);
     await pruebaAuditoria90(browser, base);
     await pruebaMensajeria(browser, base);
+    await pruebaMensajeriaDinero(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

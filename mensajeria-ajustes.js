@@ -87,12 +87,19 @@ TA.pintarRecargos = function () {
     </div>
     <b>💵 Tope de efectivo por repartidor</b>
     <div class="tl-f"><label for="r-tope">Avisar cuando un repartidor ande con más de</label><input class="tl-inp" id="r-tope" type="number" inputmode="decimal" min="0" step="0.01" value="${v(c.tope_efectivo)}" placeholder="Sin tope"><span class="tl-muted">Por seguridad: si lo pasa, se le avisa que venga a cuadrar. Cada repartidor puede tener su propio tope.</span></div>
+    <b>🧾 Ventas e IVA</b>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13.5px"><input type="checkbox" class="ms-sel" id="r-iva" ${c.iva_incluido ? 'checked' : ''}> Mis tarifas ya incluyen IVA</label>
+    <div class="tl-f" style="max-width:200px"><label for="r-ivap">Porcentaje de IVA</label><input class="tl-inp" id="r-ivap" type="number" inputmode="decimal" min="0" max="100" step="0.01" value="${Number(c.iva_porcentaje ?? 15)}"></div>
+    <span class="tl-muted">Si está marcado, de cada tarifa cobrada se separa el IVA y se manda a Impuestos (una tarifa de C$ 115 con 15 % = C$ 100 + C$ 15 de IVA).</span>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13.5px"><input type="checkbox" class="ms-sel" id="r-dev" ${c.cobrar_devueltos === false ? '' : 'checked'}> Cobrar la tarifa de los envíos devueltos al comercio</label>
     <div id="r-av"></div><div><button type="button" class="btn-primary" id="r-ok" onclick="TA.guardarRecargos()">Guardar</button></div></div>`;
 };
 TA.guardarRecargos = async function () {
   const g = id => $a(id).value.trim() === '' ? 0 : Number($a(id).value);
   const p = { recargo_urgente: g('r-urg'), recargo_grande: g('r-gra'), recargo_reintento: g('r-rei'), tope_efectivo: g('r-tope') };
   if (Object.values(p).some(x => !(x >= 0))) { $a('r-av').innerHTML = '<div class="tl-aviso">Los montos no pueden ser negativos.</div>'; return; }
+  const ivap = g('r-ivap'); if (!(ivap >= 0 && ivap <= 100)) { $a('r-av').innerHTML = '<div class="tl-aviso">El IVA va de 0 a 100.</div>'; return; }
+  Object.assign(p, { iva_incluido: $a('r-iva').checked, iva_porcentaje: ivap, cobrar_devueltos: $a('r-dev').checked });
   const r = await msRpc('msj_config_guardar', { p });
   if (!r.ok) { $a('r-av').innerHTML = `<div class="tl-aviso">${esc(r.msg)}</div>`; return; }
   showToast('✅ Recargos guardados'); TA.recargar();
@@ -107,6 +114,7 @@ TA.pintarReps = function () {
       <div class="ms-linea">${r.telefono ? '📞 ' + esc(r.telefono) + ' · ' : ''}${r.tipo === 'independiente' ? 'Independiente (por entrega)' : 'Empleado'}${r.placa ? ' · ' + esc(r.placa) : ''}</div>
       <div class="ms-linea">👤 <span>${nomU(r.perfil_id) ? 'Usuario: <b>' + esc(nomU(r.perfil_id)) + '</b>' : 'Sin usuario del sistema'}</span></div>
       ${r.tope_efectivo != null ? `<div class="ms-linea">💵 Tope propio: <b>${fmt(r.tope_efectivo)}</b></div>` : ''}
+      <div class="ms-linea">💼 <span>${r.pago_tipo === 'por_entrega' ? 'Se le paga <b>' + fmt(r.pago_valor) + '</b> por entrega' : r.pago_tipo === 'porcentaje' ? 'Se le paga el <b>' + Number(r.pago_valor) + '%</b> de la tarifa' : 'Sin pago por entrega (sueldo en Salarios)'}</span></div>
       <div class="tl-acc"><button type="button" class="btn-secondary" onclick="TA.rep('${r.id}')">✏️ Editar</button>
         <button type="button" class="btn-secondary" onclick="TA.repActivar('${r.id}',${!r.activo})">${r.activo ? '⏸ Desactivar' : '▶ Activar'}</button></div></div>`).join('')
       || '<div class="tl-vacio" style="grid-column:1/-1">Aún no tienes repartidores.</div>'}</div>`;
@@ -122,11 +130,16 @@ TA.rep = function (id) {
       <div class="tl-f"><label for="rp-veh">Vehículo</label><select class="tl-sel" id="rp-veh">${Object.entries(MS_VEHICULOS).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></div>
       <div class="tl-f"><label for="rp-placa">Placa</label><input class="tl-inp" id="rp-placa" maxlength="20" autocomplete="off" value="${esc(r.placa || '')}"></div>
       <div class="tl-f"><label for="rp-tope">Tope de efectivo propio</label><input class="tl-inp" id="rp-tope" type="number" inputmode="decimal" min="0" step="0.01" value="${r.tope_efectivo ?? ''}" placeholder="El general"></div>
+      <div class="tl-f"><label for="rp-ptipo">¿Cómo se le paga?</label><select class="tl-sel" id="rp-ptipo"><option value="ninguno">Sueldo fijo (en Salarios)</option><option value="por_entrega">Monto fijo por entrega</option><option value="porcentaje">Porcentaje de la tarifa</option></select></div>
+      <div class="tl-f"><label for="rp-pval" id="rp-pval-l">Monto por entrega</label><input class="tl-inp" id="rp-pval" type="number" inputmode="decimal" min="0" step="0.01" value="${Number(r.pago_valor || 0) || ''}"></div>
       <div class="tl-f full"><label for="rp-usr">Usuario del sistema</label><select class="tl-sel" id="rp-usr"><option value="">Sin usuario (lo maneja la oficina)</option>${ops.map(u => `<option value="${u.id}">${esc(u.nombre)}</option>`).join('')}</select>
         <span class="tl-muted">Los usuarios se crean en Configuración → Usuarios. Dale acceso a “Mensajería · Mis entregas”.</span></div>
       <div class="tl-f full"><label for="rp-notas">Notas</label><input class="tl-inp" id="rp-notas" maxlength="500" autocomplete="off" value="${esc(r.notas || '')}"></div></div><div id="rp-av"></div>`,
     '<button type="button" class="btn-secondary" data-cerrar>Cancelar</button><button type="button" class="btn-primary" id="rp-ok">Guardar repartidor</button>', 620);
   m.querySelector('#rp-tipo').value = r.tipo || 'empleado'; m.querySelector('#rp-veh').value = r.vehiculo || 'moto';
+  const pt = m.querySelector('#rp-ptipo'); pt.value = r.pago_tipo || 'ninguno';
+  const pv = () => { const t = pt.value; m.querySelector('#rp-pval').closest('.tl-f').style.display = t === 'ninguno' ? 'none' : ''; m.querySelector('#rp-pval-l').textContent = t === 'porcentaje' ? 'Porcentaje de la tarifa (%)' : 'Monto por entrega'; };
+  pt.onchange = pv; pv();
   if (r.perfil_id && !ops.some(u => u.id === r.perfil_id)) m.querySelector('#rp-usr').insertAdjacentHTML('beforeend', `<option value="${r.perfil_id}">Usuario actual</option>`);
   m.querySelector('#rp-usr').value = r.perfil_id || '';
   m.querySelector('#rp-ok').onclick = async () => {
@@ -134,9 +147,11 @@ TA.rep = function (id) {
     const g = s => m.querySelector(s).value.trim(), av = m.querySelector('#rp-av');
     if (g('#rp-nom').length < 2) { av.innerHTML = '<div class="tl-aviso">Escribe el nombre del repartidor.</div>'; return; }
     if (g('#rp-tope') !== '' && !(Number(g('#rp-tope')) >= 0)) { av.innerHTML = '<div class="tl-aviso">El tope no es válido.</div>'; return; }
+    const ptipo = g('#rp-ptipo'), pval = Number(g('#rp-pval') || 0);
+    if (ptipo !== 'ninguno' && !(pval > 0 && (ptipo !== 'porcentaje' || pval <= 100))) { av.innerHTML = `<div class="tl-aviso">${ptipo === 'porcentaje' ? 'Escribe el porcentaje (de 1 a 100).' : 'Escribe cuánto se le paga por entrega.'}</div>`; return; }
     TA.ocupado = true;
     const x = await msRpc('msj_repartidor_guardar', { p: { id: id || null, nombre: g('#rp-nom'), telefono: g('#rp-tel'), tipo: g('#rp-tipo'), vehiculo: g('#rp-veh'), placa: g('#rp-placa'),
-      tope_efectivo: g('#rp-tope') === '' ? null : Number(g('#rp-tope')), perfil_id: g('#rp-usr') || null, notas: g('#rp-notas') } });
+      tope_efectivo: g('#rp-tope') === '' ? null : Number(g('#rp-tope')), perfil_id: g('#rp-usr') || null, notas: g('#rp-notas'), pago_tipo: ptipo, pago_valor: ptipo === 'ninguno' ? 0 : pval } });
     TA.ocupado = false;
     if (!x.ok) { av.innerHTML = `<div class="tl-aviso">${esc(x.motivo === 'nombre_duplicado' ? 'Ya tienes un repartidor con ese nombre.' : x.msg)}</div>`; return; }
     m.classList.remove('abierto'); showToast('✅ Repartidor guardado'); TA.recargar();

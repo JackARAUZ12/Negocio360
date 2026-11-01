@@ -53,14 +53,15 @@ TE.pintar = function () {
   }
   $e('e-lista').innerHTML = l.slice(0, 300).map(e => {
     const c = msPorCobrar(e), rep = TE.reps[e.repartidor_id];
-    const puedeEditar = ['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado);
+    const puedeEditar = ['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado) && !e.tarifa_venta_id && !e.liquidacion_id;
+    const puedeCobrar = e.envio_lo_paga === 'comercio' && !e.tarifa_venta_id && !e.liquidacion_id && e.estado !== 'cancelado' && Number(e.tarifa) + Number(e.recargo_reintentos || 0) > 0;
     return `<div class="tl-card ms-ot${e.urgente ? ' urg' : ''}">
       <h3><span class="ms-num">${esc(e.numero)}</span><span>${e.urgente ? '<span class="ms-chip urg">🚨 Urgente</span> ' : ''}${msChip(e.estado)}</span></h3>
       <div class="ms-linea">👤 <span><b>${esc(e.destinatario_nombre)}</b>${e.destinatario_telefono ? ' · ' + esc(e.destinatario_telefono) : ''}</span></div>
       <div class="ms-linea">📍 <span>${esc(e.direccion)}${e.zona_nombre ? ' · <b>' + esc(e.zona_nombre) + '</b>' : ''}</span></div>
       <div class="ms-linea">📤 <span>${esc(e.remitente_nombre)}</span></div>
       ${rep ? `<div class="ms-linea">🛵 <span>${esc(rep.nombre)}</span></div>` : ''}
-      <div class="ms-linea">🧾 <span>Tarifa <b>${fmt(Number(e.tarifa) + Number(e.recargo_reintentos || 0))}</b> (${e.envio_lo_paga === 'destinatario' ? 'paga quien recibe' : 'paga quien envía'})</span></div>
+      <div class="ms-linea">🧾 <span>Tarifa <b>${fmt(Number(e.tarifa) + Number(e.recargo_reintentos || 0))}</b> (${e.envio_lo_paga === 'destinatario' ? 'paga quien recibe' : 'paga quien envía'})${e.tarifa_venta_id ? ' <span class="ms-chip entregado">✔ cobrada</span>' : ''}${e.liquidacion_id ? ' <span class="ms-chip entregado">✔ liquidado</span>' : ''}</span></div>
       ${c > 0 && e.estado !== 'entregado' ? `<div><span class="ms-cobrar">💵 Cobrar ${fmt(c)}</span></div>` : ''}
       ${e.estado === 'entregado' ? `<div class="tl-muted">Recibió ${esc(e.recibio_nombre || '')} · ${tlFechaHora(e.entregado_at)}${e.metodo_cobro ? ' · ' + (e.metodo_cobro === 'efectivo' ? '💵 efectivo' : '🏦 transferencia') : ''}</div>` : ''}
       ${e.estado === 'no_entregado' && e.motivo_no_entrega ? `<div class="tl-aviso">⚠️ ${esc(e.motivo_no_entrega)}</div>` : ''}
@@ -68,9 +69,10 @@ TE.pintar = function () {
         <button type="button" class="btn-secondary" onclick="TE.ver('${e.id}')">👁 Ver</button>
         ${puedeEditar ? `<button type="button" class="btn-secondary" onclick="TE.editar('${e.id}')">✏️ Editar</button>` : ''}
         <button type="button" class="btn-secondary" onclick="TE.etiqueta('${e.id}')">🏷️ Etiqueta</button>
+        ${puedeCobrar ? `<button type="button" class="btn-secondary" onclick="TE.cobrar('${e.id}')">💳 Cobrar envío</button>` : ''}
         ${e.destinatario_telefono ? `<a class="btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;padding:7px 11px;font-size:12.5px" target="_blank" rel="noopener" href="${esc(TE.waLink(e))}">💬 WhatsApp</a>` : ''}
         ${e.estado === 'por_recoger' ? `<button type="button" class="btn-secondary" onclick="TE.estado('${e.id}','en_bodega')">🏬 Ya llegó a bodega</button>` : ''}
-        ${['por_recoger', 'en_bodega', 'asignado'].includes(e.estado) ? `<button type="button" class="btn-secondary" style="color:var(--danger)" onclick="TE.estado('${e.id}','cancelado')">✖ Cancelar</button>` : ''}
+        ${['por_recoger', 'en_bodega', 'asignado'].includes(e.estado) && !e.tarifa_venta_id ? `<button type="button" class="btn-secondary" style="color:var(--danger)" onclick="TE.estado('${e.id}','cancelado')">✖ Cancelar</button>` : ''}
         ${['en_bodega', 'no_entregado'].includes(e.estado) ? `<button type="button" class="btn-secondary" onclick="TE.estado('${e.id}','devuelto')">↩️ Devolver al remitente</button>` : ''}
       </div></div>`;
   }).join('') + (l.length > 300 ? `<div class="tl-vacio" style="grid-column:1/-1">Se muestran los primeros 300. Usa la búsqueda para encontrar los demás.</div>` : '');
@@ -78,6 +80,26 @@ TE.pintar = function () {
 TE.waLink = function (e) {
   const neg = TL.empresaConfig?.nombre_comercial || '', c = msPorCobrar(e);
   return msWa(e.destinatario_telefono, `Hola ${e.destinatario_nombre}, le saluda ${neg}. Tenemos su envío ${e.numero} de ${e.remitente_nombre}.${c > 0 && e.estado !== 'entregado' ? ' Monto a pagar al recibir: ' + fmt(c) + '.' : ''} ¿Nos confirma que podrá recibirlo?`);
+};
+// Cobrar la tarifa ahora (quien envía paga al dejar el paquete): venta normal en Ventas y Caja.
+TE.cobrar = async function (id) {
+  const e = TE.lista.find(x => x.id === id); if (!e) return;
+  await msBancos();
+  const monto = Number(e.tarifa) + Number(e.recargo_reintentos || 0);
+  const m = msVentana('e-cobrar', `💳 Cobrar envío ${esc(e.numero)}`, `<div class="ms-total grande"><span>Tarifa del envío</span><b>${fmt(monto)}</b></div>
+    <div class="tl-muted">Lo paga <b>${esc(e.remitente_nombre)}</b>. Queda como una venta normal (Ventas y Caja) y ya no se le cobra al liquidar.</div>
+    ${msMetodoHTML('cob', '¿Cómo pagó?')}<div id="e-cob-av"></div>`,
+    '<button type="button" class="btn-secondary" data-cerrar>Cancelar</button><button type="button" class="btn-primary" id="e-cob-ok">Cobrar</button>', 460);
+  msMetodoActivar(m);
+  m.querySelector('#e-cob-ok').onclick = async () => {
+    const met = msMetodoLeer(m, 'cob'), av = m.querySelector('#e-cob-av');
+    if (met.metodo === 'transferencia' && !met.banco_id) { av.innerHTML = `<div class="tl-aviso">${MS_MOTIVOS.banco}</div>`; return; }
+    const btn = m.querySelector('#e-cob-ok'); btn.disabled = true;
+    const r = await msRpc('msj_envio_cobrar', { p: { envio_id: id, metodo: met.metodo, banco_id: met.banco_id, por: msPor() } });
+    btn.disabled = false;
+    if (!r.ok) { av.innerHTML = `<div class="tl-aviso">${esc(r.msg)}</div>`; return; }
+    m.classList.remove('abierto'); showToast(r.ya ? 'Ese envío ya estaba cobrado.' : `✅ Cobrado: venta ${r.venta.numero} por ${fmt(r.venta.total)}`); TE.cargar();
+  };
 };
 TE.etiqueta = function (id) { const e = TE.lista.find(x => x.id === id); if (e) msEtiqueta(e); };
 TE.estado = async function (id, nuevo) {
@@ -171,6 +193,7 @@ TE.guardar = async function () {
   if (g('f-dir').length < 3) { av.innerHTML = '<div class="tl-aviso">Escribe la dirección de entrega.</div>'; $e('f-dir').focus(); return; }
   const cobrar = Number(g('f-cobrar') || 0);
   if (!(cobrar >= 0)) { av.innerHTML = '<div class="tl-aviso">El monto a cobrar no es válido.</div>'; return; }
+  if (cobrar > 0 && !$e('f-comercio').value) { av.innerHTML = `<div class="tl-aviso">${MS_MOTIVOS.cod_sin_comercio} Toca “➕ Registrar comercio”.</div>`; return; }
   const p = {
     id: TE.editando?.id || null, comercio_id: $e('f-comercio').value || null, remitente_nombre: g('f-rem'), remitente_telefono: g('f-remtel'), recoger_direccion: g('f-recoger'),
     destinatario_nombre: g('f-des'), destinatario_telefono: g('f-destel'), direccion: g('f-dir'), referencia: g('f-ref'), zona_id: $e('f-zona').value || null,
@@ -188,7 +211,7 @@ TE.guardar = async function () {
   if (nuevo) {
     const e = TE.lista.find(x => x.id === r.id);
     if (e) msVentana('e-listo', `✅ Envío ${esc(r.numero)} registrado`, `<div class="ms-linea">Tarifa: <b>${fmt(r.tarifa)}</b>${msPorCobrar(e) > 0 ? ` · el repartidor cobra <b>${fmt(msPorCobrar(e))}</b>` : ''}</div><div class="tl-muted">Pega la etiqueta en el paquete. Luego asígnalo a un repartidor en Despacho.</div>`,
-      `<button type="button" class="btn-secondary" data-cerrar>Listo</button>${e.destinatario_telefono ? `<a class="btn-secondary" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(TE.waLink(e))}">💬 Avisar por WhatsApp</a>` : ''}<button type="button" class="btn-primary" onclick="TE.etiqueta('${e.id}')">🏷️ Imprimir etiqueta</button>`, 480);
+      `<button type="button" class="btn-secondary" data-cerrar>Listo</button>${e.envio_lo_paga === 'comercio' && !e.comercio_id && Number(e.tarifa) > 0 ? `<button type="button" class="btn-secondary" onclick="document.getElementById('e-listo').classList.remove('abierto');TE.cobrar('${e.id}')">💳 Cobrar envío</button>` : ''}${e.destinatario_telefono ? `<a class="btn-secondary" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(TE.waLink(e))}">💬 Avisar por WhatsApp</a>` : ''}<button type="button" class="btn-primary" onclick="TE.etiqueta('${e.id}')">🏷️ Imprimir etiqueta</button>`, 480);
   }
 };
 

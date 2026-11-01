@@ -14,19 +14,22 @@ const TPN_SUBS = [
   { id: 'envios', archivo: 'mensajeria-envios.html', key: 'mensajeria_envios', icono: '📦', nombre: 'Envíos', grupo: 'dia', desc: 'Registra cada envío: quién manda, a quién va, dirección, cuánto cobrar contra entrega. La tarifa por zona sale sola. Imprime la etiqueta.' },
   { id: 'despacho', archivo: 'mensajeria-despacho.html', key: 'mensajeria_despacho', icono: '🗂️', nombre: 'Despacho', grupo: 'dia', desc: 'Tablero por estado: asigna uno o varios envíos a un repartidor y sigue cada entrega.' },
   { id: 'repartidor', archivo: 'mensajeria-repartidor.html', key: 'mensajeria_repartidor', icono: '🛵', nombre: 'Mis entregas', grupo: 'dia', desc: 'La pantalla del repartidor en su celular: Waze o Maps, llamar o WhatsApp, y marcar entregado con foto y quién recibió.' },
-  { id: 'cuadre', archivo: 'mensajeria-cuadre.html', key: 'mensajeria_cuadre', icono: '💵', nombre: 'Cuadre', grupo: 'dia', desc: 'Al final del día: cuánto efectivo debe entregar cada repartidor, cuánto entregó, faltantes y abonos.' },
+  { id: 'cuadre', archivo: 'mensajeria-cuadre.html', key: 'mensajeria_cuadre', icono: '💵', nombre: 'Cuadre', grupo: 'dia', desc: 'Al final del día: cuánto efectivo debe entregar cada repartidor. Las tarifas entran a Caja como venta; lo de productos queda para los comercios.' },
+  { id: 'liquidar', archivo: 'mensajeria-liquidaciones.html', key: 'mensajeria_liquidaciones', icono: '🤝', nombre: 'Liquidar comercios', grupo: 'dia', desc: 'Entrega a cada comercio lo cobrado a su nombre menos tus tarifas, con su estado de cuenta para imprimir o mandar por WhatsApp.' },
+  { id: 'pagos', archivo: 'mensajeria-pagos.html', key: 'mensajeria_pagos', icono: '💼', nombre: 'Pago a repartidores', grupo: 'cierre', desc: 'Lo que ganó cada repartidor por entrega o por porcentaje, descontando su deuda si tiene. Queda como gasto.' },
   { id: 'ajustes', archivo: 'mensajeria-ajustes.html', key: 'mensajeria_ajustes', icono: '🗺️', nombre: 'Zonas, tarifas y repartidores', grupo: 'base', desc: 'Zonas con su precio, precios especiales por comercio, recargos (urgente, grande, reintento), tope de efectivo y tus repartidores.' },
 ];
-const TPN_GRUPOS = { dia: '☀️ Día a día (el ciclo del envío)', base: '🧰 Lo que preparas una vez' };
+const TPN_GRUPOS = { dia: '☀️ Día a día (el ciclo del envío)', cierre: '📅 Cada semana o quincena', base: '🧰 Lo que preparas una vez' };
 // El ciclo de cada envío, en orden.
 const TPN_CICLO = [
   { n: 1, sub: 'envios', icono: '📦', nombre: 'Recibir envío', ayuda: 'Datos, zona y cobro' },
   { n: 2, sub: 'despacho', icono: '🗂️', nombre: 'Despachar', ayuda: 'Asignar al repartidor' },
   { n: 3, sub: 'repartidor', icono: '🛵', nombre: 'Entregar', ayuda: 'Foto, quién recibió y cobro' },
   { n: 4, sub: 'cuadre', icono: '💵', nombre: 'Cuadrar repartidor', ayuda: 'Efectivo que debe entregar' },
+  { n: 5, sub: 'liquidar', icono: '🤝', nombre: 'Liquidar comercio', ayuda: 'Su dinero menos tus tarifas' },
 ];
 // Otras pantallas del sistema a las que se puede ir sin salir del panel.
-const TPN_OTRAS = { 'clientes.html': '👥 Clientes (comercios)', 'caja.html': '🏦 Caja', 'gastos.html': '💸 Gastos', 'salarios.html': '💼 Salarios', 'reportes.html': '📊 Reportes', 'configuracion.html': '⚙️ Configuración' };
+const TPN_OTRAS = { 'clientes.html': '👥 Clientes (comercios)', 'ventas.html': '💰 Ventas', 'caja.html': '🏦 Caja', 'gastos.html': '💸 Gastos', 'salarios.html': '💼 Salarios', 'reportes.html': '📊 Reportes', 'configuracion.html': '⚙️ Configuración' };
 
 const TPN = { subs: [], actual: null, paso: null, datos: null, cargandoMarco: false };
 const $t = id => document.getElementById(id);
@@ -198,19 +201,21 @@ async function tpnCargarInicio() {
       contar('clientes', q => q.eq('activo', true)),
       sb.from('mensajeria_config').select('auth_user_id').eq('auth_user_id', uid).maybeSingle().then(r => !!r.data).catch(() => false),
     ]);
-    TPN.datos = { sinAsignar, urgentes, asignados, enRuta, noEnt, hoyEnt, sinCuadrar, zonas, reps, comercios, cfg };
+    const liq = await sb.rpc('msj_liquidaciones_resumen').then(r => (r.data && r.data.ok ? r.data.comercios : []) || []).catch(() => []);
+    const porLiquidar = liq.filter(c => Number(c.listos) > 0).length, deComercios = liq.reduce((a, c) => a + Number(c.cod || 0) + Number(c.en_calle || 0), 0);
+    TPN.datos = { sinAsignar, urgentes, asignados, enRuta, noEnt, hoyEnt, sinCuadrar, zonas, reps, comercios, cfg, porLiquidar, deComercios };
   } catch (e) { console.warn('inicio mensajeria:', e); TPN.datos = {}; }
   tpnPintarCiclo(); tpnPintarPreparar(); tpnPintarPendientes(); tpnPintarChips();
 }
 const tpnS = (k, uno, varios) => `${k} ${k === 1 ? uno : varios}`;
 function tpnPintarChips() {
   const d = TPN.datos || {}, act = (d.sinAsignar || 0) + (d.asignados || 0) + (d.enRuta || 0) + (d.noEnt || 0);
-  $t('tl-chips').innerHTML = `<span class="tl-chip">📦 ${tpnS(act, 'envío activo', 'envíos activos')}</span><span class="tl-chip">🛵 ${tpnS(d.enRuta || 0, 'en ruta', 'en ruta')}</span><span class="tl-chip">✅ ${tpnS(d.hoyEnt || 0, 'entregado hoy', 'entregados hoy')}</span>`;
+  $t('tl-chips').innerHTML = `<span class="tl-chip">📦 ${tpnS(act, 'envío activo', 'envíos activos')}</span><span class="tl-chip">🛵 ${tpnS(d.enRuta || 0, 'en ruta', 'en ruta')}</span><span class="tl-chip">✅ ${tpnS(d.hoyEnt || 0, 'entregado hoy', 'entregados hoy')}</span><span class="tl-chip">🤝 De comercios por liquidar: ${fmt(d.deComercios || 0)}</span>`;
 }
 function tpnPintarCiclo() {
   const d = TPN.datos || {};
-  const n = { 1: d.sinAsignar || 0, 2: (d.sinAsignar || 0) + (d.noEnt || 0), 3: (d.asignados || 0) + (d.enRuta || 0), 4: d.sinCuadrar || 0 };
-  const txt = { 1: k => tpnS(k, 'sin asignar', 'sin asignar'), 2: k => tpnS(k, 'por despachar', 'por despachar'), 3: k => tpnS(k, 'por entregar', 'por entregar'), 4: k => tpnS(k, 'entrega por cuadrar', 'entregas por cuadrar') };
+  const n = { 1: d.sinAsignar || 0, 2: (d.sinAsignar || 0) + (d.noEnt || 0), 3: (d.asignados || 0) + (d.enRuta || 0), 4: d.sinCuadrar || 0, 5: d.porLiquidar || 0 };
+  const txt = { 1: k => tpnS(k, 'sin asignar', 'sin asignar'), 2: k => tpnS(k, 'por despachar', 'por despachar'), 3: k => tpnS(k, 'por entregar', 'por entregar'), 4: k => tpnS(k, 'entrega por cuadrar', 'entregas por cuadrar'), 5: k => tpnS(k, 'comercio por liquidar', 'comercios por liquidar') };
   $t('tln-ciclo').innerHTML = TPN_CICLO.map(p => `<button type="button" class="tln-ciclo-paso" onclick="tpnIrPaso(${p.n})" ${tpnSub(p.sub) ? '' : 'disabled title="No tienes acceso a esta parte"'}>
       <span class="tln-ciclo-num">Paso ${p.n}</span><span class="tln-ciclo-ico" aria-hidden="true">${p.icono}</span>
       <span class="tln-ciclo-nom">${esc(p.nombre)}</span><span class="tln-ciclo-ayuda">${esc(p.ayuda)}</span>
@@ -239,6 +244,7 @@ function tpnPintarPendientes() {
   if (d.noEnt && tpnSub('despacho')) items.push({ t: `⚠️ ${tpnS(d.noEnt, 'envío no entregado', 'envíos no entregados')}: reintentar o devolver`, ir: 'tpnIrPaso(2)' });
   if (d.sinAsignar && tpnSub('despacho')) items.push({ t: `📦 ${tpnS(d.sinAsignar, 'envío esperando repartidor', 'envíos esperando repartidor')}`, ir: 'tpnIrPaso(2)' });
   if (d.sinCuadrar && tpnSub('cuadre')) items.push({ t: `💵 ${tpnS(d.sinCuadrar, 'entrega con cobro sin cuadrar', 'entregas con cobro sin cuadrar')}`, ir: 'tpnIrPaso(4)' });
+  if (d.porLiquidar && tpnSub('liquidar')) items.push({ t: `🤝 ${tpnS(d.porLiquidar, 'comercio listo para liquidar', 'comercios listos para liquidar')}`, ir: 'tpnIrPaso(5)' });
   $t('tln-pendientes').innerHTML = items.length ? items.map(i => `<button type="button" class="tln-pend" onclick="${i.ir}">${esc(i.t)} <span aria-hidden="true">→</span></button>`).join('')
     : '<div class="tln-sub" style="padding:8px 0">Nada pendiente por ahora. 👍</div>';
 }
@@ -256,7 +262,9 @@ const TPN_RECORRIDO = [
   { icono: '📦', titulo: '1. Recibir envío', texto: 'Registra quién manda (un comercio o una persona), a quién va, la dirección y cuánto hay que cobrar contra entrega. La tarifa se calcula sola según la zona. Imprime la etiqueta para el paquete.' },
   { icono: '🗂️', titulo: '2. Despachar', texto: 'En el tablero eliges uno o varios envíos y se los asignas a un repartidor. Ves cuánto efectivo anda cada uno en la calle.' },
   { icono: '🛵', titulo: '3. Entregar', texto: 'El repartidor abre "Mis entregas" en su celular: va con Waze o Google Maps, llama o escribe por WhatsApp, y marca Entregado con foto, quién recibió y cómo pagó. Si no pudo, elige el motivo.' },
-  { icono: '💵', titulo: '4. Cuadrar repartidor', texto: 'Al final del día el sistema dice cuánto efectivo debe entregar cada repartidor. Cuentas lo que entrega: si falta, queda como deuda del repartidor. Cada entrega se cuadra una sola vez. Por ahora el cuadre es un control y no mueve Caja.' },
+  { icono: '💵', titulo: '4. Cuadrar repartidor', texto: 'Al final del día el sistema dice cuánto efectivo debe entregar cada repartidor. Las tarifas que cobró entran a Caja como venta; lo de productos es de los comercios y queda aparte. Si falta dinero, queda como deuda del repartidor.' },
+  { icono: '🤝', titulo: '5. Liquidar comercio', texto: 'Le entregas al comercio lo cobrado a su nombre menos tus tarifas. Tus tarifas entran a Ventas y Caja. Imprime o manda por WhatsApp su estado de cuenta. Cada envío se liquida una sola vez.' },
+  { icono: '💼', titulo: 'Pago a repartidores', texto: 'Cada semana o quincena pagas a los repartidores que cobran por entrega o por porcentaje. Queda como gasto, y se les puede descontar su deuda.' },
 ];
 function tpnRecorrido(forzar) {
   try {

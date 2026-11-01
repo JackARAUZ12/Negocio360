@@ -370,10 +370,36 @@
     };
     const deuda = rep => Math.max(0, -T('mensajeria_cuadres').filter(q => q.repartidor_id === rep).reduce((x, q) => x + Number(q.diferencia), 0));
     const num = (tabla, pre) => pre + String(T(tabla).reduce((m, x) => Math.max(m, Number(String(x.numero).replace(/\D/g, '')) || 0), 0) + 1).padStart(6, '0');
+    const hoy = new Date().toISOString().slice(0, 10);
+    const caja = (flujo, tipo, concepto, monto, metodo, banco, refTipo, refId) => { if (!(monto > 0)) return null; const id = uuid();
+      T('movimientos_financieros').push({ id, auth_user_id: UID, tipo_flujo: flujo, tipo_movimiento: tipo, concepto, monto: r2(monto), metodo_pago_nombre: metodo === 'transferencia' ? 'Transferencia' : 'Efectivo',
+        banco_id: metodo === 'transferencia' ? banco : null, referencia_tipo: refTipo, referencia_id: refId, fecha: hoy, estado: 'completado', created_at: new Date().toISOString() }); return id; };
+    const venta = (cli, nombre, obs, lineas, metodo, banco, por) => {          // como _msj_venta: venta + detalle + Caja (neto de IVA) + IVA + total del cliente
+      const total = r2(lineas.reduce((x, l) => x + Number(l.monto), 0)); if (!(total > 0)) return null;
+      const c = cfg(); const imp = c.iva_incluido && Number(c.iva_porcentaje) > 0 ? r2(total - total / (1 + Number(c.iva_porcentaje) / 100)) : 0, sub = r2(total - imp);
+      const id = uuid(), numero = 'V-' + String(T('ventas').length + 1).padStart(5, '0');
+      T('ventas').push({ id, auth_user_id: UID, numero_venta: numero, cliente_id: cli, cliente_nombre: nombre, subtotal: sub, impuesto: imp, total, estado: 'completada', observaciones: obs,
+        metodo_pago_nombre: metodo === 'transferencia' ? 'Transferencia' : 'Efectivo', creado_por_nombre: por, fecha: new Date().toISOString() });
+      let acum = 0; lineas.forEach((l, i) => { const neto = i === lineas.length - 1 ? r2(sub - acum) : r2(Number(l.monto) * sub / total); acum = r2(acum + neto);
+        T('venta_detalles').push({ id: uuid(), venta_id: id, auth_user_id: UID, producto_nombre: l.nombre, tipo_item: 'servicio', cantidad: 1, precio: neto, subtotal: neto }); });
+      caja('INGRESO', 'VENTA', 'Venta ' + numero + ' (envíos)', sub, metodo, banco, 'venta', id);
+      if (imp > 0) T('movimientos_impuestos').push({ id: uuid(), auth_user_id: UID, tipo_movimiento: 'IVA_VENTA', monto: imp, referencia_venta_id: id });
+      if (cli) { const cl = T('clientes').find(x => x.id === cli); if (cl) { cl.total_compras = r2(Number(cl.total_compras || 0) + total); cl.num_compras = Number(cl.num_compras || 0) + 1; } }
+      return { venta_id: id, numero, total };
+    };
+    const bancoOk = (m, b) => m === 'efectivo' || (m === 'transferencia' && !!b && T('bancos').some(x => x.id === b));
+    const nomEnvio = e => 'Envío ' + e.numero + ' · ' + e.destinatario_nombre + (e.zona_nombre ? ' (' + e.zona_nombre + ')' : '');
+    const liqLista = com => { const dev = cfg().cobrar_devueltos !== false;
+      return T('mensajeria_envios').filter(e => e.comercio_id === com && !e.liquidacion_id && ((e.estado === 'entregado' && e.cuadre_id) || e.estado === 'devuelto')).sort((a, b) => a.numero.localeCompare(b.numero))
+        .map(e => ({ id: e.id, numero: e.numero, destinatario: e.destinatario_nombre, estado: e.estado, cod: e.estado === 'entregado' ? Number(e.cobrado_cod) : 0,
+          tarifa: e.tarifa_venta_id ? 0 : (e.estado === 'entregado' && e.envio_lo_paga === 'comercio') || (e.estado === 'devuelto' && dev) ? r2(Number(e.tarifa) + Number(e.recargo_reintentos || 0)) : 0 })); };
+    const pagoMonto = (r, e) => r.pago_tipo === 'por_entrega' ? r2(r.pago_valor) : r.pago_tipo === 'porcentaje' ? r2((Number(e.tarifa) + Number(e.recargo_reintentos || 0)) * r.pago_valor / 100) : 0;
+    const mismos = (a, b) => (a || []).slice().sort().join() === (Array.isArray(b) ? b : []).slice().sort().join();
     let out;
     switch (nombre) {
       case 'msj_tarifa_calcular': return tarifa(a.p_zona, a.p_comercio, a.p_urgente, a.p_tamano);
-      case 'msj_config_guardar': { const p = a.p || {}; const c = T('mensajeria_config'); const i = c.findIndex(x => x.auth_user_id === UID); const fila = { auth_user_id: UID, recargo_urgente: r2(p.recargo_urgente || 0), recargo_grande: r2(p.recargo_grande || 0), recargo_reintento: r2(p.recargo_reintento || 0), tope_efectivo: r2(p.tope_efectivo || 0) };
+      case 'msj_config_guardar': { const p = a.p || {}; const c = T('mensajeria_config'); const i = c.findIndex(x => x.auth_user_id === UID); const fila = { auth_user_id: UID, recargo_urgente: r2(p.recargo_urgente || 0), recargo_grande: r2(p.recargo_grande || 0), recargo_reintento: r2(p.recargo_reintento || 0), tope_efectivo: r2(p.tope_efectivo || 0),
+          iva_incluido: !!p.iva_incluido, iva_porcentaje: p.iva_porcentaje == null ? 15 : r2(p.iva_porcentaje), cobrar_devueltos: p.cobrar_devueltos !== false };
         if (Object.values(fila).some(v => typeof v === 'number' && v < 0)) return NO('valor'); if (i >= 0) c[i] = fila; else c.push(fila); out = { ok: true }; break; }
       case 'msj_zona_guardar': { const p = a.p || {}, nom = String(p.nombre || '').trim(); if (nom.length < 2) return NO('nombre'); if (!(Number(p.tarifa) >= 0)) return NO('valor');
         if (T('mensajeria_zonas').some(z => norm(z.nombre) === norm(nom) && z.id !== p.id)) return NO('nombre_duplicado');
@@ -385,21 +411,21 @@
       case 'msj_repartidor_guardar': { const p = a.p || {}, nom = String(p.nombre || '').trim(); if (nom.length < 2) return NO('nombre');
         if (T('mensajeria_repartidores').some(r => norm(r.nombre) === norm(nom) && r.id !== p.id)) return NO('nombre_duplicado');
         if (p.perfil_id && T('mensajeria_repartidores').some(r => r.perfil_id === p.perfil_id && r.id !== p.id)) return NO('perfil_usado');
-        const datos = { nombre: nom, telefono: p.telefono || null, tipo: p.tipo || 'empleado', vehiculo: p.vehiculo || 'moto', placa: p.placa || null, perfil_id: p.perfil_id || null, tope_efectivo: p.tope_efectivo == null ? null : r2(p.tope_efectivo), notas: p.notas || null };
+        const datos = { nombre: nom, telefono: p.telefono || null, tipo: p.tipo || 'empleado', vehiculo: p.vehiculo || 'moto', placa: p.placa || null, perfil_id: p.perfil_id || null, tope_efectivo: p.tope_efectivo == null ? null : r2(p.tope_efectivo), notas: p.notas || null, pago_tipo: p.pago_tipo || 'ninguno', pago_valor: r2(p.pago_valor || 0) };
         if (p.id) { Object.assign(T('mensajeria_repartidores').find(r => r.id === p.id), datos); out = { ok: true, id: p.id }; }
         else { const id = uuid(); T('mensajeria_repartidores').push({ id, auth_user_id: UID, activo: true, created_at: ahora, ...datos }); out = { ok: true, id }; } break; }
       case 'msj_repartidor_activar': { if (a.p_activo === false && T('mensajeria_envios').some(e => e.repartidor_id === a.p_id && ['asignado', 'en_ruta'].includes(e.estado))) return NO('con_envios');
         T('mensajeria_repartidores').find(r => r.id === a.p_id).activo = a.p_activo !== false; out = { ok: true }; break; }
       case 'msj_envio_guardar': { const p = a.p || {}; let rem = String(p.remitente_nombre || '').trim();
         if (p.comercio_id) { const c = T('clientes').find(x => x.id === p.comercio_id); if (!c) return NO('cliente'); if (!rem) rem = [c.nombre, c.apellido].filter(Boolean).join(' '); }
-        if (rem.length < 2) return NO('remitente'); if (String(p.destinatario_nombre || '').trim().length < 2) return NO('destinatario'); if (String(p.direccion || '').trim().length < 3) return NO('direccion');
+        if (rem.length < 2) return NO('remitente'); if (Number(p.monto_cobrar || 0) > 0 && !p.comercio_id) return NO('cod_sin_comercio'); if (String(p.destinatario_nombre || '').trim().length < 2) return NO('destinatario'); if (String(p.direccion || '').trim().length < 3) return NO('direccion');
         const zona = p.zona_id ? T('mensajeria_zonas').find(z => z.id === p.zona_id) : null; if (p.zona_id && !zona) return NO('zona');
         const t = tarifa(p.zona_id, p.comercio_id, !!p.urgente, p.tamano || 'pequeno');
         const datos = { comercio_id: p.comercio_id || null, remitente_nombre: rem, remitente_telefono: p.remitente_telefono || null, recoger_direccion: p.recoger_direccion || null,
           destinatario_nombre: p.destinatario_nombre.trim(), destinatario_telefono: p.destinatario_telefono || null, direccion: p.direccion.trim(), referencia: p.referencia || null, lat: p.lat ?? null, lng: p.lng ?? null,
           zona_id: p.zona_id || null, zona_nombre: zona ? zona.nombre : null, descripcion: p.descripcion || null, paquetes: Number(p.paquetes || 1), tamano: p.tamano || 'pequeno', urgente: !!p.urgente,
           monto_cobrar: r2(p.monto_cobrar || 0), envio_lo_paga: p.envio_lo_paga || 'comercio', tarifa: t, fecha_programada: p.fecha_programada || null, notas: p.notas || null };
-        if (p.id) { const e = T('mensajeria_envios').find(x => x.id === p.id); if (!['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado)) return NO('no_editable'); Object.assign(e, datos); evt(e.id, 'editado', 'Tarifa ' + t, p.por); out = { ok: true, id: e.id, numero: e.numero, tarifa: t }; break; }
+        if (p.id) { const e = T('mensajeria_envios').find(x => x.id === p.id); if (!['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado) || e.tarifa_venta_id || e.liquidacion_id) return NO('no_editable'); Object.assign(e, datos); evt(e.id, 'editado', 'Tarifa ' + t, p.por); out = { ok: true, id: e.id, numero: e.numero, tarifa: t }; break; }
         const id = uuid(), numero = num('mensajeria_envios', 'ENV-');
         T('mensajeria_envios').push({ id, auth_user_id: UID, numero, ...datos, recargo_reintentos: 0, estado: p.en_bodega ? 'en_bodega' : 'por_recoger', repartidor_id: null, intentos: 0, cobrado_cod: 0, cobrado_envio: 0, cuadre_id: null, creado_por: p.por || null, created_at: ahora });
         evt(id, 'creado', 'Tarifa ' + t, p.por); out = { ok: true, id, numero, tarifa: t }; break; }
@@ -409,7 +435,7 @@
         l.forEach(e => { if (e.estado === 'no_entregado') e.recargo_reintentos = r2(Number(e.recargo_reintentos || 0) + Number(cfg().recargo_reintento || 0)); evt(e.id, e.estado === 'no_entregado' ? 'reintento' : 'asignado', 'A ' + r.nombre, a.p_por); e.estado = 'asignado'; e.repartidor_id = r.id; });
         out = { ok: true, asignados: l.length }; break; }
       case 'msj_envio_estado': { const e = T('mensajeria_envios').find(x => x.id === a.p_id); if (!e) return NO('no_existe'); if (e.estado === a.p_nuevo) return { ok: true, ya: true };
-        if (a.p_nuevo === 'entregado') return NO('usar_entregar');
+        if (a.p_nuevo === 'entregado') return NO('usar_entregar'); if (a.p_nuevo === 'cancelado' && e.tarifa_venta_id) return NO('ya_cobrado');
         const PERM = { por_recoger: ['en_bodega', 'cancelado'], en_bodega: ['cancelado', 'devuelto'], asignado: ['en_ruta', 'en_bodega', 'cancelado'], en_ruta: ['no_entregado', 'asignado'], no_entregado: ['en_bodega', 'devuelto'] };
         if (!(PERM[e.estado] || []).includes(a.p_nuevo)) return NO('transicion');
         if (['no_entregado', 'cancelado', 'devuelto'].includes(a.p_nuevo) && String(a.p_motivo || '').trim().length < 3) return NO('falta_motivo');
@@ -427,14 +453,73 @@
       case 'msj_cuadre_pendiente': { const l = T('mensajeria_envios').filter(e => e.repartidor_id === a.p_repartidor && e.estado === 'entregado' && !e.cuadre_id);
         return { ok: true, envios: l.map(e => ({ id: e.id, numero: e.numero, destinatario: e.destinatario_nombre, metodo: e.metodo_cobro, cod: e.cobrado_cod, envio: e.cobrado_envio, entregado_at: e.entregado_at })),
           esperado_cod: r2(l.filter(e => e.metodo_cobro === 'efectivo').reduce((x, e) => x + Number(e.cobrado_cod), 0)), esperado_envio: r2(l.filter(e => e.metodo_cobro === 'efectivo').reduce((x, e) => x + Number(e.cobrado_envio), 0)),
-          transferencias: r2(l.filter(e => e.metodo_cobro === 'transferencia').reduce((x, e) => x + Number(e.cobrado_cod) + Number(e.cobrado_envio), 0)), deuda: deuda(a.p_repartidor) }; }
-      case 'msj_cuadre_registrar': { const l = T('mensajeria_envios').filter(e => e.repartidor_id === a.p_repartidor && e.estado === 'entregado' && !e.cuadre_id);
+          transferencias: r2(l.filter(e => e.metodo_cobro === 'transferencia').reduce((x, e) => x + Number(e.cobrado_cod) + Number(e.cobrado_envio), 0)),
+          transfer_envio: r2(l.filter(e => e.metodo_cobro === 'transferencia' && !e.tarifa_venta_id).reduce((x, e) => x + Number(e.cobrado_envio), 0)),
+          transfer_cod: r2(l.filter(e => e.metodo_cobro === 'transferencia').reduce((x, e) => x + Number(e.cobrado_cod), 0)), deuda: deuda(a.p_repartidor) }; }
+      case 'msj_cuadre_registrar': case 'msj_abono_registrar': return NO('version');
+      case 'msj_cuadre_cerrar': { const p = a.p || {}; const r = T('mensajeria_repartidores').find(x => x.id === p.repartidor_id); if (!r) return NO('repartidor');
+        const l = T('mensajeria_envios').filter(e => e.repartidor_id === r.id && e.estado === 'entregado' && !e.cuadre_id);
+        if (!l.length) return NO('nada_por_cuadrar'); if (!mismos(l.map(e => e.id), p.envio_ids)) return NO('cambiaron');
+        const ef = l.filter(e => e.metodo_cobro === 'efectivo'), cod = r2(ef.reduce((x, e) => x + Number(e.cobrado_cod), 0)), env = r2(ef.reduce((x, e) => x + Number(e.cobrado_envio), 0)), esp = r2(cod + env);
+        const lef = l.filter(e => e.metodo_cobro === 'efectivo' && Number(e.cobrado_envio) > 0 && !e.tarifa_venta_id), ltr = l.filter(e => e.metodo_cobro === 'transferencia' && Number(e.cobrado_envio) > 0 && !e.tarifa_venta_id);
+        if (ltr.length && !bancoOk('transferencia', p.banco_id)) return NO('banco_transfer');
+        const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-'), dif = r2(Number(p.entregado) - esp);
+        T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: r.id, tipo: 'cuadre', envios: l.length, esperado_cod: cod, esperado_envio: env, esperado: esp, transferencias: 0, entregado: r2(p.entregado), diferencia: dif, notas: p.notas || null, por: p.por || null, created_at: ahora });
+        const v1 = lef.length ? venta(null, 'Clientes de envíos (pagó quien recibió)', 'Mensajería · Envíos cobrados por ' + r.nombre + ' · ' + numero, lef.map(e => ({ nombre: nomEnvio(e), monto: e.cobrado_envio })), 'efectivo', null, p.por) : null;
+        if (v1) lef.forEach(e => { e.tarifa_venta_id = v1.venta_id; });
+        const v2 = ltr.length ? venta(null, 'Clientes de envíos (pagó quien recibió)', 'Mensajería · Envíos pagados por transferencia · ' + numero, ltr.map(e => ({ nombre: nomEnvio(e), monto: e.cobrado_envio })), 'transferencia', p.banco_id, p.por) : null;
+        if (v2) ltr.forEach(e => { e.tarifa_venta_id = v2.venta_id; });
+        if (dif < 0) caja('EGRESO', 'OTRO_EGRESO', 'Faltante del repartidor ' + r.nombre + ' en ' + numero, -dif, 'efectivo', null, 'mensajeria_cuadre', id);
+        if (dif > 0) caja('INGRESO', 'OTRO_INGRESO', 'Sobrante del repartidor ' + r.nombre + ' en ' + numero, dif, 'efectivo', null, 'mensajeria_cuadre', id);
+        l.forEach(e => { e.cuadre_id = id; }); out = { ok: true, id, numero, esperado: esp, diferencia: dif, por_liquidar: cod, venta_efectivo: v1, venta_transferencia: v2 }; break; }
+      case 'msj_abono_cobrar': { const p = a.p || {}; const d = deuda(p.repartidor_id), m = r2(p.monto || 0), met = p.metodo || 'efectivo'; if (!(m > 0)) return NO('valor');
+        if (!bancoOk(met, p.banco_id)) return NO('banco'); if (m > d) return { ok: false, motivo: 'abono_mayor', deuda: d };
+        const r = T('mensajeria_repartidores').find(x => x.id === p.repartidor_id); const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-');
+        T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: p.repartidor_id, tipo: 'abono', envios: 0, esperado: 0, entregado: m, diferencia: m, notas: p.notas || null, por: p.por || null, created_at: ahora });
+        caja('INGRESO', 'OTRO_INGRESO', 'Abono del repartidor ' + r.nombre, m, met, p.banco_id, 'mensajeria_cuadre', id); out = { ok: true, id, numero, deuda: r2(d - m) }; break; }
+      case 'msj_envio_cobrar': { const p = a.p || {}; const e = T('mensajeria_envios').find(x => x.id === p.envio_id); if (!e) return NO('no_existe');
+        if (!bancoOk(p.metodo, p.banco_id)) return NO('banco'); if (e.tarifa_venta_id) return { ok: true, ya: true };
+        if (e.envio_lo_paga !== 'comercio' || e.liquidacion_id || e.estado === 'cancelado') return NO('no_cobrable');
+        const v = venta(e.comercio_id, e.remitente_nombre, 'Mensajería · Envío ' + e.numero + ' cobrado al remitente', [{ nombre: nomEnvio(e), monto: Number(e.tarifa) + Number(e.recargo_reintentos || 0) }], p.metodo, p.banco_id, p.por);
+        if (!v) return NO('total_cero'); e.tarifa_venta_id = v.venta_id; evt(e.id, 'envio_cobrado', 'Venta ' + v.numero, p.por); out = { ok: true, venta: v }; break; }
+      case 'msj_liquidaciones_resumen': { const ids = [...new Set(T('mensajeria_envios').filter(e => e.comercio_id && !e.liquidacion_id && e.estado !== 'cancelado').map(e => e.comercio_id))];
+        return { ok: true, comercios: ids.map(id => { const c = T('clientes').find(x => x.id === id) || {}; const l = liqLista(id); const pend = T('mensajeria_envios').filter(e => e.comercio_id === id && !e.liquidacion_id && e.estado !== 'cancelado');
+          return { comercio_id: id, nombre: [c.nombre, c.apellido].filter(Boolean).join(' '), telefono: c.telefono || null, listos: l.length, cod: r2(l.reduce((x, y) => x + y.cod, 0)), tarifas: r2(l.reduce((x, y) => x + y.tarifa, 0)),
+            en_proceso: pend.filter(e => !((e.estado === 'entregado' && e.cuadre_id) || e.estado === 'devuelto')).length, en_calle: r2(pend.filter(e => e.estado === 'entregado' && !e.cuadre_id).reduce((x, e) => x + Number(e.cobrado_cod), 0)) }; }) }; }
+      case 'msj_liquidacion_pendiente': { const l = liqLista(a.p_comercio); return { ok: true, envios: l, cod: r2(l.reduce((x, y) => x + y.cod, 0)), tarifas: r2(l.reduce((x, y) => x + y.tarifa, 0)) }; }
+      case 'msj_liquidacion_registrar': { const p = a.p || {}; const c = T('clientes').find(x => x.id === p.comercio_id); if (!c) return NO('cliente');
+        const l = liqLista(c.id); if (!l.length) return NO('nada_por_liquidar'); if (!mismos(l.map(e => e.id), p.envio_ids)) return NO('cambiaron');
+        const cod = r2(l.reduce((x, y) => x + y.cod, 0)), tar = r2(l.reduce((x, y) => x + y.tarifa, 0)), tmet = p.tarifas_metodo || 'efectivo';
+        if (tar > 0 && !bancoOk(tmet, p.tarifas_banco_id)) return NO('banco');
+        const id = uuid(), numero = num('mensajeria_liquidaciones', 'LQ-'), nombre = [c.nombre, c.apellido].filter(Boolean).join(' ');
+        const liq = { id, auth_user_id: UID, numero, comercio_id: c.id, comercio_nombre: nombre, envios: l.length, cod_total: cod, tarifas_total: tar, neto: r2(cod - tar), pago_metodo: cod - tar !== 0 ? (p.pago_metodo || 'efectivo') : null, notas: p.notas || null, por: p.por || null, created_at: ahora };
+        T('mensajeria_liquidaciones').push(liq);
+        const conTar = l.filter(y => y.tarifa > 0); const v = conTar.length ? venta(c.id, nombre, 'Mensajería · Liquidación ' + numero + ': tarifas de envío', conTar.map(y => ({ nombre: 'Envío ' + y.numero + ' · ' + y.destinatario, monto: y.tarifa })), tmet, p.tarifas_banco_id, p.por) : null;
+        if (v) { liq.venta_id = v.venta_id; conTar.forEach(y => { T('mensajeria_envios').find(e => e.id === y.id).tarifa_venta_id = v.venta_id; }); }
+        l.forEach(y => { T('mensajeria_envios').find(e => e.id === y.id).liquidacion_id = id; });
+        out = { ok: true, id, numero, cod, tarifas: tar, neto: r2(cod - tar), venta: v }; break; }
+      case 'msj_pago_pendiente': { const r = T('mensajeria_repartidores').find(x => x.id === a.p_repartidor); if (!r) return NO('repartidor');
+        const l = T('mensajeria_envios').filter(e => e.repartidor_id === r.id && e.estado === 'entregado' && !e.pago_id);
+        return { ok: true, pago_tipo: r.pago_tipo, pago_valor: r.pago_valor, deuda: deuda(r.id), envios: l.map(e => ({ id: e.id, numero: e.numero, destinatario: e.destinatario_nombre, entregado_at: e.entregado_at, monto: pagoMonto(r, e) })), total: r2(l.reduce((x, e) => x + pagoMonto(r, e), 0)) }; }
+      case 'msj_pago_registrar': { const p = a.p || {}; const r = T('mensajeria_repartidores').find(x => x.id === p.repartidor_id); if (!r) return NO('repartidor');
+        const met = p.metodo || 'efectivo'; if (!bancoOk(met, p.banco_id)) return NO('banco'); if (r.pago_tipo === 'ninguno') return NO('sin_forma_pago');
+        const l = T('mensajeria_envios').filter(e => e.repartidor_id === r.id && e.estado === 'entregado' && !e.pago_id); if (!l.length) return NO('nada_por_pagar'); if (!mismos(l.map(e => e.id), p.envio_ids)) return NO('cambiaron');
+        const total = r2(l.reduce((x, e) => x + pagoMonto(r, e), 0)), d = deuda(r.id), desc = r2(p.descontar_deuda || 0);
+        if (desc < 0 || desc > Math.min(d, total)) return { ok: false, motivo: 'descuento', deuda: d };
+        const id = uuid(), numero = num('mensajeria_pagos', 'PR-'), gid = uuid();
+        T('gastos').push({ id: gid, auth_user_id: UID, tipo: 'inmediato', concepto: 'Pago a ' + r.nombre + ' (' + numero + ')', categoria: 'Pago a repartidores', monto: total, fecha: hoy, estado: 'activo', origen_tipo: 'mensajeria_pago', origen_id: id, empleado: r.nombre });
+        caja('EGRESO', 'GASTO', 'Pago a repartidores: ' + r.nombre, total, met, p.banco_id, 'gasto', gid);
+        if (desc > 0) { const cq = uuid(); T('mensajeria_cuadres').push({ id: cq, auth_user_id: UID, numero: num('mensajeria_cuadres', 'CQ-'), repartidor_id: r.id, tipo: 'abono', envios: 0, esperado: 0, entregado: desc, diferencia: desc, notas: 'Descontado de su pago ' + numero, por: p.por || null, created_at: ahora });
+          caja('INGRESO', 'OTRO_INGRESO', 'Deuda descontada de su pago ' + numero, desc, met, p.banco_id, 'mensajeria_cuadre', cq); }
+        T('mensajeria_pagos').push({ id, auth_user_id: UID, numero, repartidor_id: r.id, envios: l.length, monto: total, descuento_deuda: desc, neto_pagado: r2(total - desc), metodo: met, gasto_id: gid, por: p.por || null, created_at: ahora });
+        l.forEach(e => { e.pago_id = id; e.pago_monto = pagoMonto(r, e); }); out = { ok: true, id, numero, monto: total, descuento: desc, neto: r2(total - desc) }; break; }
+      case '__viejo_cuadre': { const l = T('mensajeria_envios').filter(e => e.repartidor_id === a.p_repartidor && e.estado === 'entregado' && !e.cuadre_id);
         if (!l.length) return NO('nada_por_cuadrar'); if (l.map(e => e.id).sort().join() !== (a.p_envio_ids || []).slice().sort().join()) return NO('cambiaron');
         const ef = l.filter(e => e.metodo_cobro === 'efectivo'); const cod = r2(ef.reduce((x, e) => x + Number(e.cobrado_cod), 0)), env = r2(ef.reduce((x, e) => x + Number(e.cobrado_envio), 0)), esp = r2(cod + env);
         const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-'), dif = r2(Number(a.p_entregado) - esp);
         T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: a.p_repartidor, tipo: 'cuadre', envios: l.length, esperado_cod: cod, esperado_envio: env, esperado: esp, transferencias: 0, entregado: r2(a.p_entregado), diferencia: dif, notas: a.p_notas || null, por: a.p_por || null, created_at: ahora });
         l.forEach(e => { e.cuadre_id = id; }); out = { ok: true, id, numero, esperado: esp, diferencia: dif }; break; }
-      case 'msj_abono_registrar': { const d = deuda(a.p_repartidor); if (!(a.p_monto > 0)) return NO('valor'); if (r2(a.p_monto) > d) return { ok: false, motivo: 'abono_mayor', deuda: d };
+      case '__viejo_abono': { const d = deuda(a.p_repartidor); if (!(a.p_monto > 0)) return NO('valor'); if (r2(a.p_monto) > d) return { ok: false, motivo: 'abono_mayor', deuda: d };
         const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-');
         T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: a.p_repartidor, tipo: 'abono', envios: 0, esperado: 0, entregado: r2(a.p_monto), diferencia: r2(a.p_monto), notas: a.p_notas || null, por: a.p_por || null, created_at: ahora });
         out = { ok: true, id, numero, deuda: r2(d - a.p_monto) }; break; }

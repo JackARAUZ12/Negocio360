@@ -37,11 +37,19 @@ const MS_MOTIVOS = {
   usar_entregar: 'Usa el botón “Entregado”.', sin_repartidor: 'El envío no tiene repartidor.', recibio: 'Escribe quién recibió el paquete.',
   foto: 'La foto no se pudo usar. Tómala de nuevo.', metodo: 'Elige cómo pagó: efectivo o transferencia.',
   nada_por_cuadrar: 'Ese repartidor no tiene entregas pendientes de cuadrar.', abono_mayor: 'El abono es mayor que lo que debe.',
+  cod_sin_comercio: 'Para cobrar contra entrega, quien envía debe estar registrado como comercio (cliente): así se le liquida su dinero.',
+  ya_cobrado: 'Ese envío ya se cobró: no se puede cancelar. Si hay que devolver el dinero, anula la venta en Ventas.',
+  no_cobrable: 'Ese envío no se puede cobrar aquí (lo paga quien recibe, ya se liquidó o está cancelado).', total_cero: 'El monto a cobrar es cero.',
+  banco: 'Elige el banco donde entró la transferencia.', banco_transfer: 'Hay envíos pagados por transferencia: elige el banco donde entraron.',
+  nada_por_liquidar: 'Ese comercio no tiene envíos listos para liquidar.', nada_por_pagar: 'Ese repartidor no tiene entregas por pagar.',
+  sin_forma_pago: 'Ese repartidor no tiene forma de pago. Configúrala en Repartidores.', pago: 'La forma de pago no es válida (el porcentaje va de 0 a 100).',
+  descuento: 'Lo que se descuenta no puede pasar de lo que debe ni de lo que se le paga.', version: 'Actualiza la página (hay una versión nueva).',
 };
 function msMensaje(r) {
   if (!r) return 'No se pudo completar la acción.';
   if (r.motivo === 'no_asignable') return `El envío ${r.numero} ya no se puede asignar (salió a ruta o terminó).`;
   if (r.motivo === 'abono_mayor') return `El abono es mayor que lo que debe (${fmt(r.deuda)}).`;
+  if (r.motivo === 'descuento') return `Lo que se descuenta no puede pasar de lo que debe (${fmt(r.deuda)}) ni de lo que se le paga.`;
   return MS_MOTIVOS[r.motivo] || 'No se pudo completar la acción.';
 }
 // Llama una función del servidor. Devuelve {ok:true,...} o {ok:false,msg}. Nunca lanza.
@@ -113,6 +121,47 @@ async function msEfectivoEnMano() {
   return m;
 }
 function msTope(rep, cfg) { const t = rep && rep.tope_efectivo != null ? Number(rep.tope_efectivo) : Number(cfg?.tope_efectivo || 0); return t > 0 ? t : 0; }
+
+/* ---------- Bancos y el selector "¿Cómo se pagó?" (efectivo o transferencia a un banco) ---------- */
+let MS_BANCOS = null;
+async function msBancos() {
+  if (MS_BANCOS) return MS_BANCOS;
+  const { data } = await sb.from('bancos').select('id,nombre,moneda').eq('auth_user_id', TL.userId).eq('activo', true).order('nombre');
+  MS_BANCOS = data || []; return MS_BANCOS;
+}
+// Devuelve el HTML de un selector; leer con msMetodoLeer(contenedor, id).
+function msMetodoHTML(id, titulo, opciones = {}) {
+  const bancos = MS_BANCOS || [];
+  return `<div class="tl-f ms-metodo" data-metodo="${id}"><label>${titulo}</label>
+    <div class="ms-opciones" role="radiogroup" aria-label="${esc(titulo.replace(/<[^>]+>/g, ''))}">
+      <button type="button" class="ms-opcion${opciones.inicial !== 'transferencia' ? ' activa' : ''}" data-m="efectivo" role="radio">💵 Efectivo</button>
+      <button type="button" class="ms-opcion${opciones.inicial === 'transferencia' ? ' activa' : ''}" data-m="transferencia" role="radio">🏦 Transferencia</button></div>
+    <select class="tl-sel" data-banco style="margin-top:6px;${opciones.inicial === 'transferencia' ? '' : 'display:none'}" aria-label="Banco">
+      <option value="">${bancos.length ? 'Elige el banco…' : 'No tienes bancos: créalos en Caja → Bancos'}</option>${bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}${b.moneda && b.moneda !== 'NIO' ? ' (' + esc(b.moneda) + ')' : ''}</option>`).join('')}</select></div>`;
+}
+function msMetodoActivar(cont) {
+  cont.querySelectorAll('.ms-metodo').forEach(w => w.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
+    w.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('activa', x === b));
+    w.querySelector('[data-banco]').style.display = b.dataset.m === 'transferencia' ? '' : 'none';
+  }));
+}
+function msMetodoLeer(cont, id) {
+  const w = cont.querySelector(`.ms-metodo[data-metodo="${id}"]`); if (!w) return { metodo: 'efectivo', banco_id: null };
+  const m = w.querySelector('[data-m].activa')?.dataset.m || 'efectivo';
+  return { metodo: m, banco_id: m === 'transferencia' ? (w.querySelector('[data-banco]').value || null) : null };
+}
+// Abre una hoja para imprimir o guardar como PDF.
+function msImprimir(titulo, cuerpo) {
+  const w = window.open('', '_blank', 'width=720,height=860');
+  if (!w) { showToast('Permite las ventanas emergentes para imprimir.', 'warning'); return; }
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:20px;font-size:13px}h1{font-size:19px;margin:0 0 4px}h2{font-size:14px;margin:16px 0 6px}
+    table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border-bottom:1px solid #ddd;padding:6px 4px;text-align:left}th{font-size:11px;text-transform:uppercase;color:#555}
+    .n{text-align:right;white-space:nowrap}.tot td{font-weight:700;border-top:2px solid #111}.muted{color:#666;font-size:12px}.caja{border:2px solid #111;border-radius:8px;padding:10px;margin-top:12px;font-size:15px;font-weight:700}
+    @media print{button{display:none}}</style></head><body>${cuerpo}<p><button onclick="window.print()">Imprimir / Guardar PDF</button></p></body></html>`);
+  w.document.close();
+}
 
 /* ---------- Ventana genérica ---------- */
 function msVentana(id, titulo, cuerpo, pie, ancho) {
