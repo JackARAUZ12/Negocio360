@@ -1451,6 +1451,7 @@
           <div><label>Subtotal</label><div class="stat-readonly" id="nc-subtotal">—</div></div>
           <div>
             <label><input type="checkbox" id="nc-iva-activo" style="width:auto;display:inline-block;margin-right:6px" onchange="recalcularCredito()" />Aplicar IVA</label>
+            <div id="nc-iva-cr-wrap" style="display:none;margin-top:6px"><select id="nc-iva-cr-tarifa" onchange="recalcularCredito()" title="Tarifa de IVA de este crédito"><option value="13">IVA 13 % (general)</option><option value="4">IVA 4 %</option><option value="2">IVA 2 %</option><option value="1">IVA 1 %</option><option value="0">IVA 0 % (exento)</option></select></div>
             <div class="stat-readonly" id="nc-iva-monto">—</div>
           </div>
         </div>
@@ -2042,7 +2043,7 @@
 <script src="rawbt-print.js?v=20261023a"></script>
 <script src="ticket-prueba-ancho.js?v=20261022a"></script>
 <script src="paginar-lectura.js?v=20261029d"></script>
-<script src="creditos.js?v=20261101c"></script>
+<script src="creditos.js?v=20261101d"></script>
 <script src="creditos-exportar.js?v=20261029c"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>

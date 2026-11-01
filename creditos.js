@@ -1486,13 +1486,33 @@
     return parseFloat(document.getElementById('nc-monto-financiero').value) || 0;
   }
 
+  // IVA del crédito. Nicaragua/otros: igual que siempre. Costa Rica: tarifa elegida en el selector (13 % por defecto), nunca el 15 % supuesto.
+  function esCRCred() { return !!(window.N360CR && window.N360CR.activo && window.N360CR.activo()); }
+  function ivaPctCredito() {
+    if (esCRCred()) {
+      const sel = document.getElementById('nc-iva-cr-tarifa');
+      const v = sel ? Number(sel.value) : NaN;
+      if (isFinite(v) && v >= 0 && v <= 100) return v;
+      const d = Number(CS.empresaConfig?.iva_porcentaje_default);
+      return (isFinite(d) && d >= 0 && d <= 100 && CS.empresaConfig?.iva_porcentaje_default != null) ? d : 13;
+    }
+    return Number(CS.empresaConfig?.porcentaje_iva || 15);
+  }
+  function actualizarSelectorIvaCR() {
+    const w = document.getElementById('nc-iva-cr-wrap'); if (!w) return;
+    const on = esCRCred() && !!document.getElementById('nc-iva-activo')?.checked;
+    w.style.display = on ? '' : 'none';
+    if (on) { const sel = document.getElementById('nc-iva-cr-tarifa'); const d = Number(CS.empresaConfig?.iva_porcentaje_default); if (sel && !sel.dataset.listo) { sel.dataset.listo = '1'; sel.value = String([13,4,2,1,0].includes(d) ? d : 13); } }
+  }
+  window.actualizarSelectorIvaCR = actualizarSelectorIvaCR;
+
   function obtenerImpuestosSeleccionados() {
     const tipo = document.getElementById('nc-tipo').value;
     if (tipo === 'venta') {
       const ivaActivo = document.getElementById('nc-iva-activo')?.checked;
       if (!ivaActivo) return [];
       const ivaCatalogo = CS.impuestos.find(i => (i.nombre||'').toLowerCase() === 'iva');
-      return [{ id: ivaCatalogo?.id || null, nombre: 'IVA', tipo_valor: 'porcentaje', valor: Number(CS.empresaConfig?.porcentaje_iva || 15) }];
+      return [{ id: ivaCatalogo?.id || null, nombre: 'IVA', tipo_valor: 'porcentaje', valor: ivaPctCredito() }];
     }
     // financiero: el impuesto solo aplica sobre el interés, y solo si hay interés
     const tipoFin = document.getElementById('nc-tipo-financiamiento').value;
@@ -1513,7 +1533,8 @@
     document.getElementById('nc-monto-original').textContent = fmt(montoOriginal);
 
     if (document.getElementById('nc-tipo').value === 'venta') {
-      const ivaPct = document.getElementById('nc-iva-activo')?.checked ? Number(CS.empresaConfig?.porcentaje_iva||15) : 0;
+      actualizarSelectorIvaCR();
+      const ivaPct = document.getElementById('nc-iva-activo')?.checked ? ivaPctCredito() : 0;
       document.getElementById('nc-subtotal').textContent = fmt(montoOriginal);
       document.getElementById('nc-iva-monto').textContent = fmt(montoOriginal * ivaPct/100);
     }
@@ -1937,7 +1958,7 @@
         // 1) Crear la venta (reutiliza exactamente la lógica de Ventas: descuenta stock, calcula impuesto)
         const numeroVenta = await generarNumeroVenta();
         const ivaActivo = document.getElementById('nc-iva-activo')?.checked || false;
-        const ivaPct = ivaActivo ? Number(CS.empresaConfig?.porcentaje_iva || 15) : 0;
+        const ivaPct = ivaActivo ? ivaPctCredito() : 0;
         const subtotal = round2(CS.ncItems.reduce((s,i)=>s+i.precio*i.cantidad,0));
         const costoTotal = round2(CS.ncItems.reduce((s,i)=>s+i.costo*i.cantidad,0));
         const ivaMonto = round2(subtotal * ivaPct/100);
