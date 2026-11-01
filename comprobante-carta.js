@@ -186,6 +186,19 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
     } catch (e) { console.warn('generarComprobanteCartaPDF, lookup codigo de barras/SKU:', e); }
   }
 
+  // Costa Rica (solo cuentas CR/CRC): el CAByS de cada línea sale bajo la descripción. Se usa el guardado en la línea;
+  // si es una venta anterior sin ese dato, se completa con el del producto. Sin CAByS no se muestra nada.
+  const crCabys = !!(window.N360CR && window.N360CR.activo && window.N360CR.activo());
+  if (crCabys && Array.isArray(items) && items.some(it => !it.cabys && it.producto_id)) {
+    try {
+      const ids = [...new Set(items.filter(it => !it.cabys && it.producto_id).map(it => it.producto_id))];
+      const sbc = await _cc_clienteSupabase();
+      const rc = await sbc.from('productos').select('id, cabys').in('id', ids);
+      const mc = {}; (rc.data || []).forEach(p => { if (p.cabys) mc[p.id] = p.cabys; });
+      items = items.map(it => it.cabys || !mc[it.producto_id] ? it : { ...it, cabys: mc[it.producto_id] });
+    } catch (e) { console.warn('comprobante carta, CAByS:', e); }
+  }
+
   const palabraBase = (cfg.titulo_comprobante || '').trim() || 'Comprobante';
   const TITULOS = { venta: `${palabraBase} de Venta`, credito: `${palabraBase} de Crédito` };
   // datos.titulo (opcional) reemplaza el título, p. ej. "Factura de Crédito"
@@ -312,7 +325,7 @@ async function generarComprobanteCartaPDF(tipo, datos, items) {
   encabezado.push('Subtotal');
 
   const filas = (items||[]).map(it => {
-    const fila = [it.nombre || 'Ítem'];
+    const fila = [(it.nombre || 'Ítem') + (crCabys && it.cabys ? '\nCAByS: ' + it.cabys : '')];
     if (colSku) fila.push(it.sku || '—');
     if (colBarras) fila.push(it.codigo_barras || '—');
     fila.push(
