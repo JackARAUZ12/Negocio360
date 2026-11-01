@@ -6304,6 +6304,13 @@ async function _confirmarVentaInterno(conImpresion) {
         throw new Error('El total cambió mientras se preparaba la venta. Revisa el resumen y confirma de nuevo.');
       }
     }
+    // IVA por producto (Costa Rica): si las tarifas de los productos no estaban cargadas, NO se guarda con tarifas supuestas.
+    if (S.ivaActivo && S.ivaModo === 'lineas' && crIva() && !window.N360IvaLineas.listo()) {
+      await window.N360IvaLineas.cargarTarifas(sb);
+      if (!window.N360IvaLineas.listo()) throw new Error('No se pudieron cargar las tarifas de IVA de tus productos. Revisa tu conexión e intenta de nuevo.');
+      calcularResumen();
+      throw new Error('Se cargaron las tarifas de IVA de tus productos y el total pudo cambiar. Revisa el resumen y confirma de nuevo.');
+    }
     const r = S._resumen;
 
     // "Corregir venta": primero se anula la original (misma rutina de
@@ -6827,12 +6834,24 @@ function abrirConfigVentaRapida(esAjusteManual, origen) {
 
   const c = VR.config || {};
   const ivaActivo = c.iva_activo != null ? !!c.iva_activo : !!(S.empresaConfig?.maneja_iva);
-  const ivaPct    = c.iva_porcentaje ?? (S.empresaConfig?.porcentaje_iva ?? 15);
+  const ivaPct    = c.iva_porcentaje ?? ((window.N360CR && window.N360CR.activo && window.N360CR.activo()) ? (S.empresaConfig?.iva_porcentaje_default ?? 13) : (S.empresaConfig?.porcentaje_iva ?? 15));
 
   const sw  = document.getElementById('vrc-iva-switch');
   const inp = document.getElementById('vrc-iva-porcentaje');
   if (sw)  sw.classList.toggle('on', ivaActivo);
   if (inp) { inp.value = ivaPct; inp.disabled = !ivaActivo; }
+  { // Costa Rica: en vez de escribir el porcentaje, se elige la tarifa (13, 4, 2, 1 o 0) y, si se quiere, usar la de cada producto
+    const crBox = document.getElementById('vrc-iva-cr'), crSel = document.getElementById('vrc-iva-cr-tarifa'), crProd = document.getElementById('vrc-iva-cr-prod');
+    const esCR = !!(window.N360CR && window.N360CR.activo && window.N360CR.activo());
+    if (crBox) crBox.style.display = esCR ? '' : 'none';
+    const derecha = inp && inp.closest ? inp.closest('.iva-right') : null; if (derecha) derecha.style.display = esCR ? 'none' : '';
+    if (esCR && crSel) {
+      const lista = [13, 4, 2, 1, 0]; if (!lista.includes(Number(ivaPct))) lista.push(Number(ivaPct));
+      crSel.innerHTML = lista.map(t => `<option value="${t}" ${Number(ivaPct) === t ? 'selected' : ''}>${t}%${t === 13 ? ' (tarifa general)' : (t === 0 ? ' (exento)' : '')}</option>`).join('');
+      crSel.disabled = !ivaActivo;
+      if (crProd) { crProd.checked = S.empresaConfig?.iva_por_producto === true; crProd.disabled = !ivaActivo; }
+    }
+  }
 
   document.querySelectorAll('input[name="vrc-ancho"]').forEach(r => {
     r.checked = r.value === (c.ancho_ticket || '80mm');
@@ -6879,6 +6898,7 @@ function vrToggleIvaConfig() {
   const activo = !sw.classList.contains('on');
   sw.classList.toggle('on', activo);
   inp.disabled = !activo;
+  { const s1 = document.getElementById('vrc-iva-cr-tarifa'), s2 = document.getElementById('vrc-iva-cr-prod'); if (s1) s1.disabled = !activo; if (s2) s2.disabled = !activo; }
 }
 
 /* =====================================================
@@ -7097,6 +7117,8 @@ async function conectarImpresoraUSBDesdeUI(contexto) {
 async function guardarConfigVentaRapida() {
   const ivaActivo = document.getElementById('vrc-iva-switch')?.classList.contains('on') || false;
   let ivaPct = parseFloat(document.getElementById('vrc-iva-porcentaje')?.value);
+  const esCRcfg = !!(window.N360CR && window.N360CR.activo && window.N360CR.activo());
+  if (esCRcfg) { const t = parseFloat(document.getElementById('vrc-iva-cr-tarifa')?.value); if (!isNaN(t)) ivaPct = t; }
   if (isNaN(ivaPct) || ivaPct < 0) ivaPct = 0;
   if (ivaPct > 100) ivaPct = 100;
   const ancho = document.querySelector('input[name="vrc-ancho"]:checked')?.value || '80mm';
@@ -7124,6 +7146,13 @@ async function guardarConfigVentaRapida() {
       .upsert(payload, { onConflict: 'auth_user_id' })
       .select('*').single();
     if (error) throw error;
+    if (esCRcfg) {   // Costa Rica: "usar la tarifa de cada producto" se guarda en la configuración de la empresa
+      const flag = !!ivaActivo && !!document.getElementById('vrc-iva-cr-prod')?.checked;
+      const { error: eFlag } = await sb.from('configuracion_empresa').update({ iva_por_producto: flag }).eq('auth_user_id', S.userId);
+      if (eFlag) throw eFlag;
+      if (S.empresaConfig) S.empresaConfig.iva_por_producto = flag;
+      if (flag) { try { await window.N360IvaLineas.cargarTarifas(sb, true); } catch (_) {} }
+    }
     VR.config = data;
     // BUG REAL CORREGIDO: al guardar, se actualizaba VR.config pero
     // nunca S.mostrarCostoVenta (la bandera que realmente controla si
@@ -7177,6 +7206,7 @@ function abrirPantallaVentaRapida() {
   if (input) input.value = '';
 
   initScannerVR();
+  if (VR.config?.iva_activo && vrIvaPorProducto()) { window.N360IvaLineas.cargarTarifas(sb, true).then(() => { try { renderCarritoVentaRapida(); } catch (_) {} }); }
   openModal('modal-vr-pos');
   generarNumeroVentaRapida();
   setTimeout(enfocarScannerVR, 150);
@@ -7503,6 +7533,9 @@ function cambiarPrecioVR(id, val) {
   renderCarritoVentaRapida();
 }
 
+function vrIvaPorProducto() {       // Costa Rica + el negocio eligió usar la tarifa guardada en cada producto
+  return !!(window.N360CR && window.N360CR.activo && window.N360CR.activo() && window.N360IvaLineas && S.empresaConfig && S.empresaConfig.iva_por_producto === true);
+}
 function calcularResumenVR() {
   const subtotal = round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.precio, 0));
   const resultadoPromos = calcularDescuentosPromociones(VR.carrito, S.promociones);
@@ -7510,10 +7543,19 @@ function calcularResumenVR() {
   const ivaActivo = !!VR.config?.iva_activo;
   const ivaPct    = Number(VR.config?.iva_porcentaje) || 0;
   const baseImponible = Math.max(subtotal - descuentoPromociones, 0);
-  const impuesto  = ivaActivo ? round2(baseImponible * (ivaPct/100)) : 0;
+  let impuesto  = ivaActivo ? round2(baseImponible * (ivaPct/100)) : 0;
+  // Costa Rica + "usar la tarifa de cada producto": el IVA se suma línea por línea SOLO si hay tarifas distintas; si no, queda el cálculo de siempre.
+  let ivaLineas = null, ivaPctMostrar = ivaPct, tarifasPendientes = false;
+  if (ivaActivo && vrIvaPorProducto()) {
+    if (!window.N360IvaLineas.listo()) tarifasPendientes = true;
+    else {
+      const rl = window.N360IvaLineas.calcular(VR.carrito.map(i => ({ bruto: round2(i.cantidad*i.precio), descLinea: 0, tarifa: (i.esCombo || i.esPromocion) ? null : window.N360IvaLineas.tarifaDe(i.id) })), baseImponible, ivaPct);
+      if (rl.mixto) { impuesto = rl.iva; ivaLineas = rl.lineas; ivaPctMostrar = rl.efectivo; }
+    }
+  }
   const total     = round2(subtotal - descuentoPromociones + impuesto);
   const costoTotal= round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.costo, 0));
-  return { subtotal, impuesto, total, costoTotal, ivaActivo, ivaPct, descuentoPromociones, promocionesAplicadas: resultadoPromos.detalle };
+  return { subtotal, impuesto, total, costoTotal, ivaActivo, ivaPct: ivaPctMostrar, ivaLineas, tarifasPendientes, descuentoPromociones, promocionesAplicadas: resultadoPromos.detalle };
 }
 
 function renderCarritoVentaRapida() {
@@ -7561,7 +7603,7 @@ function renderCarritoVentaRapida() {
   setEl2('vr-res-total',    fmt(r.total));
   const ivaRow = document.getElementById('vr-res-iva-row');
   if (ivaRow) ivaRow.style.display = r.ivaActivo ? 'flex' : 'none';
-  if (r.ivaActivo) setEl2('vr-res-iva', `${fmt(r.impuesto)} (${r.ivaPct}%)`);
+  if (r.ivaActivo) setEl2('vr-res-iva', `${fmt(r.impuesto)} (${r.ivaPct}%${r.ivaLineas ? ' · por producto' : ''})`);
 
   const avisoPromoVR = document.getElementById('vr-res-promociones-aviso');
   if (avisoPromoVR) {
@@ -7824,6 +7866,13 @@ async function _confirmarVentaRapidaInterno() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
 
   try {
+    // Candado (Costa Rica, IVA por producto): sin las tarifas cargadas NO se cobra con tarifas supuestas.
+    if (VR.config?.iva_activo && vrIvaPorProducto() && !window.N360IvaLineas.listo()) {
+      await window.N360IvaLineas.cargarTarifas(sb);
+      if (!window.N360IvaLineas.listo()) throw new Error('No se pudieron cargar las tarifas de IVA de tus productos. Revisa tu conexión e intenta de nuevo.');
+      renderCarritoVentaRapida();
+      throw new Error('Se cargaron las tarifas de IVA de tus productos y el total pudo cambiar. Revisa el total y cobra de nuevo.');
+    }
     const r = calcularResumenVR();
 
     if (!VR.numeroVenta || VR.numeroVenta.startsWith('V-TMP')) {
@@ -7864,7 +7913,8 @@ async function _confirmarVentaRapidaInterno() {
       iva_porcentaje: r.ivaActivo ? r.ivaPct : 0,
     };
 
-    const detallesPayload = VR.carrito.map(item => ({
+    const detallesPayload = VR.carrito.map((item, idxIva) => ({
+      ...(r.ivaLineas && r.ivaLineas[idxIva] ? { iva_tarifa: r.ivaLineas[idxIva].tarifa, iva_monto: r.ivaLineas[idxIva].iva } : {}),
       auth_user_id:    S.userId,
       venta_id:        null,
       producto_id:     (item.esCombo || item.esPromocion) ? null : item.id,

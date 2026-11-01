@@ -1431,6 +1431,14 @@
           <span>%</span>
         </div>
       </div>
+      <div id="vrc-iva-cr" style="display:none;margin-top:10px">
+        <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:5px">Tarifa de IVA</label>
+        <select id="vrc-iva-cr-tarifa" class="form-input" disabled></select>
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-top:9px;font-size:13px;line-height:1.35">
+          <input type="checkbox" id="vrc-iva-cr-prod" disabled style="margin-top:3px"/>
+          <span>Usar la tarifa guardada en cada producto <span style="color:var(--text-muted)">(los productos sin tarifa usan la de arriba)</span></span>
+        </label>
+      </div>
       </div>
 
       <div class="form-section-title" style="margin-top:18px">Ticket / comprobante</div>
@@ -2072,7 +2080,7 @@
 <script src="ticket-prueba-ancho.js?v=20261022a"></script>
 <script src="paginar-lectura.js?v=20261029d"></script>
 <script src="iva-lineas.js?v=20261101a"></script>
-<script src="ventas.js?v=20261101d"></script>
+<script src="ventas.js?v=20261101e"></script>
 <script src="exportar-modulo.js?v=20261029b"></script>
 <script src="exportar-ventas.js?v=20261101c"></script>
 <script src="certificados-venta.js?v=20261023i"></script>
