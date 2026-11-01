@@ -208,7 +208,7 @@ async function cargarKpis() {
   const gastos = await intentar(async () => {
     const { data, error } = await sb.from('gastos').select('monto,estado').eq('auth_user_id', TP.userId).gte('fecha', mesISO);
     if (error) throw error;
-    return (data || []).filter(g => g.estado !== 'anulado' && g.estado !== 'anulada').reduce((s, g) => s + Number(g.monto || 0), 0);
+    return (data || []).filter(g => g.estado !== 'anulado' && g.estado !== 'anulada' && g.estado !== 'cancelado').reduce((s, g) => s + Number(g.monto || 0), 0);
   });
   const porCobrar = await intentar(async () => {
     const { data, error } = await sb.from('creditos').select('saldo_pendiente,estado').eq('auth_user_id', TP.userId);
