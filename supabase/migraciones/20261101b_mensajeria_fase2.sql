@@ -116,6 +116,7 @@ begin
 end $f$;
 
 -- Venta de tarifas de envío: venta normal (Ventas + detalle + Caja neto de IVA + IVA + total del cliente).
+-- ventas.fecha sigue la convención del sistema: el DÍA (de Managua) a medianoche UTC.
 -- p_lineas: [{"id": envío, "nombre": texto, "monto": total con IVA si aplica}]
 create or replace function public._msj_venta(p_uid uuid, p_cliente uuid, p_cliente_nombre text, p_obs text, p_lineas jsonb, p_metodo text, p_banco uuid, p_por text)
 returns jsonb language plpgsql security definer set search_path to 'public' as $f$
@@ -131,7 +132,7 @@ begin
   v_num := public.generar_numero_venta(p_uid);
   insert into public.ventas(auth_user_id, numero_venta, cliente_id, cliente_nombre, fecha, subtotal, descuento, impuesto, total, costo_total,
                             metodo_pago_id, metodo_pago_nombre, estado, observaciones, iva_activo, iva_porcentaje, creado_por_nombre)
-  values (p_uid, v_num, p_cliente, left(coalesce(nullif(btrim(p_cliente_nombre), ''), 'Cliente final'), 200), now(), v_sub, 0, v_imp, v_total, 0,
+  values (p_uid, v_num, p_cliente, left(coalesce(nullif(btrim(p_cliente_nombre), ''), 'Cliente final'), 200), (public._msj_hoy())::timestamp at time zone 'UTC', v_sub, 0, v_imp, v_total, 0,
           public._msj_metodo_id(p_uid, v_met), v_met, 'completada', left(p_obs, 500), v_iva, v_pct, left(coalesce(p_por, 'Usuario'), 120))
   returning id into v_venta;
   for l in select x from jsonb_array_elements(p_lineas) x loop

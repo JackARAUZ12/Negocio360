@@ -1948,7 +1948,7 @@
           numero_venta: numeroVenta, subtotal, impuesto: ivaMonto, total, costo_total: costoTotal,
           metodo_pago: 'credito', estado_pago: 'credito', estado: 'completada',
           iva_activo: ivaActivo, iva_porcentaje: ivaPct,
-          categoria: 'credito', notas: 'Venta generada automáticamente por el módulo de Créditos',
+          categoria: 'credito', fecha: todayISO(), notas: 'Venta generada automáticamente por el módulo de Créditos',
           creado_por_nombre: obtenerNombrePerfilActivo(),
         }).select().single();
         if (errVenta) throw errVenta;

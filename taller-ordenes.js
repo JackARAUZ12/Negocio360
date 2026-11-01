@@ -361,7 +361,7 @@ TO.ticketHtml = function () {
   const o = TO.actual, ve = TO.veh[o?.vehiculo_id] || {};
   return `<!doctype html><meta charset="utf-8"><style>body{font:12px/1.35 monospace;margin:8px;color:#000;max-width:300px}h1{font-size:14px;text-align:center;margin:0}table{width:100%;border-collapse:collapse}td{padding:2px 0}hr{border:0;border-top:1px dashed #000}.t{font-weight:bold;font-size:14px}p{margin:2px 0;text-align:center}</style>
   <h1>${esc(emp.nombre_comercial || 'Mi Negocio')}</h1>${emp.telefono ? `<p>${esc(emp.telefono)}</p>` : ''}<hr>
-  <p>Ticket ${esc(v.numero_venta)} · ${new Date(v.fecha || Date.now()).toLocaleDateString('es-NI')}</p>${v.cliente_nombre ? `<p>${esc(v.cliente_nombre)}</p>` : ''}${ve.placa ? `<p>Vehículo: ${esc(ve.placa)} ${esc([ve.marca, ve.modelo].filter(Boolean).join(' '))}</p>` : ''}<hr>
+  <p>Ticket ${esc(v.numero_venta)} · ${tlDiaVenta(v.fecha || new Date())}</p>${v.cliente_nombre ? `<p>${esc(v.cliente_nombre)}</p>` : ''}${ve.placa ? `<p>Vehículo: ${esc(ve.placa)} ${esc([ve.marca, ve.modelo].filter(Boolean).join(' '))}</p>` : ''}<hr>
   <table>${filas}</table><hr><table>
   <tr><td>Subtotal</td><td style="text-align:right">${f(v.subtotal)}</td></tr>${num(v.descuento) ? `<tr><td>Descuento</td><td style="text-align:right">-${f(v.descuento)}</td></tr>` : ''}${num(v.impuesto) ? `<tr><td>IVA</td><td style="text-align:right">${f(v.impuesto)}</td></tr>` : ''}
   <tr class="t"><td>TOTAL</td><td style="text-align:right">${f(v.total)}</td></tr>${num(v.retencion_ir_monto) ? `<tr><td>Retención IR</td><td style="text-align:right">-${f(v.retencion_ir_monto)}</td></tr><tr><td>A cobrar</td><td style="text-align:right">${f(num(v.total) - num(v.retencion_ir_monto))}</td></tr>` : ''}<tr><td>Pago</td><td style="text-align:right">${String(v.metodo_pago || '') === 'fiado' ? 'A CRÉDITO' : esc(v.metodo_pago_nombre || '')}</td></tr></table><hr><p>¡Gracias por su preferencia!</p>`;
@@ -381,7 +381,7 @@ TO.factura = async function () {
   b.disabled = true; const t = b.textContent; b.textContent = 'Generando…';
   try {
     const doc = await generarComprobanteCartaPDF('venta', {
-      userId: TL.userId, numero: v.numero_venta, fecha: tlFecha(v.fecha), cliente_nombre: v.cliente_nombre, cliente_id: v.cliente_id || null,
+      userId: TL.userId, numero: v.numero_venta, fecha: tlDiaVenta(v.fecha), cliente_nombre: v.cliente_nombre, cliente_id: v.cliente_id || null,
       subtotal: v.subtotal, descuento: v.descuento, impuesto: v.impuesto, iva_porcentaje: v.iva_porcentaje, total: v.total, metodo_pago: String(v.metodo_pago || '') === 'fiado' ? 'Crédito' : v.metodo_pago_nombre, observaciones: v.observaciones,
       empresaNombre: emp.nombre_comercial || 'Mi Negocio', empresaDireccion: emp.direccion || '', empresaTelefono: emp.telefono || emp.whatsapp || '', empresaRuc: emp.ruc || '', moneda_simbolo: emp.moneda_simbolo || undefined,
     }, items.map(i => ({ nombre: i.producto_nombre, cantidad: i.cantidad, precio: i.precio, descuento: i.descuento || 0, subtotal: i.subtotal, sku: i.producto_sku || null, producto_id: i.producto_id || null })));

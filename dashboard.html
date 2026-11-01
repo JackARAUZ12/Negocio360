@@ -2272,8 +2272,9 @@ async function loadKPIs(userId) {
 ===================================================== */
 async function loadGastos(userId) {
   try {
+    // Solo gastos vigentes: un gasto cancelado/anulado ya no cuenta en el resumen del mes.
     const { data } = await sbClient.from('gastos').select('monto')
-      .eq('auth_user_id', userId).gte('fecha', startOfMonthISO());
+      .eq('auth_user_id', userId).eq('estado', 'activo').gte('fecha', startOfMonthISO());
     dashData.gastosM = data ? data.reduce((s, r) => s + (r.monto || 0), 0) : 0;
   } catch(e) { dashData.gastosM = 0; }
 }

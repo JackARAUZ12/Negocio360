@@ -164,6 +164,9 @@ async function tlRpc(nombre, args) {
   } catch (e) { console.warn(nombre, e); return { ok: false, msg: 'No se pudo completar la acción. Revisa tu conexión e intenta de nuevo.' }; }
 }
 const tlFecha = d => d ? new Date(d).toLocaleDateString('es-NI', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+// ventas.fecha se guarda como el DÍA a medianoche UTC: se muestra como ese día (no el anterior en hora de Managua).
+const tlDiaVenta = d => { if (!d) return '—'; const x = new Date(d); if (isNaN(x)) return '—'; const m = x.getUTCHours() === 0 && x.getUTCMinutes() === 0 && x.getUTCSeconds() === 0;
+  return (m ? new Date(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()) : x).toLocaleDateString('es-NI', { day: '2-digit', month: 'short', year: 'numeric' }); };
 const tlFechaHora = d => d ? new Date(d).toLocaleString('es-NI', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 /* ---------- Arranque ---------- */
