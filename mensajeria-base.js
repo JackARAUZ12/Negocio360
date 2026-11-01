@@ -44,11 +44,13 @@ const MS_MOTIVOS = {
   nada_por_liquidar: 'Ese comercio no tiene envíos listos para liquidar.', nada_por_pagar: 'Ese repartidor no tiene entregas por pagar.',
   sin_forma_pago: 'Ese repartidor no tiene forma de pago. Configúrala en Repartidores.', pago: 'La forma de pago no es válida (el porcentaje va de 0 a 100).',
   descuento: 'Lo que se descuenta no puede pasar de lo que debe ni de lo que se le paga.', version: 'Actualiza la página (hay una versión nueva).',
+  sin_filas: 'El archivo no tiene envíos.', muchas_filas: 'Máximo 300 envíos por carga. Divide el archivo.',
 };
 function msMensaje(r) {
   if (!r) return 'No se pudo completar la acción.';
   if (r.motivo === 'no_asignable') return `El envío ${r.numero} ya no se puede asignar (salió a ruta o terminó).`;
   if (r.motivo === 'abono_mayor') return `El abono es mayor que lo que debe (${fmt(r.deuda)}).`;
+  if (r.motivo === 'fila') return `Fila ${r.fila}: ${MS_MOTIVOS[r.detalle] || 'tiene un dato que no es válido.'} No se cargó ningún envío.`;
   if (r.motivo === 'descuento') return `Lo que se descuenta no puede pasar de lo que debe (${fmt(r.deuda)}) ni de lo que se le paga.`;
   return MS_MOTIVOS[r.motivo] || 'No se pudo completar la acción.';
 }
@@ -262,21 +264,34 @@ function msNoEntregado(e, alTerminar) {
 }
 
 /* ---------- Etiqueta para pegar en el paquete ---------- */
-function msEtiqueta(e) {
-  const cobrar = msPorCobrar(e);
-  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Etiqueta ${esc(e.numero)}</title><style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:12px;color:#000}.et{border:2px solid #000;border-radius:8px;padding:12px;max-width:380px}
-    .n{font-size:26px;font-weight:800;letter-spacing:1px}.t{font-size:11px;text-transform:uppercase;color:#444;margin-top:8px}.v{font-size:15px;font-weight:700}
-    .c{margin-top:10px;border:2px dashed #000;padding:8px;font-size:18px;font-weight:800;text-align:center}@media print{button{display:none}}</style></head><body>
-    <div class="et"><div style="display:flex;justify-content:space-between;align-items:center"><span class="n">${esc(e.numero)}</span><span>${esc(TL.empresaConfig?.nombre_comercial || '')}</span></div>
+// Enlace público para que quien espera el paquete vea dónde va (sin cuenta).
+function msRastreoUrl(e) { return e && e.rastreo_token ? new URL('rastreo.html#t=' + e.rastreo_token, location.href).href : ''; }
+// QR como dibujo (SVG) hecho en el equipo: el enlace no se manda a ningún servicio de afuera.
+function msQrSvg(texto, celda = 3) {
+  try { if (typeof qrcode === 'undefined' || !texto) return ''; const q = qrcode(0, 'M'); q.addData(texto); q.make(); return q.createSvgTag(celda, 0); } catch (_) { return ''; }
+}
+function msEtiquetaHTML(e) {
+  const cobrar = msPorCobrar(e), qr = msQrSvg(msRastreoUrl(e));
+  return `<div class="et"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="n">${esc(e.numero)}</span><span style="text-align:right">${esc(TL.empresaConfig?.nombre_comercial || '')}</span></div>
     <div class="t">Para</div><div class="v">${esc(e.destinatario_nombre)}${e.destinatario_telefono ? ' · ' + esc(e.destinatario_telefono) : ''}</div>
     <div class="t">Dirección</div><div class="v">${esc(e.direccion)}${e.referencia ? '<br><span style="font-weight:400">' + esc(e.referencia) + '</span>' : ''}</div>
     ${e.zona_nombre ? `<div class="t">Zona</div><div class="v">${esc(e.zona_nombre)}</div>` : ''}
     <div class="t">De</div><div class="v">${esc(e.remitente_nombre)}${e.remitente_telefono ? ' · ' + esc(e.remitente_telefono) : ''}</div>
-    <div class="t">Paquetes</div><div class="v">${Number(e.paquetes || 1)} · ${esc(MS_TAMANOS[e.tamano] || '')}${e.urgente ? ' · URGENTE' : ''}</div>
-    <div class="c">${cobrar > 0 ? 'COBRAR ' + esc(fmt(cobrar)) : 'NO COBRAR'}</div></div>
+    <div style="display:flex;gap:10px;align-items:flex-end;justify-content:space-between"><div><div class="t">Paquetes</div><div class="v">${Number(e.paquetes || 1)} · ${esc(MS_TAMANOS[e.tamano] || '')}${e.urgente ? ' · URGENTE' : ''}</div></div>
+      ${qr ? `<div class="qr">${qr}<div style="font-size:9px;text-align:center">Rastrear</div></div>` : ''}</div>
+    <div class="c">${cobrar > 0 ? 'COBRAR ' + esc(fmt(cobrar)) : 'NO COBRAR'}</div></div>`;
+}
+// Imprime una o varias etiquetas (una por página).
+function msEtiquetas(lista) {
+  if (!lista || !lista.length) { showToast('No hay envíos para imprimir.', 'warning'); return; }
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Etiquetas (${lista.length})</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:12px;color:#000}.et{border:2px solid #000;border-radius:8px;padding:12px;max-width:380px;margin-bottom:14px;page-break-after:always;break-after:page}
+    .et:last-of-type{page-break-after:auto;break-after:auto}.n{font-size:26px;font-weight:800;letter-spacing:1px}.t{font-size:11px;text-transform:uppercase;color:#444;margin-top:8px}.v{font-size:15px;font-weight:700}
+    .qr svg{width:84px;height:84px;display:block}.c{margin-top:10px;border:2px dashed #000;padding:8px;font-size:18px;font-weight:800;text-align:center}@media print{button{display:none}}</style></head><body>
+    ${lista.map(msEtiquetaHTML).join('')}
     <p><button onclick="window.print()">Imprimir</button></p><script>setTimeout(function(){window.print()},300)<\/script></body></html>`;
   const w = window.open('', '_blank', 'width=460,height=640');
-  if (!w) { showToast('Permite las ventanas emergentes para imprimir la etiqueta.', 'warning'); return; }
+  if (!w) { showToast('Permite las ventanas emergentes para imprimir las etiquetas.', 'warning'); return; }
   w.document.open(); w.document.write(html); w.document.close();
 }
+function msEtiqueta(e) { msEtiquetas([e]); }

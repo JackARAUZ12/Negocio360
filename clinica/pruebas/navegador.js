@@ -2815,7 +2815,7 @@ async function pruebaMensajeria(browser, base) {
     await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semillaMensajeria());
     await page.goto(base + '/mensajeria.html');
     await page.waitForSelector('#tln-tabs .tln-tab', { timeout: 20000 });
-    verificar(await page.locator('#tln-tabs .tln-tab').count() === 7, `${tag}: el Panel de Mensajería tiene sus 7 partes en la barra`);
+    verificar(await page.locator('#tln-tabs .tln-tab').count() === 8, `${tag}: el Panel de Mensajería tiene sus 8 partes en la barra`);
     await page.waitForFunction(() => /Paso 5/.test(document.getElementById('tln-ciclo').textContent), null, { timeout: 10000 });
     const ciclo = await page.textContent('#tln-ciclo');
     verificar(['Recibir envío', 'Despachar', 'Entregar', 'Cuadrar repartidor', 'Liquidar comercio'].every(t => ciclo.includes(t)), `${tag}: el ciclo del envío en orden (recibir, despachar, entregar, cuadrar, liquidar)`);
@@ -3077,11 +3077,80 @@ async function pruebaMensajeriaDinero(browser, base) {
   }
 }
 
+// Mensajería Fase 3: carga desde Excel (CSV), etiquetas con QR, rastreo público y reportes.
+async function pruebaMensajeriaFase3(browser, base) {
+  console.log('\n▶ Mensajería Fase 3: Excel, etiquetas con QR, rastreo para el cliente y reportes');
+  const semilla3 = () => { const db = semillaMensajeriaDinero(); db.mensajeria_envios.forEach((e, i) => { e.rastreo_token = String(i + 1).repeat(40).slice(0, 40); }); return db; };
+  for (const [ancho, alto] of [[360, 740], [1280, 900]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    const leer = () => page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    await page.goto(base + '/mensajeria-envios.html');
+    await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semilla3());
+    await page.goto(base + '/mensajeria-envios.html'); await page.waitForSelector('#e-lista .tl-card', { timeout: 20000 });
+    // 1) Excel (CSV): una fila mala bloquea la carga; corregida, entran todas con su tarifa
+    await page.click('#e-excel'); await page.waitForSelector('#ti-modal.abierto');
+    await page.selectOption('#ti-com', 'cli-1');
+    const csvMalo = 'Destinatario,Teléfono,Dirección,Zona,Cobrar contra entrega,Paga envío\nAna Pérez,88112233,Calle 10,Centro,250,Destinatario\nLuis Gómez,,Calle 11,Zona Inventada,0,\n' + XSS + ',,Calle 12,centro,"1,200.50",comercio\n';
+    await page.setInputFiles('#ti-arch', { name: 'envios.csv', mimeType: 'text/csv', buffer: Buffer.from(csvMalo) });
+    await page.waitForSelector('#ti-prev .tl-tabla', { timeout: 8000 });
+    const prev = await page.textContent('#ti-prev');
+    verificar(prev.includes('Zona Inventada') && prev.includes('no existe') && await page.isDisabled('#ti-ok'), `${tag}: la vista previa marca la fila con zona que no existe y no deja cargar`);
+    await sinDesborde(page, `${tag} carga desde Excel`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-excel-${ancho}.png` });
+    await page.setInputFiles('#ti-arch', { name: 'envios.csv', mimeType: 'text/csv', buffer: Buffer.from(csvMalo.replace('Zona Inventada', 'Centro')) });
+    await page.waitForFunction(() => !document.getElementById('ti-ok').disabled, null, { timeout: 8000 });
+    await page.click('#ti-ok'); await page.waitForSelector('#ti-listo.abierto', { timeout: 10000 });
+    let db = await leer();
+    const nuevos = db.mensajeria_envios.filter(e => ['ENV-000005', 'ENV-000006', 'ENV-000007'].includes(e.numero));
+    verificar(nuevos.length === 3 && nuevos.every(e => Number(e.tarifa) === 80 && e.comercio_id === 'cli-1') && Number(nuevos.find(e => e.numero === 'ENV-000005').monto_cobrar) === 250
+      && Number(nuevos.find(e => e.numero === 'ENV-000007').monto_cobrar) === 1200.5 && nuevos.find(e => e.numero === 'ENV-000005').envio_lo_paga === 'destinatario',
+      `${tag}: se cargaron los 3 envíos del archivo con su tarifa (80), comercio, monto a cobrar (250 y 1,200.50) y quién paga`);
+    verificar(await page.evaluate(() => window.__xss === undefined), `${tag}: un nombre con código peligroso en el archivo no se ejecuta`);
+    // 2) Etiquetas de los nuevos, con QR de rastreo
+    const [pop] = await Promise.all([page.waitForEvent('popup', { timeout: 8000 }), page.click('#ti-et')]);
+    await pop.waitForLoadState();
+    const et = await pop.evaluate(() => ({ n: document.querySelectorAll('.et').length, qr: document.querySelectorAll('.et svg').length, txt: document.body.textContent }));
+    verificar(et.n === 3 && et.qr === 3 && et.txt.includes('ENV-000005') && et.txt.includes('COBRAR'), `${tag}: imprime las 3 etiquetas, cada una con su QR de rastreo (${et.n} etiquetas, ${et.qr} QR)`);
+    await pop.close(); await page.click('#ti-listo [data-cerrar]');
+    // 3) Rastreo: enlace en el detalle y página pública sin cuenta
+    await page.locator('.tl-card', { hasText: 'ENV-000005' }).locator('text=👁 Ver').click();
+    await page.waitForSelector('#e-ver >> text=Rastreo para el cliente', { timeout: 8000 });
+    const link = await page.getAttribute('#e-ver a[href*="rastreo.html#t="]', 'href');
+    verificar(/rastreo\.html#t=[0-9a-f]{40}$/.test(link || ''), `${tag}: el envío tiene su enlace de rastreo para copiar o ver`);
+    const wa = await page.evaluate(() => TE.waLink(TE.lista.find(e => e.numero === 'ENV-000005')));
+    verificar(decodeURIComponent(wa).includes('rastreo.html#t='), `${tag}: el WhatsApp al cliente incluye el enlace de rastreo`);
+    const pub = await ctx.newPage(); pub.__errores = []; pub.on('pageerror', e => pub.__errores.push(String(e)));
+    await pub.addInitScript(d => { try { sessionStorage.setItem('__DB', d); } catch (_) {} }, JSON.stringify(await leer()));
+    await pub.goto(link); await pub.waitForSelector('.estado', { timeout: 15000 });
+    const vista = await pub.textContent('main');
+    verificar(vista.includes('ENV-000005') && vista.includes('Envíos Rápidos') && vista.includes('Ten listo') && vista.includes('330') && !vista.includes('Calle 10') && !vista.includes('88112233'),
+      `${tag}: el cliente ve su envío, cuánto tener listo (330) y el negocio, pero no la dirección ni el teléfono`);
+    await sinDesborde(pub, `${tag} página de rastreo`);
+    if (process.env.FOTO_MSJ) await pub.screenshot({ path: `${process.env.FOTO_MSJ}-rastreo-${ancho}.png`, fullPage: true });
+    await pub.goto(base + '/rastreo.html#t=' + 'f'.repeat(40)); await pub.waitForFunction(() => /No encontramos/.test(document.body.textContent), null, { timeout: 10000 });
+    verificar(true, `${tag}: un enlace inventado dice "No encontramos este envío"`);
+    verificar(pub.__errores.length === 0, `${tag} rastreo: sin errores (${pub.__errores.join(' | ')})`);
+    await pub.close();
+    // 4) Reportes
+    await page.goto(base + '/mensajeria-reportes.html'); await page.waitForSelector('#rp-kpi b', { timeout: 20000 });
+    await page.waitForFunction(() => /envíos recibidos/.test(document.getElementById('rp-kpi').textContent), null, { timeout: 8000 });
+    const kpi = await page.textContent('#rp-kpi'), rep = await page.textContent('#rp-rep'), zona = await page.textContent('#rp-zona');
+    verificar(/7\s*envíos recibidos/.test(kpi) && /2\s*entregados/.test(kpi) && kpi.includes('66.7%') && rep.includes('Pedro Ruiz') && zona.includes('Centro'),
+      `${tag}: reportes: 7 recibidos, 2 entregados, 66.7% entregados sin devolver, y detalle por repartidor y zona`);
+    await sinDesborde(page, `${tag} reportes`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-reportes-${ancho}.png`, fullPage: true });
+    verificar(page.__errores.length === 0, `${tag} fase 3: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 (async () => {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
-    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); await pruebaMensajeriaDinero(browser, base); throw 'fin'; }
+    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); await pruebaMensajeriaDinero(browser, base); await pruebaMensajeriaFase3(browser, base); throw 'fin'; }
+    if (process.env.SOLO_MSJ3) { await pruebaMensajeriaFase3(browser, base); throw 'fin'; }
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
     if (process.env.SOLO_AUD) { await pruebaAuditoria90(browser, base); throw 'fin'; }
     if (process.env.SOLO_DEMOSALIR) { await pruebaDemoSalir(browser, base); throw 'fin'; }
@@ -3132,6 +3201,7 @@ async function pruebaMensajeriaDinero(browser, base) {
     await pruebaAuditoria90(browser, base);
     await pruebaMensajeria(browser, base);
     await pruebaMensajeriaDinero(browser, base);
+    await pruebaMensajeriaFase3(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

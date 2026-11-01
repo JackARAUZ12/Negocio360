@@ -54,7 +54,7 @@ TR.pintar = function () {
 };
 TR.tarjeta = function (e) {
   const c = msPorCobrar(e), tel = e.destinatario_telefono;
-  const wa = tel ? msWa(tel, `Hola ${e.destinatario_nombre}, soy ${TR.rep.nombre}, repartidor de ${TL.empresaConfig?.nombre_comercial || ''}. Voy en camino con su envío ${e.numero}.${c > 0 ? ' Monto a pagar: ' + fmt(c) + '.' : ''}`) : '';
+  const wa = tel ? msWa(tel, `Hola ${e.destinatario_nombre}, soy ${TR.rep.nombre}, repartidor de ${TL.empresaConfig?.nombre_comercial || ''}. Voy en camino con su envío ${e.numero}.${c > 0 ? ' Monto a pagar: ' + fmt(c) + '.' : ''}${msRastreoUrl(e) ? ' Sígalo aquí: ' + msRastreoUrl(e) : ''}`) : '';
   return `<div class="ms-ent${e.urgente ? ' urg' : ''}">
     <h3><span>${esc(e.destinatario_nombre)}</span><span>${e.urgente ? '<span class="ms-chip urg">🚨 Urgente</span> ' : ''}${msChip(e.estado)}</span></h3>
     <div class="ms-dir">📍 ${esc(e.direccion)}</div>

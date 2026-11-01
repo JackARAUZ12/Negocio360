@@ -79,7 +79,8 @@ TE.pintar = function () {
 };
 TE.waLink = function (e) {
   const neg = TL.empresaConfig?.nombre_comercial || '', c = msPorCobrar(e);
-  return msWa(e.destinatario_telefono, `Hola ${e.destinatario_nombre}, le saluda ${neg}. Tenemos su envío ${e.numero} de ${e.remitente_nombre}.${c > 0 && e.estado !== 'entregado' ? ' Monto a pagar al recibir: ' + fmt(c) + '.' : ''} ¿Nos confirma que podrá recibirlo?`);
+  const link = msRastreoUrl(e);
+  return msWa(e.destinatario_telefono, `Hola ${e.destinatario_nombre}, le saluda ${neg}. Tenemos su envío ${e.numero} de ${e.remitente_nombre}.${c > 0 && e.estado !== 'entregado' ? ' Monto a pagar al recibir: ' + fmt(c) + '.' : ''}${link ? ' Puede seguirlo aquí: ' + link : ''} ¿Nos confirma que podrá recibirlo?`);
 };
 // Cobrar la tarifa ahora (quien envía paga al dejar el paquete): venta normal en Ventas y Caja.
 TE.cobrar = async function (id) {
@@ -102,6 +103,17 @@ TE.cobrar = async function (id) {
   };
 };
 TE.etiqueta = function (id) { const e = TE.lista.find(x => x.id === id); if (e) msEtiqueta(e); };
+// Etiquetas de lo que se ve en la lista que aún no sale a entregar (máximo 100 por vez).
+TE.etiquetas = function () {
+  const l = TE.visibles().filter(e => ['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado));
+  if (!l.length) { showToast('No hay envíos por salir en esta lista.', 'warning'); return; }
+  if (l.length > 100) showToast('Se imprimen los primeros 100.', 'warning');
+  msEtiquetas(l.slice(0, 100));
+};
+TE.copiarRastreo = async function (id) {
+  const e = TE.lista.find(x => x.id === id), url = msRastreoUrl(e); if (!url) return;
+  try { await navigator.clipboard.writeText(url); showToast('🔗 Enlace de rastreo copiado'); } catch (_) { prompt('Copia el enlace de rastreo:', url); }
+};
 TE.estado = async function (id, nuevo) {
   const e = TE.lista.find(x => x.id === id); if (!e) return;
   let motivo = null;
@@ -137,6 +149,8 @@ TE.ver = async function (id) {
     ${rep ? `<div class="tl-sec"><b>🛵 Repartidor</b><div class="ms-linea"><span>${esc(rep.nombre)}${rep.telefono ? ' · ' + esc(rep.telefono) : ''}</span></div></div>` : ''}
     ${e.estado === 'entregado' ? `<div class="tl-sec"><b>✅ Entrega</b><div class="ms-linea"><span>Recibió <b>${esc(e.recibio_nombre || '')}</b> · ${tlFechaHora(e.entregado_at)}${e.metodo_cobro ? '<br>Cobrado ' + fmt(Number(e.cobrado_cod) + Number(e.cobrado_envio)) + ' en ' + (e.metodo_cobro === 'efectivo' ? 'efectivo' : 'transferencia') : ''}${e.cuadre_id ? '<br>✔ Ya cuadrado con el repartidor' : ''}</span></div>
       ${foto ? `<img class="ms-foto-prev" src="${esc(foto)}" alt="Foto de la entrega">` : '<span class="tl-muted">Sin foto.</span>'}</div>` : ''}
+    ${e.rastreo_token ? `<div class="tl-sec"><b>🔗 Rastreo para el cliente</b><div class="tl-muted">Quien espera el paquete ve en qué paso va, sin cuenta. No ve direcciones ni teléfonos.</div>
+      <div class="tl-acc"><button type="button" class="btn-secondary" onclick="TE.copiarRastreo('${e.id}')">📋 Copiar enlace</button><a class="btn-secondary" style="text-decoration:none;padding:7px 11px;font-size:12.5px" target="_blank" rel="noopener" href="${esc(msRastreoUrl(e))}">👁 Ver como el cliente</a></div></div>` : ''}
     <div class="tl-sec"><b>🕓 Historial</b><div class="tl-hist" style="max-height:none">${(ev || []).map(x => `<div>• ${tlFechaHora(x.created_at)} — <b>${esc((MS_ESTADOS[x.evento] || {}).t || x.evento)}</b>${x.detalle ? ': ' + esc(x.detalle) : ''}${x.por ? ' <span class="tl-muted">(' + esc(x.por) + ')</span>' : ''}</div>`).join('') || 'Sin movimientos.'}</div></div>`;
 };
 

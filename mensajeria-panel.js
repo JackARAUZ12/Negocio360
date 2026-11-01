@@ -17,6 +17,7 @@ const TPN_SUBS = [
   { id: 'cuadre', archivo: 'mensajeria-cuadre.html', key: 'mensajeria_cuadre', icono: '💵', nombre: 'Cuadre', grupo: 'dia', desc: 'Al final del día: cuánto efectivo debe entregar cada repartidor. Las tarifas entran a Caja como venta; lo de productos queda para los comercios.' },
   { id: 'liquidar', archivo: 'mensajeria-liquidaciones.html', key: 'mensajeria_liquidaciones', icono: '🤝', nombre: 'Liquidar comercios', grupo: 'dia', desc: 'Entrega a cada comercio lo cobrado a su nombre menos tus tarifas, con su estado de cuenta para imprimir o mandar por WhatsApp.' },
   { id: 'pagos', archivo: 'mensajeria-pagos.html', key: 'mensajeria_pagos', icono: '💼', nombre: 'Pago a repartidores', grupo: 'cierre', desc: 'Lo que ganó cada repartidor por entrega o por porcentaje, descontando su deuda si tiene. Queda como gasto.' },
+  { id: 'reportes', archivo: 'mensajeria-reportes.html', key: 'mensajeria_reportes', icono: '📊', nombre: 'Reportes', grupo: 'cierre', desc: 'Envíos recibidos y entregados, porcentaje a la primera, tiempo de entrega, tarifas y detalle por repartidor, zona y comercio. Exporta a Excel.' },
   { id: 'ajustes', archivo: 'mensajeria-ajustes.html', key: 'mensajeria_ajustes', icono: '🗺️', nombre: 'Zonas, tarifas y repartidores', grupo: 'base', desc: 'Zonas con su precio, precios especiales por comercio, recargos (urgente, grande, reintento), tope de efectivo y tus repartidores.' },
 ];
 const TPN_GRUPOS = { dia: '☀️ Día a día (el ciclo del envío)', cierre: '📅 Cada semana o quincena', base: '🧰 Lo que preparas una vez' };
@@ -264,6 +265,7 @@ const TPN_RECORRIDO = [
   { icono: '🛵', titulo: '3. Entregar', texto: 'El repartidor abre "Mis entregas" en su celular: va con Waze o Google Maps, llama o escribe por WhatsApp, y marca Entregado con foto, quién recibió y cómo pagó. Si no pudo, elige el motivo.' },
   { icono: '💵', titulo: '4. Cuadrar repartidor', texto: 'Al final del día el sistema dice cuánto efectivo debe entregar cada repartidor. Las tarifas que cobró entran a Caja como venta; lo de productos es de los comercios y queda aparte. Si falta dinero, queda como deuda del repartidor.' },
   { icono: '🤝', titulo: '5. Liquidar comercio', texto: 'Le entregas al comercio lo cobrado a su nombre menos tus tarifas. Tus tarifas entran a Ventas y Caja. Imprime o manda por WhatsApp su estado de cuenta. Cada envío se liquida una sola vez.' },
+  { icono: '🔗', titulo: 'Rastreo y Excel', texto: 'Cada envío tiene un enlace para que quien espera el paquete vea en qué paso va, sin cuenta (va en el WhatsApp y en el QR de la etiqueta). Si un comercio manda muchos envíos, cárgalos desde Excel.' },
   { icono: '💼', titulo: 'Pago a repartidores', texto: 'Cada semana o quincena pagas a los repartidores que cobran por entrega o por porcentaje. Queda como gasto, y se les puede descontar su deuda.' },
 ];
 function tpnRecorrido(forzar) {

@@ -427,7 +427,8 @@
           monto_cobrar: r2(p.monto_cobrar || 0), envio_lo_paga: p.envio_lo_paga || 'comercio', tarifa: t, fecha_programada: p.fecha_programada || null, notas: p.notas || null };
         if (p.id) { const e = T('mensajeria_envios').find(x => x.id === p.id); if (!['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado) || e.tarifa_venta_id || e.liquidacion_id) return NO('no_editable'); Object.assign(e, datos); evt(e.id, 'editado', 'Tarifa ' + t, p.por); out = { ok: true, id: e.id, numero: e.numero, tarifa: t }; break; }
         const id = uuid(), numero = num('mensajeria_envios', 'ENV-');
-        T('mensajeria_envios').push({ id, auth_user_id: UID, numero, ...datos, recargo_reintentos: 0, estado: p.en_bodega ? 'en_bodega' : 'por_recoger', repartidor_id: null, intentos: 0, cobrado_cod: 0, cobrado_envio: 0, cuadre_id: null, creado_por: p.por || null, created_at: ahora });
+        const rastreo_token = Array.from({ length: 40 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
+        T('mensajeria_envios').push({ id, auth_user_id: UID, numero, rastreo_token, ...datos, recargo_reintentos: 0, estado: p.en_bodega ? 'en_bodega' : 'por_recoger', repartidor_id: null, intentos: 0, cobrado_cod: 0, cobrado_envio: 0, cuadre_id: null, creado_por: p.por || null, created_at: ahora });
         evt(id, 'creado', 'Tarifa ' + t, p.por); out = { ok: true, id, numero, tarifa: t }; break; }
       case 'msj_envios_asignar': { const r = T('mensajeria_repartidores').find(x => x.id === a.p_repartidor); if (!r) return NO('repartidor'); if (!r.activo) return NO('repartidor_inactivo');
         const l = T('mensajeria_envios').filter(e => (a.p_ids || []).includes(e.id)); if (!l.length) return NO('sin_seleccion');
@@ -523,6 +524,26 @@
         const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-');
         T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: a.p_repartidor, tipo: 'abono', envios: 0, esperado: 0, entregado: r2(a.p_monto), diferencia: r2(a.p_monto), notas: a.p_notas || null, por: a.p_por || null, created_at: ahora });
         out = { ok: true, id, numero, deuda: r2(d - a.p_monto) }; break; }
+      case 'msj_envios_importar': {        // todo o nada: se prueba sobre una copia y solo si todas pasan se guarda
+        const lista = (a.p || {}).envios; if (!Array.isArray(lista)) return NO('valor'); if (!lista.length) return NO('sin_filas'); if (lista.length > 300) return NO('muchas_filas');
+        const copia = JSON.stringify(db); const nums = [];
+        for (let i = 0; i < lista.length; i++) {
+          guardarDB(db);
+          const r = rpcMensajeria('msj_envio_guardar', { p: { ...lista[i], id: null, por: (a.p || {}).por } });
+          if (!r || !r.ok) { sessionStorage.setItem('__DB', copia); return { ok: false, motivo: 'fila', fila: i + 1, detalle: (r && r.motivo) || 'valor' }; }
+          Object.assign(db, leerDB()); nums.push(r.numero);
+        }
+        return { ok: true, creados: lista.length, desde: nums[0], hasta: nums[nums.length - 1] }; }
+      case 'msj_rastreo': {
+        const e = T('mensajeria_envios').find(x => x.rastreo_token === a.p_token && /^[0-9a-f]{40}$/.test(a.p_token || ''));
+        const cfgE = (db.configuracion_empresa || [])[0] || {};
+        if (!e || cfgE.usa_modulo_mensajeria !== true) return NO('invalido');
+        const activo = ['por_recoger', 'en_bodega', 'asignado', 'en_ruta', 'no_entregado'].includes(e.estado);
+        return { ok: true, negocio: cfgE.nombre_comercial || 'Mensajería', whatsapp: cfgE.whatsapp || cfgE.telefono || null, moneda: 'NIO', numero: e.numero, estado: e.estado,
+          para: String(e.destinatario_nombre || '').trim().split(' ')[0], zona: e.zona_nombre, fecha_programada: e.fecha_programada || null, paquetes: e.paquetes, urgente: !!e.urgente,
+          pagar: activo ? Number(e.monto_cobrar || 0) + (e.envio_lo_paga === 'destinatario' ? Number(e.tarifa) + Number(e.recargo_reintentos || 0) : 0) : 0,
+          entregado_at: e.entregado_at || null, recibio: String(e.recibio_nombre || '').split(' ')[0], creado_at: e.created_at,
+          pasos: T('mensajeria_envio_eventos').filter(v => v.envio_id === e.id).map(v => ({ evento: v.evento, hora: v.created_at })) }; }
       default: return null;
     }
     guardarDB(db); return out;

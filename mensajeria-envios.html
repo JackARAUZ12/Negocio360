@@ -598,7 +598,7 @@
       .tl-tabla td::before{content:attr(data-t);font-weight:700;color:var(--text-muted);text-align:left}.tl-tabla td.tl-ac{display:block;text-align:left}.tl-tabla td.tl-ac::before{content:none}}
 
   </style>
-  <link rel="stylesheet" href="mensajeria.css?v=20261101b" />
+  <link rel="stylesheet" href="mensajeria.css?v=20261101c" />
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
 <body>
@@ -799,7 +799,7 @@
     <div id="content">
       <div class="tl-dentro" style="padding:0">
       <div class="panel-header" style="padding:0 0 12px"><div class="panel-title">📦 Envíos</div>
-        <button type="button" class="btn-primary" id="e-nuevo" onclick="TE.nuevo()">+ Nuevo envío</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn-secondary" id="e-excel" onclick="TI.abrir()">📥 Excel</button><button type="button" class="btn-secondary" id="e-etiq" onclick="TE.etiquetas()">🏷️ Etiquetas</button><button type="button" class="btn-primary" id="e-nuevo" onclick="TE.nuevo()">+ Nuevo envío</button></div></div>
       <div class="ms-tabs" id="e-tabs" role="tablist" aria-label="Filtrar por estado"></div>
       <div class="tl-bar">
         <input type="search" class="tl-inp" id="e-buscar" placeholder="Buscar por guía, destinatario, teléfono, dirección o comercio…" oninput="TE.pintar()" aria-label="Buscar envío" />
@@ -858,8 +858,10 @@
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="taller-base.js?v=20261031d"></script>
-<script src="mensajeria-base.js?v=20261101b"></script>
-<script src="mensajeria-envios.js?v=20261101b"></script>
+<script src="mensajeria-base.js?v=20261101c"></script>
+<script src="qrcode-lib.js"></script>
+<script src="mensajeria-envios.js?v=20261101c"></script>
+<script src="mensajeria-importar.js?v=20261101c"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261031a"></script>

@@ -222,6 +222,8 @@
                        desc: 'A cada comercio: lo cobrado a su nombre menos tus tarifas (que entran a Ventas y Caja), con estado de cuenta.' },
     'mensajeria-pagos.html': { key: 'mensajeria_pagos', label: 'Mensajería · Pago a repartidores', icon: '💼', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
                        desc: 'Lo que ganó cada repartidor por entrega o porcentaje, con descuento de su deuda. Queda como gasto.' },
+    'mensajeria-reportes.html': { key: 'mensajeria_reportes', label: 'Mensajería · Reportes', icon: '📊', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Entregas, porcentaje a la primera, tiempos, tarifas y detalle por repartidor, zona y comercio, con Excel.' },
     'mensajeria-ajustes.html': { key: 'mensajeria_ajustes', label: 'Mensajería · Zonas, tarifas y repartidores', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
                        desc: 'Zonas con su tarifa, precios especiales por comercio, recargos, tope de efectivo y tus repartidores.' },
 
