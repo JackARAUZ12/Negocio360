@@ -1876,6 +1876,7 @@ async function abrirNuevaVenta() {
   S.observaciones = '';
   S.numeroVenta   = '';
   S.ivaActivo     = false;
+  S.ivaModo       = 'unica';
   S.otrosImpuestos = [];
   S.retIr = { activo: false, porcentaje: S.retIr?.porcentaje || 2 };
   S.retIr.activo = false;
@@ -4504,6 +4505,75 @@ function toggleIva() {
   calcularResumen();
 }
 
+/* ---------- IVA de Costa Rica: panel para elegir la tarifa (solo cuentas CR con colones) ----------
+   Una tarifa para toda la venta (13, 4, 2, 1 o 0) o una por producto. Con una sola tarifa se usa el mismo cálculo de siempre;
+   solo cuando hay tarifas distintas se suma línea por línea (ver iva-lineas.js). En Nicaragua esto nunca se abre. */
+const TARIFAS_IVA_CR = [{ v: 13, l: '13% (tarifa general)' }, { v: 4, l: '4%' }, { v: 2, l: '2%' }, { v: 1, l: '1%' }, { v: 0, l: '0% (exento)' }];
+function crIva() { return !!(window.N360CR && window.N360CR.activo && window.N360CR.activo() && window.N360IvaLineas); }
+function toggleIvaUI() {            // lo que pulsa la persona en el interruptor; las llamadas internas siguen usando toggleIva()
+  toggleIva();
+  if (S.ivaActivo && crIva()) abrirPanelIvaCR();
+}
+function actualizarBotonIvaCR() {
+  const b = document.getElementById('iva-cr-btn');
+  if (b) b.style.display = (crIva() && S.ivaActivo) ? '' : 'none';
+}
+function tarifaLineaIva(it) {
+  if (it.ivaTarifa != null) return it.ivaTarifa;
+  if (it.esCombo || it.esPromocion) return null;
+  return window.N360IvaLineas ? window.N360IvaLineas.tarifaDe(it.id) : null;
+}
+async function abrirPanelIvaCR() {
+  if (!crIva()) return;
+  try { await window.N360IvaLineas.cargarTarifas(sb); } catch (_) {}
+  const lista = document.getElementById('iva-cr-lista');
+  if (!lista) return;
+  const gen = TARIFAS_IVA_CR.some(t => t.v === Number(S.ivaPorcentaje)) ? Number(S.ivaPorcentaje) : 13;
+  const porProd = S.ivaModo === 'lineas';
+  const opc = (sel) => TARIFAS_IVA_CR.map(t => `<option value="${t.v}" ${Number(sel) === t.v ? 'selected' : ''}>${t.l}</option>`).join('');
+  lista.innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">Una tarifa para toda la venta:</div>
+    ${TARIFAS_IVA_CR.map(t => `
+      <label class="esc-precio-opcion">
+        <input type="radio" name="iva-cr-radio" value="${t.v}" ${!porProd && gen === t.v ? 'checked' : ''} onchange="iva_cr_modo('unica')"/>
+        <span class="esc-precio-nombre">${t.l}</span>
+      </label>`).join('')}
+    <div style="font-size:12.5px;color:var(--text-muted);margin:12px 0 8px">O una tarifa distinta por producto:</div>
+    <label class="esc-precio-opcion">
+      <input type="radio" name="iva-cr-radio" value="lineas" ${porProd ? 'checked' : ''} onchange="iva_cr_modo('lineas')"/>
+      <span class="esc-precio-nombre">Elegir por producto</span>
+    </label>
+    <div id="iva-cr-lineas" style="display:${porProd ? 'block' : 'none'};margin-top:8px">
+      ${S.carrito.length ? S.carrito.map((it, i) => {
+        const t = tarifaLineaIva(it); const sel = t != null ? t : gen;
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--border,#e5e7eb)">
+          <span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(it.nombre)}${t != null && it.ivaTarifa == null ? ' <span style="font-size:11px;color:var(--text-muted)">(del producto)</span>' : ''}</span>
+          <select data-iva-i="${i}" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border,#e5e7eb);background:var(--bg-app);color:var(--text-primary)">${opc(sel)}</select></div>`;
+      }).join('') : '<div style="font-size:13px;color:var(--text-muted)">Agrega productos a la venta para elegir su tarifa.</div>'}
+    </div>`;
+  openModal('modal-iva-cr');
+}
+function iva_cr_modo(m) { const w = document.getElementById('iva-cr-lineas'); if (w) w.style.display = m === 'lineas' ? 'block' : 'none'; }
+function confirmarPanelIvaCR() {
+  const radio = document.querySelector('input[name="iva-cr-radio"]:checked');
+  if (!radio) { showToast('Elige una tarifa', 'error'); return; }
+  if (radio.value === 'lineas') {
+    document.querySelectorAll('#iva-cr-lineas select[data-iva-i]').forEach(s => {
+      const it = S.carrito[Number(s.dataset.ivaI)]; if (it) it.ivaTarifa = Number(s.value);
+    });
+    S.ivaModo = 'lineas';
+    calcularResumen();
+  } else {
+    S.ivaModo = 'unica';
+    S.carrito.forEach(it => { delete it.ivaTarifa; });
+    cambiarIvaPorcentaje(Number(radio.value));
+  }
+  closeModal('modal-iva-cr');
+}
+function cerrarPanelIvaCR() { closeModal('modal-iva-cr'); }
+window.toggleIvaUI = toggleIvaUI; window.abrirPanelIvaCR = abrirPanelIvaCR; window.confirmarPanelIvaCR = confirmarPanelIvaCR;
+window.cerrarPanelIvaCR = cerrarPanelIvaCR; window.iva_cr_modo = iva_cr_modo;
+
 /* ---------- Otros impuestos en la venta (IR 2%, etc.) ---------- */
 async function cargarImpuestosCatalogo() {
   try { await sb.rpc('asegurar_impuestos_base'); } catch (e) { /* ya existe o sin acceso */ }
@@ -4830,7 +4900,14 @@ function calcularResumen() {
   }
   const descuento = round2(descuentoBase + descuentoPuntos + descuentoCert);
   const baseImponible = Math.max(subtotal - descuento, 0);
-  const ivaMonto = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
+  let ivaMonto = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
+  // Costa Rica: si la persona eligió tarifas distintas por producto, el IVA se suma línea por línea. Si no hay tarifas distintas,
+  // se queda EXACTAMENTE el cálculo de arriba (el de siempre).
+  let ivaLineas = null, ivaEfectivo = null;
+  if (S.ivaActivo && S.ivaModo === 'lineas' && crIva()) {
+    const rl = window.N360IvaLineas.calcular(S.carrito.map(i => ({ bruto: round2(i.cantidad*i.precio), descLinea: i.descuento || 0, tarifa: tarifaLineaIva(i) })), baseImponible, S.ivaPorcentaje);
+    if (rl.mixto) { ivaMonto = rl.iva; ivaLineas = rl.lineas; ivaEfectivo = rl.efectivo; }
+  }
   const otros = (S.otrosImpuestos || []).map(o => ({ id: o.id, nombre: o.nombre, porcentaje: Number(o.porcentaje)||0, monto: round2(baseImponible * ((Number(o.porcentaje)||0)/100)) })).filter(o => o.monto > 0);
   const otrosMonto = round2(otros.reduce((a,o) => a + o.monto, 0));
   const impuestos = round2(ivaMonto + otrosMonto);   // IVA + otros: es lo que se separa de Caja y va a Impuestos
@@ -4848,7 +4925,7 @@ function calcularResumen() {
   const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
-  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, descuentoGeneral, descuentoGeneralTopado, baseGeneral, promocionesAplicadas: resultadoPromos.detalle,
+  S._resumen = { subtotal, descuento, impuestos, ivaMonto, ivaLineas, ivaEfectivo, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, descuentoGeneral, descuentoGeneralTopado, baseGeneral, promocionesAplicadas: resultadoPromos.detalle,
                  descuentoCert, certPago, certAplicado: round2(descuentoCert + certPago) };
   if (window.N360CertVenta) { try { N360CertVenta.pintar(); } catch (_) {} }
 
@@ -4883,12 +4960,14 @@ function calcularResumen() {
   const lbl = document.getElementById('res-impuestos-label');
   if (lbl) {
     const partesLbl = [];
-    if (S.ivaActivo) partesLbl.push(`IVA ${S.ivaPorcentaje}%`);
+    if (S.ivaActivo) partesLbl.push(ivaEfectivo != null ? `IVA por producto ${ivaEfectivo}%` : `IVA ${S.ivaPorcentaje}%`);
     otros.forEach(o => partesLbl.push(`${o.nombre} ${o.porcentaje}%`));
     lbl.textContent = partesLbl.length ? `Impuestos (${partesLbl.join(' + ')})` : 'Impuestos';
   }
   renderOtrosImpuestos();
 
+  actualizarBotonIvaCR();
+  { const inpIva = document.getElementById('iva-porcentaje'); if (inpIva) { const porProd = S.ivaActivo && S.ivaModo === 'lineas' && crIva(); inpIva.disabled = !S.ivaActivo || porProd; if (porProd && ivaEfectivo != null) inpIva.value = ivaEfectivo; } }
   setEl2('res-subtotal',  fmt(subtotal));
   setEl2('res-descuento', descuento>0 ? `-${fmt(descuento)}` : fmt(0));
   pintarDescuentoGeneral();
@@ -6325,7 +6404,7 @@ async function _confirmarVentaInterno(conImpresion) {
     const ventaPayloadConIva = {
       ...ventaPayload,
       iva_activo:      S.ivaActivo,
-      iva_porcentaje:  S.ivaActivo ? S.ivaPorcentaje : 0,
+      iva_porcentaje:  S.ivaActivo ? (r.ivaEfectivo != null ? r.ivaEfectivo : S.ivaPorcentaje) : 0,
       ...((!esFiado && Number(r.retencionIr) > 0) ? { retencion_ir_monto: r.retencionIr, retencion_ir_porcentaje: r.retencionPct } : {}),
     };
 
@@ -6335,7 +6414,8 @@ async function _confirmarVentaInterno(conImpresion) {
        PASO D: Productos de la venta (se guardan JUNTO con la venta,
        en una sola operación del servidor — ver PASO C+D+E+F abajo)
     ---------------------------------------------------------- */
-    const detallesPayload = S.carrito.map(item => ({
+    const detallesPayload = S.carrito.map((item, idxIva) => ({
+      ...(r.ivaLineas && r.ivaLineas[idxIva] ? { iva_tarifa: r.ivaLineas[idxIva].tarifa, iva_monto: r.ivaLineas[idxIva].iva } : {}),
       auth_user_id:   S.userId,
       venta_id:       null,
       // Un combo o una promoción vendida como línea propia no existen

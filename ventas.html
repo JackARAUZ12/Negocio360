@@ -1234,10 +1234,11 @@
         <!-- BLOQUE IVA -->
         <div class="iva-block">
           <div class="iva-left">
-            <div class="iva-switch" id="iva-switch" onclick="toggleIva()"></div>
+            <div class="iva-switch" id="iva-switch" onclick="toggleIvaUI()"></div>
             <div>
               <div class="iva-label">Cobrar impuesto (IVA)</div>
               <div class="iva-sub">Se suma al total y se acumula en Impuestos</div>
+              <button type="button" id="iva-cr-btn" onclick="abrirPanelIvaCR()" style="display:none;margin-top:5px;padding:3px 10px;border:1px solid var(--accent);border-radius:7px;background:transparent;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">Elegir tarifa de IVA</button>
             </div>
           </div>
           <div class="iva-right">
@@ -1783,6 +1784,26 @@
      de precios" configurada en Productos. Los productos de
      precio fijo nunca muestran este modal.
 ===================================================== -->
+<!-- IVA DE COSTA RICA: elegir la tarifa (una para toda la venta o una por producto). Solo se abre en cuentas de Costa Rica. -->
+<div class="modal-overlay" id="modal-iva-cr" onclick="if(event.target===this)cerrarPanelIvaCR()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div>
+        <span class="modal-title">IVA a cobrar</span>
+        <div class="modal-subtitle">Elige la tarifa de esta venta</div>
+      </div>
+      <button class="modal-close" onclick="cerrarPanelIvaCR()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="iva-cr-lista" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarPanelIvaCR()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarPanelIvaCR()">Aceptar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-escala-precio" onclick="if(event.target===this)cerrarSelectorEscala()">
   <div class="modal-box modal-sm">
     <div class="modal-header">
@@ -2050,7 +2071,8 @@
 <script src="rawbt-print.js?v=20261023a"></script>
 <script src="ticket-prueba-ancho.js?v=20261022a"></script>
 <script src="paginar-lectura.js?v=20261029d"></script>
-<script src="ventas.js?v=20261101c"></script>
+<script src="iva-lineas.js?v=20261101a"></script>
+<script src="ventas.js?v=20261101d"></script>
 <script src="exportar-modulo.js?v=20261029b"></script>
 <script src="exportar-ventas.js?v=20261101c"></script>
 <script src="certificados-venta.js?v=20261023i"></script>
