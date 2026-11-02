@@ -118,6 +118,12 @@
           .select('usa_modulo_mensajeria').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_mensajeria = ms?.usa_modulo_mensajeria === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_mensajeria = false; }
+      // Panadería: consulta aparte, mismo criterio.
+      try {
+        const { data: pa } = await client.from('configuracion_empresa')
+          .select('usa_modulo_panaderia').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_panaderia = pa?.usa_modulo_panaderia === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_panaderia = false; }
       // Comisiones: consulta aparte, mismo criterio.
       try {
         const { data: co } = await client.from('configuracion_empresa')

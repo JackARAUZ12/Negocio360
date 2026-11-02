@@ -20,7 +20,7 @@
 <script src="reloj-sesion.js?v=20261028b"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261030a"></script>
-<script src="modulos-registro.js?v=20261031a"></script>
+<script src="modulos-registro.js?v=20261102a"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
@@ -1684,6 +1684,27 @@
             </label>
           </div>
           <div class="cfg-status" id="transporte-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="panaderia-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🥖</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Panadería</div>
+              <div class="cfg-card-desc">Para panaderías y reposterías: qué hornear hoy según la vitrina y lo que se vende, los ingredientes que se van a usar (con tus recetas de Producción) y el cierre del día con lo que sobró, se botó o faltó. No toca Caja.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Panadería</div>
+              <div class="cfg-row-sub" id="panaderia-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="panaderia-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onTogglePanaderiaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="panaderia-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="taller-card">
@@ -3489,6 +3510,40 @@ async function guardarModuloMensajeria(activo) {
     setStatus(statusEl, activo ? 'Módulo de Mensajería activado. Recarga la página para ver el menú.' : 'Módulo de Mensajería desactivado (tus datos se conservan).', true);
   } catch (e) {
     console.error('guardarModuloMensajeria:', e);
+// Modulo de Panaderia: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloPanaderia() {
+  const toggle = document.getElementById('panaderia-toggle');
+  const sub = document.getElementById('panaderia-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_panaderia').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_panaderia === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Panadería aparece en el menú.' : 'Desactivado — el módulo de Panadería no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloPanaderia:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onTogglePanaderiaClick(evt) {
+  const toggle = document.getElementById('panaderia-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloPanaderia(toggle.checked);
+}
+async function guardarModuloPanaderia(activo) {
+  const toggle = document.getElementById('panaderia-toggle');
+  const sub = document.getElementById('panaderia-row-sub');
+  const statusEl = document.getElementById('panaderia-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_panaderia: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Panadería aparece en el menú.' : 'Desactivado — el módulo de Panadería no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Panadería activado. Recarga la página para ver el menú.' : 'Módulo de Panadería desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloPanaderia:', e);
     toggle.checked = !activo;
     setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
   } finally { toggle.disabled = false; }
@@ -4162,6 +4217,7 @@ async function initConfiguracion() {
       cargarModuloTransporte();
       cargarModuloTaller();
       cargarModuloMensajeria();
+      cargarModuloPanaderia();
       cargarModuloComisiones();
       cargarDatosFiscalesCR();
       cargarModuloDiseno();
@@ -4195,7 +4251,7 @@ document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
-<script src="modulos-guard.js?v=20261031a"></script>
+<script src="modulos-guard.js?v=20261102a"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>

@@ -169,6 +169,9 @@
     // ("enPanel"), pero conservan su propia llave para los permisos por usuario.
     'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
                        desc: 'Todo el transporte en un solo lugar y en orden: orden, despacho, viaje, entrega, cobro (aquí mismo, conectado con Ventas y Caja) y pago al conductor.' },
+    // Panadería: plan de horneado (usa Producción), cierre del día con merma. Apagado por defecto.
+    'panaderia.html': { key: 'panaderia', label: 'Panadería · Panel', icon: '🥖', obligatorio: false, flagPropio: 'usa_modulo_panaderia',
+                       desc: 'Qué hornear hoy y cuánto (según la vitrina y lo que se vende), los ingredientes que se van a usar, y el cierre del día con lo que sobró, se botó o faltó. Usa tus recetas de Producción; no toca Caja.' },
     // Taller mecánico (vehículos terrestres): el Panel es la entrada única; las partes se abren dentro de él.
     'taller.html': { key: 'taller', label: 'Taller mecánico · Panel', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_taller',
                        desc: 'Todo el taller en un solo lugar: recepción, diagnóstico, presupuesto aprobado línea por línea, reparación, control de calidad y entrega con cobro.' },
