@@ -598,7 +598,7 @@
       .tl-tabla td::before{content:attr(data-t);font-weight:700;color:var(--text-muted);text-align:left}.tl-tabla td.tl-ac{display:block;text-align:left}.tl-tabla td.tl-ac::before{content:none}}
 
   </style>
-  <link rel="stylesheet" href="mensajeria.css?v=20261102c" />
+  <link rel="stylesheet" href="mensajeria.css?v=20261102d" />
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
 <body>
@@ -818,34 +818,36 @@
             <div class="tl-sec"><b>📤 Quién envía</b>
               <div class="tl-grid">
                 <div class="tl-f full"><label for="f-comercio">Comercio (cliente)</label><select class="tl-sel" id="f-comercio" onchange="TE.alCambiarComercio()"><option value="">Persona o comercio sin registrar</option></select>
-                  <button type="button" class="btn-secondary" style="margin-top:6px" onclick="TE.comercioNuevo()">➕ Registrar comercio</button></div>
-                <div class="tl-f"><label for="f-rem">Nombre de quien envía *</label><input class="tl-inp" id="f-rem" maxlength="160" autocomplete="off"></div>
-                <div class="tl-f"><label for="f-remtel">Teléfono de quien envía</label><input class="tl-inp" id="f-remtel" type="tel" inputmode="tel" maxlength="30" autocomplete="off"></div>
-                <div class="tl-f full"><label for="f-recoger">Dónde se recoge <span class="tl-muted">(si hay que ir a traerlo)</span></label><input class="tl-inp" id="f-recoger" maxlength="400" autocomplete="off"></div>
+                  <div class="ms-rapido-acc"><span id="f-igual"></span><button type="button" class="btn-secondary" onclick="TE.comercioNuevo()">➕ Registrar comercio</button></div></div>
+                <div class="tl-f" id="f-rem-wrap"><label for="f-rem">Nombre de quien envía *</label><input class="tl-inp" id="f-rem" maxlength="160" autocomplete="off"></div>
+                <div class="tl-f" id="f-remtel-wrap"><label for="f-remtel">Teléfono de quien envía</label><input class="tl-inp" id="f-remtel" type="tel" inputmode="tel" maxlength="30" autocomplete="off"></div>
               </div></div>
             <div class="tl-sec"><b>📥 A quién va</b>
               <div class="tl-grid">
+                <div class="tl-f"><label for="f-destel">Teléfono de quien recibe</label><input class="tl-inp" id="f-destel" type="tel" inputmode="tel" maxlength="30" autocomplete="off" placeholder="Si ya recibió antes, se llenan sus datos" oninput="TE.porTelefono()"></div>
                 <div class="tl-f"><label for="f-des">Nombre de quien recibe *</label><input class="tl-inp" id="f-des" maxlength="160" autocomplete="off"></div>
-                <div class="tl-f"><label for="f-destel">Teléfono de quien recibe</label><input class="tl-inp" id="f-destel" type="tel" inputmode="tel" maxlength="30" autocomplete="off"></div>
                 <div class="tl-f full"><label for="f-dir">Dirección de entrega *</label><input class="tl-inp" id="f-dir" maxlength="400" autocomplete="off"></div>
                 <div class="tl-f full"><label for="f-ref">Punto de referencia</label><input class="tl-inp" id="f-ref" maxlength="400" autocomplete="off" placeholder="Ej. frente a la pulpería, portón negro"></div>
-                <div class="tl-f"><label for="f-zona">Zona</label><select class="tl-sel" id="f-zona" onchange="TE.tarifa()"><option value="">Sin zona</option></select></div>
-                <div class="tl-f"><label for="f-ubic">Ubicación <span class="tl-muted">(opcional)</span></label><input class="tl-inp" id="f-ubic" maxlength="600" autocomplete="off" placeholder="Pega el enlace de Google Maps"></div>
-              </div></div>
-            <div class="tl-sec"><b>📦 El paquete y el cobro</b>
-              <div class="tl-grid">
-                <div class="tl-f full"><label for="f-desc">Qué lleva</label><input class="tl-inp" id="f-desc" maxlength="400" autocomplete="off" placeholder="Ej. 2 blusas, 1 par de zapatos"></div>
-                <div class="tl-f"><label for="f-paq">Cantidad de paquetes</label><input class="tl-inp" id="f-paq" type="number" inputmode="numeric" min="1" max="999" value="1"></div>
-                <div class="tl-f"><label for="f-tam">Tamaño</label><select class="tl-sel" id="f-tam" onchange="TE.tarifa()"><option value="pequeno">Pequeño</option><option value="mediano">Mediano</option><option value="grande">Grande</option></select></div>
+                <div class="tl-f full" id="f-conocido" aria-live="polite"></div>
+                <div class="tl-f"><label for="f-zona">Zona *</label><select class="tl-sel" id="f-zona" onchange="TE.tarifa()"><option value="">Sin zona</option></select></div>
                 <div class="tl-f"><label for="f-cobrar">Cobrar contra entrega <span class="tl-muted">(valor del producto)</span></label><input class="tl-inp" id="f-cobrar" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="TE.tarifa()"></div>
                 <div class="tl-f"><label for="f-paga">¿Quién paga el envío?</label><select class="tl-sel" id="f-paga" onchange="TE.tarifa()"><option value="comercio">Quien envía (se le cobra a él)</option><option value="destinatario">Quien recibe (lo cobra el repartidor)</option></select></div>
-                <div class="tl-f"><label for="f-fecha">Fecha de entrega</label><input class="tl-inp" id="f-fecha" type="date"></div>
                 <div class="tl-f" style="justify-content:flex-end"><label style="display:flex;gap:8px;align-items:center;font-size:14px;font-weight:700"><input type="checkbox" id="f-urg" onchange="TE.tarifa()" class="ms-sel"> 🚨 Urgente</label>
                   <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-top:6px" id="f-bodega-wrap"><input type="checkbox" id="f-bodega" class="ms-sel"> Ya está en nuestra bodega</label></div>
-                <div class="tl-f full"><label for="f-notas">Notas para el repartidor</label><textarea class="tl-txt" id="f-notas" maxlength="600"></textarea></div>
               </div>
               <div id="f-tarifa" class="tl-aviso ok" aria-live="polite"></div>
             </div>
+            <details class="tl-sec ms-mas" id="f-mas"><summary><b>➕ Más opciones</b> <span class="tl-muted">ubicación, qué lleva, paquetes, tamaño, fecha, dónde se recoge y notas</span></summary>
+              <div class="tl-grid" style="margin-top:10px">
+                <div class="tl-f full"><label for="f-ubic">Ubicación <span class="tl-muted">(opcional)</span></label><input class="tl-inp" id="f-ubic" maxlength="600" autocomplete="off" placeholder="Pega el enlace de Google Maps"></div>
+                <div class="tl-f full"><label for="f-desc">Qué lleva</label><input class="tl-inp" id="f-desc" maxlength="400" autocomplete="off" placeholder="Ej. 2 blusas, 1 par de zapatos"></div>
+                <div class="tl-f"><label for="f-paq">Cantidad de paquetes</label><input class="tl-inp" id="f-paq" type="number" inputmode="numeric" min="1" max="999" value="1"></div>
+                <div class="tl-f"><label for="f-tam">Tamaño</label><select class="tl-sel" id="f-tam" onchange="TE.tarifa()"><option value="pequeno">Pequeño</option><option value="mediano">Mediano</option><option value="grande">Grande</option></select></div>
+                <div class="tl-f"><label for="f-fecha">Fecha de entrega</label><input class="tl-inp" id="f-fecha" type="date"></div>
+                <div class="tl-f full"><label for="f-recoger">Dónde se recoge <span class="tl-muted">(si hay que ir a traerlo)</span></label><input class="tl-inp" id="f-recoger" maxlength="400" autocomplete="off"></div>
+                <div class="tl-f full"><label for="f-notas">Notas para el repartidor</label><textarea class="tl-txt" id="f-notas" maxlength="600"></textarea></div>
+              </div>
+            </details>
             <div id="e-aviso"></div>
           </div>
           <div class="tl-modal-pie"><button type="button" class="btn-secondary" onclick="TE.cerrar()">Cancelar</button><button type="button" class="btn-primary" id="e-guardar" onclick="TE.guardar()">Guardar envío</button></div>
@@ -858,10 +860,10 @@
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="taller-base.js?v=20261031d"></script>
-<script src="mensajeria-base.js?v=20261102c"></script>
+<script src="mensajeria-base.js?v=20261102d"></script>
 <script src="qrcode-lib.js"></script>
-<script src="mensajeria-envios.js?v=20261102c"></script>
-<script src="mensajeria-importar.js?v=20261102c"></script>
+<script src="mensajeria-envios.js?v=20261102d"></script>
+<script src="mensajeria-importar.js?v=20261102d"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261031a"></script>

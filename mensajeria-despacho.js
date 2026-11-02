@@ -91,7 +91,20 @@ TD.limpiar = function () { TD.sel.clear(); TD.pintar(); };
 TD.barra = function () {
   const n = TD.sel.size; $d('d-asignar').style.display = n ? 'flex' : 'none';
   $d('d-cuantos').textContent = `${n} envío${n === 1 ? '' : 's'} marcado${n === 1 ? '' : 's'}`;
+  TD.pintarChips();
 };
+// Un botón por repartidor: tocarlo asigna los marcados. Primero los que ya van a esas zonas, luego los de menos carga.
+TD.pintarChips = function () {
+  const caja = $d('d-chips'); if (!caja) return;
+  if (!TD.sel.size) { caja.innerHTML = ''; return; }
+  const zonas = new Set(TD.lista.filter(e => TD.sel.has(e.id)).map(e => e.zona_id).filter(Boolean));
+  const vaA = r => TD.lista.some(e => e.repartidor_id === r.id && ['asignado', 'en_ruta'].includes(e.estado) && zonas.has(e.zona_id));
+  const lista = TD.reps.filter(r => r.activo).map(r => { const t = msTope(r, TD.cfg); return { r, va: vaA(r), carga: TD.carga(r.id), pasa: t > 0 && (TD.mano[r.id] || 0) > t }; })
+    .sort((a, b) => (a.pasa - b.pasa) || (b.va - a.va) || (a.carga - b.carga) || a.r.nombre.localeCompare(b.r.nombre));
+  caja.innerHTML = lista.length ? '<span class="ms-chips-t">Asignar a:</span>' + lista.map(x => `<button type="button" class="ms-chip-rep${x.va ? ' va' : ''}${x.pasa ? ' pasa' : ''}" data-rep="${x.r.id}" onclick="TD.asignarA('${x.r.id}')"
+      title="${esc(x.r.nombre)}: ${x.carga} por entregar${x.va ? ' · ya va a esa zona' : ''}${x.pasa ? ' · pasó su tope de efectivo' : ''}">${esc(MS_VEHICULOS[x.r.vehiculo]?.split(' ')[0] || '🛵')} ${esc(String(x.r.nombre).trim().split(/\s+/)[0])} <b>${x.carga}</b>${x.va ? ' 📍' : ''}${x.pasa ? ' ⚠️' : ''}</button>`).join('') : '';
+};
+TD.asignarA = function (id) { $d('d-rep').value = id; TD.asignar(); };
 // Sugiere al repartidor activo con menos entregas pendientes (y que no pasó su tope de efectivo).
 TD.sugerir = function () {
   const act = TD.reps.filter(r => r.activo); if (!act.length) { showToast('No tienes repartidores activos.', 'warning'); return; }

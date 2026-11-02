@@ -6,7 +6,8 @@
    Todo cambio pasa por funciones del servidor (msj_*).
 ===================================================== */
 'use strict';
-const TE = { lista: [], zonas: [], comercios: [], reps: {}, filtro: 'activos', editando: null, ocupado: false, tarifaN: 0 };
+const TE = { lista: [], zonas: [], comercios: [], reps: {}, filtro: 'activos', editando: null, ocupado: false, tarifaN: 0, telN: 0, telBuscado: '' };
+const TE_ULT_COM = 'n360_msj_ultimo_comercio';
 const $e = id => document.getElementById(id);
 const TE_TABS = [['activos', '📋 Activos'], ['por_recoger', '📍 Por recoger'], ['en_bodega', '🏬 En bodega'], ['asignado', '🧑 Asignados'], ['en_ruta', '🛵 En ruta'],
   ['no_entregado', '⚠️ No entregados'], ['entregado', '✅ Entregados'], ['cerrados', '↩️ Devueltos / cancelados'], ['todos', 'Todos']];
@@ -172,7 +173,14 @@ TE.abrir = function (e) {
   v('f-desc', e?.descripcion); v('f-paq', e?.paquetes || 1); v('f-tam', e?.tamano || 'pequeno'); v('f-cobrar', e && Number(e.monto_cobrar) ? e.monto_cobrar : '');
   v('f-paga', e?.envio_lo_paga || 'comercio'); v('f-fecha', e?.fecha_programada || msHoyISO()); v('f-notas', e?.notas);
   $e('f-urg').checked = !!e?.urgente; $e('f-bodega').checked = false; $e('f-bodega-wrap').style.display = e ? 'none' : 'flex';
-  $e('e-aviso').innerHTML = '';
+  $e('e-aviso').innerHTML = ''; $e('f-conocido').innerHTML = ''; TE.telBuscado = '';
+  // "Más opciones" abierto solo si el envío que se edita ya usa algo de ahí.
+  $e('f-mas').open = !!(e && (e.lat != null || e.descripcion || Number(e.paquetes) > 1 || (e.tamano && e.tamano !== 'pequeno') || e.recoger_direccion || e.notas || (e.fecha_programada && e.fecha_programada !== msHoyISO())));
+  TE.pintarQuien();
+  // Comercio del envío anterior a un toque (no se pone solo: un envío de una persona nunca queda a nombre de un comercio por error).
+  let ult = null; try { ult = localStorage.getItem(TE_ULT_COM); } catch (_) {}
+  const cu = !e && ult && TE.comercios.find(c => c.id === ult);
+  $e('f-igual').innerHTML = cu ? `<button type="button" class="btn-secondary ms-igual" onclick="TE.igualAnterior('${cu.id}')">↺ Igual que el anterior: <b>${esc(cu.completo)}</b></button>` : '';
   $e('e-modal').classList.add('abierto'); TE.tarifa();
   setTimeout(() => { if (!$e('e-modal').contains(document.activeElement)) $e(e ? 'f-des' : 'f-comercio').focus(); }, 60);
 };
@@ -180,7 +188,34 @@ TE.cerrar = function () { $e('e-modal').classList.remove('abierto'); };
 TE.alCambiarComercio = function () {
   const c = TE.comercios.find(x => x.id === $e('f-comercio').value);
   if (c) { $e('f-rem').value = c.completo; if (!$e('f-remtel').value) $e('f-remtel').value = c.telefono || ''; if (!$e('f-recoger').value) $e('f-recoger').value = c.direccion || ''; }
-  TE.tarifa();
+  TE.pintarQuien(); TE.tarifa();
+};
+// Con comercio elegido, su nombre y teléfono se llenan solos: no hace falta mostrarlos.
+TE.pintarQuien = function () {
+  const hay = !!$e('f-comercio').value;
+  $e('f-rem-wrap').style.display = hay ? 'none' : ''; $e('f-remtel-wrap').style.display = hay ? 'none' : '';
+};
+TE.igualAnterior = function (id) {
+  $e('f-comercio').value = id; $e('f-remtel').value = ''; $e('f-recoger').value = ''; TE.alCambiarComercio(); $e('f-igual').innerHTML = ''; $e('f-destel').focus();
+};
+// Si quien recibe ya recibió antes, se llenan sus datos (solo los campos vacíos; se pueden cambiar).
+TE.porTelefono = function () {
+  if (TE.editando) return;
+  const tel = $e('f-destel').value.trim(), dig = tel.replace(/\D/g, '');
+  clearTimeout(TE.telT); if (dig.length < 8 || tel === TE.telBuscado) return;
+  TE.telT = setTimeout(async () => {
+    const n = ++TE.telN; TE.telBuscado = tel;
+    const { data } = await sb.from('mensajeria_envios').select('destinatario_nombre,direccion,referencia,zona_id,lat,lng,created_at').eq('auth_user_id', TL.userId)
+      .eq('destinatario_telefono', tel).order('created_at', { ascending: false }).limit(1);
+    if (n !== TE.telN || !$e('e-modal').classList.contains('abierto')) return;
+    const p = (data || [])[0]; if (!p) { $e('f-conocido').innerHTML = ''; return; }
+    const poner = (id, v) => { if (v != null && v !== '' && !$e(id).value.trim()) { $e(id).value = v; return true; } return false; };
+    let algo = poner('f-des', p.destinatario_nombre); algo = poner('f-dir', p.direccion) || algo; algo = poner('f-ref', p.referencia) || algo;
+    if (p.zona_id && !$e('f-zona').value && TE.zonas.some(z => z.id === p.zona_id && z.activo)) { $e('f-zona').value = p.zona_id; algo = true; }
+    if (p.lat != null && p.lng != null) algo = poner('f-ubic', `${p.lat}, ${p.lng}`) || algo;
+    $e('f-conocido').innerHTML = algo ? `<div class="ms-conocido">✨ Ya recibió antes: llenamos sus datos de su último envío. Revísalos.</div>` : '';
+    if (algo) TE.tarifa();
+  }, 350);
 };
 TE.comercioNuevo = function () {
   tlCrearCliente(c => { TE.comercios.push({ id: c.id, completo: c.nombre, nombre: c.nombre }); TE.comercios.sort((a, b) => a.completo.localeCompare(b.completo)); TE.llenarSelects(); $e('f-comercio').value = c.id; TE.alCambiarComercio(); });
@@ -221,6 +256,7 @@ TE.guardar = async function () {
   const r = await msRpc('msj_envio_guardar', { p });
   TE.ocupado = false; btn.disabled = false;
   if (!r.ok) { av.innerHTML = `<div class="tl-aviso">${esc(r.msg)}</div>`; return; }
+  if (!TE.editando && p.comercio_id) { try { localStorage.setItem(TE_ULT_COM, p.comercio_id); } catch (_) {} }
   TE.cerrar();
   showToast(TE.editando ? `✅ Envío ${r.numero} actualizado` : `✅ Envío ${r.numero} registrado · tarifa ${fmt(r.tarifa)}`);
   const nuevo = !TE.editando;

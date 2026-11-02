@@ -650,7 +650,7 @@
       .tln-ciclo-ayuda{flex:1 0 100%}.tln-badge{margin-top:0}}
     @media (max-width:600px){#content.tln-dentro{padding:8px}.tln-inicio span{display:none}.tln-sig{width:100%}}
   </style>
-  <link rel="stylesheet" href="mensajeria.css?v=20261102c" />
+  <link rel="stylesheet" href="mensajeria.css?v=20261102d" />
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
 <body>
@@ -851,12 +851,25 @@
     <div id="content">
       <div class="tln-barra" id="tln-barra">
         <button type="button" id="tln-inicio" class="tln-inicio activa" onclick="tpnIrInicio()" title="Volver al inicio del panel">🛵 <span>Panel</span></button>
+        <button type="button" id="tln-nuevo" class="tln-inicio ms-nuevo" onclick="tpnNuevoEnvio()" title="Registrar un envío nuevo">➕ <span>Envío</span></button>
         <nav id="tln-tabs" class="tln-tabs" aria-label="Partes de Mensajería"></nav>
         <span id="tln-extra" class="tln-extra" style="display:none"></span>
       </div>
       <div id="tln-pasos" class="tln-pasos" style="display:none" aria-label="Paso del ciclo del envío"></div>
 
       <div id="tln-inicio-vista">
+      <div id="tln-hoy" class="ms-hoy fade-in" aria-label="Hoy"></div>
+      <div class="ms-hoy-dos fade-in">
+        <div class="tln-caja"><b>📌 Pendientes</b><div id="tln-pendientes"></div></div>
+        <section class="tln-caja ms-mini" aria-label="Repartidores en vivo"><div class="ms-mini-cab"><b>🗺️ Repartidores en vivo</b><button type="button" class="btn-secondary tln-btn-sm" onclick="tpnIrSub('despacho')">Abrir Despacho →</button></div>
+          <div id="tln-mapa" class="ms-mapa ms-mapa-mini vacio"></div></section>
+      </div>
+      <details id="tln-preparar" class="tln-caja" open>
+          <summary><span><b>🧰 Prepara tu empresa</b> <span class="tln-sub">(una sola vez)</span></span><span id="tln-preparar-estado" class="tln-estado"></span></summary>
+          <div id="tln-preparar-lista"></div>
+        </details>
+      <details id="tln-guia" class="tln-guia">
+        <summary><b>🧭 Cómo funciona y todas las partes</b><span class="tln-sub">Toca para ver u ocultar</span></summary>
       <div class="tl-hero fade-in">
         <h1>🛵 Panel de Mensajería</h1>
         <p>Para empresas de delivery y mensajería: envíos de comercios o personas con su tarifa por zona, despacho a repartidores, entrega con foto y quién recibió, y el cuadre diario del efectivo de cada repartidor.</p>
@@ -867,14 +880,8 @@
         Cada envío sigue estos pasos en orden. Toca un paso para ir directo. <b>Lo tuyo es la tarifa del envío</b>: entra a Ventas y Caja como venta normal. <b>Lo que el repartidor cobra de productos es dinero del comercio</b>: no es ganancia, queda aparte hasta que se lo liquidas (descontando tus tarifas). Primero se cuadra al repartidor y después se liquida al comercio; nada se cobra ni se liquida dos veces.
       </div>
       <div id="tln-ciclo" class="tln-ciclo"><p class="tln-sub">Cargando…</p></div>
-      <div class="tln-dos">
-        <details id="tln-preparar" class="tln-caja" open>
-          <summary><span><b>🧰 Prepara tu empresa</b> <span class="tln-sub">(una sola vez)</span></span><span id="tln-preparar-estado" class="tln-estado"></span></summary>
-          <div id="tln-preparar-lista"></div>
-        </details>
-        <div class="tln-caja"><b>📌 Pendientes</b><div id="tln-pendientes"></div></div>
-      </div>
       <div id="tln-subs"></div>
+      </details>
       </div>
       <div id="tln-marco-wrap" class="tln-marco-wrap" style="display:none">
         <div id="tln-cargando" class="tln-cargando"><div class="mini-spinner"></div><span>Cargando…</span></div>
@@ -887,8 +894,9 @@
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="taller-base.js?v=20261031d"></script>
-<script src="mensajeria-base.js?v=20261102c"></script>
-<script src="mensajeria-panel.js?v=20261102c"></script>
+<script src="mensajeria-base.js?v=20261102d"></script>
+<script src="mensajeria-mapa.js?v=20261102d"></script>
+<script src="mensajeria-panel.js?v=20261102d"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261031a"></script>
