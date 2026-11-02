@@ -17,7 +17,7 @@
 
   // ---------- pointer (desktop cursor / phone finger) ----------
   const isPhone = innerWidth < 600;
-  let cursor, ripple, tap;
+  let cursor, ripple, tap, LASTP = [640, 400];
   function ensurePointer() {
     if (cursor) return;
     cursor = document.createElement('div'); cursor.id = 'mk-cursor';
@@ -40,12 +40,13 @@
     let p;
     if (i === keys.length - 1 || u < keys[0][0]) p = pos[u < keys[0][0] ? 0 : i];
     else {
-      const a = pos[i] || pos[i + 1], b = pos[i + 1] || pos[i];
+      const a = pos[i] || pos[i + 1] || LASTP, b = pos[i + 1] || pos[i] || LASTP;
       const t0 = keys[i][0], t1 = keys[i + 1][0], mv = Math.min(0.7, t1 - t0);
       const k = ease(clamp((u - (t1 - mv)) / mv));
       p = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
     }
-    if (!p) { cursor.style.display = 'none'; return; }
+    if (!p) p = LASTP;
+    LASTP = p;
     const ck = clicks.map(c => u - c).find(d => d >= 0 && d < 0.45);
     if (isPhone) {
       cursor.style.display = 'none';
