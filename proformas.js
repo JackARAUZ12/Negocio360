@@ -859,7 +859,9 @@ function actualizarIVAPorcentajeProf() {
 // MISMA fórmula exacta que calcularResumen() en ventas.js.
 function calcularResumenProf() {
   const subtotal  = round2(STATE.carrito.reduce((s,l) => s + l.cantidad*l.precio, 0));
-  const descuento = round2(STATE.carrito.reduce((s,l) => s + (l.descuento||0), 0));
+  const descuentoLineas = round2(STATE.carrito.reduce((s,l) => s + (l.descuento||0), 0));
+  // Descuento general del documento (mismo de Ventas): sobre lo que queda tras los descuentos por producto.
+  const descuento = round2(descuentoLineas + (window.N360DescDoc ? N360DescDoc.calcular(subtotal, descuentoLineas) : 0));
   const baseImponible = Math.max(subtotal - descuento, 0);
   const impuesto  = STATE.ivaActivo ? round2(baseImponible * (STATE.ivaPorcentaje/100)) : 0;
   const total     = round2(subtotal - descuento + impuesto);
@@ -973,6 +975,7 @@ async function guardarPersonalizarProforma() {
 
 function abrirNuevaProforma() {
   STATE.proformaActual = null;
+  if (window.N360DescDoc) N360DescDoc.reset();
   document.getElementById('np-modal-title').textContent = 'Nueva Proforma';
   document.getElementById('np-id').value = '';
   STATE.carrito = [];
@@ -1004,6 +1007,7 @@ function abrirEditarProforma(id) {
   if (window.N360ProfProd?.bloqueada(p.id)) { showToast('Esta proforma ya tiene producción: no se edita. Cancela las órdenes pendientes en Producción si necesitas cambiarla.', 'error'); return; }
   abrirNuevaProforma();
   STATE.proformaActual = p;
+  if (window.N360DescDoc) N360DescDoc.cargar(p);
   document.getElementById('np-modal-title').textContent = `Editar Proforma ${p.numero_proforma}`;
   document.getElementById('np-id').value = p.id;
   document.getElementById('np-fecha').value = p.fecha;
@@ -1085,6 +1089,7 @@ async function guardarProforma() {
       cliente_nombre: STATE.clienteSeleccionado?.nombre || 'Cliente final',
       fecha, fecha_vencimiento: fechaVenc,
       subtotal: r.subtotal, descuento: r.descuento, impuesto: r.impuesto,
+      ...(window.N360DescDoc ? N360DescDoc.payload() : {}),
       iva_activo: STATE.ivaActivo, iva_porcentaje: STATE.ivaActivo ? STATE.ivaPorcentaje : 0,
       total: r.total, costo_total: r.costoTotal, estado, observaciones,
       updated_at: new Date().toISOString(),
@@ -1290,6 +1295,7 @@ async function duplicarProforma(id) {
       cliente_id: p.cliente_id, cliente_nombre: p.cliente_nombre,
       fecha: todayISO(), fecha_vencimiento: null,
       subtotal: p.subtotal, descuento: p.descuento, impuesto: p.impuesto,
+      ...(window.N360DescDoc ? N360DescDoc.paraVenta(p) : {}),
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_porcentaje,
       total: p.total, costo_total: p.costo_total, estado: 'borrador',
       observaciones: p.observaciones,
@@ -1905,6 +1911,8 @@ async function confirmarConvertirAVenta() {
         : (p.observaciones || null),
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_activo ? p.iva_porcentaje : 0,
       proforma_id: p.id,
+      // Descuento general de la proforma: pasa a la venta (el total ya lo incluye).
+      ...(window.N360DescDoc ? N360DescDoc.paraVenta(p) : {}),
       ...(totalAnticipo > 0 ? { certificados_aplicados: certsAnticipo.map(c => ({ certificado_id: c.certificado_id, monto: c.monto })) } : {}),
       creado_por_nombre: obtenerNombrePerfilActivo(),
     };
