@@ -3510,6 +3510,11 @@ async function guardarModuloMensajeria(activo) {
     setStatus(statusEl, activo ? 'Módulo de Mensajería activado. Recarga la página para ver el menú.' : 'Módulo de Mensajería desactivado (tus datos se conservan).', true);
   } catch (e) {
     console.error('guardarModuloMensajeria:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Modulo de Panaderia: se activa/desactiva desde aqui. Apagado por defecto.
 async function cargarModuloPanaderia() {
   const toggle = document.getElementById('panaderia-toggle');
