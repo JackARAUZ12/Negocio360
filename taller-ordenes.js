@@ -283,6 +283,7 @@ TO.clienteNuevo = function () {
 };
 /* ---------- Entrega y cobro ---------- */
 TO.formEntrega = function () {
+  TO.ps = []; // cada vez que se dibuja, empieza en Contado sin líneas
   const o = TO.actual, reps = TO.lineas.filter(l => l.aprobacion === 'aprobada' && l.tipo === 'repuesto' && l.producto_id).length;
   const pend = TO.lineas.filter(l => l.aprobacion === 'pendiente').length;
   if (!TO.metodos.length) return '<div class="tl-sec"><b>💳 Entrega y cobro</b><div class="tl-aviso">Primero crea un método de pago en Configuración para poder cobrar.</div></div>';
@@ -291,39 +292,83 @@ TO.formEntrega = function () {
     <div class="tl-aviso ok">Se cobrará <b>${fmt(o.total)}</b>${o.iva_activo ? ` (incluye IVA ${fmt(o.impuesto)})` : ''}${reps ? ` y se descontarán ${reps} repuesto(s) del inventario` : ''}. Se crea una venta normal.</div>
     <div class="tl-grid">
       <div class="tl-f full"><label>Forma de pago</label><div style="display:flex;gap:14px;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="x-forma" value="contado" checked onchange="TO.cambioForma()"> Contado</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="x-forma" value="separado" onchange="TO.cambioForma()"> ➗ Pago separado</label>
         <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="x-forma" value="credito" onchange="TO.cambioForma()"> A crédito (fiado)</label></div></div>
       <div class="tl-f" id="x-w-met"><label for="x-met">Método de pago</label><select class="tl-sel" id="x-met"><option value="">— Elige —</option>${TO.metodos.map(m => `<option value="${m.id}">${esc(m.nombre)}</option>`).join('')}</select></div>
       <div class="tl-f" id="x-w-banco"><label for="x-banco">Banco (si aplica)</label><select class="tl-sel" id="x-banco"><option value="">Ninguno</option>${TO.bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('')}</select></div>
       <div class="tl-f" id="x-w-ret"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="x-ret-on" onchange="TO.cambioForma()"> El cliente me retiene IR</label><input class="tl-inp" id="x-ret" type="number" inputmode="decimal" min="0.01" max="100" step="0.01" value="2" oninput="TO.cambioForma()" style="display:none" aria-label="Porcentaje de retención IR"></div>
       <div class="tl-f"><label for="x-km">Kilometraje de salida</label><input class="tl-inp" id="x-km" type="number" inputmode="decimal" min="0" step="0.1" value="${o.km_ingreso != null ? num(o.km_ingreso) : ''}"></div></div>
+    <div id="x-w-sep" style="display:none"></div>
     <div id="x-resumen"></div>
     ${o.cliente_id ? '' : '<div class="tl-muted">Para vender a crédito, primero asigna un cliente a la orden.</div>'}
     <div><button type="button" class="btn-primary" id="x-entregar" onclick="TO.entregar()" ${pend ? 'disabled' : ''}>Entregar y cobrar</button></div></div>`;
 };
 TO.forma = () => (document.querySelector('input[name="x-forma"]:checked') || {}).value || 'contado';
-TO.retPct = () => (TO.forma() === 'contado' && $('x-ret-on').checked) ? num($('x-ret').value) : 0;
+TO.retPct = () => (TO.forma() !== 'credito' && $('x-ret-on').checked) ? num($('x-ret').value) : 0;
+/* ➗ Pago separado: varias líneas (método, banco, monto) que deben sumar EXACTO lo que se cobra.
+   El servidor vuelve a revisar todo y crea un movimiento de Caja por cada método (igual que Ventas). */
+TO.ps = [];
+TO.cobrar = function () { const o = TO.actual, pct = TO.retPct(), ret = Math.round((num(o.subtotal) - num(o.descuento)) * pct) / 100; return Math.round((num(o.total) - ret) * 100) / 100; };
+TO.psPintar = function () {
+  const w = $('x-w-sep'); if (!w) return;
+  const ops = (sel) => TO.metodos.map(m => `<option value="${m.id}" ${m.id === sel ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('');
+  const bks = (sel) => `<option value="">Sin banco</option>` + TO.bancos.map(b => `<option value="${b.id}" ${b.id === sel ? 'selected' : ''}>🏦 ${esc(b.nombre)}</option>`).join('');
+  w.innerHTML = `<div class="tl-sec" style="border:1.5px dashed var(--accent);margin:8px 0"><b>➗ Pago separado</b>
+    ${TO.ps.map((l, i) => `<div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1fr) auto;gap:6px;align-items:center;margin-top:6px">
+      <select class="tl-sel" aria-label="Método" onchange="TO.ps[${i}].metodo_pago_id=this.value">${ops(l.metodo_pago_id)}</select>
+      <select class="tl-sel" aria-label="Banco" onchange="TO.ps[${i}].banco_id=this.value">${bks(l.banco_id)}</select>
+      <input class="tl-inp" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Monto" aria-label="Monto" value="${l.monto || ''}" oninput="TO.ps[${i}].monto=num(this.value);TO.psSuma()">
+      <button type="button" class="btn-secondary" style="padding:6px 10px" title="Quitar" onclick="TO.ps.length>2&&(TO.ps.splice(${i},1),TO.psPintar())" ${TO.ps.length <= 2 ? 'disabled' : ''}>✕</button></div>`).join('')}
+    <button type="button" class="btn-secondary" style="margin-top:8px;padding:6px 12px" onclick="TO.ps.push({metodo_pago_id:TO.metodos[0].id,banco_id:'',monto:0});TO.psPintar()">＋ Agregar otro método</button>
+    <div id="x-sep-suma" style="margin-top:8px"></div></div>`;
+  TO.psSuma();
+};
+TO.psSuma = function () {
+  const el = $('x-sep-suma'); if (!el) return;
+  const c = TO.cobrar(), s = Math.round(TO.ps.reduce((a, l) => a + num(l.monto), 0) * 100) / 100, d = Math.round((c - s) * 100) / 100;
+  el.innerHTML = `<div class="tl-aviso ${Math.abs(d) < 0.005 ? 'ok' : ''}">Suma: <b>${fmt(s)}</b> de <b>${fmt(c)}</b> · ${Math.abs(d) < 0.005 ? '✅ Cuadra' : d > 0 ? 'Falta ' + fmt(d) : 'Sobra ' + fmt(-d)}</div>`;
+};
 TO.cambioForma = function () {
-  const cr = TO.forma() === 'credito', o = TO.actual;
-  $('x-w-met').style.display = cr ? 'none' : ''; $('x-w-banco').style.display = cr ? 'none' : ''; $('x-w-ret').style.display = cr ? 'none' : '';
+  const cr = TO.forma() === 'credito', sep = TO.forma() === 'separado', o = TO.actual;
+  $('x-w-met').style.display = (cr || sep) ? 'none' : ''; $('x-w-banco').style.display = (cr || sep) ? 'none' : ''; $('x-w-ret').style.display = cr ? 'none' : '';
+  $('x-w-sep').style.display = sep ? '' : 'none';
+  if (sep && TO.metodos.length) {
+    if (TO.ps.length < 2) { const ef = TO.metodos.find(m => /efectivo/i.test(m.nombre)) || TO.metodos[0], ot = TO.metodos.find(m => m.id !== ef.id) || TO.metodos[0]; TO.ps = [{ metodo_pago_id: ef.id, banco_id: '', monto: 0 }, { metodo_pago_id: ot.id, banco_id: '', monto: 0 }]; }
+    TO.psPintar();
+  }
   $('x-ret').style.display = (!cr && $('x-ret-on').checked) ? '' : 'none';
   const pct = TO.retPct(), ret = Math.round((num(o.subtotal) - num(o.descuento)) * pct) / 100, entra = Math.round((num(o.total) - ret) * 100) / 100;
   $('x-resumen').innerHTML = cr ? `<div class="tl-aviso">Se registra la venta y queda <b>${fmt(o.total)}</b> por cobrar en Fiados${o.cliente_id ? '' : '. <b>Falta asignar el cliente.</b>'}. No entra dinero a Caja hasta que el cliente pague.</div>`
     : pct > 0 ? `<div class="tl-aviso">Total de la venta ${fmt(o.total)} · Retención IR ${pct}%: −${fmt(ret)} · <b>Cobras ${fmt(entra)}</b>. La retención queda anotada en Impuestos como crédito a tu favor.</div>` : '';
   $('x-entregar').textContent = cr ? 'Entregar a crédito' : 'Entregar y cobrar';
+  if (sep) TO.psSuma();
 };
 TO.entregar = async function () {
-  const cr = TO.forma() === 'credito', sel = $('x-met'), pct = TO.retPct();
+  const cr = TO.forma() === 'credito', sep = TO.forma() === 'separado', sel = $('x-met'), pct = TO.retPct();
   if (cr && !TO.actual.cliente_id) { showToast('Para vender a crédito asigna primero un cliente a la orden.', 'warning'); return; }
-  if (!cr && !sel.value) { showToast('Elige el método de pago.', 'warning'); return; }
+  if (!cr && !sep && !sel.value) { showToast('Elige el método de pago.', 'warning'); return; }
+  let pagos = null;
+  if (sep) {
+    if (TO.ps.length < 2) { showToast('El pago separado necesita al menos 2 métodos.', 'warning'); return; }
+    if (TO.ps.some(l => !(num(l.monto) > 0))) { showToast('Cada método del pago separado debe tener un monto mayor a cero.', 'warning'); return; }
+    const c = TO.cobrar(), s = Math.round(TO.ps.reduce((a, l) => a + num(l.monto), 0) * 100) / 100;
+    if (Math.abs(c - s) >= 0.005) { showToast(`Las líneas suman ${fmt(s)} y debes cobrar ${fmt(c)}: deben ser iguales.`, 'warning'); return; }
+    pagos = TO.ps.map(l => { const m = TO.metodos.find(x => x.id === l.metodo_pago_id) || {}; return { metodo_pago_id: l.metodo_pago_id, metodo_pago_nombre: m.nombre || '', banco_id: l.banco_id || null, monto: Math.round(num(l.monto) * 100) / 100 }; });
+  }
   if (!cr && $('x-ret-on').checked && !(pct > 0 && pct <= 100)) { showToast('Escribe un porcentaje de retención válido (1 a 100).', 'warning'); return; }
-  const nombre = cr ? 'crédito (fiado)' : sel.options[sel.selectedIndex].text;
+  const nombre = cr ? 'crédito (fiado)' : sep ? 'pago separado (' + pagos.map(l => l.metodo_pago_nombre + ' ' + fmt(l.monto)).join(' + ') + ')' : sel.options[sel.selectedIndex].text;
   if (!confirm(`¿Entregar el vehículo y ${cr ? 'dejar ' + fmt(TO.actual.total) + ' a crédito' : 'cobrar ' + fmt(TO.actual.total) + ' con ' + nombre + (pct ? ' (retención IR ' + pct + '%)' : '')}? Esta acción crea la venta y no se puede repetir.`)) return;
   $('x-entregar').disabled = true; $('x-entregar').textContent = 'Entregando…';
   const p = cr ? { credito: true, km_salida: $('x-km').value, creado_por: TL.nombre }
+    : sep ? { pagos, metodo_pago_nombre: 'Pago separado', km_salida: $('x-km').value, creado_por: TL.nombre, retencion_ir_porcentaje: pct || 0 }
     : { metodo_pago_id: sel.value, metodo_pago_nombre: nombre, banco_id: $('x-banco').value || null, km_salida: $('x-km').value, creado_por: TL.nombre, retencion_ir_porcentaje: pct || 0 };
   const r = await TO.accion(() => tlRpc('taller_orden_entregar', { p_orden_id: TO.actual.id, p }));
   if (!r) return;
-  if (!r.ok) { showToast(r.msg, 'error'); $('x-entregar').disabled = false; TO.cambioForma(); return; }
+  if (!r.ok) {
+    const extra = { separado_suma: `Las líneas del pago separado no suman lo que se cobra${r.cobrar != null ? ' (' + fmt(r.cobrar) + ')' : ''}. No se guardó nada.`,
+      separado_lineas: 'El pago separado necesita de 2 a 10 métodos.', separado_monto: 'Cada método del pago separado debe tener un monto mayor a cero.' }[r.motivo];
+    showToast(extra || r.msg, 'error'); $('x-entregar').disabled = false; TO.cambioForma(); return;
+  }
   showToast('✅ Entregado y cobrado' + (r.numero_venta ? ' · Venta ' + r.numero_venta : ''));
   try { window.parent !== window && window.parent.postMessage({ tipo: 'n360_operacion_completada', nota: 'Entrega cobrada' }, '*'); } catch (_) {}
   await TO.recargar();
