@@ -64,7 +64,8 @@
   =================================================== */
   function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   function todayISO() { return ymd(new Date()); }
-  function startOfMonthISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; }
+  function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   /* día de cierre del negocio (opcional) */ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; }
 
   function sumarFrecuencia(fechaISO, frecuencia, veces) {
     const d = new Date(fechaISO + 'T12:00:00');
@@ -286,8 +287,8 @@
      CATÁLOGOS: clientes, productos/servicios, financieros, métodos, impuestos
   =================================================== */
   async function loadClientes() {
-    const { data } = await _sb.from('clientes').select('id,nombre,apellido,telefono')
-      .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => _sb.from('clientes').select('id,nombre,apellido,telefono')
+      .eq('auth_user_id', CS.userId).eq('activo', true).order('nombre'), 'clientes');
     CS.clientes = data || [];
     const opts = '<option value="">Selecciona un cliente…</option>' +
       CS.clientes.map(c => `<option value="${c.id}" data-buscar="${esc(c.telefono||'')}">${esc(c.nombre)} ${esc(c.apellido||'')}</option>`).join('');
@@ -301,8 +302,8 @@
   }
 
   async function loadProductosYServicios() {
-    const { data } = await _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', CS.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
+    const { data } = await N360Leer.todo(() => _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
+      .eq('auth_user_id', CS.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre'), 'productos');
     const todos = data || [];
     CS.productos = todos.filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
     // Los "productos financieros" ya no se seleccionan de un catálogo aparte: el usuario
@@ -352,8 +353,8 @@
     CS.escalasPorProducto = {};
     const idsConEscala = CS.productos.filter(p => p.tipo_precio === 'escala').map(p => p.id);
     if (!idsConEscala.length) return;
-    const { data } = await _sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
-      .in('producto_id', idsConEscala).order('orden');
+    const { data } = await N360Leer.porIds(idsConEscala, ch => _sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .in('producto_id', ch).order('orden'), 'escalas de precio');
     (data || []).forEach(e => {
       if (!CS.escalasPorProducto[e.producto_id]) CS.escalasPorProducto[e.producto_id] = [];
       CS.escalasPorProducto[e.producto_id].push(e);
@@ -1485,13 +1486,33 @@
     return parseFloat(document.getElementById('nc-monto-financiero').value) || 0;
   }
 
+  // IVA del crédito. Nicaragua/otros: igual que siempre. Costa Rica: tarifa elegida en el selector (13 % por defecto), nunca el 15 % supuesto.
+  function esCRCred() { return !!(window.N360CR && window.N360CR.activo && window.N360CR.activo()); }
+  function ivaPctCredito() {
+    if (esCRCred()) {
+      const sel = document.getElementById('nc-iva-cr-tarifa');
+      const v = sel ? Number(sel.value) : NaN;
+      if (isFinite(v) && v >= 0 && v <= 100) return v;
+      const d = Number(CS.empresaConfig?.iva_porcentaje_default);
+      return (isFinite(d) && d >= 0 && d <= 100 && CS.empresaConfig?.iva_porcentaje_default != null) ? d : 13;
+    }
+    return Number(CS.empresaConfig?.porcentaje_iva || 15);
+  }
+  function actualizarSelectorIvaCR() {
+    const w = document.getElementById('nc-iva-cr-wrap'); if (!w) return;
+    const on = esCRCred() && !!document.getElementById('nc-iva-activo')?.checked;
+    w.style.display = on ? '' : 'none';
+    if (on) { const sel = document.getElementById('nc-iva-cr-tarifa'); const d = Number(CS.empresaConfig?.iva_porcentaje_default); if (sel && !sel.dataset.listo) { sel.dataset.listo = '1'; sel.value = String([13,4,2,1,0].includes(d) ? d : 13); } }
+  }
+  window.actualizarSelectorIvaCR = actualizarSelectorIvaCR;
+
   function obtenerImpuestosSeleccionados() {
     const tipo = document.getElementById('nc-tipo').value;
     if (tipo === 'venta') {
       const ivaActivo = document.getElementById('nc-iva-activo')?.checked;
       if (!ivaActivo) return [];
       const ivaCatalogo = CS.impuestos.find(i => (i.nombre||'').toLowerCase() === 'iva');
-      return [{ id: ivaCatalogo?.id || null, nombre: 'IVA', tipo_valor: 'porcentaje', valor: Number(CS.empresaConfig?.porcentaje_iva || 15) }];
+      return [{ id: ivaCatalogo?.id || null, nombre: 'IVA', tipo_valor: 'porcentaje', valor: ivaPctCredito() }];
     }
     // financiero: el impuesto solo aplica sobre el interés, y solo si hay interés
     const tipoFin = document.getElementById('nc-tipo-financiamiento').value;
@@ -1512,7 +1533,8 @@
     document.getElementById('nc-monto-original').textContent = fmt(montoOriginal);
 
     if (document.getElementById('nc-tipo').value === 'venta') {
-      const ivaPct = document.getElementById('nc-iva-activo')?.checked ? Number(CS.empresaConfig?.porcentaje_iva||15) : 0;
+      actualizarSelectorIvaCR();
+      const ivaPct = document.getElementById('nc-iva-activo')?.checked ? ivaPctCredito() : 0;
       document.getElementById('nc-subtotal').textContent = fmt(montoOriginal);
       document.getElementById('nc-iva-monto').textContent = fmt(montoOriginal * ivaPct/100);
     }
@@ -1904,6 +1926,29 @@
 
     if (plan.fija && !plan.fecha) { showToast('Elige la fecha de pago', 'error'); CS.creandoCredito = false; return; }
     aplicarFechaFija(cuotas, plan);
+    // Ciclo opcional proforma -> producción: no se cobra a crédito una proforma con producción sin terminar
+    // (el inventario se descuadraría). Sin producción de por medio, esto no hace nada.
+    if (CS.proformaOrigenId) {
+      try {
+        const { data: _pp } = await _sb.from('proforma_produccion').select('ordenes_produccion(estado)')
+          .eq('proforma_id', CS.proformaOrigenId).eq('auth_user_id', CS.userId);
+        if ((_pp || []).some(l => ['pendiente', 'en_proceso'].includes(l.ordenes_produccion?.estado))) {
+          showToast('Esta proforma tiene producción sin terminar. Complétala (o cancélala) en Producción antes de cobrarla.', 'error');
+          CS.creandoCredito = false; return;
+        }
+      } catch (_) { /* opcional */ }
+    }
+    // Anticipo cobrado de la proforma: debe aplicarse al convertirla en venta (no a crédito), para no contar el dinero dos veces.
+    if (CS.proformaOrigenId) {
+      try {
+        const { data: _an } = await _sb.from('proforma_anticipos').select('certificado_id, certificados_regalo(estado,saldo)')
+          .eq('proforma_id', CS.proformaOrigenId).eq('auth_user_id', CS.userId);
+        if ((_an || []).some(a => a.certificados_regalo?.estado === 'activo' && Number(a.certificados_regalo?.saldo) > 0)) {
+          showToast('Esta proforma tiene un anticipo cobrado sin usar. Conviértela en venta (se aplica el anticipo) o anula el certificado antes.', 'error');
+          CS.creandoCredito = false; return;
+        }
+      } catch (_) { /* opcional */ }
+    }
     btn.disabled = true; btn.textContent = 'Creando…';
     try {
       let ventaId = null;
@@ -1913,7 +1958,7 @@
         // 1) Crear la venta (reutiliza exactamente la lógica de Ventas: descuenta stock, calcula impuesto)
         const numeroVenta = await generarNumeroVenta();
         const ivaActivo = document.getElementById('nc-iva-activo')?.checked || false;
-        const ivaPct = ivaActivo ? Number(CS.empresaConfig?.porcentaje_iva || 15) : 0;
+        const ivaPct = ivaActivo ? ivaPctCredito() : 0;
         const subtotal = round2(CS.ncItems.reduce((s,i)=>s+i.precio*i.cantidad,0));
         const costoTotal = round2(CS.ncItems.reduce((s,i)=>s+i.costo*i.cantidad,0));
         const ivaMonto = round2(subtotal * ivaPct/100);
@@ -1924,7 +1969,7 @@
           numero_venta: numeroVenta, subtotal, impuesto: ivaMonto, total, costo_total: costoTotal,
           metodo_pago: 'credito', estado_pago: 'credito', estado: 'completada',
           iva_activo: ivaActivo, iva_porcentaje: ivaPct,
-          categoria: 'credito', notas: 'Venta generada automáticamente por el módulo de Créditos',
+          categoria: 'credito', fecha: todayISO(), notas: 'Venta generada automáticamente por el módulo de Créditos',
           creado_por_nombre: obtenerNombrePerfilActivo(),
         }).select().single();
         if (errVenta) throw errVenta;
@@ -2573,6 +2618,16 @@
     return `${fmtDateNum(fl.fecha)}${vencida ? ' (VENCIDA)' : ''}`;
   }
   // Observaciones del comprobante carta (PDF), con la fecha límite si aplica.
+  // Datos ordenados del comprobante de pago (tamaño carta): cuadrícula con crédito y saldo,
+  // recuadro de fecha límite y total del pago. Reemplaza al párrafo de observaciones de una sola línea.
+  function datosExtraCartaPago(c) {
+    const extra = {
+      infoCredito: [['Crédito', c.credito || ''], ['Saldo nuevo', fmt(c.saldoNuevo)]],
+      filasTotales: [{ label: 'Pago recibido:', valor: fmt(c.monto), big: true }],
+    };
+    if (c.fechaLimite) extra.destacado = { titulo: 'FECHA LÍMITE DE PAGO', valor: textoFechaLimite(c) };
+    return extra;
+  }
   function observacionesCartaPago(c) {
     const base = `Crédito ${c.credito || ''} — Saldo nuevo: ${fmt(c.saldoNuevo)}`;
     return c.fechaLimite ? `${base} — FECHA LÍMITE DE PAGO: ${textoFechaLimite(c)}` : base;
@@ -2590,7 +2645,7 @@
           const doc = await generarComprobanteCartaPDF('credito', {
             userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
             cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
-            metodo_pago: c.metodo, observaciones: observacionesCartaPago(c),
+            metodo_pago: c.metodo, ...datosExtraCartaPago(c),
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
             empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
@@ -2659,7 +2714,7 @@
           const doc = await generarComprobanteCartaPDF('credito', {
             userId: CS.userId, numero: c.numero, fecha: fmtDate(c.fecha),
             cliente_nombre: c.cliente, cliente_id: c.clienteId || null, subtotal: c.monto, descuento: 0, impuesto: 0, total: c.monto,
-            metodo_pago: c.metodo, observaciones: observacionesCartaPago(c),
+            metodo_pago: c.metodo, ...datosExtraCartaPago(c),
             empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
             empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
             empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
@@ -2811,7 +2866,8 @@
     return (texto.trim() || 'cero') + ' córdobas';
   }
 
-  async function enriquecerItemsConCombo(items) {
+  async function enriquecerItemsConCombo(items) { const r = await _enriquecerItemsConComboBase(items); return (window.N360CR && window.N360CR.conCabys) ? window.N360CR.conCabys(r) : r; }
+  async function _enriquecerItemsConComboBase(items) {
     const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
     if (!combosIds.length) return items;
     try {
@@ -2855,7 +2911,12 @@
         impuesto: Number(credito.total_financiado||0) - Number(credito.capital_financiado||0),
         total: credito.total_financiado,
         metodo_pago: 'Crédito',
-        observaciones: `Saldo pendiente: ${fmt(credito.saldo_pendiente)}`,
+        filasTotales: [
+          { label: 'Monto financiado:', valor: fmt(credito.capital_financiado) },
+          ...(Number(credito.total_financiado||0) - Number(credito.capital_financiado||0) > 0 ? [{ label: 'Intereses e impuestos:', valor: fmt(Number(credito.total_financiado||0) - Number(credito.capital_financiado||0)) }] : []),
+          { label: 'TOTAL A PAGAR:', valor: fmt(credito.total_financiado), big: true, linea: true },
+          { label: 'SALDO PENDIENTE:', valor: fmt(credito.saldo_pendiente), big: true, linea: true },
+        ],
         empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
         empresaDireccion: CS.empresaConfig?.direccion || '',
         empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
@@ -2991,39 +3052,48 @@
         ${d.saldo > 0 ? `<div style="margin-top:${espacioFirmaPx}px;text-align:center"><div style="border-top:1px solid #000;margin:0 4%"></div><div style="font-size:11px;margin-top:3px">Firma del cliente</div></div>` : ''}
         <hr/>
         ${cfg.mensaje_pie_ticket ? `<div style="text-align:center;font-size:11px">${esc(cfg.mensaje_pie_ticket)}</div>` : ''}
-        <div style="text-align:center;font-size:10px;margin-top:4px">Esta factura no registra pagos ni movimientos de caja.</div>
       </div>`;
   }
 
   async function pdfComprobanteCredito(d) {
     const c = d.credito;
-    const lineas = [
-      `Fecha: ${fmtDateNum(d.fechaCredito)}${d.plazoDias != null ? `  ·  Plazo: ${d.plazoDias} día${d.plazoDias === 1 ? '' : 's'}` : ''}${d.vence ? `  ·  Vence: ${fmtDateNum(d.vence)}` : ''}`,
-      `Total a pagar: ${fmt(d.totalFinanciado)}  ·  Pagado a la fecha: ${fmt(d.pagado)}  ·  SALDO PENDIENTE: ${fmt(d.saldo)}`,
-    ];
-    if (d.prima > 0) lineas.push(`Prima / anticipo: ${fmt(d.prima)}  ·  Monto financiado: ${fmt(d.capital)}`);
+    // Datos del crédito en cuadrícula (antes iban en un párrafo largo de observaciones)
+    const infoCredito = [];
+    if (d.plazoDias != null) infoCredito.push(['Plazo', `${d.plazoDias} día${d.plazoDias === 1 ? '' : 's'}`]);
+    if (d.vence) infoCredito.push(['Vence', fmtDateNum(d.vence)]);
+    let cuotas = null;
     if (d.esFechaFija) {
       const vencida = d.saldo > 0 && d.fechaLimite && d.fechaLimite < todayISO();
-      if (d.saldo <= 0) lineas.push('Estado: Crédito pagado'); else if (vencida) lineas.push('Estado: Vencida');
+      if (d.saldo <= 0) infoCredito.push(['Estado', 'Crédito pagado']); else if (vencida) infoCredito.push(['Estado', 'Vencida']);
     } else {
-      lineas.push(d.proxima ? `PRÓXIMA CUOTA: ${fmtDateNum(d.proxima.fecha_vencimiento)} · ${fmt(pendienteDeCuota(d.proxima))}` : 'Sin cuotas pendientes');
+      infoCredito.push(['Próxima cuota', d.proxima ? `${fmtDateNum(d.proxima.fecha_vencimiento)} · ${fmt(pendienteDeCuota(d.proxima))}` : 'Sin cuotas pendientes']);
       if (d.pendientes.length > 1) {
-        lineas.push('Cuotas pendientes:');
-        d.pendientes.forEach(q => lineas.push(`   #${q.numero} — vence ${fmtDateNum(q.fecha_vencimiento)}${String(q.fecha_vencimiento) < todayISO() ? ' (vencida)' : ''} — ${fmt(pendienteDeCuota(q))}`));
+        cuotas = {
+          titulo: 'Cuotas pendientes', head: ['N°', 'Vence', 'Monto'],
+          body: d.pendientes.map(q => [`#${q.numero}`, `${fmtDateNum(q.fecha_vencimiento)}${String(q.fecha_vencimiento) < todayISO() ? ' (vencida)' : ''}`, fmt(pendienteDeCuota(q))]),
+        };
       }
     }
-    lineas.push('Esta factura no registra pagos ni movimientos de caja.');
+    const filasTotales = [{ label: 'Subtotal:', valor: fmt(d.montoOriginal) }];
+    if (d.prima > 0) { filasTotales.push({ label: 'Prima / anticipo:', valor: '-' + fmt(d.prima) }, { label: 'Monto financiado:', valor: fmt(d.capital) }); }
+    if (d.intereses > 0) filasTotales.push({ label: 'Intereses:', valor: fmt(d.intereses) });
+    if (d.impuestos > 0) filasTotales.push({ label: 'Impuestos:', valor: fmt(d.impuestos) });
+    filasTotales.push({ label: 'TOTAL A PAGAR:', valor: fmt(d.totalFinanciado), big: true, linea: true });
+    filasTotales.push({ label: 'Pagado a la fecha:', valor: fmt(d.pagado) });
+    filasTotales.push({ label: 'SALDO PENDIENTE:', valor: fmt(d.saldo), big: true, linea: true });
+
     const doc = await generarComprobanteCartaPDF('credito', {
       userId: CS.userId, numero: d.numeroTexto,
       fecha: fmtDate(c.fecha_inicio || String(c.created_at || '').slice(0, 10)),
       cliente_nombre: d.cliente ? `${d.cliente.nombre || ''} ${d.cliente.apellido || ''}`.trim() : 'Cliente',
       cliente_telefono: d.cliente?.telefono || '', cliente_direccion: d.cliente?.direccion || '',
       cliente_id: c.cliente_id || null,
-      // Mismos totales que el "Comprobante tamaño carta" de siempre (la prima va
-      // en las observaciones, no como descuento).
+      // Mismos totales de siempre (la prima va en los totales, no como descuento).
       subtotal: d.capital, descuento: 0,
       impuesto: round2(d.totalFinanciado - d.capital), total: d.totalFinanciado,
-      metodo_pago: 'Crédito', observaciones: lineas.join('\n'), titulo: 'Factura de Crédito',
+      metodo_pago: 'Crédito', titulo: 'Factura de Crédito',
+      infoCredito, filasTotales, cuotas,
+      observaciones: '',
       empresaNombre: CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'Mi Negocio',
       empresaDireccion: CS.empresaConfig?.direccion || '', empresaTelefono: CS.empresaConfig?.telefono || CS.empresaConfig?.whatsapp || '',
       empresaRuc: CS.empresaConfig?.ruc || '', moneda_simbolo: monedaParaMostrar(CS.empresaConfig?.moneda),
@@ -3773,9 +3843,9 @@
       // "no hay resultados"). Ahora busca tambien los clientes cuyo
       // nombre/apellido coincida, y trae los creditos de cualquiera
       // de los dos casos.
-      const { data: clientesCoinciden } = await _sb.from('clientes')
+      const { data: clientesCoinciden } = await N360Leer.todo(() => _sb.from('clientes')
         .select('id').eq('auth_user_id', CS.userId)
-        .or(`nombre.ilike.%${CS.creditosSearch}%,apellido.ilike.%${CS.creditosSearch}%`);
+        .or(`nombre.ilike.%${CS.creditosSearch}%,apellido.ilike.%${CS.creditosSearch}%`), 'clientes');
       const idsClientes = (clientesCoinciden||[]).map(c=>c.id);
       // También busca en Observaciones (ahí se anota, por ejemplo, el número
       // de factura manual). Las comas y paréntesis romperían el filtro, así

@@ -234,7 +234,9 @@ function acciones(o) {
   if (o.estado === 'en_ruta') a.push(b('tx-btn-ok', 'ot-entregar', '✅ Registrar entrega'));
   if (o.estado !== 'cancelada') a.push(`<a class="tx-btn" href="transporte-fronteras.html?orden=${id}">🛂 Fronteras y documentos</a>`);
   if (['en_ruta', 'entregada'].includes(o.estado)) a.push(`<a class="tx-btn" href="transporte-entregas.html?orden=${id}">📦 Prueba de entrega e incidencias</a>`);
-  if (o.estado === 'entregada') a.push(`<a class="tx-btn" href="transporte-facturacion.html">${o.venta_id ? '🧾 Facturada · ver cobranza' : '🧾 Facturar este viaje'}</a>`);
+  // Cobrar aquí mismo (pantalla de cobro de Transporte, con el motor de Ventas); si no está disponible, en Facturación.
+  if (o.estado === 'entregada') a.push(!o.venta_id && window.TXCobro ? b('tx-btn-primary', 'ot-cobrar', '💳 Cobrar este viaje')
+    : `<a class="tx-btn" href="transporte-facturacion.html">${o.venta_id ? '🧾 Cobrado · ver cobranza' : '🧾 Facturar este viaje'}</a>`);
   if (ACTIVAS.includes(o.estado)) a.push(b('tx-btn-borrar', 'ot-cancelar', '✕ Cancelar orden'));
   return a.length ? `<div class="tx-fila-chips" style="margin:6px 0 4px">${a.join('')}</div>` : '';
 }
@@ -651,7 +653,7 @@ function enlazar() {
   $('oc2-caja').addEventListener('change', () => { $('oc2-metodo-wrap').style.display = $('oc2-caja').checked ? '' : 'none'; cambiaMetodo(); });
   $('oc2-metodo').addEventListener('change', cambiaMetodo);
   document.addEventListener('click', e => {
-    const t = e.target.closest('[data-ot-abrir],[data-ot-nueva],[data-ot-editar],[data-ot-vista],[data-ot-tab],[data-ot-asignar],[data-ot-iniciar],[data-ot-entregar],[data-ot-cancelar],[data-ot-borrar],[data-ot-costo-nuevo],[data-ot-costo-editar],[data-ot-costo-borrar],[data-ot-rec-del]');
+    const t = e.target.closest('[data-ot-abrir],[data-ot-nueva],[data-ot-editar],[data-ot-vista],[data-ot-tab],[data-ot-asignar],[data-ot-iniciar],[data-ot-entregar],[data-ot-cancelar],[data-ot-borrar],[data-ot-costo-nuevo],[data-ot-costo-editar],[data-ot-costo-borrar],[data-ot-rec-del],[data-ot-cobrar]');
     if (!t) return; const d = t.dataset;
     if (d.otAbrir) { e.preventDefault(); abrirDetalle(d.otAbrir); }
     else if ('otNueva' in d) { OT.detalleId = null; abrirForm(null); }
@@ -666,6 +668,7 @@ function enlazar() {
     else if (d.otCostoNuevo) abrirCosto(d.otCostoNuevo, null);
     else if (d.otCostoEditar) abrirCosto(OT.detalleId, d.otCostoEditar);
     else if (d.otCostoBorrar) borrarCosto(d.otCostoBorrar);
+    else if (d.otCobrar) TXCobro.abrir(d.otCobrar, { alCerrar: async cobrado => { if (cobrado) { await cargarTodo(); renderTodo(); } } });
     else if (d.otRecDel != null) { const a = recargosDOM(); a.splice(Number(d.otRecDel), 1); pintarRecargos(a); recalcular(); }
   });
 }

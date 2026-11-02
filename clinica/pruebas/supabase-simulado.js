@@ -12,7 +12,8 @@
   const guardarDB = db => sessionStorage.setItem('__DB', JSON.stringify(db));
   const log = (op, tabla, datos, filtros) => { const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op, tabla, datos, filtros }); sessionStorage.setItem('__LOG', JSON.stringify(l)); };
   let n = 0; const uuid = () => 'id-' + Date.now().toString(36) + '-' + (++n) + '-' + Math.random().toString(36).slice(2, 8);
-  const REL = { clinica_pacientes: 'paciente_id', ventas: 'venta_id', productos: 'producto_id', clientes: 'cliente_id', clinica_personal: 'medico_id' };
+  const REL = { clinica_pacientes: 'paciente_id', ventas: 'venta_id', productos: 'producto_id', clientes: 'cliente_id', clinica_personal: 'medico_id', restaurante_mesas: 'mesa_id', restaurante_comandas: 'comanda_id' };
+  const HIJOS = { agenda_citas_servicios: 'cita_id', restaurante_comanda_items: 'comanda_id', receta_componentes: 'receta_id', receta_despiece_salidas: 'receta_id' };          // relaciones uno-a-muchos: nombre(campos) -> lista
 
   function partirTope(s) {            // separa "a, b(c, d), e" respetando paréntesis
     const out = []; let nivel = 0, cur = '';
@@ -29,8 +30,10 @@
       case 'lt': return v != null && v < f.val; case 'lte': return v != null && v <= f.val;
       case 'in': return f.val.map(comoTexto).includes(comoTexto(v));
       case 'is': return f.val === null || f.val === 'null' ? v == null : v === (f.val === true || f.val === 'true');
-      case 'ilike': { const re = new RegExp('^' + String(f.val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i'); return re.test(comoTexto(v)); }
+      case 'like': { const re = new RegExp('^' + String(f.val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$'); return re.test(comoTexto(v)); }
+      case 'ilike': { const re = new RegExp('^' + String(f.val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i'); return re.test(comoTexto(v)); }
       case 'or': return f.val.some(g => cumple(fila, g));
+      case 'not': return !cumple(fila, f.val);
       default: return true;
     }
   }
@@ -39,25 +42,38 @@
   }
 
   function builder(tabla) {
-    const st = { tabla, filtros: [], orden: [], limite: null, rango: null, modo: 'select', datos: null, cols: '*', uno: null, head: false, count: null, devolver: false };
+    const st = { tabla, filtros: [], orden: [], limite: null, rango: null, modo: 'select', datos: null, cols: '*', uno: null, head: false, count: null, devolver: false, conflicto: null };
     const ejecutar = () => {
       const db = leerDB(); db[tabla] = db[tabla] || [];
       let filas = db[tabla];
       const aplica = f => st.filtros.every(x => cumple(f, x));
       let resultado = null, error = null;
-      if (st.modo === 'insert') {
+      if (st.modo === 'upsert') {             // si ya existe (misma llave), solo cambia lo que se manda
+        const lista = (Array.isArray(st.datos) ? st.datos : [st.datos]).map(d => {
+          const llaves = String(st.conflicto).split(',').map(x => x.trim());   // llave de una o varias columnas
+          const ya = db[tabla].find(f => llaves.every(k => comoTexto(f[k]) === comoTexto(d[k])));
+          if (ya) { Object.assign(ya, d); return ya; }
+          const fila = { created_at: new Date().toISOString(), ...d }; db[tabla].push(fila); return fila;
+        });
+        log('upsert', tabla, st.datos); resultado = lista;
+      } else if (st.modo === 'insert') {
         const lista = (Array.isArray(st.datos) ? st.datos : [st.datos]).map(d => {
           const fila = { id: uuid(), created_at: new Date().toISOString(), ...d };
           if (tabla === 'clinica_pacientes' && !fila.numero_expediente) fila.numero_expediente = 'EXP-' + String(db[tabla].length + 1).padStart(6, '0');
           if (tabla.startsWith('clinica_') && fila.activo === undefined && ['clinica_pacientes', 'clinica_consultorios', 'clinica_personal'].includes(tabla)) fila.activo = true;
           if (tabla === 'clientes' && fila.activo === undefined) fila.activo = true;
+          if (tabla === 'clinica_estancias') { const pref = fila.tipo === 'hospitalizacion' ? 'HOS' : 'OBS'; fila.numero = pref + '-' + String(db[tabla].filter(x => String(x.numero).startsWith(pref)).length + 1).padStart(6, '0');
+            fila.estado = fila.estado || 'activa'; fila.ingreso_en = fila.ingreso_en || new Date().toISOString(); if (!fila.tipo) fila.tipo = 'observacion';
+            if (db[tabla].some(x => x.paciente_id === fila.paciente_id && x.estado === 'activa')) { error = { message: 'duplicate key value violates unique constraint "clinica_estancias_una_activa"' }; return null; } }
+          if (tabla === 'clinica_reclamos' && !fila.estado) fila.estado = 'enviado';
+          if (tabla === 'clinica_convenios' && fila.activo === undefined) fila.activo = true;
           if (tabla === 'clinica_citas' && !fila.estado) fila.estado = 'programada';
           if (tabla === 'clinica_citas' && !fila.duracion_min) fila.duracion_min = 30;
           return fila;
         });
-        db[tabla].push(...lista); log('insert', tabla, st.datos); resultado = lista;
+        if (error) { resultado = null; } else { db[tabla].push(...lista); log('insert', tabla, st.datos); resultado = lista; }
       } else if (st.modo === 'update') {
-        const afectadas = filas.filter(aplica); afectadas.forEach(f => Object.assign(f, st.datos));
+        const afectadas = filas.filter(aplica); afectadas.forEach(f => { Object.assign(f, st.datos); if (tabla === 'clinica_estancias' && st.datos.estado === 'alta' && !f.alta_en) f.alta_en = new Date().toISOString(); if (tabla === 'clinica_reclamos' && st.datos.estado === 'facturado') f.facturado_en = new Date().toISOString(); });
         log('update', tabla, st.datos, st.filtros); resultado = afectadas;
       } else if (st.modo === 'delete') {
         const quedan = filas.filter(f => !aplica(f)); resultado = filas.filter(aplica); db[tabla] = quedan; log('delete', tabla, null, st.filtros);
@@ -74,7 +90,13 @@
       const embebidos = partirTope(st.cols || '*').filter(c => c.includes('(')).map(c => c.slice(0, c.indexOf('(')).trim());
       if (embebidos.length && resultado) {
         const db2 = leerDB();
-        resultado = resultado.map(f => { const g = { ...f }; embebidos.forEach(rel => { const fk = REL[rel]; const otra = (db2[rel] || []).find(x => x.id === f[fk]); g[rel] = otra ? { ...otra } : null; }); return g; });
+        // también anidadas: restaurante_comandas(restaurante_mesas(numero))
+        const incrustar = (f, cols) => { const g = { ...f };
+          partirTope(cols || '*').filter(c => c.includes('(')).forEach(c => { const rel = c.slice(0, c.indexOf('(')).trim(), dentro = c.slice(c.indexOf('(') + 1, c.lastIndexOf(')'));
+            if (HIJOS[rel]) { g[rel] = (db2[rel] || []).filter(x => x.id && comoTexto(x[HIJOS[rel]]) === comoTexto(f.id)).map(x => incrustar(x, dentro)); return; }
+            const fk = REL[rel]; const otra = (db2[rel] || []).find(x => x.id === f[fk]); g[rel] = otra ? incrustar(otra, dentro) : null; });
+          return g; };
+        resultado = resultado.map(f => incrustar(f, st.cols));
       }
       let data = resultado;
       if (st.uno === 'single') { if (!data || data.length !== 1) { error = { message: 'JSON object requested, multiple (or no) rows returned' }; data = null; } else data = data[0]; }
@@ -86,7 +108,7 @@
     const api = {
       select(cols, opts) { if (st.modo !== 'select') st.devolver = true; st.cols = cols || '*'; if (opts?.head) st.head = true; return prox; },
       insert(d) { st.modo = 'insert'; st.datos = d; return prox; },
-      upsert(d) { st.modo = 'insert'; st.datos = d; return prox; },
+      upsert(d, o) { st.modo = 'upsert'; st.datos = d; st.conflicto = (o && o.onConflict) || 'id'; return prox; },
       update(d) { st.modo = 'update'; st.datos = d; return prox; },
       delete() { st.modo = 'delete'; return prox; },
       eq(c, v) { st.filtros.push({ col: c, op: 'eq', val: v }); return prox; }, neq(c, v) { st.filtros.push({ col: c, op: 'neq', val: v }); return prox; },
@@ -94,7 +116,9 @@
       lt(c, v) { st.filtros.push({ col: c, op: 'lt', val: v }); return prox; }, lte(c, v) { st.filtros.push({ col: c, op: 'lte', val: v }); return prox; },
       in(c, v) { st.filtros.push({ col: c, op: 'in', val: v || [] }); return prox; }, is(c, v) { st.filtros.push({ col: c, op: 'is', val: v }); return prox; },
       ilike(c, v) { st.filtros.push({ col: c, op: 'ilike', val: v }); return prox; },
+      like(c, v) { st.filtros.push({ col: c, op: 'like', val: v }); return prox; },
       or(txt) { st.filtros.push({ op: 'or', val: parseOr(txt) }); return prox; },
+      not(c, op, v) { st.filtros.push({ op: 'not', val: { col: c, op, val: v } }); return prox; },
       order(c, o) { st.orden.push({ col: c, asc: o?.ascending !== false }); return prox; },
       limit(n) { st.limite = n; return prox; }, range(a, b) { st.rango = [a, b]; return prox; },
       single() { st.uno = 'single'; return prox; }, maybeSingle() { st.uno = 'maybe'; return prox; },
@@ -104,21 +128,102 @@
     return prox;
   }
 
+  // ---- funciones del servidor del Restaurante (misma lógica que supabase/migraciones/20261028_restaurante_fase1_cobro.sql) ----
+  function rpcRestaurante(nombre, a) {
+    const db = leerDB(); const T = k => (db[k] = db[k] || []);
+    const r2 = x => Math.round((Number(x) || 0) * 100) / 100;
+    const res = v => { guardarDB(db); return v; };
+    switch (nombre) {
+      case 'restaurante_cobro_reservar': {
+        const c = T('restaurante_comandas').find(x => x.id === a.p_comanda_id);
+        if (!c) return { ok: false, motivo: 'no_existe' };
+        if (!['abierta', 'enviada', 'lista'].includes(c.estado)) return { ok: false, motivo: 'cerrada' };
+        if (T('restaurante_cobros').some(k => k.comanda_id === c.id && k.estado === 'reservado')) return { ok: false, motivo: 'en_cobro' };
+        const items = T('restaurante_comanda_items');
+        items.filter(i => i.comanda_id === c.id && !i.venta_id).forEach(i => { i.cobro_id = null; });
+        const pedidos = Array.isArray(a.p_items) && a.p_items.length ? a.p_items
+          : items.filter(i => i.comanda_id === c.id && i.estado !== 'cancelado' && !i.venta_id).map(i => ({ item_id: i.id, cantidad: Number(i.cantidad) }));
+        const vistos = new Set();
+        for (const p of pedidos) {
+          const r = items.find(i => i.id === p.item_id && i.comanda_id === c.id);
+          if (!p.item_id || vistos.has(p.item_id)) return { ok: false, motivo: 'items_invalidos' }; vistos.add(p.item_id);
+          if (!r || r.estado === 'cancelado' || r.venta_id) return { ok: false, motivo: 'item_no_disponible' };
+          if (!r.producto_id) return { ok: false, motivo: 'sin_producto', nombre: r.nombre_producto };
+          if (!(p.cantidad > 0) || p.cantidad > Number(r.cantidad)) return { ok: false, motivo: 'cantidad_invalida', nombre: r.nombre_producto };
+        }
+        if (!pedidos.length) return { ok: false, motivo: 'nada_por_cobrar' };
+        const k = { id: uuid(), auth_user_id: UID, comanda_id: c.id, estado: 'reservado', items: [], subtotal: 0, venta_id: null, propina: 0, creado_por: a.p_quien || null, created_at: new Date().toISOString() };
+        T('restaurante_cobros').push(k);
+        let sub = 0;
+        for (const p of pedidos) {
+          const r = items.find(i => i.id === p.item_id); let id = r.id;
+          if (p.cantidad < Number(r.cantidad)) { r.cantidad = Number(r.cantidad) - p.cantidad; const n2 = { ...r, id: uuid(), cantidad: p.cantidad, cobro_id: k.id }; items.push(n2); id = n2.id; }
+          else r.cobro_id = k.id;
+          k.items.push({ item_id: id, producto_id: r.producto_id, nombre: r.nombre_producto, cantidad: p.cantidad, precio: Number(r.precio_unitario), total: r2(p.cantidad * r.precio_unitario) });
+          sub += r2(p.cantidad * r.precio_unitario);
+        }
+        k.subtotal = r2(sub);
+        const mesa = T('restaurante_mesas').find(m => m.id === c.mesa_id);
+        return res({ ok: true, cobro_id: k.id, lineas: k.items, subtotal: k.subtotal, mesa: mesa && mesa.numero });
+      }
+      case 'restaurante_cobro_confirmar': {
+        const k = T('restaurante_cobros').find(x => x.id === a.p_cobro_id); if (!k) return { ok: false, motivo: 'no_existe' };
+        const c = T('restaurante_comandas').find(x => x.id === k.comanda_id);
+        if (k.estado === 'cobrado') return { ok: k.venta_id === a.p_venta_id, ya: true, cerrada: c.estado === 'cerrada' };
+        const v = T('ventas').find(x => x.id === a.p_venta_id); if (!v || v.estado === 'anulada') return { ok: false, motivo: 'venta_invalida' };
+        const ids = k.items.map(x => x.item_id), items = T('restaurante_comanda_items');
+        if (items.some(i => ids.includes(i.id) && i.venta_id && i.venta_id !== a.p_venta_id)) return { ok: false, motivo: 'conflicto' };
+        items.filter(i => ids.includes(i.id) && !i.venta_id).forEach(i => { i.venta_id = a.p_venta_id; i.cobro_id = k.id; });
+        Object.assign(k, { estado: 'cobrado', venta_id: a.p_venta_id, cobrado_en: new Date().toISOString() });
+        let cerrada = false;
+        if (!items.some(i => i.comanda_id === c.id && i.estado !== 'cancelado' && !i.venta_id)) {
+          const ks = T('restaurante_cobros').filter(x => x.comanda_id === c.id && x.estado === 'cobrado');
+          const ventas = T('ventas').filter(x => ks.some(q => q.venta_id === x.id));
+          Object.assign(c, { estado: 'cerrada', cerrada_at: new Date().toISOString(), propina_monto: r2(ks.reduce((s, q) => s + q.propina, 0)),
+            total_cobrado: r2(ventas.reduce((s, x) => s + Number(x.total), 0) + ks.reduce((s, q) => s + q.propina, 0)),
+            metodo_pago: new Set(ventas.map(x => x.metodo_pago_nombre)).size > 1 ? 'Varios' : (ventas[0] || {}).metodo_pago_nombre });
+          const m = T('restaurante_mesas').find(x => x.id === c.mesa_id); if (m) Object.assign(m, { estado: 'limpieza', en_este_estado_desde: new Date().toISOString() });
+          cerrada = true;
+        }
+        return res({ ok: true, cerrada });
+      }
+      case 'restaurante_cobro_propina': {
+        const k = T('restaurante_cobros').find(x => x.id === a.p_cobro_id);
+        if (!k || k.estado !== 'cobrado') return { ok: false, motivo: 'no_cobrado' };
+        if (a.p_monto > 0 && k.propina > 0) return { ok: false, motivo: 'ya_tiene_propina' };
+        const c = T('restaurante_comandas').find(x => x.id === k.comanda_id);
+        if (c.estado === 'cerrada') c.total_cobrado = r2((c.total_cobrado || 0) - k.propina + Number(a.p_monto));
+        k.propina = r2(a.p_monto); k.propina_metodo = a.p_metodo || null;
+        c.propina_monto = r2(T('restaurante_cobros').filter(x => x.comanda_id === c.id && x.estado === 'cobrado').reduce((s, q) => s + q.propina, 0));
+        return res({ ok: true });
+      }
+      case 'restaurante_cobro_liberar': {
+        let n2 = 0; T('restaurante_cobros').forEach(k => { if (k.estado === 'reservado' && ((a.p_cobro_id && k.id === a.p_cobro_id) || (!a.p_cobro_id && k.comanda_id === a.p_comanda_id))) { k.estado = 'liberado'; n2++; } });
+        return res({ ok: true, liberados: n2 });
+      }
+    }
+    return null;
+  }
+
   // ---- funciones del servidor de la Clínica (lógica mínima para la interfaz; la real se probó en SQL) ----
   const PIN_OK = '1357';
   function rpcClinica(nombre, a) {
     const db = leerDB(); const T = k => (db[k] = db[k] || []);
     const sesion = () => T('_sesiones').find(s => s.token === a.p_token && !s.cerrada);
     const persona = s => T('clinica_personal').find(p => p.id === s.personal_id);
-    const exigir = () => { const s = sesion(); if (!s) throw { message: 'clinica_sesion_invalida' }; return persona(s); };
+    // Como en el servidor: la verificación de siempre solo acepta médico y administración; la de enfermería, también enfermería.
+    const exigirEnf = () => { const s = sesion(); const p = s && persona(s); if (!p || !['medico', 'admin', 'enfermeria'].includes(p.rol)) throw { message: 'clinica_sesion_invalida' }; return p; };
+    const exigir = () => { const p = exigirEnf(); if (p.rol === 'enfermeria') throw { message: 'clinica_sesion_invalida' }; return p; };
     const guardar = () => guardarDB(db);
     switch (nombre) {
-      case 'clinica_iniciar_sesion': {
-        const p = T('clinica_personal').find(x => x.id === a.p_personal_id);
-        if (!p) return { ok: false, motivo: 'no_encontrado' };
-        if (a.p_pin !== PIN_OK) return { ok: false, motivo: 'incorrecto', restantes: 4 };
-        const token = 'ab'.repeat(32); T('_sesiones').push({ token, personal_id: p.id }); guardar();
-        return { ok: true, token, personal_id: p.id, nombre: p.nombre, rol: p.rol };
+      case 'clinica_iniciar_sesion_perfil': {
+        const perfil = T('perfiles_acceso').find(x => x.id === a.p_perfil_id);
+        if (!perfil) return { ok: false, motivo: 'no_encontrado' };
+        const p = T('clinica_personal').find(x => x.perfil_id === a.p_perfil_id && x.activo !== false && ['medico', 'admin', 'enfermeria'].includes(x.rol));
+        if (!p) return { ok: false, motivo: 'sin_acceso_clinico' };
+        if (a.p_pin !== (perfil.tipo === 'admin' ? '2468' : PIN_OK)) return { ok: false, motivo: 'incorrecto', restantes: 4 };
+        const token = (p.id.length % 2 ? 'cd' : 'ab').repeat(32); T('_sesiones').push({ token, personal_id: p.id }); guardar();
+        return { ok: true, token, personal_id: p.id, perfil_id: perfil.id, nombre: perfil.nombre, rol: p.rol };
       }
       case 'clinica_sesion_estado': { const s = sesion(); return s ? { ok: true, ...persona(s) } : { ok: false }; }
       case 'clinica_cerrar_sesion': { T('_sesiones').forEach(s => { if (s.token === a.p_token) s.cerrada = true; }); guardar(); return null; }
@@ -137,10 +242,14 @@
         const num = k => d[k] == null ? null : Number(d[k]);
         const imc = num('peso_kg') && num('talla_cm') ? Math.round(num('peso_kg') / Math.pow(num('talla_cm') / 100, 2) * 100) / 100 : null;
         if (!a.p_id) {
-          if (d.cita_id && T('clinica_consultas').some(c => c.cita_id === d.cita_id && c.estado !== 'anulada')) return { ok: false, motivo: 'cita_con_nota' };
+          if (d.agenda_cita_id && T('clinica_consultas').some(c => c.agenda_cita_id === d.agenda_cita_id && c.estado !== 'anulada')) return { ok: false, motivo: 'cita_con_nota' };
           const c = { id: uuid(), ...d, imc, medico_id: p.id, medico_nombre: p.nombre, estado: 'borrador', fecha: new Date().toISOString(), created_at: new Date().toISOString() };
           T('clinica_consultas').push(c);
-          if (d.cita_id) { const ci = T('clinica_citas').find(x => x.id === d.cita_id); if (ci && ['programada', 'confirmada', 'en_espera'].includes(ci.estado)) ci.estado = 'en_consulta'; }
+          if (d.agenda_cita_id) {
+            const ci = T('agenda_citas').find(x => x.id === d.agenda_cita_id); if (ci && ['reservada', 'confirmada'].includes(ci.estado)) ci.estado = 'en_atencion';
+            const inf = T('clinica_cita_info').find(x => x.agenda_cita_id === d.agenda_cita_id);
+            if (inf) inf.paciente_id = d.paciente_id; else T('clinica_cita_info').push({ agenda_cita_id: d.agenda_cita_id, auth_user_id: UID, paciente_id: d.paciente_id });
+          }
           guardar(); return { ok: true, id: c.id };
         }
         const c = T('clinica_consultas').find(x => x.id === a.p_id);
@@ -154,22 +263,52 @@
         if (c.medico_id !== p.id) return { ok: false, motivo: 'no_autor' };
         if (!c.diagnostico && !c.plan) return { ok: false, motivo: 'incompleta' };
         c.estado = 'cerrada'; c.cerrada_en = new Date().toISOString(); c.firma_hash = 'f'.repeat(64);
-        if (c.cita_id) { const ci = T('clinica_citas').find(x => x.id === c.cita_id); if (ci) ci.estado = 'atendida'; }
+        if (c.agenda_cita_id) { const inf = T('clinica_cita_info').find(x => x.agenda_cita_id === c.agenda_cita_id); if (inf && !inf.atendida_en) inf.atendida_en = new Date().toISOString(); }
         guardar(); return { ok: true };
       }
       case 'clinica_consulta_adenda': { const p = exigir(); const c = T('clinica_consultas').find(x => x.id === a.p_id);
         if (c.estado !== 'cerrada') return { ok: false, motivo: 'no_cerrada' }; T('clinica_adendas').push({ id: uuid(), consulta_id: c.id, autor_nombre: p.nombre, texto: a.p_texto, created_at: new Date().toISOString() }); guardar(); return { ok: true }; }
       case 'clinica_consulta_anular': { const p = exigir(); const c = T('clinica_consultas').find(x => x.id === a.p_id);
-        if (!a.p_motivo || a.p_motivo.length < 5) return { ok: false, motivo: 'falta_motivo' }; c.estado = 'anulada'; c.motivo_anulacion = a.p_motivo; c.anulada_por_nombre = p.nombre; guardar(); return { ok: true }; }
+        if (!a.p_motivo || a.p_motivo.length < 5) return { ok: false, motivo: 'falta_motivo' }; c.estado = 'anulada'; c.motivo_anulacion = a.p_motivo; c.anulada_por_nombre = p.nombre;
+        if (c.agenda_cita_id) { const ci = T('agenda_citas').find(x => x.id === c.agenda_cita_id); if (ci && ci.estado === 'en_atencion') ci.estado = 'confirmada';
+          const inf = T('clinica_cita_info').find(x => x.agenda_cita_id === c.agenda_cita_id); if (inf) inf.atendida_en = null; }
+        guardar(); return { ok: true }; }
       case 'clinica_personal_guardar': {
         const auth = a.p_auth || {}; const ses = T('_sesiones').find(s => s.token === auth.token && !s.cerrada);
         const okAdmin = (ses && persona(ses)?.rol === 'admin') || auth.admin_pin === '2468';
         if (!okAdmin) return { ok: false, motivo: auth.admin_pin ? 'incorrecto' : 'sin_permiso', restantes: 4 };
         const d = a.p_datos;
-        if (!a.p_id) { if (d.rol !== 'recepcion' && !d.pin) return { ok: false, motivo: 'pin_requerido' };
-          const f = { id: uuid(), auth_user_id: UID, nombre: d.nombre, rol: d.rol, atiende: d.atiende, especialidad: d.especialidad, registro_profesional: d.registro_profesional, telefono: d.telefono, consultorio_id: d.consultorio_id, pin_configurado: !!d.pin, activo: true };
+        if (!a.p_id) {
+          const perfil = T('perfiles_acceso').find(x => x.id === d.perfil_id); if (!perfil) return { ok: false, motivo: 'perfil' };
+          if (T('clinica_personal').some(x => x.perfil_id === d.perfil_id)) return { ok: false, motivo: 'perfil_repetido' };
+          if (d.rol === 'enfermeria') { d.agenda_profesional_id = null; d.honorario_tipo = 'ninguno'; d.honorario_valor = 0; }
+          const prof = d.agenda_profesional_id && T('agenda_profesionales').find(x => x.id === d.agenda_profesional_id);
+          const f = { id: uuid(), auth_user_id: UID, nombre: perfil.nombre, perfil_id: perfil.id, rol: d.rol || 'medico', especialidad: d.especialidad, registro_profesional: d.registro_profesional,
+            consultorio_id: d.consultorio_id, agenda_profesional_id: d.agenda_profesional_id || null, honorario_tipo: d.honorario_tipo || 'ninguno', honorario_valor: d.honorario_valor || 0,
+            empleado_id: d.empleado_id || (prof && prof.empleado_id) || null, activo: true };
           T('clinica_personal').push(f); guardar(); return { ok: true, id: f.id }; }
-        const f = T('clinica_personal').find(x => x.id === a.p_id); Object.assign(f, { ...d, pin: undefined, pin_configurado: f.pin_configurado || !!d.pin }); guardar(); return { ok: true, id: f.id };
+        const f = T('clinica_personal').find(x => x.id === a.p_id); Object.assign(f, d); guardar(); return { ok: true, id: f.id };
+      }
+      case 'clinica_personal_nuevo': {      // como la del servidor: usuario + columna en la Agenda + ficha, todo o nada
+        const demo = window.__DEMO === true, d = a.p_datos || {}, rol = d.rol || 'medico', nombre = String(a.p_nombre || '').trim();
+        if (!['medico', 'admin', 'enfermeria'].includes(rol)) return { ok: false, motivo: 'rol' };
+        if (nombre.length < 3 || nombre.length > 80) return { ok: false, motivo: 'nombre' };
+        if (!demo) {
+          const auth = a.p_auth || {}; const ses = T('_sesiones').find(x => x.token === auth.token && !x.cerrada);
+          if (!((ses && persona(ses)?.rol === 'admin') || auth.admin_pin === '2468')) return { ok: false, motivo: auth.admin_pin ? 'incorrecto' : 'sin_permiso', restantes: 4 };
+          if (!/^[0-9]{4,12}$/.test(a.p_codigo || '')) return { ok: false, motivo: 'codigo' };
+          if (T('perfiles_acceso').some(x => String(x.nombre).trim().toLowerCase() === nombre.toLowerCase())) return { ok: false, motivo: 'nombre_repetido' };
+        }
+        if (d.honorario_tipo === 'porcentaje' && Number(d.honorario_valor) > 100) return { ok: false, motivo: 'honorario' };
+        let perfil = null, prof = null;
+        if (!demo) { perfil = { id: uuid(), auth_user_id: UID, nombre, tipo: 'restringido', activo: true, codigo_simulado: a.p_codigo,
+          modulos: rol === 'enfermeria' ? ['clinica_panel', 'clinica_sala', 'clinica_hospital'] : ['clinica_panel', 'clinica_sala', 'clinica_pacientes', 'clinica_hospital', 'agenda'] }; T('perfiles_acceso').push(perfil); }
+        if (a.p_columna_agenda !== false && rol !== 'enfermeria') { prof = { id: uuid(), auth_user_id: UID, nombre, color: '#3b82f6', orden: T('agenda_profesionales').length, activo: true, perfil_id: perfil && perfil.id }; T('agenda_profesionales').push(prof); }
+        const f = { id: uuid(), auth_user_id: UID, nombre, perfil_id: perfil && perfil.id, rol, especialidad: d.especialidad || null, registro_profesional: d.registro_profesional || null,
+          consultorio_id: d.consultorio_id || null, agenda_profesional_id: prof && prof.id, honorario_tipo: rol === 'enfermeria' ? 'ninguno' : (d.honorario_tipo || 'ninguno'),
+          honorario_valor: rol === 'enfermeria' ? 0 : Number(d.honorario_valor || 0), activo: true };
+        T('clinica_personal').push(f); guardar();
+        return { ok: true, id: f.id, perfil_id: f.perfil_id, agenda_profesional_id: f.agenda_profesional_id, demo };
       }
       case 'clinica_bitacora_ver': {
         const auth = a.p_auth || {}; if (auth.admin_pin !== '2468' && !T('_sesiones').some(s => s.token === auth.token)) return { ok: false, motivo: 'incorrecto', restantes: 3 };
@@ -193,24 +332,279 @@
         const cuenta = {}; T('clinica_consultas').filter(c => c.estado === 'cerrada').forEach(c => (c.diagnosticos || []).forEach(d => { const k = d.codigo || d.nombre; cuenta[k] = cuenta[k] || { codigo: d.codigo || '—', nombre: d.nombre, total: 0 }; cuenta[k].total++; }));
         return { ok: true, diagnosticos: Object.values(cuenta).sort((x, y) => y.total - x.total), notas: [] };
       }
-      case 'clinica_cambiar_pin': return a.p_pin_actual === PIN_OK ? { ok: true } : { ok: false, motivo: 'incorrecto', restantes: 4 };
+      case 'clinica_estancia_nota_agregar': {
+        const p = exigirEnf(); const e = T('clinica_estancias').find(x => x.id === a.p_estancia_id); const d = a.p_datos || {};
+        if (!e) return { ok: false, motivo: 'no_encontrado' }; if (e.estado !== 'activa') return { ok: false, motivo: 'estancia_cerrada' };
+        if (!String(d.texto || '').trim()) return { ok: false, motivo: 'texto' };
+        if (p.rol === 'enfermeria' && (d.tipo || 'evolucion') !== 'enfermeria') return { ok: false, motivo: 'solo_enfermeria' };
+        if (d.fc != null && (Number(d.fc) < 20 || Number(d.fc) > 250)) return { ok: false, motivo: 'signos' };
+        T('clinica_estancia_notas').push({ id: uuid(), estancia_id: e.id, paciente_id: e.paciente_id, ...d, autor_id: p.id, autor_nombre: p.nombre, created_at: new Date().toISOString() });
+        T('clinica_bitacora').push({ accion: 'nota_estancia', quien: p.nombre }); guardar(); return { ok: true };
+      }
+      case 'clinica_estancia_notas': { const p = exigirEnf(); const e = T('clinica_estancias').find(x => x.id === a.p_estancia_id);
+        return { ok: true, rol: p.rol, alergias: (T('clinica_antecedentes').find(x => e && x.paciente_id === e.paciente_id) || {}).alergias || null,
+          notas: T('clinica_estancia_notas').filter(n => n.estancia_id === a.p_estancia_id) }; }
+      case 'clinica_iniciar_sesion_demo': {
+        if (window.__DEMO !== true) return { ok: false, motivo: 'solo_demo' };
+        const p = T('clinica_personal').find(x => x.id === a.p_personal_id && x.activo !== false && ['medico', 'admin', 'enfermeria'].includes(x.rol));
+        if (!p) return { ok: false, motivo: 'no_encontrado' };
+        const token = 'de'.repeat(32); T('_sesiones').push({ token, personal_id: p.id }); guardar();
+        return { ok: true, token, personal_id: p.id, nombre: p.nombre, rol: p.rol };
+      }
+      case 'clinica_cambiar_pin': return { ok: false, motivo: 'usar_usuarios' };
     }
     return undefined;
+  }
+
+  // Mensajería: imita las funciones msj_* del servidor (tarifa, estados permitidos, entrega una sola vez, cuadre).
+  function rpcMensajeria(nombre, a) {
+    const db = leerDB(); const T = k => (db[k] = db[k] || []); const ahora = new Date().toISOString();
+    const NO = m => ({ ok: false, motivo: m }); const r2 = x => Math.round(Number(x) * 100) / 100;
+    const cfg = () => T('mensajeria_config').find(c => c.auth_user_id === UID) || { recargo_urgente: 0, recargo_grande: 0, recargo_reintento: 0, tope_efectivo: 0 };
+    const norm = t => String(t || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    const evt = (id, ev, det, por) => T('mensajeria_envio_eventos').push({ id: uuid(), auth_user_id: UID, envio_id: id, evento: ev, detalle: det || null, por: por || null, created_at: new Date().toISOString() });
+    const tarifa = (zona, com, urg, tam) => {
+      let v = null; const esp = T('mensajeria_tarifas_comercio').find(t => t.zona_id === zona && t.comercio_id === com && t.activo !== false);
+      if (zona) v = esp ? Number(esp.tarifa) : Number((T('mensajeria_zonas').find(z => z.id === zona) || {}).tarifa || 0);
+      v = v || 0; const c = cfg(); if (urg) v += Number(c.recargo_urgente || 0); if (tam === 'grande') v += Number(c.recargo_grande || 0); return r2(v);
+    };
+    const deuda = rep => Math.max(0, -T('mensajeria_cuadres').filter(q => q.repartidor_id === rep).reduce((x, q) => x + Number(q.diferencia), 0));
+    const num = (tabla, pre) => pre + String(T(tabla).reduce((m, x) => Math.max(m, Number(String(x.numero).replace(/\D/g, '')) || 0), 0) + 1).padStart(6, '0');
+    const hoy = new Date().toISOString().slice(0, 10);
+    const caja = (flujo, tipo, concepto, monto, metodo, banco, refTipo, refId) => { if (!(monto > 0)) return null; const id = uuid();
+      T('movimientos_financieros').push({ id, auth_user_id: UID, tipo_flujo: flujo, tipo_movimiento: tipo, concepto, monto: r2(monto), metodo_pago_nombre: metodo === 'transferencia' ? 'Transferencia' : 'Efectivo',
+        banco_id: metodo === 'transferencia' ? banco : null, referencia_tipo: refTipo, referencia_id: refId, fecha: hoy, estado: 'completado', created_at: new Date().toISOString() }); return id; };
+    const venta = (cli, nombre, obs, lineas, metodo, banco, por) => {          // como _msj_venta: venta + detalle + Caja (neto de IVA) + IVA + total del cliente
+      const total = r2(lineas.reduce((x, l) => x + Number(l.monto), 0)); if (!(total > 0)) return null;
+      const c = cfg(); const imp = c.iva_incluido && Number(c.iva_porcentaje) > 0 ? r2(total - total / (1 + Number(c.iva_porcentaje) / 100)) : 0, sub = r2(total - imp);
+      const id = uuid(), numero = 'V-' + String(T('ventas').length + 1).padStart(5, '0');
+      T('ventas').push({ id, auth_user_id: UID, numero_venta: numero, cliente_id: cli, cliente_nombre: nombre, subtotal: sub, impuesto: imp, total, estado: 'completada', observaciones: obs,
+        metodo_pago_nombre: metodo === 'transferencia' ? 'Transferencia' : 'Efectivo', creado_por_nombre: por, fecha: new Date().toISOString() });
+      let acum = 0; lineas.forEach((l, i) => { const neto = i === lineas.length - 1 ? r2(sub - acum) : r2(Number(l.monto) * sub / total); acum = r2(acum + neto);
+        T('venta_detalles').push({ id: uuid(), venta_id: id, auth_user_id: UID, producto_nombre: l.nombre, tipo_item: 'servicio', cantidad: 1, precio: neto, subtotal: neto }); });
+      caja('INGRESO', 'VENTA', 'Venta ' + numero + ' (envíos)', sub, metodo, banco, 'venta', id);
+      if (imp > 0) T('movimientos_impuestos').push({ id: uuid(), auth_user_id: UID, tipo_movimiento: 'IVA_VENTA', monto: imp, referencia_venta_id: id });
+      if (cli) { const cl = T('clientes').find(x => x.id === cli); if (cl) { cl.total_compras = r2(Number(cl.total_compras || 0) + total); cl.num_compras = Number(cl.num_compras || 0) + 1; } }
+      return { venta_id: id, numero, total };
+    };
+    const bancoOk = (m, b) => m === 'efectivo' || (m === 'transferencia' && !!b && T('bancos').some(x => x.id === b));
+    const nomEnvio = e => 'Envío ' + e.numero + ' · ' + e.destinatario_nombre + (e.zona_nombre ? ' (' + e.zona_nombre + ')' : '');
+    const liqLista = com => { const dev = cfg().cobrar_devueltos !== false;
+      return T('mensajeria_envios').filter(e => e.comercio_id === com && !e.liquidacion_id && ((e.estado === 'entregado' && e.cuadre_id) || e.estado === 'devuelto')).sort((a, b) => a.numero.localeCompare(b.numero))
+        .map(e => ({ id: e.id, numero: e.numero, destinatario: e.destinatario_nombre, estado: e.estado, cod: e.estado === 'entregado' ? Number(e.cobrado_cod) : 0,
+          tarifa: e.tarifa_venta_id ? 0 : (e.estado === 'entregado' && e.envio_lo_paga === 'comercio') || (e.estado === 'devuelto' && dev) ? r2(Number(e.tarifa) + Number(e.recargo_reintentos || 0)) : 0 })); };
+    const pagoMonto = (r, e) => r.pago_tipo === 'por_entrega' ? r2(r.pago_valor) : r.pago_tipo === 'porcentaje' ? r2((Number(e.tarifa) + Number(e.recargo_reintentos || 0)) * r.pago_valor / 100) : 0;
+    const mismos = (a, b) => (a || []).slice().sort().join() === (Array.isArray(b) ? b : []).slice().sort().join();
+    let out;
+    switch (nombre) {
+      case 'msj_tarifa_calcular': return tarifa(a.p_zona, a.p_comercio, a.p_urgente, a.p_tamano);
+      case 'msj_config_guardar': { const p = a.p || {}; const c = T('mensajeria_config'); const i = c.findIndex(x => x.auth_user_id === UID); const fila = { auth_user_id: UID, recargo_urgente: r2(p.recargo_urgente || 0), recargo_grande: r2(p.recargo_grande || 0), recargo_reintento: r2(p.recargo_reintento || 0), tope_efectivo: r2(p.tope_efectivo || 0),
+          iva_incluido: !!p.iva_incluido, iva_porcentaje: p.iva_porcentaje == null ? 15 : r2(p.iva_porcentaje), cobrar_devueltos: p.cobrar_devueltos !== false };
+        if (Object.values(fila).some(v => typeof v === 'number' && v < 0)) return NO('valor'); if (i >= 0) c[i] = fila; else c.push(fila); out = { ok: true }; break; }
+      case 'msj_zona_guardar': { const p = a.p || {}, nom = String(p.nombre || '').trim(); if (nom.length < 2) return NO('nombre'); if (!(Number(p.tarifa) >= 0)) return NO('valor');
+        if (T('mensajeria_zonas').some(z => norm(z.nombre) === norm(nom) && z.id !== p.id)) return NO('nombre_duplicado');
+        if (p.id) { const z = T('mensajeria_zonas').find(x => x.id === p.id); Object.assign(z, { nombre: nom, tarifa: r2(p.tarifa), notas: p.notas || null }); out = { ok: true, id: z.id }; }
+        else { const id = uuid(); T('mensajeria_zonas').push({ id, auth_user_id: UID, nombre: nom, tarifa: r2(p.tarifa), notas: p.notas || null, activo: true, created_at: ahora }); out = { ok: true, id }; } break; }
+      case 'msj_zona_activar': { const z = T('mensajeria_zonas').find(x => x.id === a.p_id); if (!z) return NO('no_existe'); z.activo = a.p_activo !== false; out = { ok: true }; break; }
+      case 'msj_tarifa_comercio_guardar': { const l = T('mensajeria_tarifas_comercio'); const x = l.find(t => t.comercio_id === a.p_comercio && t.zona_id === a.p_zona);
+        if (a.p_tarifa == null) { if (x) x.activo = false; } else if (x) Object.assign(x, { tarifa: r2(a.p_tarifa), activo: true }); else l.push({ id: uuid(), auth_user_id: UID, comercio_id: a.p_comercio, zona_id: a.p_zona, tarifa: r2(a.p_tarifa), activo: true }); out = { ok: true }; break; }
+      case 'msj_repartidor_guardar': { const p = a.p || {}, nom = String(p.nombre || '').trim(); if (nom.length < 2) return NO('nombre');
+        if (T('mensajeria_repartidores').some(r => norm(r.nombre) === norm(nom) && r.id !== p.id)) return NO('nombre_duplicado');
+        if (p.perfil_id && T('mensajeria_repartidores').some(r => r.perfil_id === p.perfil_id && r.id !== p.id)) return NO('perfil_usado');
+        const datos = { nombre: nom, telefono: p.telefono || null, tipo: p.tipo || 'empleado', vehiculo: p.vehiculo || 'moto', placa: p.placa || null, perfil_id: p.perfil_id || null, tope_efectivo: p.tope_efectivo == null ? null : r2(p.tope_efectivo), notas: p.notas || null, pago_tipo: p.pago_tipo || 'ninguno', pago_valor: r2(p.pago_valor || 0) };
+        if (p.id) { Object.assign(T('mensajeria_repartidores').find(r => r.id === p.id), datos); out = { ok: true, id: p.id }; }
+        else { const id = uuid(); T('mensajeria_repartidores').push({ id, auth_user_id: UID, activo: true, created_at: ahora, ...datos }); out = { ok: true, id }; } break; }
+      case 'msj_repartidor_activar': { if (a.p_activo === false && T('mensajeria_envios').some(e => e.repartidor_id === a.p_id && ['asignado', 'en_ruta'].includes(e.estado))) return NO('con_envios');
+        T('mensajeria_repartidores').find(r => r.id === a.p_id).activo = a.p_activo !== false; out = { ok: true }; break; }
+      case 'msj_envio_guardar': { const p = a.p || {}; let rem = String(p.remitente_nombre || '').trim();
+        if (p.comercio_id) { const c = T('clientes').find(x => x.id === p.comercio_id); if (!c) return NO('cliente'); if (!rem) rem = [c.nombre, c.apellido].filter(Boolean).join(' '); }
+        if (rem.length < 2) return NO('remitente'); if (Number(p.monto_cobrar || 0) > 0 && !p.comercio_id) return NO('cod_sin_comercio'); if (String(p.destinatario_nombre || '').trim().length < 2) return NO('destinatario'); if (String(p.direccion || '').trim().length < 3) return NO('direccion');
+        const zona = p.zona_id ? T('mensajeria_zonas').find(z => z.id === p.zona_id) : null; if (p.zona_id && !zona) return NO('zona');
+        const t = tarifa(p.zona_id, p.comercio_id, !!p.urgente, p.tamano || 'pequeno');
+        const datos = { comercio_id: p.comercio_id || null, remitente_nombre: rem, remitente_telefono: p.remitente_telefono || null, recoger_direccion: p.recoger_direccion || null,
+          destinatario_nombre: p.destinatario_nombre.trim(), destinatario_telefono: p.destinatario_telefono || null, direccion: p.direccion.trim(), referencia: p.referencia || null, lat: p.lat ?? null, lng: p.lng ?? null,
+          zona_id: p.zona_id || null, zona_nombre: zona ? zona.nombre : null, descripcion: p.descripcion || null, paquetes: Number(p.paquetes || 1), tamano: p.tamano || 'pequeno', urgente: !!p.urgente,
+          monto_cobrar: r2(p.monto_cobrar || 0), envio_lo_paga: p.envio_lo_paga || 'comercio', tarifa: t, fecha_programada: p.fecha_programada || null, notas: p.notas || null };
+        if (p.id) { const e = T('mensajeria_envios').find(x => x.id === p.id); if (!['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado) || e.tarifa_venta_id || e.liquidacion_id) return NO('no_editable'); Object.assign(e, datos); evt(e.id, 'editado', 'Tarifa ' + t, p.por); out = { ok: true, id: e.id, numero: e.numero, tarifa: t }; break; }
+        const id = uuid(), numero = num('mensajeria_envios', 'ENV-');
+        const rastreo_token = Array.from({ length: 40 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
+        T('mensajeria_envios').push({ id, auth_user_id: UID, numero, rastreo_token, ...datos, recargo_reintentos: 0, estado: p.en_bodega ? 'en_bodega' : 'por_recoger', repartidor_id: null, intentos: 0, cobrado_cod: 0, cobrado_envio: 0, cuadre_id: null, creado_por: p.por || null, created_at: ahora });
+        evt(id, 'creado', 'Tarifa ' + t, p.por); out = { ok: true, id, numero, tarifa: t, rastreo_token }; break; }
+      case 'msj_envios_asignar': { const r = T('mensajeria_repartidores').find(x => x.id === a.p_repartidor); if (!r) return NO('repartidor'); if (!r.activo) return NO('repartidor_inactivo');
+        const l = T('mensajeria_envios').filter(e => (a.p_ids || []).includes(e.id)); if (!l.length) return NO('sin_seleccion');
+        const malo = l.find(e => !['por_recoger', 'en_bodega', 'asignado', 'no_entregado'].includes(e.estado)); if (malo) return { ok: false, motivo: 'no_asignable', numero: malo.numero };
+        l.forEach(e => { if (e.estado === 'no_entregado') e.recargo_reintentos = r2(Number(e.recargo_reintentos || 0) + Number(cfg().recargo_reintento || 0)); evt(e.id, e.estado === 'no_entregado' ? 'reintento' : 'asignado', 'A ' + r.nombre, a.p_por); e.estado = 'asignado'; e.repartidor_id = r.id; });
+        out = { ok: true, asignados: l.length }; break; }
+      case 'msj_envio_estado': { const e = T('mensajeria_envios').find(x => x.id === a.p_id); if (!e) return NO('no_existe'); if (e.estado === a.p_nuevo) return { ok: true, ya: true };
+        if (a.p_nuevo === 'entregado') return NO('usar_entregar'); if (a.p_nuevo === 'cancelado' && e.tarifa_venta_id) return NO('ya_cobrado');
+        const PERM = { por_recoger: ['en_bodega', 'cancelado'], en_bodega: ['cancelado', 'devuelto'], asignado: ['en_ruta', 'en_bodega', 'cancelado'], en_ruta: ['no_entregado', 'asignado'], no_entregado: ['en_bodega', 'devuelto'] };
+        if (!(PERM[e.estado] || []).includes(a.p_nuevo)) return NO('transicion');
+        if (['no_entregado', 'cancelado', 'devuelto'].includes(a.p_nuevo) && String(a.p_motivo || '').trim().length < 3) return NO('falta_motivo');
+        if (['en_bodega', 'cancelado', 'devuelto'].includes(a.p_nuevo)) e.repartidor_id = null;
+        if (a.p_nuevo === 'no_entregado') e.intentos = Number(e.intentos || 0) + 1;
+        if (['no_entregado', 'cancelado', 'devuelto'].includes(a.p_nuevo)) e.motivo_no_entrega = a.p_motivo.trim();
+        e.estado = a.p_nuevo; evt(e.id, a.p_nuevo, a.p_motivo, a.p_por); out = { ok: true }; break; }
+      case 'msj_envio_entregar': { const e = T('mensajeria_envios').find(x => x.id === a.p_id), p = a.p || {}; if (!e) return NO('no_existe'); if (e.estado === 'entregado') return { ok: true, ya: true };
+        if (!['en_ruta', 'asignado'].includes(e.estado)) return NO('transicion'); if (!e.repartidor_id) return NO('sin_repartidor');
+        if (String(p.recibio_nombre || '').trim().length < 2) return NO('recibio');
+        const cod = Number(e.monto_cobrar), env = e.envio_lo_paga === 'destinatario' ? Number(e.tarifa) + Number(e.recargo_reintentos || 0) : 0;
+        if (cod + env > 0 && !['efectivo', 'transferencia'].includes(p.metodo_cobro)) return NO('metodo');
+        Object.assign(e, { estado: 'entregado', recibio_nombre: p.recibio_nombre.trim(), foto_path: p.foto_path || null, metodo_cobro: cod + env > 0 ? p.metodo_cobro : null, cobrado_cod: cod, cobrado_envio: r2(env), entregado_at: new Date().toISOString(), intentos: Number(e.intentos || 0) + 1 });
+        evt(e.id, 'entregado', 'Recibió ' + e.recibio_nombre, p.por); out = { ok: true }; break; }
+      case 'msj_cuadre_pendiente': { const l = T('mensajeria_envios').filter(e => e.repartidor_id === a.p_repartidor && e.estado === 'entregado' && !e.cuadre_id);
+        return { ok: true, envios: l.map(e => ({ id: e.id, numero: e.numero, destinatario: e.destinatario_nombre, metodo: e.metodo_cobro, cod: e.cobrado_cod, envio: e.cobrado_envio, entregado_at: e.entregado_at })),
+          esperado_cod: r2(l.filter(e => e.metodo_cobro === 'efectivo').reduce((x, e) => x + Number(e.cobrado_cod), 0)), esperado_envio: r2(l.filter(e => e.metodo_cobro === 'efectivo').reduce((x, e) => x + Number(e.cobrado_envio), 0)),
+          transferencias: r2(l.filter(e => e.metodo_cobro === 'transferencia').reduce((x, e) => x + Number(e.cobrado_cod) + Number(e.cobrado_envio), 0)),
+          transfer_envio: r2(l.filter(e => e.metodo_cobro === 'transferencia' && !e.tarifa_venta_id).reduce((x, e) => x + Number(e.cobrado_envio), 0)),
+          transfer_cod: r2(l.filter(e => e.metodo_cobro === 'transferencia').reduce((x, e) => x + Number(e.cobrado_cod), 0)), deuda: deuda(a.p_repartidor) }; }
+      case 'msj_cuadre_registrar': case 'msj_abono_registrar': return NO('version');
+      case 'msj_cuadre_cerrar': { const p = a.p || {}; const r = T('mensajeria_repartidores').find(x => x.id === p.repartidor_id); if (!r) return NO('repartidor');
+        const l = T('mensajeria_envios').filter(e => e.repartidor_id === r.id && e.estado === 'entregado' && !e.cuadre_id);
+        if (!l.length) return NO('nada_por_cuadrar'); if (!mismos(l.map(e => e.id), p.envio_ids)) return NO('cambiaron');
+        const ef = l.filter(e => e.metodo_cobro === 'efectivo'), cod = r2(ef.reduce((x, e) => x + Number(e.cobrado_cod), 0)), env = r2(ef.reduce((x, e) => x + Number(e.cobrado_envio), 0)), esp = r2(cod + env);
+        const lef = l.filter(e => e.metodo_cobro === 'efectivo' && Number(e.cobrado_envio) > 0 && !e.tarifa_venta_id), ltr = l.filter(e => e.metodo_cobro === 'transferencia' && Number(e.cobrado_envio) > 0 && !e.tarifa_venta_id);
+        if (ltr.length && !bancoOk('transferencia', p.banco_id)) return NO('banco_transfer');
+        const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-'), dif = r2(Number(p.entregado) - esp);
+        T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: r.id, tipo: 'cuadre', envios: l.length, esperado_cod: cod, esperado_envio: env, esperado: esp, transferencias: 0, entregado: r2(p.entregado), diferencia: dif, notas: p.notas || null, por: p.por || null, created_at: ahora });
+        const v1 = lef.length ? venta(null, 'Clientes de envíos (pagó quien recibió)', 'Mensajería · Envíos cobrados por ' + r.nombre + ' · ' + numero, lef.map(e => ({ nombre: nomEnvio(e), monto: e.cobrado_envio })), 'efectivo', null, p.por) : null;
+        if (v1) lef.forEach(e => { e.tarifa_venta_id = v1.venta_id; });
+        const v2 = ltr.length ? venta(null, 'Clientes de envíos (pagó quien recibió)', 'Mensajería · Envíos pagados por transferencia · ' + numero, ltr.map(e => ({ nombre: nomEnvio(e), monto: e.cobrado_envio })), 'transferencia', p.banco_id, p.por) : null;
+        if (v2) ltr.forEach(e => { e.tarifa_venta_id = v2.venta_id; });
+        if (dif < 0) caja('EGRESO', 'OTRO_EGRESO', 'Faltante del repartidor ' + r.nombre + ' en ' + numero, -dif, 'efectivo', null, 'mensajeria_cuadre', id);
+        if (dif > 0) caja('INGRESO', 'OTRO_INGRESO', 'Sobrante del repartidor ' + r.nombre + ' en ' + numero, dif, 'efectivo', null, 'mensajeria_cuadre', id);
+        l.forEach(e => { e.cuadre_id = id; }); out = { ok: true, id, numero, esperado: esp, diferencia: dif, por_liquidar: cod, venta_efectivo: v1, venta_transferencia: v2 }; break; }
+      case 'msj_abono_cobrar': { const p = a.p || {}; const d = deuda(p.repartidor_id), m = r2(p.monto || 0), met = p.metodo || 'efectivo'; if (!(m > 0)) return NO('valor');
+        if (!bancoOk(met, p.banco_id)) return NO('banco'); if (m > d) return { ok: false, motivo: 'abono_mayor', deuda: d };
+        const r = T('mensajeria_repartidores').find(x => x.id === p.repartidor_id); const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-');
+        T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: p.repartidor_id, tipo: 'abono', envios: 0, esperado: 0, entregado: m, diferencia: m, notas: p.notas || null, por: p.por || null, created_at: ahora });
+        caja('INGRESO', 'OTRO_INGRESO', 'Abono del repartidor ' + r.nombre, m, met, p.banco_id, 'mensajeria_cuadre', id); out = { ok: true, id, numero, deuda: r2(d - m) }; break; }
+      case 'msj_envio_cobrar': { const p = a.p || {}; const e = T('mensajeria_envios').find(x => x.id === p.envio_id); if (!e) return NO('no_existe');
+        if (!bancoOk(p.metodo, p.banco_id)) return NO('banco'); if (e.tarifa_venta_id) return { ok: true, ya: true };
+        if (e.envio_lo_paga !== 'comercio' || e.liquidacion_id || e.estado === 'cancelado') return NO('no_cobrable');
+        const v = venta(e.comercio_id, e.remitente_nombre, 'Mensajería · Envío ' + e.numero + ' cobrado al remitente', [{ nombre: nomEnvio(e), monto: Number(e.tarifa) + Number(e.recargo_reintentos || 0) }], p.metodo, p.banco_id, p.por);
+        if (!v) return NO('total_cero'); e.tarifa_venta_id = v.venta_id; evt(e.id, 'envio_cobrado', 'Venta ' + v.numero, p.por); out = { ok: true, venta: v }; break; }
+      case 'msj_liquidaciones_resumen': { const ids = [...new Set(T('mensajeria_envios').filter(e => e.comercio_id && !e.liquidacion_id && e.estado !== 'cancelado').map(e => e.comercio_id))];
+        return { ok: true, comercios: ids.map(id => { const c = T('clientes').find(x => x.id === id) || {}; const l = liqLista(id); const pend = T('mensajeria_envios').filter(e => e.comercio_id === id && !e.liquidacion_id && e.estado !== 'cancelado');
+          return { comercio_id: id, nombre: [c.nombre, c.apellido].filter(Boolean).join(' '), telefono: c.telefono || null, listos: l.length, cod: r2(l.reduce((x, y) => x + y.cod, 0)), tarifas: r2(l.reduce((x, y) => x + y.tarifa, 0)),
+            en_proceso: pend.filter(e => !((e.estado === 'entregado' && e.cuadre_id) || e.estado === 'devuelto')).length, en_calle: r2(pend.filter(e => e.estado === 'entregado' && !e.cuadre_id).reduce((x, e) => x + Number(e.cobrado_cod), 0)) }; }) }; }
+      case 'msj_liquidacion_pendiente': { const l = liqLista(a.p_comercio); return { ok: true, envios: l, cod: r2(l.reduce((x, y) => x + y.cod, 0)), tarifas: r2(l.reduce((x, y) => x + y.tarifa, 0)) }; }
+      case 'msj_liquidacion_registrar': { const p = a.p || {}; const c = T('clientes').find(x => x.id === p.comercio_id); if (!c) return NO('cliente');
+        const l = liqLista(c.id); if (!l.length) return NO('nada_por_liquidar'); if (!mismos(l.map(e => e.id), p.envio_ids)) return NO('cambiaron');
+        const cod = r2(l.reduce((x, y) => x + y.cod, 0)), tar = r2(l.reduce((x, y) => x + y.tarifa, 0)), tmet = p.tarifas_metodo || 'efectivo';
+        if (tar > 0 && !bancoOk(tmet, p.tarifas_banco_id)) return NO('banco');
+        const id = uuid(), numero = num('mensajeria_liquidaciones', 'LQ-'), nombre = [c.nombre, c.apellido].filter(Boolean).join(' ');
+        const liq = { id, auth_user_id: UID, numero, comercio_id: c.id, comercio_nombre: nombre, envios: l.length, cod_total: cod, tarifas_total: tar, neto: r2(cod - tar), pago_metodo: cod - tar !== 0 ? (p.pago_metodo || 'efectivo') : null, notas: p.notas || null, por: p.por || null, created_at: ahora };
+        T('mensajeria_liquidaciones').push(liq);
+        const conTar = l.filter(y => y.tarifa > 0); const v = conTar.length ? venta(c.id, nombre, 'Mensajería · Liquidación ' + numero + ': tarifas de envío', conTar.map(y => ({ nombre: 'Envío ' + y.numero + ' · ' + y.destinatario, monto: y.tarifa })), tmet, p.tarifas_banco_id, p.por) : null;
+        if (v) { liq.venta_id = v.venta_id; conTar.forEach(y => { T('mensajeria_envios').find(e => e.id === y.id).tarifa_venta_id = v.venta_id; }); }
+        l.forEach(y => { T('mensajeria_envios').find(e => e.id === y.id).liquidacion_id = id; });
+        out = { ok: true, id, numero, cod, tarifas: tar, neto: r2(cod - tar), venta: v }; break; }
+      case 'msj_pago_pendiente': { const r = T('mensajeria_repartidores').find(x => x.id === a.p_repartidor); if (!r) return NO('repartidor');
+        const l = T('mensajeria_envios').filter(e => e.repartidor_id === r.id && e.estado === 'entregado' && !e.pago_id);
+        return { ok: true, pago_tipo: r.pago_tipo, pago_valor: r.pago_valor, deuda: deuda(r.id), envios: l.map(e => ({ id: e.id, numero: e.numero, destinatario: e.destinatario_nombre, entregado_at: e.entregado_at, monto: pagoMonto(r, e) })), total: r2(l.reduce((x, e) => x + pagoMonto(r, e), 0)) }; }
+      case 'msj_pago_registrar': { const p = a.p || {}; const r = T('mensajeria_repartidores').find(x => x.id === p.repartidor_id); if (!r) return NO('repartidor');
+        const met = p.metodo || 'efectivo'; if (!bancoOk(met, p.banco_id)) return NO('banco'); if (r.pago_tipo === 'ninguno') return NO('sin_forma_pago');
+        const l = T('mensajeria_envios').filter(e => e.repartidor_id === r.id && e.estado === 'entregado' && !e.pago_id); if (!l.length) return NO('nada_por_pagar'); if (!mismos(l.map(e => e.id), p.envio_ids)) return NO('cambiaron');
+        const total = r2(l.reduce((x, e) => x + pagoMonto(r, e), 0)), d = deuda(r.id), desc = r2(p.descontar_deuda || 0);
+        if (desc < 0 || desc > Math.min(d, total)) return { ok: false, motivo: 'descuento', deuda: d };
+        const id = uuid(), numero = num('mensajeria_pagos', 'PR-'), gid = uuid();
+        T('gastos').push({ id: gid, auth_user_id: UID, tipo: 'inmediato', concepto: 'Pago a ' + r.nombre + ' (' + numero + ')', categoria: 'Pago a repartidores', monto: total, fecha: hoy, estado: 'activo', origen_tipo: 'mensajeria_pago', origen_id: id, empleado: r.nombre });
+        caja('EGRESO', 'GASTO', 'Pago a repartidores: ' + r.nombre, total, met, p.banco_id, 'gasto', gid);
+        if (desc > 0) { const cq = uuid(); T('mensajeria_cuadres').push({ id: cq, auth_user_id: UID, numero: num('mensajeria_cuadres', 'CQ-'), repartidor_id: r.id, tipo: 'abono', envios: 0, esperado: 0, entregado: desc, diferencia: desc, notas: 'Descontado de su pago ' + numero, por: p.por || null, created_at: ahora });
+          caja('INGRESO', 'OTRO_INGRESO', 'Deuda descontada de su pago ' + numero, desc, met, p.banco_id, 'mensajeria_cuadre', cq); }
+        T('mensajeria_pagos').push({ id, auth_user_id: UID, numero, repartidor_id: r.id, envios: l.length, monto: total, descuento_deuda: desc, neto_pagado: r2(total - desc), metodo: met, gasto_id: gid, por: p.por || null, created_at: ahora });
+        l.forEach(e => { e.pago_id = id; e.pago_monto = pagoMonto(r, e); }); out = { ok: true, id, numero, monto: total, descuento: desc, neto: r2(total - desc) }; break; }
+      case '__viejo_cuadre': { const l = T('mensajeria_envios').filter(e => e.repartidor_id === a.p_repartidor && e.estado === 'entregado' && !e.cuadre_id);
+        if (!l.length) return NO('nada_por_cuadrar'); if (l.map(e => e.id).sort().join() !== (a.p_envio_ids || []).slice().sort().join()) return NO('cambiaron');
+        const ef = l.filter(e => e.metodo_cobro === 'efectivo'); const cod = r2(ef.reduce((x, e) => x + Number(e.cobrado_cod), 0)), env = r2(ef.reduce((x, e) => x + Number(e.cobrado_envio), 0)), esp = r2(cod + env);
+        const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-'), dif = r2(Number(a.p_entregado) - esp);
+        T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: a.p_repartidor, tipo: 'cuadre', envios: l.length, esperado_cod: cod, esperado_envio: env, esperado: esp, transferencias: 0, entregado: r2(a.p_entregado), diferencia: dif, notas: a.p_notas || null, por: a.p_por || null, created_at: ahora });
+        l.forEach(e => { e.cuadre_id = id; }); out = { ok: true, id, numero, esperado: esp, diferencia: dif }; break; }
+      case '__viejo_abono': { const d = deuda(a.p_repartidor); if (!(a.p_monto > 0)) return NO('valor'); if (r2(a.p_monto) > d) return { ok: false, motivo: 'abono_mayor', deuda: d };
+        const id = uuid(), numero = num('mensajeria_cuadres', 'CQ-');
+        T('mensajeria_cuadres').push({ id, auth_user_id: UID, numero, repartidor_id: a.p_repartidor, tipo: 'abono', envios: 0, esperado: 0, entregado: r2(a.p_monto), diferencia: r2(a.p_monto), notas: a.p_notas || null, por: a.p_por || null, created_at: ahora });
+        out = { ok: true, id, numero, deuda: r2(d - a.p_monto) }; break; }
+      case 'msj_envios_importar': {        // todo o nada: se prueba sobre una copia y solo si todas pasan se guarda
+        const lista = (a.p || {}).envios; if (!Array.isArray(lista)) return NO('valor'); if (!lista.length) return NO('sin_filas'); if (lista.length > 300) return NO('muchas_filas');
+        const copia = JSON.stringify(db); const nums = [];
+        for (let i = 0; i < lista.length; i++) {
+          guardarDB(db);
+          const r = rpcMensajeria('msj_envio_guardar', { p: { ...lista[i], id: null, por: (a.p || {}).por } });
+          if (!r || !r.ok) { sessionStorage.setItem('__DB', copia); return { ok: false, motivo: 'fila', fila: i + 1, detalle: (r && r.motivo) || 'valor' }; }
+          Object.assign(db, leerDB()); nums.push(r.numero);
+        }
+        return { ok: true, creados: lista.length, desde: nums[0], hasta: nums[nums.length - 1] }; }
+      // Fase 4: portal del comercio (enlace privado), ubicación del repartidor y demo.
+      case 'msj_portal_link': { if (!['obtener', 'nuevo', 'apagar'].includes(a.p_accion)) return NO('valor'); if (!T('clientes').some(c => c.id === a.p_comercio)) return NO('cliente');
+        const L = T('mensajeria_portal_links'), act = L.find(x => x.comercio_id === a.p_comercio && x.activo);
+        if (a.p_accion === 'apagar') { if (act) act.activo = false; out = { ok: true, token: null }; break; }
+        if (act && a.p_accion === 'obtener') return { ok: true, token: act.token };
+        if (act) act.activo = false;
+        const token = Array.from({ length: 40 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
+        L.push({ id: uuid(), auth_user_id: UID, comercio_id: a.p_comercio, token, activo: true, created_at: ahora }); out = { ok: true, token, nuevo: true }; break; }
+      case 'msj_portal_ver': case 'msj_portal_crear': {
+        const l = /^[0-9a-f]{40}$/.test(a.p_token || '') && T('mensajeria_portal_links').find(x => x.token === a.p_token && x.activo);
+        const cfgE = (db.configuracion_empresa || [])[0] || {}; if (!l || cfgE.usa_modulo_mensajeria !== true) return NO('invalido');
+        const c = T('clientes').find(x => x.id === l.comercio_id) || {};
+        if (nombre === 'msj_portal_crear') { const p = a.p || {};
+          if (T('mensajeria_envios').filter(e => e.comercio_id === l.comercio_id && /^Portal/.test(e.creado_por || '') && String(e.created_at).slice(0, 10) === hoy).length >= 150) return NO('limite');
+          guardarDB(db); const r = rpcMensajeria('msj_envio_guardar', { p: { ...p, id: null, comercio_id: l.comercio_id, remitente_nombre: '', en_bodega: false, por: ('Portal · ' + [c.nombre, c.apellido].filter(Boolean).join(' ')).slice(0, 120) } });
+          if (!r || !r.ok) return r; return { ok: true, numero: r.numero, tarifa: r.tarifa, rastreo_token: r.rastreo_token }; }
+        const c2 = cfg(); const esp = z => (T('mensajeria_tarifas_comercio').find(t => t.zona_id === z.id && t.comercio_id === l.comercio_id && t.activo !== false) || {}).tarifa;
+        const lq = liqLista(l.comercio_id);
+        return { ok: true, negocio: cfgE.nombre_comercial || 'Mensajería', whatsapp: cfgE.whatsapp || cfgE.telefono || null, moneda: 'NIO', logo: null, color: null, comercio: [c.nombre, c.apellido].filter(Boolean).join(' '),
+          recargo_urgente: Number(c2.recargo_urgente || 0), recargo_grande: Number(c2.recargo_grande || 0),
+          zonas: T('mensajeria_zonas').filter(z => z.activo !== false).sort((x, y) => x.nombre.localeCompare(y.nombre)).map(z => ({ id: z.id, nombre: z.nombre, tarifa: esp(z) ?? Number(z.tarifa) })),
+          envios: T('mensajeria_envios').filter(e => e.comercio_id === l.comercio_id).sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))).slice(0, 200)
+            .map(e => ({ numero: e.numero, destinatario: e.destinatario_nombre, direccion: e.direccion, zona: e.zona_nombre, estado: e.estado, monto_cobrar: e.monto_cobrar, tarifa: Number(e.tarifa) + Number(e.recargo_reintentos || 0),
+              envio_lo_paga: e.envio_lo_paga, creado_at: e.created_at, entregado_at: e.entregado_at || null, recibio: e.recibio_nombre || null, motivo: e.motivo_no_entrega || null, rastreo: e.rastreo_token, liquidado: !!e.liquidacion_id })),
+          por_liquidar: { envios: lq.length, cod: r2(lq.reduce((x, e) => x + e.cod, 0)), tarifas: r2(lq.reduce((x, e) => x + e.tarifa, 0)) },
+          liquidaciones: T('mensajeria_liquidaciones').filter(q => q.comercio_id === l.comercio_id).map(q => ({ numero: q.numero, fecha: q.created_at, envios: q.envios, cod: q.cod_total, tarifas: q.tarifas_total, neto: q.neto })) }; }
+      case 'msj_ubicacion_enviar': { if (a.p_lat == null || a.p_lng == null || Math.abs(a.p_lat) > 90 || Math.abs(a.p_lng) > 180) return NO('ubicacion');
+        const r = T('mensajeria_repartidores').find(x => x.id === a.p_repartidor && x.activo !== false); if (!r) return NO('repartidor');
+        Object.assign(r, { ubic_lat: a.p_lat, ubic_lng: a.p_lng, ubic_precision: a.p_precision ?? null, ubic_at: ahora }); out = { ok: true }; break; }
+      case 'msj_demo_preparar': return window.__DEMO_MSJ === true ? { ok: true, creados: 0 } : NO('solo_demo');
+      case 'msj_rastreo': {
+        const e = T('mensajeria_envios').find(x => x.rastreo_token === a.p_token && /^[0-9a-f]{40}$/.test(a.p_token || ''));
+        const cfgE = (db.configuracion_empresa || [])[0] || {};
+        if (!e || cfgE.usa_modulo_mensajeria !== true) return NO('invalido');
+        const activo = ['por_recoger', 'en_bodega', 'asignado', 'en_ruta', 'no_entregado'].includes(e.estado);
+        return { ok: true, negocio: cfgE.nombre_comercial || 'Mensajería', whatsapp: cfgE.whatsapp || cfgE.telefono || null, moneda: 'NIO', numero: e.numero, estado: e.estado,
+          para: String(e.destinatario_nombre || '').trim().split(' ')[0], zona: e.zona_nombre, fecha_programada: e.fecha_programada || null, paquetes: e.paquetes, urgente: !!e.urgente,
+          pagar: activo ? Number(e.monto_cobrar || 0) + (e.envio_lo_paga === 'destinatario' ? Number(e.tarifa) + Number(e.recargo_reintentos || 0) : 0) : 0,
+          entregado_at: e.entregado_at || null, recibio: String(e.recibio_nombre || '').split(' ')[0], creado_at: e.created_at,
+          pasos: T('mensajeria_envio_eventos').filter(v => v.envio_id === e.id).map(v => ({ evento: v.evento, hora: v.created_at })) }; }
+      default: return null;
+    }
+    guardarDB(db); return out;
   }
 
   function crearCliente() {
     const sesion = { user: { id: UID, email: 'prueba@clinica.test' }, access_token: 'x' };
     return {
       auth: {
-        getUser: async () => ({ data: { user: sesion.user }, error: null }),
-        getSession: async () => ({ data: { session: sesion }, error: null }),
+        // Cerrar sesión de verdad (en esta pestaña): después no hay usuario, como en el real.
+        getUser: async () => sessionStorage.getItem('__SALIO') ? ({ data: { user: null }, error: null }) : ({ data: { user: sesion.user }, error: null }),
+        getSession: async () => ({ data: { session: sessionStorage.getItem('__SALIO') ? null : sesion }, error: null }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-        signOut: async () => ({ error: null }), refreshSession: async () => ({ data: { session: sesion }, error: null }),
+        signOut: async () => { sessionStorage.setItem('__SALIO', '1'); return { error: null }; }, refreshSession: async () => ({ data: { session: sesion }, error: null }),
       },
       from: t => builder(t),
       rpc: async (nombre, args) => {
         const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'rpc', tabla: nombre, datos: args }); sessionStorage.setItem('__LOG', JSON.stringify(l));
+        if (nombre === 'clinica_demo_preparar') { window.__demoPreparada = (window.__demoPreparada || 0) + 1; return { data: window.__DEMO === true ? { ok: true, creadas: 0 } : { ok: false, motivo: 'solo_demo' }, error: null }; }
+        if (nombre.startsWith('restaurante_cobro_')) { try { const r = rpcRestaurante(nombre, args || {}); return { data: r ?? null, error: null }; } catch (e) { return { data: null, error: e }; } }
+        if (nombre.startsWith('msj_')) { try { const r = rpcMensajeria(nombre, args || {}); return { data: r ?? null, error: null }; } catch (e) { return { data: null, error: e }; } }
         if (nombre.startsWith('clinica_')) { try { const r = rpcClinica(nombre, args || {}); return { data: r ?? null, error: null }; } catch (e) { return { data: null, error: e }; } }
+        if (nombre === 'agenda_cita_guardar') {            // guarda la cita y sus servicios (sin revisar cruces de horario)
+          const db = leerDB(); db.agenda_citas = db.agenda_citas || []; db.agenda_citas_servicios = db.agenda_citas_servicios || [];
+          const id = args.p_cita_id || uuid(); const d = args.p_datos || {};
+          db.agenda_citas = db.agenda_citas.filter(c => c.id !== id); db.agenda_citas.push({ id, auth_user_id: UID, ...d });
+          db.agenda_citas_servicios = db.agenda_citas_servicios.filter(x => x.cita_id !== id).concat((args.p_servicios || []).map((x, i) => ({ id: uuid(), cita_id: id, orden: i, ...x })));
+          guardarDB(db); return { data: { ok: true, cita_id: id }, error: null };
+        }
+        if (nombre === 'soy_cuenta_demo') return { data: window.__DEMO === true, error: null };
+        if (nombre === 'listar_perfiles_del_grupo_v2') { const db = leerDB(); return { data: (db.perfiles_acceso || []).map(p => ({ ...p, activo: p.activo !== false })), error: null }; }
         if (nombre === 'generar_numero_venta') { const db = leerDB(); const k = (db.ventas || []).length + 1; return { data: 'V-' + String(k).padStart(5, '0'), error: null }; }
         if (nombre === 'venta_registrar_atomica') {        // guarda la venta como lo haría el servidor (en una sola operación)
           const db = leerDB(); db.ventas = db.ventas || []; const id = uuid(); const num = 'V-' + String(db.ventas.length + 1).padStart(5, '0');
@@ -220,9 +614,24 @@
         if (window.__RPC && window.__RPC[nombre]) return { data: window.__RPC[nombre](args), error: null };
         return { data: null, error: null };
       },
-      storage: { from: bucket => ({ upload: async () => ({ data: null, error: null }), getPublicUrl: () => ({ data: { publicUrl: '' } }), createSignedUrl: async () => ({ data: null, error: null }),
+      storage: { from: bucket => ({
+        // Guarda lo subido (bucket/ruta → tipo y tamaño) para poder revisarlo; la dirección pública imita la real.
+        upload: async (ruta, archivo, op) => { const l = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); l[bucket + '/' + ruta] = { tamano: archivo && archivo.size, tipo: (op && op.contentType) || (archivo && archivo.type) }; sessionStorage.setItem('__ALMACEN', JSON.stringify(l)); return { data: { path: ruta }, error: null }; },
+        remove: async rutas => { const l = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); (rutas || []).forEach(r => { delete l[bucket + '/' + r]; }); sessionStorage.setItem('__ALMACEN', JSON.stringify(l)); return { data: null, error: null }; },
+        getPublicUrl: ruta => ({ data: { publicUrl: ruta ? `https://simulado.supabase.co/storage/v1/object/public/${bucket}/${ruta}` : '' } }), createSignedUrl: async ruta => ({ data: bucket === 'mensajeria-pruebas' ? { signedUrl: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' } : null, error: null }),
         uploadToSignedUrl: async (ruta, tok, archivo) => { const l = JSON.parse(sessionStorage.getItem('__ALMACEN') || '{}'); l[bucket + '/' + ruta] = { tok, tamano: archivo.size, tipo: archivo.type }; sessionStorage.setItem('__ALMACEN', JSON.stringify(l)); return { data: { path: ruta }, error: null }; } }) },
-      channel: () => { const c = { on: () => c, subscribe: () => c, unsubscribe() {} }; return c; },
+      // Canal en vivo simulado: otra pestaña del mismo navegador hace de "otro equipo". Como la base simulada vive en
+      // cada pestaña, el aviso lleva una copia (solo en la simulación; el aviso real no lleva datos).
+      channel: (nombre) => {
+        const hs = []; let bc = null;
+        const c = { on: (tipo, f, cb) => { if (tipo === 'broadcast') hs.push({ ev: f.event, cb }); return c; },
+          subscribe: (cb) => { if (typeof BroadcastChannel !== 'undefined') { bc = new BroadcastChannel('mock-' + nombre);
+              bc.onmessage = e => { if (e.data.db) sessionStorage.setItem('__DB', e.data.db); hs.filter(h => h.ev === e.data.event).forEach(h => h.cb({ event: e.data.event, payload: e.data.payload })); }; }
+            setTimeout(() => cb && cb('SUBSCRIBED'), 0); return c; },
+          send: async (m) => { const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'aviso', tabla: nombre, datos: m.payload }); sessionStorage.setItem('__LOG', JSON.stringify(l));
+            if (bc) bc.postMessage({ event: m.event, payload: m.payload, db: sessionStorage.getItem('__DB') }); return 'ok'; },
+          unsubscribe() { if (bc) bc.close(); } };
+        return c; },
       removeChannel() {}, functions: { invoke: async (nombre, op) => {
         const b = (op && op.body) || {}; const db = leerDB(); const T = k => (db[k] = db[k] || []);
         const l = JSON.parse(sessionStorage.getItem('__LOG') || '[]'); l.push({ op: 'funcion', tabla: nombre, datos: { ...b, token: '***' } }); sessionStorage.setItem('__LOG', JSON.stringify(l));

@@ -10,7 +10,10 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1598,6 +1601,7 @@
         <div class="form-group"><label>País (para las deducciones de ley)</label>
           <select id="emp-pais">
             <option value="NI">Nicaragua</option>
+            <option value="CR" id="emp-pais-cr" hidden disabled>Costa Rica</option>
             <option value="OTRO">Otro / genérico</option>
           </select>
         </div>
@@ -1644,7 +1648,8 @@
         Estos son los descuentos y aportes que se calculan automáticamente en cada pago — configúralos según las leyes de tu país, o carga una plantilla como punto de partida.
       </p>
       <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-        <button class="btn-secondary btn-sm" onclick="cargarPlantillaConceptos('NI')">🇳🇮 Cargar plantilla de Nicaragua</button>
+        <button class="btn-secondary btn-sm" id="btn-plantilla-ni" onclick="cargarPlantillaConceptos('NI')">🇳🇮 Cargar plantilla de Nicaragua</button>
+        <button class="btn-secondary btn-sm" id="btn-plantilla-cr" style="display:none" onclick="cargarPlantillaConceptos('CR')">🇨🇷 Cargar plantilla de Costa Rica</button>
         <button class="btn-primary btn-sm" onclick="abrirNuevoConcepto()">+ Concepto personalizado</button>
       </div>
       <p style="font-size:11px;color:var(--text-muted);margin-bottom:14px">
@@ -2144,11 +2149,14 @@
      SCRIPT
 ===================================================== -->
 <script src="cajaAPI.js?v=20261007a"></script>
-<script src="salarios.js?v=20261024a"></script>
+<script src="paginar-lectura.js?v=20261029d"></script>
+<script src="salarios.js?v=20261101a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

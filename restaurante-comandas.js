@@ -25,91 +25,6 @@ function round2(n) { return Math.round((Number(n)||0) * 100) / 100; }
 function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
 /* =====================================================
-   MÉTODOS DE PAGO / BANCOS -- el selector de cobro usaba opciones
-   de TEXTO fijo (Efectivo/Tarjeta/Transferencia), sin conectar con
-   la tabla real metodos_pago ni con ningun banco especifico.
-===================================================== */
-async function loadMetodosPagoComanda() {
-  try {
-    const { data } = await sb.from('metodos_pago').select('id, nombre, es_default')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('orden');
-    STATE.metodosPago = data && data.length ? data : [{ id: null, nombre: 'Efectivo', es_default: true }];
-  } catch (e) {
-    console.warn('loadMetodosPagoComanda:', e);
-    STATE.metodosPago = [{ id: null, nombre: 'Efectivo', es_default: true }];
-  }
-}
-
-function poblarSelectMetodoPagoComanda() {
-  const sel = document.getElementById('cb-metodo-pago');
-  if (!sel) return;
-  sel.innerHTML = STATE.metodosPago.map(m =>
-    `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
-  const def = STATE.metodosPago.find(m => m.es_default);
-  if (def) sel.value = def.id || '';
-}
-
-async function cargarBancosDisponiblesComanda() {
-  if (STATE.bancosCache) return STATE.bancosCache;
-  try {
-    const { data } = await sb.from('bancos').select('id, nombre').eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
-    STATE.bancosCache = data || [];
-  } catch (e) { STATE.bancosCache = []; }
-  return STATE.bancosCache;
-}
-
-// Mismo mecanismo ya probado en el resto del sistema: si el metodo
-// elegido es Tarjeta o Transferencia y ya hay bancos creados, se
-// pide elegir de cual banco entra el cobro de la mesa.
-async function onCambiarMetodoPagoComanda() {
-  const sel = document.getElementById('cb-metodo-pago');
-  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
-  const wrap = document.getElementById('cb-wrap-banco');
-  const bancoSel = document.getElementById('cb-banco');
-  if (!wrap || !bancoSel) return;
-  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
-
-  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
-
-  const bancos = await cargarBancosDisponiblesComanda();
-  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
-
-  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
-    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
-  wrap.style.display = '';
-}
-
-// Desglosa un monto YA cobrado (IVA incluido) en su parte neta y su
-// IVA, y registra el IVA en Impuestos -- mismo patron real ya
-// probado en Hotel (registrarIvaHotel): a Caja entra el neto, porque
-// el IVA no es ingreso del negocio, es dinero recaudado para el
-// fisco. Devuelve el monto neto, que es lo que se debe registrar en
-// Caja en vez del monto completo.
-async function registrarIvaRestaurante(subtotal, concepto, referenciaId) {
-  const ivaPct = STATE.empresaConfig?.iva_porcentaje_default ? Number(STATE.empresaConfig.iva_porcentaje_default) : 15;
-  if (STATE.empresaConfig?.iva_activo !== true || ivaPct <= 0) return 0;
-  // El IVA se SUMA sobre el subtotal (los precios del menu son sin
-  // IVA) -- mismo criterio ya usado en renderResumenCobro(), donde
-  // el cliente ve "Subtotal + IVA + Propina = Total".
-  const iva = round2(subtotal * ivaPct / 100);
-  if (iva <= 0) return 0;
-  try {
-    const { data: ultMov } = await sb.from('movimientos_impuestos')
-      .select('saldo_resultante').eq('auth_user_id', STATE.userId)
-      .order('created_at', { ascending:false }).limit(1).maybeSingle();
-    const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
-    await sb.from('movimientos_impuestos').insert({
-      auth_user_id: STATE.userId, tipo_movimiento: 'IVA_VENTA', concepto,
-      monto: iva, saldo_anterior: saldoAnt, saldo_resultante: saldoAnt + iva,
-      referencia_venta_id: referenciaId, fecha: todayISO(),
-    });
-  } catch (e) {
-    console.warn('registrarIvaRestaurante:', e);
-  }
-  return iva;
-}
-
-/* =====================================================
    SHELL: TEMA, SIDEBAR, NAVEGACIÓN (idéntico al resto del sistema)
 ===================================================== */
 function applyTheme(theme) {
@@ -197,7 +112,7 @@ async function init() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
-    await Promise.all([cargarComandas(), loadMetodosPagoComanda()]);
+    await cargarComandas();
   } catch (e) {
     console.error('init restaurante-comandas:', e);
     document.getElementById('loader').classList.add('hidden');
@@ -215,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function cargarComandas() {
   try {
     const { data, error } = await sb.from('restaurante_comandas')
-      .select('*, restaurante_mesas(numero), restaurante_comanda_items(id, cantidad, precio_unitario, estado)')
+      .select('*, restaurante_mesas(numero), restaurante_comanda_items(id, cantidad, precio_unitario, estado, venta_id)')
       .eq('auth_user_id', STATE.userId).in('estado', ['abierta','enviada','lista'])
       .order('created_at', { ascending: true });
     if (error) throw error;
@@ -228,9 +143,14 @@ async function cargarComandas() {
   }
 }
 
+// Lo que falta por cobrar (lo ya cobrado en un pago dividido no cuenta).
+function totalPagado(c) {
+  return round2((c.restaurante_comanda_items || []).filter(i => i.estado !== 'cancelado' && i.venta_id)
+    .reduce((s, i) => s + Number(i.cantidad) * Number(i.precio_unitario), 0));
+}
 function totalComanda(c) {
   return round2((c.restaurante_comanda_items || [])
-    .filter(i => i.estado !== 'cancelado')
+    .filter(i => i.estado !== 'cancelado' && !i.venta_id)
     .reduce((s, i) => s + Number(i.cantidad) * Number(i.precio_unitario), 0));
 }
 
@@ -267,7 +187,9 @@ function renderComandas() {
       </div>
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">🍽️ ${nItems} platillo${nItems===1?'':'s'}</div>
       ${c.mesero_nombre ? `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">🧑‍🍳 ${esc(c.mesero_nombre)}</div>` : '<div style="margin-bottom:10px"></div>'}
-      <div style="font-weight:800;font-size:16px;margin-bottom:10px">${fmt(totalComanda(c))}</div>
+      <div style="font-weight:800;font-size:16px;margin-bottom:${totalPagado(c) > 0 ? 2 : 10}px">${fmt(totalComanda(c))}</div>
+      ${totalPagado(c) > 0 ? `<div style="font-size:12px;color:var(--success);margin-bottom:10px">✔ Ya pagado ${fmt(totalPagado(c))} · falta lo de arriba</div>` : ''}
+      ${(c.restaurante_comanda_items || []).some(i => i.estado === 'pendiente') && c.estado !== 'abierta' ? '<div style="font-size:12px;color:var(--warning);margin-bottom:10px">🍳 Hay platillos nuevos sin enviar a cocina</div>' : ''}
       <div style="display:flex;gap:8px">
         <button class="btn-secondary" style="flex:1" onclick="abrirModalComandaDetalle('${c.id}')">Abrir</button>
         <button class="btn-primary" style="flex:1" onclick="abrirModalCobro('${c.id}')">💰 Cobrar</button>
@@ -341,8 +263,6 @@ async function abrirModalComandaDetalle(comandaId) {
 
   const c = STATE.comandas.find(x => x.id === comandaId);
   document.getElementById('cd-titulo').textContent = `Mesa ${c?.restaurante_mesas?.numero || '—'}`;
-  document.getElementById('cd-btn-enviar').style.display = (c && c.estado === 'abierta') ? '' : 'none';
-
   await cargarItemsComanda(comandaId);
   openModal('modal-comanda');
 }
@@ -354,29 +274,47 @@ async function cargarItemsComanda(comandaId) {
   renderItemsComanda();
 }
 
+// El botón "Enviar a cocina" aparece siempre que haya platillos nuevos sin enviar (también en la 2.ª,
+// 3.ª… ronda: antes, lo que se pedía después de enviar no llegaba nunca a cocina).
+function actualizarBotonEnviar() {
+  const c = STATE.comandas.find(x => x.id === document.getElementById('cd-comanda-id').value);
+  const pendientes = STATE.itemsComandaActual.filter(i => i.estado === 'pendiente').length;
+  const btn = document.getElementById('cd-btn-enviar');
+  btn.style.display = pendientes ? '' : 'none';
+  const ronda = c && c.estado !== 'abierta' ? (Number(c.ronda_actual) || 1) + 1 : 1;
+  btn.textContent = ronda > 1 ? `🍳 Enviar a cocina (${ronda}.ª ronda · ${pendientes})` : '🍳 Enviar a cocina';
+}
+
 function renderItemsComanda() {
   const cont = document.getElementById('cd-lista-items');
   if (!STATE.itemsComandaActual.length) {
     cont.innerHTML = `<p style="text-align:center;color:var(--text-muted);font-size:13px;padding:14px 0">Aún no hay platillos agregados.</p>`;
   } else {
-    cont.innerHTML = STATE.itemsComandaActual.map(i => `
+    cont.innerHTML = STATE.itemsComandaActual.map(i => {
+      const pagado = !!i.venta_id, enCocina = !pagado && i.estado !== 'pendiente';
+      return `
       <div class="cd-item">
         <div class="cd-item-info">
           <div class="cd-item-nombre">${esc(i.nombre_producto)}</div>
           ${i.modificadores ? `<div class="cd-item-mod">${esc(i.modificadores)}</div>` : ''}
-          <span class="cd-item-estado cd-item-estado-${i.estado}">${ITEM_ESTADO_LABEL[i.estado] || i.estado}</span>
+          <span class="cd-item-estado cd-item-estado-${esc(i.estado)}">${ITEM_ESTADO_LABEL[i.estado] || esc(i.estado)}</span>
+          ${Number(i.ronda) > 1 ? `<span class="cd-item-estado" style="background:var(--accent-soft);color:var(--accent)">${esc(String(i.ronda))}.ª ronda</span>` : ''}
+          ${pagado ? '<span class="cd-item-estado" style="background:var(--success-soft);color:var(--success)">✔ Pagado</span>' : ''}
         </div>
         <div class="cd-item-cantidad">
-          <button onclick="cambiarCantidadItem('${i.id}', -1)">−</button>
-          <span>${i.cantidad}</span>
-          <button onclick="cambiarCantidadItem('${i.id}', 1)">+</button>
+          ${i.estado === 'pendiente' && !pagado ? `<button onclick="cambiarCantidadItem('${i.id}', -1)" aria-label="Menos">−</button>` : ''}
+          <span>${esc(String(i.cantidad))}</span>
+          ${i.estado === 'pendiente' && !pagado ? `<button onclick="cambiarCantidadItem('${i.id}', 1)" aria-label="Más">+</button>` : ''}
         </div>
         <div class="cd-item-precio">${fmt(i.cantidad * i.precio_unitario)}</div>
-        <span class="cd-item-quitar" onclick="quitarItemComanda('${i.id}')">✕</span>
-      </div>`).join('');
+        ${pagado ? '<span class="cd-item-quitar" style="visibility:hidden">✕</span>'
+          : `<span class="cd-item-quitar" role="button" tabindex="0" title="${enCocina ? 'Quitar (pide el motivo)' : 'Quitar'}" onclick="quitarItemComanda('${i.id}')">✕</span>`}
+      </div>`;
+    }).join('');
   }
-  const total = round2(STATE.itemsComandaActual.reduce((s,i) => s + i.cantidad*i.precio_unitario, 0));
+  const total = round2(STATE.itemsComandaActual.filter(i => !i.venta_id).reduce((s,i) => s + i.cantidad*i.precio_unitario, 0));
   document.getElementById('cd-total').textContent = fmt(total);
+  actualizarBotonEnviar();
 }
 
 let _timeoutBuscarProducto = null;
@@ -420,15 +358,15 @@ async function agregarItemComanda(productoId, nombre, precio) {
   document.getElementById('cd-buscar-producto').value = '';
   document.getElementById('cd-resultados-producto').style.display = 'none';
 
-  // Si el mismo platillo (sin modificadores) ya esta en la lista,
-  // simplemente se le suma 1 en vez de crear una fila duplicada.
-  const existente = STATE.itemsComandaActual.find(i => i.producto_id === productoId && !i.modificadores);
+  // Si el mismo platillo (sin modificadores) ya está pedido y AÚN no se envía a cocina, se le suma 1.
+  // Si ya se envió (o se pagó), va como platillo nuevo: así cocina lo recibe en la siguiente ronda.
+  const existente = STATE.itemsComandaActual.find(i => i.producto_id === productoId && !i.modificadores && i.estado === 'pendiente' && !i.venta_id);
   if (existente) { await cambiarCantidadItem(existente.id, 1); return; }
 
   try {
     const { error } = await sb.from('restaurante_comanda_items').insert({
       auth_user_id: STATE.userId, comanda_id: comandaId, producto_id: productoId,
-      nombre_producto: nombre, cantidad: 1, precio_unitario: precio,
+      nombre_producto: nombre, cantidad: 1, precio_unitario: precio, estado: 'pendiente',
     });
     if (error) throw error;
     await cargarItemsComanda(comandaId);
@@ -438,52 +376,109 @@ async function agregarItemComanda(productoId, nombre, precio) {
   }
 }
 
+// Mensaje claro cuando el servidor protege un platillo (cobrado o cobrándose en otro equipo).
+function textoErrorPlatillo(e, porDefecto) {
+  const m = String(e?.message || '') + ' ' + String(e?.hint || '');
+  if (/restaurante_item_cobrado/.test(m)) return 'Ese platillo ya se cobró: no se puede cambiar.';
+  if (/restaurante_item_en_cobro/.test(m)) return 'Ese platillo se está cobrando en este momento: espera a que terminen.';
+  if (/restaurante_comanda_con_cobros/.test(m)) return 'Esta mesa ya tiene platillos cobrados: no se puede cancelar.';
+  return porDefecto;
+}
+
+// Solo se cambia la cantidad de lo que todavía no va a cocina.
 async function cambiarCantidadItem(itemId, delta) {
   const item = STATE.itemsComandaActual.find(i => i.id === itemId);
-  if (!item) return;
-  const nuevaCantidad = item.cantidad + delta;
+  if (!item || item.estado !== 'pendiente' || item.venta_id) return;
+  const nuevaCantidad = Number(item.cantidad) + delta;
   if (nuevaCantidad <= 0) { await quitarItemComanda(itemId); return; }
 
   try {
-    const { error } = await sb.from('restaurante_comanda_items').update({ cantidad: nuevaCantidad }).eq('id', itemId);
+    const { error } = await sb.from('restaurante_comanda_items').update({ cantidad: nuevaCantidad, updated_at: new Date().toISOString() })
+      .eq('id', itemId).eq('auth_user_id', STATE.userId);
     if (error) throw error;
     item.cantidad = nuevaCantidad;
     renderItemsComanda();
   } catch (e) {
     console.error('cambiarCantidadItem:', e);
-    showToast('No se pudo actualizar la cantidad', 'error');
+    showToast(textoErrorPlatillo(e, 'No se pudo actualizar la cantidad'), 'error');
   }
 }
 
+// Quitar: si aún no va a cocina, se quita sin más. Si ya está en cocina (o servido), queda REGISTRADO
+// como cancelado con su motivo y quién lo hizo (no se borra), y cocina lo ve tachado.
 async function quitarItemComanda(itemId) {
+  const item = STATE.itemsComandaActual.find(i => i.id === itemId);
+  if (!item || item.venta_id) return;
+  const comandaId = document.getElementById('cd-comanda-id').value;
   try {
-    const { error } = await sb.from('restaurante_comanda_items').delete().eq('id', itemId);
-    if (error) throw error;
-    STATE.itemsComandaActual = STATE.itemsComandaActual.filter(i => i.id !== itemId);
-    renderItemsComanda();
+    if (item.estado === 'pendiente') {
+      const { error } = await sb.from('restaurante_comanda_items').delete().eq('id', itemId).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+      STATE.itemsComandaActual = STATE.itemsComandaActual.filter(i => i.id !== itemId);
+      renderItemsComanda();
+      return;
+    }
+    let cuantos = Number(item.cantidad);
+    if (cuantos > 1) {
+      const t = prompt(`¿Cuántos "${item.nombre_producto}" quitar? (de ${cuantos})`, String(cuantos));
+      if (t === null) return;
+      cuantos = Math.round(Number(t));
+      if (!(cuantos >= 1 && cuantos <= Number(item.cantidad))) { showToast('Cantidad no válida.', 'error'); return; }
+    }
+    const motivo = (prompt(`Ya está en cocina. ¿Por qué se quita "${item.nombre_producto}"? (queda registrado)`) || '').trim();
+    if (!motivo) { showToast('Para quitar un platillo que ya está en cocina hay que escribir el motivo.', 'error'); return; }
+    let quien = ''; try { quien = JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null')?.nombre || STATE.currentUser?.nombre || ''; } catch (_) {}
+    const ahora = new Date().toISOString();
+    if (cuantos < Number(item.cantidad)) {
+      // Parte de la línea: queda lo que sigue y se registra aparte lo cancelado.
+      const { error: e1 } = await sb.from('restaurante_comanda_items').update({ cantidad: Number(item.cantidad) - cuantos, updated_at: ahora }).eq('id', itemId).eq('auth_user_id', STATE.userId);
+      if (e1) throw e1;
+      const { error: e2 } = await sb.from('restaurante_comanda_items').insert({ auth_user_id: STATE.userId, comanda_id: comandaId, producto_id: item.producto_id,
+        nombre_producto: item.nombre_producto, cantidad: cuantos, precio_unitario: item.precio_unitario, modificadores: item.modificadores, ronda: item.ronda || 1,
+        estado: 'cancelado', motivo_cancelacion: motivo.slice(0, 300), cancelado_por: quien.slice(0, 120) || null, updated_at: ahora });
+      if (e2) throw e2;
+    } else {
+      const { error } = await sb.from('restaurante_comanda_items').update({ estado: 'cancelado', motivo_cancelacion: motivo.slice(0, 300), cancelado_por: quien.slice(0, 120) || null, updated_at: ahora })
+        .eq('id', itemId).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+    }
+    showToast('Platillo quitado. Cocina lo verá tachado con el motivo.');
+    await cargarItemsComanda(comandaId);
+    await revisarComandaLista(comandaId);
+    await cargarComandas();
   } catch (e) {
     console.error('quitarItemComanda:', e);
-    showToast('No se pudo quitar el platillo', 'error');
+    showToast(textoErrorPlatillo(e, 'No se pudo quitar el platillo'), 'error');
   }
+}
+// Si al quitar algo ya no queda nada en preparación, la comanda pasa a "lista" (como cuando cocina termina).
+async function revisarComandaLista(comandaId) {
+  const c = STATE.comandas.find(x => x.id === comandaId);
+  if (!c || c.estado !== 'enviada') return;
+  const { data } = await sb.from('restaurante_comanda_items').select('id').eq('comanda_id', comandaId).eq('estado', 'en_preparacion');
+  if (!data || !data.length) await sb.from('restaurante_comandas').update({ estado: 'lista', updated_at: new Date().toISOString() }).eq('id', comandaId).eq('auth_user_id', STATE.userId).eq('estado', 'enviada');
 }
 
 /* =====================================================
-   ENVIAR A COCINA / CANCELAR
+   ENVIAR A COCINA (por rondas) / CANCELAR
 ===================================================== */
 async function enviarComandaACocina() {
   const comandaId = document.getElementById('cd-comanda-id').value;
-  if (!STATE.itemsComandaActual.length) { showToast('Agrega al menos un platillo antes de enviar', 'error'); return; }
+  const pendientes = STATE.itemsComandaActual.filter(i => i.estado === 'pendiente');
+  if (!pendientes.length) { showToast('No hay platillos nuevos para enviar', 'error'); return; }
+  const c = STATE.comandas.find(x => x.id === comandaId);
+  const ronda = c && c.estado !== 'abierta' ? (Number(c.ronda_actual) || 1) + 1 : 1;
 
-  const btn = document.getElementById('cd-btn-enviar');
   setBtnLoading('cd-btn-enviar', true);
   try {
-    const { error: e1 } = await sb.from('restaurante_comandas').update({ estado: 'enviada', updated_at: new Date().toISOString() }).eq('id', comandaId);
-    if (e1) throw e1;
+    const ahora = new Date().toISOString();
     const { error: e2 } = await sb.from('restaurante_comanda_items')
-      .update({ estado: 'en_preparacion' }).eq('comanda_id', comandaId).eq('estado', 'pendiente');
+      .update({ estado: 'en_preparacion', ronda, updated_at: ahora }).eq('comanda_id', comandaId).eq('auth_user_id', STATE.userId).eq('estado', 'pendiente');
     if (e2) throw e2;
+    const { error: e1 } = await sb.from('restaurante_comandas').update({ estado: 'enviada', ronda_actual: ronda, updated_at: ahora }).eq('id', comandaId).eq('auth_user_id', STATE.userId);
+    if (e1) throw e1;
 
-    showToast('Comanda enviada a cocina');
+    showToast(ronda > 1 ? `${ronda}.ª ronda enviada a cocina` : 'Comanda enviada a cocina');
     closeModal('modal-comanda');
     await cargarComandas();
   } catch (e) {
@@ -497,11 +492,12 @@ async function enviarComandaACocina() {
 async function cancelarComanda() {
   const comandaId = document.getElementById('cd-comanda-id').value;
   const c = STATE.comandas.find(x => x.id === comandaId);
+  if (STATE.itemsComandaActual.some(i => i.venta_id)) { showToast('Esta mesa ya tiene platillos cobrados: no se puede cancelar. Cobra lo que falta o quita los platillos con su motivo.', 'error'); return; }
   if (!confirm('¿Cancelar esta comanda? La mesa quedará disponible de nuevo.')) return;
 
   try {
     const { error: e1 } = await sb.from('restaurante_comandas')
-      .update({ estado: 'cancelada', updated_at: new Date().toISOString() }).eq('id', comandaId);
+      .update({ estado: 'cancelada', updated_at: new Date().toISOString() }).eq('id', comandaId).eq('auth_user_id', STATE.userId);
     if (e1) throw e1;
     if (c) {
       const { error: e2 } = await sb.from('restaurante_mesas')
@@ -514,189 +510,20 @@ async function cancelarComanda() {
     await cargarComandas();
   } catch (e) {
     console.error('cancelarComanda:', e);
-    showToast('No se pudo cancelar la comanda', 'error');
+    showToast(textoErrorPlatillo(e, 'No se pudo cancelar la comanda'), 'error');
   }
 }
 
 /* =====================================================
-   COBRO Y CIERRE DE CUENTA -- equivalente al check-out de Hotel:
-   cierra la comanda, cobra el total real (conectado con Caja e
-   Impuestos), y la mesa pasa a 'limpieza' -- nunca directo a
-   'disponible', misma leccion ya aplicada en Hotel (una mesa
-   recien desocupada necesita limpiarse antes de sentar a alguien
-   mas ahi).
+   COBRO -- pantalla de cobro del restaurante (restaurante-cobro.js): la cuenta se registra como una
+   VENTA real con el motor de Ventas (Caja, inventario, impuestos, contabilidad y reportes cuadran),
+   con candado contra el doble cobro, pago dividido por platillos y la propina aparte. Cuando todo
+   está pagado, la mesa se cierra y pasa a limpieza (lo hace el servidor).
 ===================================================== */
-STATE.comandaCobroActual = null;
-
-async function abrirModalCobro(comandaId) {
-  document.getElementById('cb-error').textContent = '';
-  document.getElementById('cb-comanda-id').value = comandaId;
-  document.getElementById('cb-propina-pct').value = '15';
-  document.getElementById('cb-propina-manual').value = '';
-  document.getElementById('cb-dividir-entre').value = 1;
-  onCambiarPropinaComanda();
-  poblarSelectMetodoPagoComanda();
-  document.getElementById('cb-wrap-banco').style.display = 'none';
-  document.getElementById('cb-banco').value = '';
-
-  const { data: items } = await sb.from('restaurante_comanda_items').select('*')
-    .eq('comanda_id', comandaId).neq('estado', 'cancelado');
+function abrirModalCobro(comandaId) {
   const c = STATE.comandas.find(x => x.id === comandaId);
-  STATE.comandaCobroActual = { comandaId, items: items || [], mesaNumero: c?.restaurante_mesas?.numero || '—' };
-
-  document.getElementById('cb-mesa-titulo').textContent = `Mesa ${STATE.comandaCobroActual.mesaNumero}`;
-  document.getElementById('cb-lista-items').innerHTML = (items || []).map(i => `
-    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-      <span>${i.cantidad}× ${esc(i.nombre_producto)}</span>
-      <span>${fmt(i.cantidad * i.precio_unitario)}</span>
-    </div>`).join('');
-
-  renderResumenCobro();
-  openModal('modal-cobro');
-}
-
-function onCambiarPropinaComanda() {
-  const esOtro = document.getElementById('cb-propina-pct').value === 'otro';
-  document.getElementById('cb-wrap-propina-manual').style.display = esOtro ? '' : 'none';
-  renderResumenCobro();
-}
-
-function renderResumenCobro() {
-  if (!STATE.comandaCobroActual) return;
-  const subtotal = round2(STATE.comandaCobroActual.items.reduce((s,i) => s + i.cantidad*i.precio_unitario, 0));
-
-  // IVA opcional (Configuracion -- IVA / Impuestos): si esta activo,
-  // se suma sobre el subtotal, ANTES de la propina (que se calcula
-  // sobre el subtotal sin IVA, no sobre el total con IVA incluido).
-  const ivaActivo = STATE.empresaConfig?.iva_activo === true;
-  const ivaPct = Number(STATE.empresaConfig?.iva_porcentaje_default || 0);
-  const iva = ivaActivo && ivaPct > 0 ? round2(subtotal * ivaPct / 100) : 0;
-  const wrapIva = document.getElementById('cb-wrap-iva');
-  if (wrapIva) {
-    wrapIva.style.display = iva > 0 ? 'flex' : 'none';
-    const label = document.getElementById('cb-iva-label');
-    if (label) label.textContent = `IVA (${ivaPct}%)`;
-    const monto = document.getElementById('cb-iva-monto');
-    if (monto) monto.textContent = fmt(iva);
-  }
-
-  const pctSel = document.getElementById('cb-propina-pct').value;
-  let propina;
-  if (pctSel === 'otro') {
-    propina = Math.max(0, parseFloat(document.getElementById('cb-propina-manual').value) || 0);
-  } else {
-    propina = round2(subtotal * Number(pctSel) / 100);
-  }
-
-  const total = round2(subtotal + iva + propina);
-  document.getElementById('cb-subtotal').textContent = fmt(subtotal);
-  document.getElementById('cb-propina-monto').textContent = fmt(propina);
-  document.getElementById('cb-total').textContent = fmt(total);
-
-  const dividirEntre = Math.max(1, parseInt(document.getElementById('cb-dividir-entre').value) || 1);
-  document.getElementById('cb-por-persona').textContent = dividirEntre > 1
-    ? `${fmt(round2(total / dividirEntre))} por persona (${dividirEntre} personas)`
-    : '';
-}
-
-async function confirmarCobro() {
-  const errEl = document.getElementById('cb-error');
-  errEl.textContent = '';
-
-  if (!STATE.comandaCobroActual || !STATE.comandaCobroActual.items.length) {
-    errEl.textContent = 'Esta comanda no tiene platillos que cobrar.';
-    return;
-  }
-
-  const comandaId = STATE.comandaCobroActual.comandaId;
-  const subtotal = round2(STATE.comandaCobroActual.items.reduce((s,i) => s + i.cantidad*i.precio_unitario, 0));
-  const pctSel = document.getElementById('cb-propina-pct').value;
-  const propina = pctSel === 'otro'
-    ? Math.max(0, parseFloat(document.getElementById('cb-propina-manual').value) || 0)
-    : round2(subtotal * Number(pctSel) / 100);
-  const total = round2(subtotal + propina);
-  const selMetodo = document.getElementById('cb-metodo-pago');
-  const metodoId = selMetodo?.value || null;
-  const metodoNombre = selMetodo?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
-  let bancoId = null;
-  if (document.getElementById('cb-wrap-banco').style.display !== 'none') {
-    bancoId = document.getElementById('cb-banco').value || null;
-    if (!bancoId) { errEl.textContent = 'Indica de qué banco entra el cobro.'; return; }
-  }
-  const c = STATE.comandas.find(x => x.id === comandaId);
-
-  setBtnLoading('cb-btn-confirmar', true);
-  try {
-    // La propina no lleva IVA -- solo el consumo (subtotal) se
-    // desglosa. El total real que entra a Caja es subtotal + IVA + propina.
-    const conceptoCobro = `Cobro — Mesa ${STATE.comandaCobroActual.mesaNumero}`;
-    const ivaCobro = await registrarIvaRestaurante(subtotal, conceptoCobro, comandaId);
-    const montoParaCaja = round2(subtotal + ivaCobro + propina);
-
-    // Descontar stock -- solo de productos reales con inventario
-    // (ej. gaseosa, helado, algo que se compra para revender). Un
-    // servicio (ej. un platillo a la carta, hecho al momento) nunca
-    // tiene stock que descontar -- se identifica consultando el tipo
-    // real de cada producto vendido en esta comanda.
-    try {
-      const idsProductos = [...new Set(STATE.comandaCobroActual.items.map(i => i.producto_id).filter(Boolean))];
-      if (idsProductos.length) {
-        const { data: productosReales } = await sb.from('productos')
-          .select('id, tipo, stock_actual').in('id', idsProductos);
-        const mapaProd = {};
-        (productosReales || []).forEach(p => { mapaProd[p.id] = p; });
-        // En el servidor, restando sobre la existencia REAL y en una sola
-        // operación (antes, si el mismo producto venía en dos líneas, solo
-        // se descontaba una de ellas).
-        const descontarComanda = STATE.comandaCobroActual.items
-          .filter(item => mapaProd[item.producto_id] && mapaProd[item.producto_id].tipo === 'producto')
-          .map(item => ({ producto_id: item.producto_id, delta: -Number(item.cantidad || 0) }));
-        if (descontarComanda.length) {
-          const { error: errStock } = await sb.rpc('ajustar_stock_relativo', { p_items: descontarComanda });
-          if (errStock) throw errStock;
-        }
-      }
-    } catch (eStock) {
-      console.warn('confirmarCobro, descontar stock:', eStock);
-      // No se bloquea el cobro por esto -- ya se cobro exitosamente,
-      // el stock se puede ajustar despues manualmente si algo fallara.
-    }
-
-    if (window.CajaAPI) {
-      const cajaRes = await window.CajaAPI.registrarMovimiento({
-        auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
-        concepto: conceptoCobro, monto: montoParaCaja,
-        referencia_tipo: 'restaurante_comanda', referencia_id: comandaId,
-        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
-      });
-      if (!cajaRes.ok) {
-        errEl.textContent = 'No se pudo registrar el cobro en Caja: ' + cajaRes.error;
-        setBtnLoading('cb-btn-confirmar', false);
-        return;
-      }
-    }
-
-    const { error: e1 } = await sb.from('restaurante_comandas').update({
-      estado: 'cerrada', cerrada_at: new Date().toISOString(),
-      propina_monto: propina, metodo_pago: metodoNombre, total_cobrado: montoParaCaja,
-      updated_at: new Date().toISOString(),
-    }).eq('id', comandaId).eq('auth_user_id', STATE.userId);
-    if (e1) throw e1;
-
-    if (c) {
-      const { error: e2 } = await sb.from('restaurante_mesas')
-        .update({ estado: 'limpieza', en_este_estado_desde: new Date().toISOString() })
-        .eq('id', c.mesa_id).eq('auth_user_id', STATE.userId);
-      if (e2) throw e2;
-    }
-
-    showToast('Cuenta cobrada — la mesa pasó a limpieza');
-    closeModal('modal-cobro');
-    await cargarComandas();
-  } catch (e) {
-    console.error('confirmarCobro:', e);
-    errEl.textContent = 'No se pudo completar el cobro. Intenta de nuevo.';
-  } finally {
-    setBtnLoading('cb-btn-confirmar', false);
-  }
+  if (!c) return;
+  if ((c.restaurante_comanda_items || []).some(i => i.estado === 'pendiente'))
+    showToast('Ojo: hay platillos que todavía no se enviaron a cocina.', 'error');
+  RCobro.abrir(c, { alCerrar: () => cargarComandas() });
 }

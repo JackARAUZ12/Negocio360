@@ -14,7 +14,10 @@
   <!-- Supabase JS CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- SheetJS: lee el archivo .xlsx que el usuario sube para la importación masiva (y ahora también exporta el inventario) -->
@@ -306,6 +309,7 @@
               </a>
             </div>
           </div>
+          <button class="btn btn-secondary" id="btnSeriesAsistente" style="display:none" onclick="abrirAsistenteSeries()" title="Marcar qué productos llevan serie y cargar las series de lo que ya tienes">🔢 Números de serie</button>
           <button class="btn btn-secondary" id="btnProximosVencer" style="display:none" onclick="abrirModalProximosVencer()">⏰ Próximos a vencer</button>
           <button class="btn btn-secondary" onclick="abrirModalImportar()">📤 Importar Excel</button>
           <button class="btn btn-secondary" id="btnNuevoServicio" onclick="abrirModalNuevo('servicio')">🔧 Nuevo Servicio</button>
@@ -869,6 +873,19 @@
             <input type="text" class="form-input" id="inputSku"
                    placeholder="Ej: CAM-POLO-M-001" maxlength="100" />
           </div>
+          <div class="form-group" id="crProdWrap" style="display:none">
+            <label class="form-label" for="inputCabys">Código CAByS <span style="color:var(--text-muted);font-weight:400">(Costa Rica · 13 dígitos)</span></label>
+            <input type="text" class="form-input" id="inputCabys" inputmode="numeric" maxlength="13" placeholder="Ej: 6221100000000" autocomplete="off" />
+            <div id="errCabys" style="color:var(--danger,#e5484d);font-size:12px;margin-top:4px"></div>
+          </div>
+          <div class="form-group" id="crProdWrap2" style="display:none">
+            <label class="form-label" for="inputIvaTarifa">Tarifa de IVA del producto <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+            <select class="form-select" id="inputIvaTarifa">
+              <option value="">Sin definir</option>
+              <option value="13">13 %</option><option value="4">4 %</option><option value="2">2 %</option><option value="1">1 %</option><option value="0">0 % / exento</option>
+            </select>
+            <div style="color:var(--text-muted);font-size:11.5px;margin-top:4px">Se guarda para la factura electrónica. Por ahora, en las ventas el IVA sigue siendo el general del negocio.</div>
+          </div>
           <div class="form-group">
             <label class="form-label" for="inputMarca">Marca / Proveedor <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
             <select class="form-select" id="inputMarca">
@@ -1133,7 +1150,7 @@
           <div class="form-group full" id="wrapNumeroSerieEdit" style="display:none;margin-top:6px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
               <input type="checkbox" id="inputRequiereSerieEdit" style="width:16px;height:16px"/>
-              <span>Requiere número de serie — al vender este producto, el sistema pedirá su número de serie</span>
+              <span>Requiere número de serie — al vender este producto, el sistema pedirá su número de serie. Si lo marcas ahora, al guardar se abrirá la ventana para cargar sus series.</span>
             </label>
           </div>
 
@@ -1554,11 +1571,13 @@
 </script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="ajuste-existencia.js?v=20261014d"></script>
-<script src="productos.js?v=20261022x"></script>
+<script src="paginar-lectura.js?v=20261029d"></script>
+<script src="series-proveedor.js?v=20261031a"></script>
+<script src="productos.js?v=20261101c"></script>
 <script src="productos-importar.js?v=20261021a"></script>
 <script src="productos-traslados.js?v=20261012a"></script>
 <script src="productos-permisos.js?v=20261021a"></script>
-<script src="empresa-productos.js?v=20261021a"></script>
+<script src="empresa-productos.js?v=20261101c"></script>
 
 <!-- Preview margen en modal (helper inline) -->
 <script>
@@ -1591,8 +1610,8 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
 <div class="modal-overlay" id="modalMonedaVis" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:380px">
     <div class="modal-header">

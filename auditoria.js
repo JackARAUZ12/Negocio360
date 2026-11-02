@@ -106,7 +106,7 @@ function navigate(url) { closeMobileSidebar(); window.location.href = url; }
    con productos/cantidades de cada venta, y el total del día y
    del mes. A diferencia de la bitácora de arriba, esto lee
    directo de la tabla ventas (dato permanente, sin límite de
-   24 horas) usando el campo creado_por_nombre que cada venta
+   90 días) usando el campo creado_por_nombre que cada venta
    guarda desde que se crea.
 ===================================================== */
 /* =====================================================
@@ -114,7 +114,7 @@ function navigate(url) { closeMobileSidebar(); window.location.href = url; }
    pero sin guardar nada extra: lee directo de las tablas reales
    (ventas, gastos, compras, pagos de credito), que YA se guardan
    para siempre sin costo adicional -- a diferencia de la bitacora
-   de auditoria de abajo, que solo dura 24h a proposito (para no
+   de auditoria de abajo, que guarda 90 dias a proposito (para no
    acumular almacenamiento indefinidamente).
 ===================================================== */
 async function cargarResumenMensual() {
@@ -130,10 +130,10 @@ async function cargarResumenMensual() {
     // Cada consulta solo trae la columna de monto (no la fila completa)
     // -- minimiza los datos transferidos, el conteo/suma se hace aquí.
     const [ventas, gastos, compras, pagos] = await Promise.all([
-      sbClient.from('ventas').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo),
-      sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', inicio).lt('fecha', limiteExclusivo),
-      sbClient.from('compras').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo),
-      sbClient.from('creditos_pagos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','completado').gte('fecha', inicio).lt('fecha', limiteExclusivo),
+      N360Leer.todo(() => sbClient.from('ventas').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo), 'resumen'),
+      N360Leer.todo(() => sbClient.from('gastos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','activo').gte('fecha', inicio).lt('fecha', limiteExclusivo), 'resumen'),
+      N360Leer.todo(() => sbClient.from('compras').select('total').eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicio).lt('fecha', limiteExclusivo), 'resumen'),
+      N360Leer.todo(() => sbClient.from('creditos_pagos').select('monto').eq('auth_user_id', STATE.userId).eq('estado','completado').gte('fecha', inicio).lt('fecha', limiteExclusivo), 'resumen'),
     ]);
 
     const sumar = (res, campo) => (res.data||[]).reduce((s,r) => s + (Number(r[campo])||0), 0);
@@ -165,8 +165,8 @@ let PRODUCTOS_SELECCIONADOS_CONSULTA = new Set();
 
 async function cargarOpcionesConsultaProducto() {
   try {
-    const { data: productos } = await sbClient.from('productos')
-      .select('id, nombre').eq('auth_user_id', STATE.userId).order('nombre');
+    const { data: productos } = await N360Leer.todo(() => sbClient.from('productos')
+      .select('id, nombre').eq('auth_user_id', STATE.userId).order('nombre'), 'productos');
     TODOS_LOS_PRODUCTOS_CONSULTA = productos || [];
     renderListaProductosConsulta(TODOS_LOS_PRODUCTOS_CONSULTA);
 
@@ -347,9 +347,9 @@ async function consultarProductoPorUsuario() {
   try {
     const { desde, hasta } = calcularRangoFechas(PERIODO_CONSULTA_ACTUAL);
 
-    const { data: ventas } = await sbClient.from('ventas')
+    const { data: ventas } = await N360Leer.todo(() => sbClient.from('ventas')
       .select('id').eq('auth_user_id', STATE.userId).eq('estado','completada')
-      .eq('creado_por_nombre', usuario).gte('fecha', desde).lt('fecha', siguienteDiaISO(hasta));
+      .eq('creado_por_nombre', usuario).gte('fecha', desde).lt('fecha', siguienteDiaISO(hasta)), 'ventas');
 
     if (!ventas || !ventas.length) {
       resultDiv.innerHTML = `<p style="padding:12px 0;margin:0">No hay ventas de <b>${esc(usuario)}</b> con usuario asignado en ese período — puede que no haya vendido nada, o que esas ventas sean de antes de que este seguimiento se activara.</p>`;
@@ -370,9 +370,9 @@ async function consultarProductoPorUsuario() {
     const idsVentas = ventas.map(v => v.id);
     const nombresPorId = Object.fromEntries(TODOS_LOS_PRODUCTOS_CONSULTA.map(p => [p.id, p.nombre]));
     const nombresElegidos = idsProductos.map(id => nombresPorId[id]).filter(Boolean);
-    const { data: detalles } = await sbClient.from('venta_detalles')
+    const { data: detalles } = await N360Leer.porIds(idsVentas, ch => sbClient.from('venta_detalles')
       .select('producto_nombre, cantidad, subtotal')
-      .in('venta_id', idsVentas).in('producto_nombre', nombresElegidos);
+      .in('venta_id', ch).in('producto_nombre', nombresElegidos), 'detalle de ventas');
 
     const porProducto = {};
     (detalles||[]).forEach(d => {
@@ -433,10 +433,12 @@ async function cargarVentasPorUsuario() {
     const hoy = todayISO();
     const inicioMes = hoy.slice(0,7) + '-01';
 
-    let qMes = sbClient.from('ventas').select('id, numero_venta, fecha, total, created_at')
-      .eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicioMes).order('created_at',{ascending:false});
-    if (usuarioElegido) qMes = qMes.eq('creado_por_nombre', usuarioElegido);
-    const { data: ventasMes } = await qMes;
+    const { data: ventasMes } = await N360Leer.todo(() => {
+      let qMes = sbClient.from('ventas').select('id, numero_venta, fecha, total, created_at')
+        .eq('auth_user_id', STATE.userId).eq('estado','completada').gte('fecha', inicioMes).order('created_at',{ascending:false});
+      if (usuarioElegido) qMes = qMes.eq('creado_por_nombre', usuarioElegido);
+      return qMes;
+    }, 'ventas del mes');
 
     const totalMes = (ventasMes||[]).reduce((s,v) => s + (Number(v.total)||0), 0);
     const totalHoy = (ventasMes||[]).filter(v => (v.fecha||'').slice(0,10) === hoy).reduce((s,v) => s + (Number(v.total)||0), 0);
@@ -451,8 +453,8 @@ async function cargarVentasPorUsuario() {
 
     // Traer los productos de todas estas ventas de una sola vez
     const idsVentas = ventasMes.map(v => v.id);
-    const { data: detalles } = await sbClient.from('venta_detalles')
-      .select('venta_id, producto_nombre, cantidad, subtotal').in('venta_id', idsVentas).order('created_at');
+    const { data: detalles } = await N360Leer.porIds(idsVentas, ch => sbClient.from('venta_detalles')
+      .select('venta_id, producto_nombre, cantidad, subtotal').in('venta_id', ch).order('created_at'), 'detalle de ventas');
     const detallesPorVenta = {};
     (detalles||[]).forEach(d => { (detallesPorVenta[d.venta_id] ||= []).push(d); });
 
@@ -533,14 +535,29 @@ async function checkAdminAccess(email) {
 /* =====================================================
    CARGA DE LA BITÁCORA
 ===================================================== */
+// La bitácora guarda 90 días (la limpieza diaria borra lo más antiguo). Por defecto se ven los últimos 7.
+const AUD_DIAS_GUARDADOS = 90;
+const AUD_POR_PARTE = 2000;              // filas por carga ("Cargar movimientos más antiguos" trae otra parte)
+const ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function haceDiasISO(n) { const d = new Date(); d.setDate(d.getDate() - n); return ymdLocal(d); }
 function rangoFechasPorDefecto() {
   const desdeEl = document.getElementById('aud-fecha-desde');
   const hastaEl = document.getElementById('aud-fecha-hasta');
-  if (desdeEl && !desdeEl.value) {
-    const hace30 = new Date(); hace30.setDate(hace30.getDate() - 30);
-    desdeEl.value = `${hace30.getFullYear()}-${String(hace30.getMonth()+1).padStart(2,'0')}-${String(hace30.getDate()).padStart(2,'0')}`;
-  }
+  const minimo = haceDiasISO(AUD_DIAS_GUARDADOS - 1);
+  [desdeEl, hastaEl].forEach(el => { if (el) { el.min = minimo; el.max = todayISO(); } });
+  if (desdeEl && !desdeEl.value) desdeEl.value = haceDiasISO(6);
   if (hastaEl && !hastaEl.value) hastaEl.value = todayISO();
+  marcarRangoAud(desdeEl && desdeEl.value === haceDiasISO(6) ? 7 : null);
+}
+function marcarRangoAud(dias) {
+  document.querySelectorAll('[data-aud-rango]').forEach(b => b.classList.toggle('active', Number(b.dataset.audRango) === dias));
+}
+function rangoRapidoAud(dias) {
+  const desdeEl = document.getElementById('aud-fecha-desde'), hastaEl = document.getElementById('aud-fecha-hasta');
+  if (desdeEl) desdeEl.value = haceDiasISO(dias - 1);
+  if (hastaEl) hastaEl.value = todayISO();
+  marcarRangoAud(dias);
+  cargarAuditoria();
 }
 
 // Convierte una fecha "YYYY-MM-DD" (elegida en el filtro, en hora LOCAL)
@@ -557,36 +574,87 @@ function limiteDiaLocalISO(fechaStr, finDelDia) {
   return dt.toISOString();
 }
 
-async function cargarAuditoria() {
+// La consulta del período elegido (negocio + fechas, del más reciente al más antiguo).
+function consultaAuditoria() {
+  const desde = document.getElementById('aud-fecha-desde')?.value;
+  const hasta = document.getElementById('aud-fecha-hasta')?.value;
+  let q = sbClient.from('auditoria_log').select('*')
+    .eq('auth_user_id', STATE.userId)
+    .order('created_at', { ascending: false }).order('id', { ascending: false });
+  if (desde) q = q.gte('created_at', limiteDiaLocalISO(desde, false));
+  if (hasta) q = q.lte('created_at', limiteDiaLocalISO(hasta, true));
+  return q;
+}
+
+// Carga por partes: la primera parte al elegir el período; "Cargar movimientos más antiguos"
+// agrega la siguiente. Así 90 días no se traen de golpe.
+async function cargarAuditoria(masAntiguos) {
   const tbody = document.getElementById('aud-tbody');
-  if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Cargando auditoría…</td></tr>`;
+  const btnMas = document.getElementById('aud-mas');
+  if (!masAntiguos) {
+    STATE.audDesde = 0; STATE.logs = [];
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Cargando auditoría…</td></tr>`;
+  } else if (btnMas) { btnMas.disabled = true; btnMas.textContent = 'Cargando…'; }
+  const pedido = (STATE.audPedido || 0) + 1; STATE.audPedido = pedido;
   try {
-    const desde = document.getElementById('aud-fecha-desde')?.value;
-    const hasta = document.getElementById('aud-fecha-hasta')?.value;
-
-    let q = sbClient.from('auditoria_log').select('*')
-      .eq('auth_user_id', STATE.userId)
-      .order('created_at', { ascending: false })
-      .limit(1000);
-    if (desde) q = q.gte('created_at', limiteDiaLocalISO(desde, false));
-    if (hasta) q = q.lte('created_at', limiteDiaLocalISO(hasta, true));
-
-    const { data, error } = await q;
-    if (error) throw error;
-
-    STATE.logs = data || [];
+    const parte = [];
+    for (let i = 0; i < AUD_POR_PARTE; i += 1000) {
+      const desde = (STATE.audDesde || 0) + i;
+      const { data, error } = await consultaAuditoria().range(desde, desde + 999);
+      if (error) throw error;
+      parte.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    if (pedido !== STATE.audPedido) return;            // se eligió otro período mientras cargaba
+    STATE.audDesde = (STATE.audDesde || 0) + parte.length;
+    STATE.audHayMas = parte.length >= AUD_POR_PARTE;
+    STATE.logs = (masAntiguos ? STATE.logs : []).concat(parte);
     // Un solo clic del usuario (ej. "Registrar venta") suele generar VARIAS
-    // escrituras internas (venta, detalle, caja, impuestos…). Se agrupan en
+    // escrituras internas (venta, caja, impuestos…). Se agrupan en
     // UN solo evento para que se lea "Luis vendió esto", no 5 líneas técnicas.
     STATE.eventos = agruparEventos(STATE.logs);
-    STATE.page = 1;
+    if (!masAntiguos) STATE.page = 1;
     poblarFiltrosAud();
     renderTablaAud();
     renderKPIsAud();
   } catch (e) {
     console.error('cargarAuditoria:', e);
-    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">No se pudo cargar la auditoría</td></tr>`;
+    if (!masAntiguos && tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">No se pudo cargar la auditoría</td></tr>`;
+    else if (typeof showToast === 'function') showToast('No se pudieron cargar más movimientos. Intenta de nuevo.', 'error');
+  } finally {
+    const wrap = document.getElementById('aud-mas-wrap');
+    if (wrap) wrap.style.display = STATE.audHayMas ? '' : 'none';
+    if (btnMas) { btnMas.disabled = false; btnMas.textContent = '⬇ Cargar movimientos más antiguos'; }
   }
+}
+
+// Excel de TODO el período elegido (con los filtros de usuario, módulo, tipo y búsqueda que estén puestos).
+async function exportarAuditoriaExcel() {
+  const btn = document.getElementById('aud-excel');
+  if (!window.XLSX) { if (typeof showToast === 'function') showToast('No se pudo preparar el Excel. Revisa tu conexión.', 'error'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparando…'; }
+  try {
+    const { data, error } = await N360Leer.todo(() => consultaAuditoria(), 'auditoría', { ordenId: false });
+    if (error) throw error;
+    const eventos = agruparEventos(data || []);
+    const q = STATE.search.toLowerCase().trim();
+    const filas = eventos.filter(ev => (STATE.filtro === 'todos' || ev.accion === STATE.filtro)
+      && (!STATE.filtroUsuario || ev.perfil_nombre === STATE.filtroUsuario)
+      && (!STATE.filtroModulo || ev.modulo === STATE.filtroModulo)
+      && (!q || fraseEvento(ev).toLowerCase().includes(q)))
+      .map(ev => ({ Fecha: fmtFecha(ev.created_at), Hora: fmtHora(ev.created_at), Usuario: ev.perfil_nombre || '', Tipo: ev.perfil_tipo === 'admin' ? 'Administrador' : 'Usuario',
+        Módulo: labelModulo(ev.modulo), Acción: ({ INSERT: 'Creó', UPDATE: 'Editó', DELETE: 'Eliminó' })[ev.accion] || ev.accion, 'Qué hizo': fraseEvento(ev) }));
+    if (!filas.length) { if (typeof showToast === 'function') showToast('No hay movimientos para descargar en este período.', 'warning'); return; }
+    const desde = document.getElementById('aud-fecha-desde')?.value || '', hasta = document.getElementById('aud-fecha-hasta')?.value || '';
+    const hoja = XLSX.utils.json_to_sheet(filas);
+    hoja['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 70 }];
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, 'Auditoría');
+    XLSX.writeFile(libro, `auditoria_${desde}_a_${hasta}.xlsx`);
+  } catch (e) {
+    console.error('exportarAuditoriaExcel:', e);
+    if (typeof showToast === 'function') showToast('No se pudo descargar el Excel. Intenta de nuevo.', 'error');
+  } finally { if (btn) { btn.disabled = false; btn.textContent = '📥 Excel'; } }
 }
 
 // Llena los selects de "Usuario" y "Módulo" con los valores que

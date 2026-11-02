@@ -10,7 +10,10 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1574,6 +1577,7 @@
       <button class="btn-secondary" onclick="compartirProformaActual()">🔗 Compartir</button>
       <button class="btn-secondary" id="det-prof-btn-pdf-varios" style="display:none" onclick="N360ProfVarios.pdfPorCliente()">📄 PDF por cliente</button>
       <button class="btn-secondary" id="det-prof-btn-pago-parcial" style="border-color:var(--warning);color:var(--warning)" onclick="abrirPagoParcial()">💳 Pago parcial / a crédito</button>
+      <button class="btn-secondary" id="det-prof-btn-produccion" style="display:none" onclick="N360ProfProd.abrir()">🏭 Pasar a producción</button>
       <button class="btn-primary" id="det-prof-btn-convertir" onclick="abrirConvertirDesdeDetalle()">Convertir a Venta</button>
     </div>
   </div>
@@ -1599,6 +1603,7 @@
         <select id="cv-banco" onchange="onCambiarMetodoConvertir()"></select>
         <p id="cv-aviso-banco" style="display:none;font-size:12px;color:#b45309;margin-top:6px">⚠ Si no eliges banco, este dinero no aparecerá en ningún banco y no se podrá conciliar. Puedes convertir igual.</p>
       </div>
+      <p id="cv-anticipo" style="display:none;font-size:13px;color:var(--success);font-weight:600;margin-top:6px"></p>
       <p id="cv-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
     </div>
     <div class="modal-footer">
@@ -1828,19 +1833,26 @@
 
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="cantidad-inteligente.js?v=20261009a"></script>
-<script src="comprobante-carta.js?v=20261023h"></script>
+<script src="comprobante-carta.js?v=20261101c"></script>
 <script src="embudo-ventas.js?v=20261010a"></script>
 <script src="caja-segura.js?v=20261012a"></script>
   <script src="cliente-repetido.js?v=20261016a"></script>
-  <script src="select-buscable.js?v=20261015b"></script>
+  <script src="select-buscable.js?v=20261025e"></script>
   <script src="rawbt-print.js?v=20261023a"></script>
 <script src="ticket-prueba-ancho.js?v=20261022a"></script>
-<script src="proformas.js?v=20261023g"></script>
+<script src="paginar-lectura.js?v=20261029d"></script>
+<script src="proformas.js?v=20261101c"></script>
+  <script src="produccion-faltantes.js?v=20261030a"></script>
+  <script src="proforma-produccion.js?v=20261030c"></script>
+  <script src="proforma-anticipo.js?v=20261030a"></script>
+  <script src="proforma-reserva.js?v=20261030a"></script>
   <script src="proformas-varios.js?v=20261012d"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

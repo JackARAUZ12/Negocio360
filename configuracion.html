@@ -17,7 +17,11 @@
 <!-- Supabase CDN -->
 <script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="modulos-registro.js?v=20261024b"></script>
+<script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+<script src="modulos-registro.js?v=20261031a"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -1262,6 +1266,53 @@
               <span class="cfg-switch-track" onclick="onToggleCierreAutoMensual(event)"></span>
             </label>
           </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Día de cierre del mes</div>
+              <div class="cfg-row-sub" id="dcm-row-sub">Opcional. Si cierras el mes otro día (ej. el 20), elígelo aquí: Caja, Ventas, Reportes, Dashboard y Estadísticas usarán ese período como "este mes".</div>
+            </div>
+            <select id="dcm-select" disabled onchange="guardarDiaCierreMes()" style="width:auto;min-width:150px">
+              <option value="">Último día del mes</option>
+              <option value="1">Día 1</option>
+              <option value="2">Día 2</option>
+              <option value="3">Día 3</option>
+              <option value="4">Día 4</option>
+              <option value="5">Día 5</option>
+              <option value="6">Día 6</option>
+              <option value="7">Día 7</option>
+              <option value="8">Día 8</option>
+              <option value="9">Día 9</option>
+              <option value="10">Día 10</option>
+              <option value="11">Día 11</option>
+              <option value="12">Día 12</option>
+              <option value="13">Día 13</option>
+              <option value="14">Día 14</option>
+              <option value="15">Día 15</option>
+              <option value="16">Día 16</option>
+              <option value="17">Día 17</option>
+              <option value="18">Día 18</option>
+              <option value="19">Día 19</option>
+              <option value="20">Día 20</option>
+              <option value="21">Día 21</option>
+              <option value="22">Día 22</option>
+              <option value="23">Día 23</option>
+              <option value="24">Día 24</option>
+              <option value="25">Día 25</option>
+              <option value="26">Día 26</option>
+              <option value="27">Día 27</option>
+              <option value="28">Día 28</option>
+            </select>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Empezar de cero en cada cierre de mes</div>
+              <div class="cfg-row-sub" id="cez-row-sub">Opcional. Al cerrar el mes, el saldo de Caja se registra como retiro (se lo lleva el dueño o se deposita) y el nuevo período empieza en cero. Se puede deshacer junto con el cierre.</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="cez-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleEmpezarCero(event)"></span>
+            </label>
+          </div>
           <div class="cfg-status" id="cierres-auto-status"></div>
         </div>
 
@@ -1311,6 +1362,68 @@
             </label>
           </div>
           <div class="cfg-status" id="ns-status"></div>
+        </div>
+
+        <!-- PEDIDOS CON PRODUCCIÓN (proforma -> producción -> inventario -> venta) -->
+        <div class="cfg-card fade-in stagger-1">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🏭</div>
+            <div>
+              <div class="cfg-card-title">Pedidos con producción</div>
+              <div class="cfg-card-desc">Para negocios que fabrican lo que el cliente pide. Una proforma aprobada se pasa a producción con un botón; al completar la orden, el producto entra al inventario y recién entonces se convierte en venta.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar pedidos con producción</div>
+              <div class="cfg-row-sub" id="pp-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="pp-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleCicloProduccionClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Producir cuando baje del stock mínimo</div>
+              <div class="cfg-row-sub" id="sm-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="sm-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleStockMinProdClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Crear la orden de producción al aprobar</div>
+              <div class="cfg-row-sub" id="oa-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="oa-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleOrdenAutoClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Cobrar anticipo del pedido</div>
+              <div class="cfg-row-sub" id="an-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="an-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleAnticipoPedidosClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Reservar el producto terminado para el pedido</div>
+              <div class="cfg-row-sub" id="rv-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="rv-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleReservaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="pp-status"></div>
         </div>
 
         <!-- MODELO DE PRODUCTO -->
@@ -1508,7 +1621,7 @@
             <div class="cfg-card-icon">🏥</div>
             <div>
               <div class="cfg-card-title">Módulo de Clínica</div>
-              <div class="cfg-card-desc">Agenda por médico, pacientes y expediente clínico protegido con PIN médico, consultas firmadas, bitácora de accesos y cobro por Ventas.</div>
+              <div class="cfg-card-desc">Pacientes y expediente clínico (solo lo abren los médicos con su código de usuario), consultas firmadas, sala de espera sobre la Agenda, bitácora de accesos y cobro por Ventas.</div>
             </div>
           </div>
           <div class="cfg-row">
@@ -1571,6 +1684,101 @@
             </label>
           </div>
           <div class="cfg-status" id="transporte-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="taller-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🔧</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Taller mecánico</div>
+              <div class="cfg-card-desc">Para talleres de vehículos terrestres (autos, motos, camionetas, camiones, buses): vehículos, órdenes, presupuestos que el cliente aprueba línea por línea, repuestos de tu inventario y entrega con cobro conectado a Ventas y Caja.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Taller mecánico</div>
+              <div class="cfg-row-sub" id="taller-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="taller-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleTallerClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="taller-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="mensajeria-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🛵</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Mensajería / Delivery</div>
+              <div class="cfg-card-desc">Para empresas de delivery y mensajería que reparten paquetes de comercios o personas: envíos con tarifa por zona, despacho a repartidores, entrega con foto y quién recibió, y cuadre diario del efectivo de cada repartidor.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Mensajería</div>
+              <div class="cfg-row-sub" id="mensajeria-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="mensajeria-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleMensajeriaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="mensajeria-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="cr-fiscal-card" style="display:none">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🇨🇷</div>
+            <div>
+              <div class="cfg-card-title">Datos fiscales de Costa Rica</div>
+              <div class="cfg-card-desc">Datos de tu negocio que pide Hacienda en la factura electrónica. Son opcionales por ahora: se guardan para cuando se active esa función. Tu número de cédula se escribe en el campo RUC / identificación de tu empresa.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Tipo de identificación del negocio</div>
+              <div class="cfg-row-sub">Cédula física, jurídica, DIMEX o NITE.</div>
+            </div>
+            <select id="crf-tipo-id" disabled style="width:auto;min-width:170px">
+              <option value="">Sin definir</option>
+              <option value="01">Cédula física</option>
+              <option value="02">Cédula jurídica</option>
+              <option value="03">DIMEX</option>
+              <option value="04">NITE</option>
+            </select>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Código de actividad económica</div>
+              <div class="cfg-row-sub">Solo números (de 4 a 8 dígitos), como aparece en tu inscripción de Hacienda.</div>
+            </div>
+            <input type="text" id="crf-actividad" inputmode="numeric" maxlength="8" disabled placeholder="Ej: 471101" style="width:auto;min-width:150px" />
+          </div>
+          <button class="cfg-btn-neutral" id="crf-guardar" disabled onclick="guardarDatosFiscalesCR()">Guardar datos fiscales</button>
+          <div class="cfg-status" id="crf-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="comisiones-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">💵</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Comisiones</div>
+              <div class="cfg-card-desc">Comisión por cada venta de tus vendedores, separada de Salarios: se calcula sola con el porcentaje del día, se paga junta y el pago sale de Caja. Apagado por defecto.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Comisiones</div>
+              <div class="cfg-row-sub" id="comisiones-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="comisiones-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleComisionesClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="comisiones-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="diseno-card">
@@ -2163,6 +2371,16 @@ async function cargarCierresAuto() {
     if (error) throw error;
     pintarCierreAuto('cad', data?.cierre_auto_diario === true, 'diario');
     pintarCierreAuto('cam', data?.cierre_auto_mensual === true, 'mensual');
+    // Día de cierre y "empezar de cero" (24-oct-2026): consulta aparte, si falla no afecta lo de arriba
+    try {
+      const { data: dc } = await sbClient.from('configuracion_empresa').select('dia_cierre_mensual, cierre_empezar_cero')
+        .eq('auth_user_id', currentAuthUserId).maybeSingle();
+      const sel = document.getElementById('dcm-select'), tz = document.getElementById('cez-toggle');
+      if (sel) { sel.value = dc?.dia_cierre_mensual ? String(dc.dia_cierre_mensual) : ''; sel.disabled = false; }
+      if (tz) { tz.checked = dc?.cierre_empezar_cero === true; tz.disabled = false; }
+      pintarDiaCierre(dc?.dia_cierre_mensual || null);
+      try { window.N360PeriodoMes?.guardar(currentAuthUserId, dc?.dia_cierre_mensual || null, dc?.cierre_empezar_cero); } catch (_) {}
+    } catch (e2) { console.warn('dia de cierre:', e2); }
   } catch (e) {
     console.error('cargarCierresAuto:', e);
     const s1 = document.getElementById('cad-row-sub');
@@ -2170,6 +2388,51 @@ async function cargarCierresAuto() {
     if (s1) s1.textContent = 'No se pudo cargar el estado.';
     if (s2) s2.textContent = 'No se pudo cargar el estado.';
   }
+}
+
+function pintarDiaCierre(dia) {
+  const sub = document.getElementById('dcm-row-sub'); if (!sub) return;
+  if (!dia) { sub.textContent = 'Último día del mes (como siempre). Si cierras el mes otro día (ej. el 20), elígelo aquí.'; return; }
+  const r = (function () { const h = new Date(); let y = h.getFullYear(), m = h.getMonth(); if (h.getDate() <= dia) m -= 1;
+    const f = d => d.toLocaleDateString('es-NI', { day: 'numeric', month: 'short' }); return `${f(new Date(y, m, dia + 1))} al ${f(new Date(y, m + 1, dia))}`; })();
+  sub.textContent = `Cada período va del ${dia + 1} al ${dia}. Período actual: ${r}. Caja, Ventas, Reportes, Dashboard y Estadísticas lo usan como "este mes".`;
+}
+async function guardarDiaCierreMes() {
+  const sel = document.getElementById('dcm-select');
+  const statusEl = document.getElementById('cierres-auto-status');
+  const dia = sel.value ? parseInt(sel.value, 10) : null;
+  sel.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ dia_cierre_mensual: dia }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    pintarDiaCierre(dia);
+    try { window.N360PeriodoMes?.guardar(currentAuthUserId, dia, document.getElementById('cez-toggle')?.checked); } catch (_) {}
+    setStatus(statusEl, dia ? `Día de cierre: ${dia}. El cierre mensual (manual o automático) usará ese período.` : 'Día de cierre: último día del mes.', true);
+  } catch (e) {
+    console.error('guardarDiaCierreMes:', e);
+    setStatus(statusEl, 'No se pudo guardar el día de cierre. Intenta de nuevo.', false);
+  } finally { sel.disabled = false; }
+}
+function onToggleEmpezarCero(evt) {
+  const t = document.getElementById('cez-toggle');
+  if (t.disabled) { evt.preventDefault(); return; }
+  t.checked = !t.checked;
+  guardarEmpezarCero(t.checked);
+}
+async function guardarEmpezarCero(activo) {
+  const t = document.getElementById('cez-toggle');
+  const statusEl = document.getElementById('cierres-auto-status');
+  t.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ cierre_empezar_cero: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    try { const sel = document.getElementById('dcm-select'); window.N360PeriodoMes?.guardar(currentAuthUserId, sel?.value ? parseInt(sel.value, 10) : null, activo); } catch (_) {}
+    setStatus(statusEl, activo ? 'Empezar de cero: activado. Al cerrar el mes se registrará el retiro del saldo (puedes cambiarlo en cada cierre).' : 'Empezar de cero: desactivado.', true);
+  } catch (e) {
+    console.error('guardarEmpezarCero:', e);
+    t.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { t.disabled = false; }
 }
 
 function pintarCierreAuto(prefijo, activo, tipo) {
@@ -2184,7 +2447,7 @@ function pintarCierreAuto(prefijo, activo, tipo) {
       : 'Desactivado — los cierres diarios los haces tú desde Caja.';
   } else {
     sub.textContent = activo
-      ? 'Activado — el día 1 de cada mes se crea el cierre del mes que terminó.'
+      ? 'Activado — al día siguiente de tu día de cierre se crea el cierre del período que terminó.'
       : 'Desactivado — los cierres mensuales los haces tú desde Caja.';
   }
 }
@@ -2283,6 +2546,189 @@ async function guardarPresentaciones(activo) {
   }
 }
 
+/* ---------- Pedidos con producción (opcional, apagado por defecto) ---------- */
+const PP_TXT_ON  = 'Activado — las proformas aprobadas muestran el botón "Pasar a producción". Una proforma con producción sin terminar no se puede convertir en venta.';
+const PP_TXT_OFF = 'Desactivado — el sistema funciona exactamente igual que hoy.';
+async function cargarCicloProduccion() {
+  const toggle = document.getElementById('pp-toggle');
+  const sub    = document.getElementById('pp-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient
+      .from('configuracion_empresa')
+      .select('usa_ciclo_produccion_pedidos')
+      .eq('auth_user_id', currentAuthUserId)
+      .maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_ciclo_produccion_pedidos === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? PP_TXT_ON : PP_TXT_OFF;
+    toggle.disabled = false;
+  } catch (e) {
+    console.error('cargarCicloProduccion:', e);
+    sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.';
+  }
+}
+function onToggleCicloProduccionClick(evt) {
+  const toggle = document.getElementById('pp-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarCicloProduccion(toggle.checked);
+}
+async function guardarCicloProduccion(activo) {
+  const toggle = document.getElementById('pp-toggle');
+  const sub = document.getElementById('pp-row-sub');
+  const statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient
+      .from('configuracion_empresa')
+      .update({ usa_ciclo_produccion_pedidos: activo })
+      .eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? PP_TXT_ON : PP_TXT_OFF;
+    setStatus(statusEl, activo ? 'Pedidos con producción activado.' : 'Pedidos con producción desactivado. Las órdenes ya creadas siguen en Producción.', true);
+  } catch (e) {
+    console.error('guardarCicloProduccion:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+/* ---------- Producir cuando baje del stock mínimo (opcional, apagado por defecto) ---------- */
+const SM_TXT_ON  = 'Activado — en Producción aparece el botón "Bajo el mínimo" para crear las órdenes de lo que está por debajo del stock mínimo. Necesita "Pedidos con producción" activo.';
+const SM_TXT_OFF = 'Desactivado — no cambia nada.';
+async function cargarStockMinProd() {
+  const toggle = document.getElementById('sm-toggle'), sub = document.getElementById('sm-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_stock_minimo_produccion').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_stock_minimo_produccion === true;
+    toggle.checked = activo; sub.textContent = activo ? SM_TXT_ON : SM_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarStockMinProd:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleStockMinProdClick(evt) {
+  const toggle = document.getElementById('sm-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarStockMinProd(toggle.checked);
+}
+async function guardarStockMinProd(activo) {
+  const toggle = document.getElementById('sm-toggle'), sub = document.getElementById('sm-row-sub'), statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_stock_minimo_produccion: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? SM_TXT_ON : SM_TXT_OFF;
+    setStatus(statusEl, activo ? 'Producción por stock mínimo activada.' : 'Producción por stock mínimo desactivada.', true);
+  } catch (e) {
+    console.error('guardarStockMinProd:', e); toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+/* ---------- Crear la orden de producción al aprobar la proforma (opcional, apagado por defecto) ---------- */
+const OA_TXT_ON  = 'Activado — al marcar una proforma como Aprobada se crean solas las órdenes de producción de sus productos con receta. Necesita "Pedidos con producción" activo.';
+const OA_TXT_OFF = 'Desactivado — las órdenes se crean con el botón "Pasar a producción".';
+async function cargarOrdenAuto() {
+  const toggle = document.getElementById('oa-toggle'), sub = document.getElementById('oa-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_orden_auto_al_aprobar').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_orden_auto_al_aprobar === true;
+    toggle.checked = activo; sub.textContent = activo ? OA_TXT_ON : OA_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarOrdenAuto:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleOrdenAutoClick(evt) {
+  const toggle = document.getElementById('oa-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarOrdenAuto(toggle.checked);
+}
+async function guardarOrdenAuto(activo) {
+  const toggle = document.getElementById('oa-toggle'), sub = document.getElementById('oa-row-sub'), statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_orden_auto_al_aprobar: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? OA_TXT_ON : OA_TXT_OFF;
+    setStatus(statusEl, activo ? 'Orden automática al aprobar activada.' : 'Orden automática al aprobar desactivada.', true);
+  } catch (e) {
+    console.error('guardarOrdenAuto:', e); toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+/* ---------- Anticipo del pedido (opcional, apagado por defecto) ---------- */
+const AN_TXT_ON  = 'Activado — en una proforma aprobada aparece "Cobrar anticipo". Entra a Caja pero no cuenta como venta hasta convertir la proforma. Necesita "Pedidos con producción" y el módulo de Certificados de regalo activos.';
+const AN_TXT_OFF = 'Desactivado — no cambia nada.';
+async function cargarAnticipoPedidos() {
+  const toggle = document.getElementById('an-toggle'), sub = document.getElementById('an-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_anticipo_pedidos').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_anticipo_pedidos === true;
+    toggle.checked = activo; sub.textContent = activo ? AN_TXT_ON : AN_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarAnticipoPedidos:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleAnticipoPedidosClick(evt) {
+  const toggle = document.getElementById('an-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarAnticipoPedidos(toggle.checked);
+}
+async function guardarAnticipoPedidos(activo) {
+  const toggle = document.getElementById('an-toggle'), sub = document.getElementById('an-row-sub'), statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_anticipo_pedidos: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? AN_TXT_ON : AN_TXT_OFF;
+    setStatus(statusEl, activo ? 'Anticipo de pedidos activado.' : 'Anticipo de pedidos desactivado. Los anticipos ya cobrados siguen disponibles al convertir.', true);
+  } catch (e) {
+    console.error('guardarAnticipoPedidos:', e); toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+/* ---------- Reserva del producto terminado (opcional, apagado por defecto) ---------- */
+const RV_TXT_ON  = 'Activado — al terminar la producción de un pedido, esas unidades quedan reservadas: otras ventas no pueden llevárselas. Necesita "Pedidos con producción" activo.';
+const RV_TXT_OFF = 'Desactivado — no cambia nada.';
+async function cargarReserva() {
+  const toggle = document.getElementById('rv-toggle'), sub = document.getElementById('rv-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_reserva_producto_terminado').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_reserva_producto_terminado === true;
+    toggle.checked = activo; sub.textContent = activo ? RV_TXT_ON : RV_TXT_OFF; toggle.disabled = false;
+  } catch (e) { console.error('cargarReserva:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleReservaClick(evt) {
+  const toggle = document.getElementById('rv-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarReserva(toggle.checked);
+}
+async function guardarReserva(activo) {
+  const toggle = document.getElementById('rv-toggle'), sub = document.getElementById('rv-row-sub'), statusEl = document.getElementById('pp-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_reserva_producto_terminado: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? RV_TXT_ON : RV_TXT_OFF;
+    setStatus(statusEl, activo ? 'Reserva de producto terminado activada.' : 'Reserva desactivada: ya no se bloquean ventas.', true);
+  } catch (e) {
+    console.error('guardarReserva:', e); toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 async function cargarNumeroSerie() {
   const toggle = document.getElementById('ns-toggle');
   const sub    = document.getElementById('ns-row-sub');
@@ -2298,6 +2744,7 @@ async function cargarNumeroSerie() {
     sub.textContent = activo
       ? 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá.'
       : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    if (activo) sub.innerHTML = 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá. <a href="productos.html?series=1" style="font-weight:700">Elegir productos y cargar series →</a>';
     toggle.disabled = false;
   } catch (e) {
     console.error('cargarNumeroSerie:', e);
@@ -2326,6 +2773,7 @@ async function guardarNumeroSerie(activo) {
     sub.textContent = activo
       ? 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá.'
       : 'Desactivado — el sistema funciona exactamente igual que hoy, sin ningún campo extra.';
+    if (activo) sub.innerHTML = 'Activado — marca en cada producto si requiere número de serie, y al venderlo se pedirá. <a href="productos.html?series=1" style="font-weight:700">Elegir productos y cargar series →</a>';
     setStatus(statusEl, activo ? 'Número de serie activado.' : 'Número de serie desactivado.', true);
   } catch (e) {
     console.error('guardarNumeroSerie:', e);
@@ -3007,6 +3455,153 @@ async function guardarModuloTransporte(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Modulo de Mensajeria / Delivery: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloMensajeria() {
+  const toggle = document.getElementById('mensajeria-toggle');
+  const sub = document.getElementById('mensajeria-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_mensajeria').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_mensajeria === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Mensajería aparece en el menú.' : 'Desactivado — el módulo de Mensajería no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloMensajeria:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleMensajeriaClick(evt) {
+  const toggle = document.getElementById('mensajeria-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloMensajeria(toggle.checked);
+}
+async function guardarModuloMensajeria(activo) {
+  const toggle = document.getElementById('mensajeria-toggle');
+  const sub = document.getElementById('mensajeria-row-sub');
+  const statusEl = document.getElementById('mensajeria-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_mensajeria: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Mensajería aparece en el menú.' : 'Desactivado — el módulo de Mensajería no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Mensajería activado. Recarga la página para ver el menú.' : 'Módulo de Mensajería desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloMensajeria:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Modulo de Taller mecanico: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloTaller() {
+  const toggle = document.getElementById('taller-toggle');
+  const sub = document.getElementById('taller-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_taller').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_taller === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Taller mecánico aparece en el menú.' : 'Desactivado — el módulo de Taller mecánico no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloTaller:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleTallerClick(evt) {
+  const toggle = document.getElementById('taller-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloTaller(toggle.checked);
+}
+async function guardarModuloTaller(activo) {
+  const toggle = document.getElementById('taller-toggle');
+  const sub = document.getElementById('taller-row-sub');
+  const statusEl = document.getElementById('taller-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_taller: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Taller mecánico aparece en el menú.' : 'Desactivado — el módulo de Taller mecánico no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Taller mecánico activado. Recarga la página para ver el menú.' : 'Módulo de Taller mecánico desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloTaller:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Modulo de Comisiones: se activa/desactiva desde aqui. Apagado por defecto.
+// ---------- Costa Rica: datos fiscales del negocio (solo se muestra a cuentas de Costa Rica con colones) ----------
+async function cargarDatosFiscalesCR() {
+  const card = document.getElementById('cr-fiscal-card'); if (!card) return;
+  let cr = false; try { cr = !!(window.N360CR && window.N360CR.activo()); } catch (_) {}
+  card.style.display = cr ? '' : 'none';
+  if (!cr || !currentAuthUserId) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('actividad_economica, emisor_tipo_identificacion').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    document.getElementById('crf-tipo-id').value = data?.emisor_tipo_identificacion || '';
+    document.getElementById('crf-actividad').value = data?.actividad_economica || '';
+    ['crf-tipo-id', 'crf-actividad', 'crf-guardar'].forEach(id => { document.getElementById(id).disabled = false; });
+  } catch (e) { console.error('cargarDatosFiscalesCR:', e); setStatus(document.getElementById('crf-status'), 'No se pudieron cargar los datos. Recarga la página.', false); }
+}
+async function guardarDatosFiscalesCR() {
+  const st = document.getElementById('crf-status');
+  const tipo = document.getElementById('crf-tipo-id').value || null;
+  const act = (document.getElementById('crf-actividad').value || '').trim() || null;
+  if (act && !/^[0-9]{4,8}$/.test(act)) { setStatus(st, 'El código de actividad debe tener solo números (de 4 a 8 dígitos).', false); return; }
+  const btn = document.getElementById('crf-guardar'); btn.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ emisor_tipo_identificacion: tipo, actividad_economica: act }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    setStatus(st, 'Datos fiscales guardados.', true);
+  } catch (e) { console.error('guardarDatosFiscalesCR:', e); setStatus(st, 'No se pudieron guardar. Intenta de nuevo.', false); }
+  finally { btn.disabled = false; }
+}
+if (window.N360CR && window.N360CR.listo) window.N360CR.listo.then(() => { try { cargarDatosFiscalesCR(); } catch (_) {} });
+
+async function cargarModuloComisiones() {
+  const toggle = document.getElementById('comisiones-toggle');
+  const sub = document.getElementById('comisiones-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_comisiones').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_comisiones === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Comisiones aparece en el menú.' : 'Desactivado — el módulo de Comisiones no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloComisiones:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleComisionesClick(evt) {
+  const toggle = document.getElementById('comisiones-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloComisiones(toggle.checked);
+}
+async function guardarModuloComisiones(activo) {
+  const toggle = document.getElementById('comisiones-toggle');
+  const sub = document.getElementById('comisiones-row-sub');
+  const statusEl = document.getElementById('comisiones-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_comisiones: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Comisiones aparece en el menú.' : 'Desactivado — el módulo de Comisiones no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Comisiones activado. Recarga la página para ver el menú.' : 'Módulo de Comisiones desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloComisiones:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Programa de puntos: se activa/desactiva desde aqui. Apagado por
 // defecto -- sin activarlo, el modulo no aparece ni cambia nada.
 async function cargarModuloPuntos() {
@@ -3551,6 +4146,11 @@ async function initConfiguracion() {
       cargarCostoPromedio();
       cargarPresentaciones();
       cargarNumeroSerie();
+      cargarCicloProduccion();
+      cargarStockMinProd();
+      cargarOrdenAuto();
+      cargarAnticipoPedidos();
+      cargarReserva();
       cargarModeloProducto();
       cargarModuloHotel();
       cargarModuloRestaurante();
@@ -3560,6 +4160,10 @@ async function initConfiguracion() {
       cargarModuloClinica();
       cargarModuloInsumos();
       cargarModuloTransporte();
+      cargarModuloTaller();
+      cargarModuloMensajeria();
+      cargarModuloComisiones();
+      cargarDatosFiscalesCR();
       cargarModuloDiseno();
       cargarModuloFiados();
       cargarModuloCotizaciones();
@@ -3589,8 +4193,10 @@ sbClient.auth.onAuthStateChange((event) => {
 document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
-<script src="clinica-comun.js?v=20261024b"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="clinica-comun.js?v=20261029b"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>
 </html>

@@ -244,9 +244,9 @@ async function onCambiarMetodoPagoCxP(prefijo) {
 ===================================================== */
 async function loadProductosDisponibles() {
   try {
-    const { data } = await sbClient.from('productos')
+    const { data } = await N360Leer.todo(() => sbClient.from('productos')
       .select('id, nombre, sku, categoria, stock_actual, costo, activo, tipo_costo')
-      .eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true).order('nombre');
+      .eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true).order('nombre'), 'productos');
     STATE.productos = data || [];
     STATE.escalasCosto = {};
     try {

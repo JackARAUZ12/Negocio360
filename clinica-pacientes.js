@@ -2,7 +2,7 @@
    CLINICA-PACIENTES.JS — NEGOCIO360 · Módulo Clínica
    Pacientes (datos generales: los maneja recepción) y su
    EXPEDIENTE CLÍNICO (antecedentes, alergias, consultas),
-   que solo entrega el servidor con la sesión médica (PIN).
+   que solo entrega el servidor con la sesión médica (código del usuario médico).
    Notas: borrador -> "Cerrar y firmar" (ya no se modifica);
    después solo adendas fechadas o anulación con motivo.
 ===================================================== */
@@ -93,7 +93,10 @@ async function init() {
     CP.especialidades = clinicaEspecialidadesActivas(STATE.empresaConfig.clinica_especialidades);
     ClinicaSesion.iniciar(user.id, { onCambio: alCambiarSesion });
     await ClinicaSesion.comprobar();
+    try { const { data: kv } = await sb.from('clinica_convenios').select('id, nombre, cobertura_pct, activo').eq('auth_user_id', STATE.userId).order('nombre'); CP.convenios = kv || []; }
+    catch (_) { CP.convenios = []; }
     await cargarPacientes();
+    cargarHoy(); conectarHoy();
     await procesarURL();
     mostrarTutorial(false);
   } catch (e) {
@@ -123,7 +126,7 @@ async function cargarPacientes() {
     const hoy = vetHoy();
     const [ps, citasHoy] = await Promise.all([
       traerTodo(() => sb.from('clinica_pacientes').select('*').eq('auth_user_id', STATE.userId).order('id')),
-      sb.from('clinica_citas').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId).eq('fecha', hoy).neq('estado', 'cancelada'),
+      sb.from('agenda_citas').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId).eq('fecha', hoy).neq('estado', 'cancelada'),
     ]);
     CP.pacientes = ps;
     $p('cp-kpi-activos').textContent = ps.filter(p => p.activo).length;
@@ -169,6 +172,9 @@ function abrirPaciente(id) {
   const campos = ['nombres', 'apellidos', 'cedula', 'fecha_nacimiento', 'telefono', 'email', 'direccion', 'ocupacion', 'contacto_emergencia_nombre', 'contacto_emergencia_telefono', 'contacto_emergencia_parentesco', 'notas'];
   campos.forEach(k => { $p('pa-' + k).value = p?.[k] || ''; });
   $p('pa-sexo').value = p?.sexo || '';
+  $p('pa-convenio').innerHTML = '<option value="">— Sin seguro —</option>' + (CP.convenios || []).filter(k => k.activo || k.id === p?.convenio_id)
+    .map(k => `<option value="${esc(k.id)}">${esc(k.nombre)} · ${esc(Number(k.cobertura_pct))}%</option>`).join('');
+  $p('pa-convenio').value = p?.convenio_id || ''; $p('pa-poliza').value = p?.poliza || ''; $p('pa-poliza_vence').value = p?.poliza_vence || '';
   $p('pa-error').textContent = '';
   CP.cliente = p?.cliente_id ? { id: p.cliente_id } : null;
   pintarClienteVinculado();
@@ -216,7 +222,8 @@ async function guardarPaciente() {
   const payload = { nombres, apellidos: v('apellidos'), cedula: v('cedula'), fecha_nacimiento: nac, sexo: $p('pa-sexo').value || null,
     telefono: v('telefono'), email, direccion: v('direccion'), ocupacion: v('ocupacion'),
     contacto_emergencia_nombre: v('contacto_emergencia_nombre'), contacto_emergencia_telefono: v('contacto_emergencia_telefono'),
-    contacto_emergencia_parentesco: v('contacto_emergencia_parentesco'), notas: v('notas'), cliente_id: CP.cliente?.id || null };
+    contacto_emergencia_parentesco: v('contacto_emergencia_parentesco'), notas: v('notas'), cliente_id: CP.cliente?.id || null,
+    convenio_id: $p('pa-convenio').value || null, poliza: v('poliza'), poliza_vence: v('poliza_vence') };
   const btn = $p('pa-btn-guardar'); btn.disabled = true;
   try {
     const q = CP.editId
@@ -241,7 +248,7 @@ async function abrirFicha(id, tab) {
   openModal('modal-ficha');
   await cambiarTab(tab || 'exp');
 }
-function cerrarFicha() { closeModal('modal-ficha'); CP.ficha = null; CP.exp = null; CP.citaActiva = null; $p('fi-panel-exp').innerHTML = ''; }
+function cerrarFicha() { closeModal('modal-ficha'); CP.ficha = null; CP.exp = null; CP.citaActiva = null; $p('fi-panel-exp').innerHTML = ''; cargarHoy(); }
 function pintarCabecera() {
   const p = CP.ficha;
   $p('fi-titulo').textContent = `📋 ${clinicaNombrePaciente(p)}`;
@@ -252,13 +259,14 @@ function pintarCabecera() {
         <div class="cl-sub">${p.telefono ? '📞 ' + esc(p.telefono) : 'Sin teléfono'}${p.cedula ? ' · 🪪 ' + esc(p.cedula) : ''}</div></div>
       <div class="cl-acciones" style="margin:0">
         <button class="btn-accion-tabla btn-ghost" onclick="editarDesdeFicha()">✏️ Editar</button>
-        <button class="btn-accion-tabla btn-ghost" onclick="agendarCita()">📅 Agendar cita</button>
+        <button class="btn-accion-tabla btn-ghost" onclick="agendarCita()">📅 Agendar en la Agenda</button>
       </div></div>`;
 }
 function editarDesdeFicha() { const id = CP.ficha.id; cerrarFicha(); abrirPaciente(id); }
+// Las citas se hacen en la Agenda del sistema (con el paciente como cliente).
 function agendarCita(fecha) {
-  const q = new URLSearchParams({ nueva: '1', paciente: CP.ficha.id }); if (fecha) q.set('fecha', fecha);
-  window.location.href = 'clinica-agenda.html?' + q.toString();
+  if (fecha) alert(`Abre la Agenda y agenda el control para el ${vetFechaLarga(fecha)}.`);
+  window.location.href = 'agenda.html';
 }
 async function cambiarTab(tab) {
   CP.tab = tab;
@@ -274,6 +282,7 @@ function pintarDatos() {
       ${dato('Edad', clinicaEdad(p.fecha_nacimiento))}${dato('Sexo', p.sexo === 'femenino' ? 'Femenino' : p.sexo === 'masculino' ? 'Masculino' : '')}
       ${dato('Teléfono', p.telefono)}${dato('Correo', p.email)}${dato('Ocupación', p.ocupacion)}${dato('Dirección', p.direccion)}
     </div>
+    ${p.convenio_id ? `<div class="cl-seccion">Seguro o convenio</div><div class="cl-datos">${dato('Aseguradora', (CP.convenios || []).find(k => k.id === p.convenio_id)?.nombre)}${dato('Póliza', p.poliza)}${dato('Vence', p.poliza_vence ? fechaCorta(p.poliza_vence) : '')}</div>` : ''}
     <div class="cl-seccion">Contacto de emergencia</div>
     <div class="cl-datos">${dato('Nombre', p.contacto_emergencia_nombre)}${dato('Teléfono', p.contacto_emergencia_telefono)}${dato('Parentesco', p.contacto_emergencia_parentesco)}</div>
     ${p.notas ? `<div class="cl-info">📝 ${esc(p.notas)}</div>` : ''}
@@ -283,17 +292,13 @@ async function pintarCitas() {
   const cont = $p('fi-panel-citas');
   cont.innerHTML = '<p class="cl-sub">Cargando…</p>';
   try {
-    const [{ data, error }, { data: pers }] = await Promise.all([
-      sb.from('clinica_citas').select('id, fecha, hora, estado, tipo, motivo, medico_id, ventas(numero_venta, estado)').eq('auth_user_id', STATE.userId).eq('paciente_id', CP.ficha.id).order('fecha', { ascending: false }).order('hora', { ascending: false }).limit(60),
-      sb.from('clinica_personal').select('id, nombre').eq('auth_user_id', STATE.userId),
-    ]);
-    if (error) throw error;
+    const { citas: data, medicos: pers } = await ClinicaCitas.delPaciente(CP.ficha);
     const nom = id => (pers || []).find(x => x.id === id)?.nombre || '';
-    cont.innerHTML = (data || []).length ? data.map(c => { const e = CLINICA_ESTADOS_CITA[c.estado] || CLINICA_ESTADOS_CITA.programada, t = CLINICA_TIPOS_CITA[c.tipo] || CLINICA_TIPOS_CITA.consulta;
-      return `<div class="cl-item"><div class="cl-item-cab"><div><div class="cl-item-tit">${esc(fechaCorta(c.fecha))} · ${esc(vetFormatoHora(c.hora))}</div>
-        <div class="cl-item-fecha">${t.e} ${esc(t.n)}${c.motivo ? ' · ' + esc(c.motivo) : ''}${c.medico_id ? ' · ' + esc(nom(c.medico_id)) : ''}</div></div>
+    cont.innerHTML = (data || []).length ? data.map(c => { const e = CLINICA_ESTADOS_CITA[c.estado] || CLINICA_ESTADOS_CITA.programada;
+      return `<div class="cl-item"><div class="cl-item-cab"><div><div class="cl-item-tit">${esc(fechaCorta(c.fecha))}${c.hora ? ' · ' + esc(vetFormatoHora(c.hora)) : ''}</div>
+        <div class="cl-item-fecha">${c.motivo ? esc(c.motivo) : 'Cita'}${c.medico_id ? ' · ' + esc(nom(c.medico_id)) : ''}</div></div>
         <div><span class="cl-badge cl-badge-${e.clase}">${esc(e.n)}</span>${c.ventas?.estado === 'completada' ? ` <span class="cl-badge cl-badge-verde">Cobrada · ${esc(c.ventas.numero_venta || '')}</span>` : ''}</div></div></div>`; }).join('')
-      : '<p class="cl-sub">Este paciente no tiene citas.</p>';
+      : '<p class="cl-sub">Este paciente no tiene citas en la Agenda.</p>';
   } catch (e) { console.error('pintarCitas:', e); cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudieron cargar las citas.</p>'; }
 }
 async function alternarArchivado() {
@@ -308,6 +313,7 @@ async function alternarArchivado() {
 
 /* ---------- Expediente clínico (solo con sesión médica) ---------- */
 function alCambiarSesion(s) {
+  pintarHoy();
   if (!s) { CP.exp = null; }                       // al bloquear, se borra de la memoria y de la pantalla
   if (CP.ficha && CP.tab === 'exp') pintarExpediente();
 }
@@ -318,8 +324,15 @@ async function pintarExpediente() {
     CP.exp = null;
     cont.innerHTML = `<div class="cl-candado"><div class="cl-candado-icono">🔒</div>
       <p class="cl-nombre" style="margin:6px 0 4px">Expediente clínico confidencial</p>
-      <p class="cl-sub" style="margin:0 0 14px">Solo el personal médico puede verlo, con su PIN personal. Cada acceso queda registrado.</p>
-      <button class="btn-accion-tabla btn-primary" onclick="entrarExpediente()">🔓 Entrar con mi PIN</button></div>`;
+      <p class="cl-sub" style="margin:0 0 14px">Solo los médicos pueden verlo, con su código de usuario. Cada acceso queda registrado.</p>
+      <button class="btn-accion-tabla btn-primary" onclick="entrarExpediente()">🔓 Entrar con mi código</button></div>`;
+    return;
+  }
+  if (s.rol === 'enfermeria') {            // el servidor tampoco se lo abre: solo notas y signos en Observación
+    CP.exp = null;
+    cont.innerHTML = `<div class="cl-candado"><div class="cl-candado-icono">💉</div>
+      <p class="cl-nombre" style="margin:6px 0 4px">Enfermería no abre expedientes</p>
+      <p class="cl-sub" style="margin:0 0 14px">Las notas y los signos de los pacientes internados se escriben en <a href="clinica-hospital.html" style="color:var(--accent)">Observación y hospitalización</a>.</p></div>`;
     return;
   }
   cont.innerHTML = '<p class="cl-sub">Cargando expediente…</p>';
@@ -376,13 +389,25 @@ function tarjetaConsulta(c, yo) {
       <div class="cl-item-fecha">${esc(fechaHora(c.fecha))} · ${esc(c.medico_nombre)} · ${esc(clinicaNombreEspecialidad(c.especialidad))}</div></div>
       <span class="cl-badge cl-badge-${est.clase}">${esc(est.n)}</span></div>
     ${signos.length ? `<p><b>Signos vitales:</b> ${esc(signos.join(' · '))}</p>` : ''}
-    ${linea('Enfermedad actual', c.enfermedad_actual)}${linea('Examen físico', c.examen_fisico)}${htmlDiagnosticos(c.diagnosticos)}${linea('Diagnóstico', c.diagnostico)}
+    ${linea('Enfermedad actual', c.enfermedad_actual)}${linea('Examen físico', c.examen_fisico)}${htmlPlantilla(c)}${htmlDiagnosticos(c.diagnosticos)}${linea('Diagnóstico', c.diagnostico)}
     ${linea('Plan', c.plan)}${linea('Indicaciones', c.indicaciones)}${c.proximo_control ? `<p><b>Próximo control:</b> ${esc(fechaCorta(c.proximo_control))}</p>` : ''}
     ${(c.adendas || []).map(d => `<div class="cl-info"><b>Adenda · ${esc(d.autor_nombre)} · ${esc(fechaHora(d.created_at))}</b><br>${esc(d.texto)}</div>`).join('')}
     ${c.estado === 'cerrada' ? `<p class="cl-sub">🔏 Firmada el ${esc(fechaHora(c.cerrada_en))} · código ${esc(String(c.firma_hash || '').slice(0, 12))}</p>` : ''}
     ${c.estado === 'anulada' ? `<p class="cl-sub">🚫 Anulada por ${esc(c.anulada_por_nombre || '—')} el ${esc(fechaHora(c.anulada_en))}: ${esc(c.motivo_anulacion || '')}</p>` : ''}
     ${btns.length ? `<div class="cl-acciones">${btns.join('')}</div>` : ''}
   </div>`;
+}
+
+// Lo que la plantilla de la especialidad guardó en la nota (datos, cálculos y odontograma de solo lectura).
+function htmlPlantilla(c) {
+  const d = c.datos || {}, filas = clinicaResumenDatos(c.especialidad, d);
+  const calc = clinicaCalculosEspecialidad(c.especialidad, d, contextoPaciente(String(c.fecha || '').slice(0, 10)));
+  const od = d.odontograma ? clinicaLimpiarOdontograma(d.odontograma) : null;
+  if (!filas.length && !calc.length && !od) return '';
+  const notas = od ? Object.entries(od).filter(([, v]) => v.n).map(([k, v]) => `${k}: ${v.n}`) : [];
+  return `<div class="cl-plantilla">${filas.map(f => `<p><b>${esc(f.n)}:</b> ${esc(f.v)}</p>`).join('')}
+    ${od && Object.keys(od).length ? htmlOdontograma(od, d.denticion, {}) : ''}${notas.length ? `<p class="cl-sub"><b>Notas por diente:</b> ${esc(notas.join(' · '))}</p>` : ''}
+    ${calc.length ? `<div class="cl-calc">${htmlCalculos(calc)}</div>` : ''}</div>`;
 }
 
 /* ---------- Antecedentes ---------- */
@@ -425,7 +450,7 @@ function abrirConsulta(id) {
     : (CP.especialidades.includes('medicina_general') ? 'medicina_general' : CP.especialidades[0]);
   selE.value = c?.especialidad && CP.especialidades.includes(c.especialidad) ? c.especialidad : espDefecto;
   CAMPOS_TEXTO.forEach(k => { $p('co-' + k).value = c?.[k] || ''; });
-  if (!c && CP.citaActiva?.motivo) $p('co-motivo').value = CP.citaActiva.motivo;
+  if (!c && CP.citaActiva?.notas) $p('co-motivo').value = CP.citaActiva.notas.slice(0, 500);
   Object.keys(CLINICA_SIGNOS).forEach(k => { $p('co-' + k).value = c?.[k] ?? ''; });
   $p('co-proximo_control').value = c?.proximo_control || '';
   $p('co-proximo_control').min = vetHoy();
@@ -437,23 +462,100 @@ function abrirConsulta(id) {
   const alerg = CP.exp?.antecedentes?.alergias;
   $p('co-alergias').innerHTML = alerg ? `<div class="cl-alerta" style="margin:0 0 10px">⚠️ ALERGIAS: ${esc(alerg)}</div>` : '';
   openModal('modal-consulta');
-  setTimeout(() => $p('co-motivo').focus(), 50);
+  // El cursor va al motivo, salvo que ya se haya empezado a escribir en otro campo de la nota (no se le quita).
+  setTimeout(() => { if (!document.activeElement?.closest?.('#modal-consulta .modal-box')) $p('co-motivo').focus(); }, 50);
 }
-// Campos propios de la especialidad elegida (catálogo en clinica-comun.js; se guardan en consulta.datos).
+// Plantilla de la especialidad elegida (catálogo en clinica-comun.js; se guarda en consulta.datos con
+// el mismo candado y la misma firma que el resto de la nota). Los cálculos se actualizan al escribir.
 function pintarCamposEspecialidad(datos) {
-  const esp = CLINICA_ESPECIALIDADES[$p('co-especialidad').value];
+  const espK = $p('co-especialidad').value, esp = CLINICA_ESPECIALIDADES[espK];
   const campos = esp?.campos || [];
-  $p('co-extra').innerHTML = campos.length ? `<div class="cl-seccion">${esc(esp.n)}</div><div class="cl-grid2">${campos.map(f => {
+  const origenPrevio = datos?.odontograma ? CP.odoOrigen : null;      // al cambiar de especialidad y volver, se conserva el aviso
+  CP.odo = null; CP.odoSel = null; CP.odoOrigen = origenPrevio;
+  if (campos.some(f => f.tipo === 'odontograma')) {
+    let base = datos?.odontograma;
+    // Consulta nueva: se parte del último odontograma del paciente (el de su consulta dental más reciente).
+    if (!base && !CP.notaId) {
+      const prev = (CP.exp?.consultas || []).filter(c => c.estado !== 'anulada' && c.especialidad === 'odontologia' && c.datos?.odontograma)
+        .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0];
+      if (prev) { base = prev.datos.odontograma; CP.odoOrigen = prev.fecha; if (!datos?.denticion && prev.datos.denticion) datos = { ...(datos || {}), denticion: prev.datos.denticion }; }
+    }
+    CP.odo = clinicaLimpiarOdontograma(base);
+  }
+  const conOdo = !!CP.odo;
+  const campoHTML = f => {
     const val = datos?.[f.k] ?? '';
     const ctrl = f.tipo === 'textarea' ? `<textarea class="cl-ta" data-extra="${esc(f.k)}" maxlength="2000">${esc(val)}</textarea>`
       : f.tipo === 'select' ? `<select class="cl-in" data-extra="${esc(f.k)}"><option value=""></option>${(f.opciones || []).map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
-      : `<input class="cl-in" data-extra="${esc(f.k)}" type="${f.tipo === 'number' ? 'number' : f.tipo === 'date' ? 'date' : 'text'}" step="any" value="${esc(val)}" maxlength="300"/>`;
-    return `<div class="cl-field"><label>${esc(f.n)}</label>${ctrl}</div>`; }).join('')}</div>` : '';
+      : `<input class="cl-in" data-extra="${esc(f.k)}" type="${f.tipo === 'number' ? 'number' : f.tipo === 'date' ? 'date' : 'text'}" ${f.tipo === 'number' ? `inputmode="decimal" step="any"${f.min != null ? ` min="${f.min}"` : ''}${f.max != null ? ` max="${f.max}"` : ''}` : 'maxlength="300"'} value="${esc(val)}"/>`;
+    return `<div class="cl-field${f.tipo === 'textarea' ? ' cl-ancho' : ''}"><label>${esc(f.n)}${f.u ? ` <span class="cl-sub">(${esc(f.u)})</span>` : ''}</label>${ctrl}</div>`; };
+  // Con odontograma: primero los datos cortos, luego el odontograma y al final los textos largos.
+  const cortos = campos.filter(f => f.tipo !== 'odontograma' && (!conOdo || f.tipo !== 'textarea')), largos = conOdo ? campos.filter(f => f.tipo === 'textarea') : [];
+  $p('co-extra').innerHTML = campos.length ? `<div class="cl-seccion">${esc(esp.e)} ${esc(esp.n)}</div><div class="cl-grid2">${cortos.map(campoHTML).join('')}</div>
+    ${conOdo ? `<div class="cl-seccion">Odontograma</div>${CP.odoOrigen ? `<p class="cl-sub" style="margin:0 0 6px">Se tomó el odontograma de la consulta del ${esc(fechaCorta(CP.odoOrigen))}: actualiza solo lo que cambió.</p>` : ''}<div id="co-odo"></div>` : ''}
+    ${largos.length ? `<div class="cl-grid2">${largos.map(campoHTML).join('')}</div>` : ''}
+    <div id="co-extra-calc"></div>` : '';
+  $p('co-extra').querySelectorAll('[data-extra]').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+    if (el.dataset.extra === 'denticion') pintarOdontograma(); recalcularEspecialidad(); }));
+  if (CP.odo) pintarOdontograma();
+  recalcularEspecialidad();
 }
 function leerCamposEspecialidad() {
   const d = {};
   document.querySelectorAll('#co-extra [data-extra]').forEach(el => { const v = String(el.value || '').trim(); if (v) d[el.dataset.extra] = v.slice(0, 2000); });
+  if (CP.odo) { const o = clinicaLimpiarOdontograma(CP.odo); if (Object.keys(o).length) d.odontograma = o; }
   return d;
+}
+function contextoPaciente(fecha) { return { fecha: fecha || vetHoy(), nacimiento: CP.ficha?.fecha_nacimiento || null, sexo: CP.ficha?.sexo || null }; }
+function htmlCalculos(lista) { return lista.map(x => `<span class="cl-badge cl-badge-${esc(x.clase)}" style="white-space:normal;text-align:left">${esc(x.t)}</span>`).join(' '); }
+function recalcularEspecialidad() {
+  const caja = $p('co-extra-calc'); if (!caja) return;
+  const r = clinicaCalculosEspecialidad($p('co-especialidad').value, leerCamposEspecialidad(), contextoPaciente());
+  caja.innerHTML = r.length ? `<div class="cl-calc">${htmlCalculos(r)}</div>` : '';
+}
+
+/* ---------- Odontograma (numeración FDI; se toca un diente para marcar su estado) ---------- */
+function htmlOdontograma(od, denticion, { editable, sel } = {}) {
+  const diente = n => {
+    const v = od[n] || { e: 'sano' }, e = CLINICA_ESTADOS_DIENTE[v.e] || CLINICA_ESTADOS_DIENTE.sano;
+    const caras = (v.s || []).join(''), titulo = `Diente ${n}: ${e.n}${caras ? ' (' + caras + ')' : ''}${v.n ? ' · ' + v.n : ''}`;
+    return `<button type="button" class="odo-d${sel === String(n) ? ' odo-sel' : ''}" ${editable ? `onclick="elegirDiente('${n}')"` : 'tabindex="-1" disabled'}
+      style="background:${e.c};border-color:${e.b}" title="${esc(titulo)}" aria-label="${esc(titulo)}"><span class="odo-n">${n}</span><span class="odo-i" style="color:${e.b}">${esc(e.ic || '')}</span><span class="odo-s">${esc(caras)}</span></button>`;
+  };
+  const arcada = filas => `<div class="odo-fila"><div class="odo-q odo-izq">${filas[0].map(diente).join('')}</div><div class="odo-q">${filas[1].map(diente).join('')}</div></div>
+    <div class="odo-fila"><div class="odo-q odo-izq">${filas[2].map(diente).join('')}</div><div class="odo-q">${filas[3].map(diente).join('')}</div></div>`;
+  const tipos = denticion === 'Temporal' ? ['temporal'] : denticion === 'Mixta' ? ['permanente', 'temporal'] : ['permanente'];
+  const usados = new Set(Object.values(od).map(v => v.e));
+  return `<div class="odo">${tipos.map(t => `${tipos.length > 1 ? `<div class="odo-tit">${t === 'permanente' ? 'Permanentes' : 'Temporales'}</div>` : ''}<div class="odo-arcada">${arcada(CLINICA_DIENTES[t])}</div>`).join('')}
+    <div class="odo-leyenda">${Object.entries(CLINICA_ESTADOS_DIENTE).filter(([k]) => editable || usados.has(k)).map(([, e]) => `<span><i style="background:${e.c};border-color:${e.b};color:${e.b}">${esc(e.ic || '')}</i>${esc(e.n)}</span>`).join('')}</div></div>`;
+}
+function denticionActual() { return document.querySelector('#co-extra [data-extra="denticion"]')?.value || 'Permanente'; }
+function pintarOdontograma() {
+  const cont = $p('co-odo'); if (!cont || !CP.odo) return;
+  cont.innerHTML = htmlOdontograma(CP.odo, denticionActual(), { editable: true, sel: CP.odoSel }) + '<div id="odo-editor"></div>';
+  pintarEditorDiente();
+}
+function elegirDiente(n) { CP.odoSel = CP.odoSel === String(n) ? null : String(n); pintarOdontograma(); if (CP.odoSel) setTimeout(() => $p('odo-editor')?.scrollIntoView({ block: 'nearest' }), 30); }
+function pintarEditorDiente() {
+  const ed = $p('odo-editor'); if (!ed) return;
+  const n = CP.odoSel; if (!n) { ed.innerHTML = '<p class="cl-sub" style="margin:6px 0 0">Toca un diente para marcar su estado.</p>'; return; }
+  const v = CP.odo[n] || { e: 'sano' }, est = CLINICA_ESTADOS_DIENTE[v.e] || CLINICA_ESTADOS_DIENTE.sano;
+  ed.innerHTML = `<div class="odo-editor"><div class="cl-item-tit">🦷 Diente ${esc(n)}</div>
+    <div class="odo-chips">${Object.entries(CLINICA_ESTADOS_DIENTE).map(([k, e]) => `<button type="button" class="odo-chip${k === v.e ? ' activa' : ''}" style="border-color:${e.b}" onclick="estadoDiente('${k}')">${e.ic ? `<b style="color:${e.b}">${esc(e.ic)}</b> ` : ''}${esc(e.n)}</button>`).join('')}</div>
+    ${est.caras ? `<div class="cl-sub" style="margin:6px 0 2px">Caras afectadas:</div><div class="odo-chips">${Object.entries(CLINICA_CARAS).map(([c, t]) => `<button type="button" class="odo-chip${(v.s || []).includes(c) ? ' activa' : ''}" onclick="caraDiente('${c}')" title="${esc(t)}"><b>${c}</b> ${esc(t)}</button>`).join('')}</div>` : ''}
+    <div class="cl-field" style="margin:8px 0 0"><label for="odo-nota">Nota del diente</label><input id="odo-nota" class="cl-in" maxlength="200" value="${esc(v.n || '')}" oninput="notaDiente(this.value)"/></div>
+    <div class="cl-acciones"><button type="button" class="btn-accion-tabla btn-ghost" onclick="elegirDiente('${esc(n)}')">✓ Listo</button></div></div>`;
+}
+function cambioDiente(f) {
+  const n = CP.odoSel; if (!n) return;
+  const v = { e: 'sano', ...(CP.odo[n] || {}) }; f(v);
+  if (!CLINICA_ESTADOS_DIENTE[v.e]?.caras) delete v.s;
+  if (v.e === 'sano' && !v.n) delete CP.odo[n]; else CP.odo[n] = v;
+}
+function estadoDiente(e) { cambioDiente(v => { v.e = e; }); pintarOdontograma(); recalcularEspecialidad(); }
+function caraDiente(c) { cambioDiente(v => { const s = new Set(v.s || []); s.has(c) ? s.delete(c) : s.add(c); v.s = [...s]; }); pintarOdontograma(); recalcularEspecialidad(); }
+function notaDiente(t) {
+  cambioDiente(v => { v.n = String(t || '').slice(0, 200); if (!v.n) delete v.n; });   // sin repintar: no se pierde lo que se escribe
 }
 function recalcularSignos() {
   const v = {}; Object.keys(CLINICA_SIGNOS).forEach(k => { v[k] = $p('co-' + k).value; });
@@ -476,17 +578,17 @@ function validarConsulta(d) {
   const vs = {}; Object.keys(CLINICA_SIGNOS).forEach(k => { vs[k] = $p('co-' + k).value; });
   const e = clinicaValidarSignos(vs); if (e) return e;
   if (d.proximo_control && d.proximo_control < vetHoy()) return 'El próximo control no puede ser una fecha pasada.';
-  return '';
+  return clinicaValidarDatos(d.especialidad, d.datos);
 }
 async function guardarNota({ silencioso } = {}) {
   const err = $p('co-error'); err.textContent = '';
   const d = datosConsulta(), e = validarConsulta(d);
   if (e) { err.textContent = e; return null; }
-  if (!CP.notaId) { d.paciente_id = CP.ficha.id; if (CP.citaActiva) d.cita_id = CP.citaActiva.id; }
+  if (!CP.notaId) { d.paciente_id = CP.ficha.id; if (CP.citaActiva) d.agenda_cita_id = CP.citaActiva.id; }
   const r = await ClinicaSesion.rpc('clinica_consulta_guardar', { p_id: CP.notaId, p_datos: d });
   if (!r || !r.ok) { err.textContent = clinicaTextoMotivo(r); return null; }
   CP.notaId = r.id;
-  if (d.cita_id) CP.citaActiva = null;              // la cita ya quedó ligada a esta nota
+  if (d.agenda_cita_id) CP.citaActiva = null;              // la cita ya quedó ligada a esta nota
   if (!silencioso) showToast('Borrador guardado. Recuerda cerrarlo y firmarlo al terminar.');
   return r.id;
 }
@@ -507,7 +609,8 @@ async function guardarYCerrar() {
     const r = await ClinicaSesion.rpc('clinica_consulta_cerrar', { p_id: id });
     if (!r || !r.ok) { $p('co-error').textContent = clinicaTextoMotivo(r); await pintarExpediente(); return; }
     closeModal('modal-consulta');
-    showToast('Consulta cerrada y firmada.');
+    showToast('Consulta cerrada y firmada. El paciente pasa a "Atendidos" en la Sala.');
+    avisarHoy(); cargarHoy();
     await pintarExpediente();
     if (d.proximo_control && confirm(`El próximo control es el ${vetFechaLarga(d.proximo_control)}. ¿Agendar la cita ahora?`)) agendarCita(d.proximo_control);
   } catch (e) { if (!e.cancelado) { console.error('guardarYCerrar:', e); $p('co-error').textContent = clinicaTextoError(e, 'No se pudo cerrar la nota.'); } }
@@ -544,13 +647,18 @@ async function confirmarAnular() {
   } catch (e) { if (!e.cancelado) { console.error('anular:', e); $p('nu-error').textContent = clinicaTextoError(e); } }
 }
 
-/* ---------- Venir desde la Agenda (?cita=) o con ?paciente= ---------- */
+/* ---------- Venir desde la Sala de espera (?cita= de la Agenda) o con ?paciente= ---------- */
 async function procesarURL() {
   try {
     const q = new URLSearchParams(window.location.search);
     const citaId = q.get('cita'), pacId = q.get('paciente');
-    if (citaId) {
-      const { data: cita } = await sb.from('clinica_citas').select('*').eq('id', citaId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (citaId) { await atenderCita(citaId); return; }
+    if (pacId && CP.pacientes.some(p => p.id === pacId)) await abrirFicha(pacId);
+  } catch (e) { console.warn('procesarURL:', e); }
+}
+// Abre el expediente del paciente de una cita de hoy y empieza (o continúa) su nota.
+async function atenderCita(citaId) {
+      const cita = await ClinicaCitas.una(citaId);
       if (!cita || ['cancelada', 'no_asistio', 'atendida'].includes(cita.estado) || !CP.pacientes.some(p => p.id === cita.paciente_id)) {
         showToast('Esa cita ya no está disponible para atender.', 'error');
         if (cita && CP.pacientes.some(p => p.id === cita.paciente_id)) await abrirFicha(cita.paciente_id);
@@ -558,26 +666,82 @@ async function procesarURL() {
       }
       CP.citaActiva = cita;
       await abrirFicha(cita.paciente_id, 'exp');
-      if (!ClinicaSesion.leer()) { const s = await ClinicaSesion.pedir({ ayuda: 'Para atender a este paciente, elige tu nombre y escribe tu PIN.' }); if (!s) return; await pintarExpediente(); }
+      if (!ClinicaSesion.leer()) { const s = await ClinicaSesion.pedir({ ayuda: 'Para atender a este paciente, escribe tu código de usuario.' }); if (!s) return; await pintarExpediente(); }
       if (!CP.exp) return;
       // Si la cita ya tiene un borrador, se continúa ese mismo.
-      const yaNota = (CP.exp.consultas || []).find(c => c.cita_id === cita.id && c.estado !== 'anulada');
+      const yaNota = (CP.exp.consultas || []).find(c => c.agenda_cita_id === cita.id && c.estado !== 'anulada');
       if (yaNota) { CP.citaActiva = null; if (yaNota.estado === 'borrador' && yaNota.medico_id === CP.exp.yo?.id) abrirConsulta(yaNota.id); return; }
       abrirConsulta();
-      return;
-    }
-    if (pacId && CP.pacientes.some(p => p.id === pacId)) await abrirFicha(pacId);
-  } catch (e) { console.warn('procesarURL:', e); }
+}
+
+/* ---------- Atención de hoy: quién está en consulta y quién espera, sin tener que buscarlo ----------
+   Mismas citas que la Sala de espera; se actualiza al instante con el mismo aviso en vivo de la Sala. */
+const HOY = { listo: false, citas: [], medicos: [], consultorios: [], soloMios: true, canal: null, cargando: null, otraVez: false };
+async function cargarHoy() {
+  if (HOY.cargando) { HOY.otraVez = true; return HOY.cargando; }
+  HOY.cargando = (async () => {
+    try {
+      if (!HOY.consultorios.length) { const { data: k } = await sb.from('clinica_consultorios').select('id, nombre').eq('auth_user_id', STATE.userId); HOY.consultorios = k || []; }
+      const r = await ClinicaCitas.cargar(vetHoy(), vetHoy());
+      HOY.citas = r.citas; HOY.medicos = r.medicos; HOY.listo = true;
+      pintarHoy();
+    } catch (e) { console.warn('atención de hoy:', e); $p('cp-hoy').innerHTML = '<div class="cl-info" style="grid-column:1/-1">No se pudo cargar la atención de hoy.</div>'; }
+  })();
+  try { await HOY.cargando; } finally { HOY.cargando = null; }
+  if (HOY.otraVez) { HOY.otraVez = false; return cargarHoy(); }
+}
+function filtroHoy(mios) { HOY.soloMios = mios; pintarHoy(); }
+function pintarHoy() {
+  const cont = $p('cp-hoy'); if (!cont || !HOY.listo) return;
+  const yo = ClinicaSesion.leer()?.personal_id || null;
+  const turnos = clinicaTurnos(HOY.citas), turnoDe = id => turnos.find(t => t.id === id)?.turno;
+  let enConsulta = HOY.citas.filter(c => c.estado === 'en_consulta'), espera = clinicaOrdenEspera(turnos);
+  const mio = c => !!yo && c.medico_id === yo;
+  const conFiltro = !!yo && HOY.soloMios;
+  $p('cp-hoy-filtro').innerHTML = yo ? `<button type="button" class="btn-accion-tabla ${conFiltro ? 'btn-primary' : 'btn-ghost'}" onclick="filtroHoy(true)">Mis pacientes</button><button type="button" class="btn-accion-tabla ${conFiltro ? 'btn-ghost' : 'btn-primary'}" onclick="filtroHoy(false)">Todos</button>` : '';
+  if (conFiltro) { enConsulta = enConsulta.filter(mio); espera = espera.filter(mio); }
+  const nombre = c => clinicaNombrePaciente(c.clinica_pacientes || {});
+  const med = id => HOY.medicos.find(m => m.id === id)?.nombre || '', kon = id => HOY.consultorios.find(k => k.id === id)?.nombre || '';
+  const donde = c => [med(c.medico_id) && '👨‍⚕️ ' + med(c.medico_id), kon(c.consultorio_id) && '🚪 ' + kon(c.consultorio_id)].filter(Boolean).map(esc).join(' · ');
+  const sinExp = c => c.paciente_id ? '' : '<div class="cl-sub" style="color:var(--warning,#b45309)">⚠️ Sin expediente: al atender se elige o se crea.</div>';
+  const tarjeta = (c, consulta) => `<div class="ag-card ${consulta ? 'est-en_consulta' : 'est-en_espera'}${c.prioridad === 'urgente' ? ' sa-urgente' : ''}" data-hoy="${esc(c.id)}">
+      <div class="ag-fila"><span class="ag-hora">${turnoDe(c.id) ? 'Turno ' + turnoDe(c.id) : esc(vetFormatoHora(c.hora))}${c.prioridad === 'urgente' ? ' <span class="cl-badge cl-badge-rojo">🚨 Urgente</span>' : ''}</span>
+        ${consulta ? '<span class="cl-badge cl-badge-morado">En consulta</span>' : `<span class="cl-badge ${c.espera_min >= 30 ? 'cl-badge-rojo' : 'cl-badge-ambar'}">⏱️ Espera ${esc(clinicaTextoEspera(c.espera_min))}</span>`}</div>
+      <div class="cl-nombre">${esc(nombre(c))}</div>${c.motivo ? `<div class="cl-sub">${esc(c.motivo)}</div>` : ''}<div class="cl-sub">${donde(c) || 'Sin médico asignado'}</div>${sinExp(c)}
+      <div class="ag-btns"><button class="btn-accion-tabla btn-primary" onclick="atenderHoy('${c.id}')">🩺 Atender</button>${c.paciente_id ? `<button class="btn-accion-tabla btn-ghost" onclick="abrirFicha('${c.paciente_id}')">👤 Ficha</button>` : ''}</div></div>`;
+  const total = enConsulta.length + espera.length;
+  cont.innerHTML = total ? enConsulta.map(c => tarjeta(c, true)).join('') + espera.map(c => tarjeta(c, false)).join('')
+    : `<div class="cl-info" style="grid-column:1/-1">${conFiltro ? 'No tienes pacientes en consulta ni esperando. Toca "Todos" para ver a los de los demás médicos.' : 'Nadie en consulta ni esperando ahora. Cuando recepción marque "🪑 Llegó" en la Sala de espera, aparecen aquí.'}</div>`;
+}
+// Atender desde aquí: si estaba esperando, se le llama (la pantalla de la sala lo anuncia) y pasa a "En consulta".
+async function atenderHoy(id) {
+  const c = HOY.citas.find(x => x.id === id); if (!c) return;
+  if (!c.paciente_id) { window.location.href = 'clinica-sala.html?atender=' + encodeURIComponent(id); return; }
+  if (c.estado === 'en_espera') {
+    try {
+      if (!c.llamado_en || Date.now() - new Date(c.llamado_en).getTime() > 10 * 60000) await ClinicaCitas.guardarInfo(id, { llamado_en: new Date().toISOString() });
+      await ClinicaCitas.cambiarEstado(id, 'en_atencion');
+      avisarHoy(); cargarHoy();
+    } catch (e) { console.warn('pasar a consulta:', e); }
+  }
+  await atenderCita(id);
+}
+function avisarHoy() { try { Promise.resolve(HOY.canal?.send({ type: 'broadcast', event: 'cambio', payload: {} })).catch(() => {}); } catch (_) {} }
+function conectarHoy() {
+  try { HOY.canal = sb.channel('clinica-sala-' + STATE.userId, { config: { broadcast: { self: false } } }).on('broadcast', { event: 'cambio' }, () => cargarHoy()).subscribe(); }
+  catch (e) { console.warn('atención de hoy en vivo:', e); }
+  setInterval(() => { if (!document.hidden) cargarHoy(); }, 30000);
 }
 
 /* ---------- Tutorial ---------- */
 const PASOS_TUTORIAL = [
   { icono: '👤', titulo: 'Pacientes', texto: 'Aquí registras a cada paciente con sus datos generales. Su número de expediente y su edad se calculan solos.' },
-  { icono: '🔒', titulo: 'Expediente clínico', texto: 'Antecedentes, alergias y consultas solo los ve el personal médico con su PIN. Cada vez que alguien abre un expediente queda anotado.' },
+  { icono: '🔒', titulo: 'Expediente clínico', texto: 'Antecedentes, alergias y consultas solo los ven los médicos con su código de usuario. Cada vez que alguien abre un expediente queda anotado.' },
   { icono: '📝', titulo: 'La consulta', texto: 'Escribe motivo, signos vitales (el IMC sale solo), examen, diagnóstico y plan. Puedes guardar un borrador y terminar después.' },
+  { icono: '🦷', titulo: 'Según la especialidad', texto: 'Al elegir la especialidad aparecen sus datos propios y los cálculos se hacen solos: edad gestacional y fecha de parto, Glasgow, escalas de dolor, depresión y ansiedad, riesgo por cintura, y el odontograma, que parte del último del paciente.' },
   { icono: '✅', titulo: 'Cerrar y firmar', texto: 'Al terminar, "Cerrar y firmar". La nota queda fija: si luego hay que corregir algo, se agrega una adenda con fecha.' },
   { icono: '📄', titulo: 'Recetas y documentos', texto: 'Con "📄 Documento" haces recetas, órdenes de laboratorio o imágenes, constancias, certificados, referencias y consentimientos, listos para imprimir en hoja o en ticket. La receta puede pasar a Farmacia o a la cuenta de la visita.' },
-  { icono: '📎', titulo: 'Archivos', texto: 'Sube resultados o fotos (PDF o imagen, hasta 10 MB). Se guardan en un lugar privado: solo el personal médico con su PIN los abre.' },
+  { icono: '📎', titulo: 'Archivos', texto: 'Sube resultados o fotos (PDF o imagen, hasta 10 MB). Se guardan en un lugar privado: solo los médicos con su código de usuario los abren.' },
 ];
 function mostrarTutorial(forzar) {
   try {

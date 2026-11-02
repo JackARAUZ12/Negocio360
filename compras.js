@@ -91,6 +91,7 @@ function ymd(d) {
 }
 function todayISO() { return ymd(new Date()); }
 function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   // día de cierre del negocio (opcional)
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }
@@ -345,13 +346,13 @@ function populateMetodosSelect() {
 ===================================================== */
 async function loadProductosDisponibles() {
   try {
-    const { data } = await sbClient
+    const { data } = await N360Leer.todo(() => sbClient
       .from('productos')
       .select('*')
       .eq('auth_user_id', STATE.userId)
       .eq('tipo', 'producto')  // ← SOLO productos, nunca servicios
       .eq('activo', true)
-      .order('nombre');
+      .order('nombre'), 'productos');
     STATE.productos = data || [];
     // Escala de costos (opcional por producto): si falla, todo sigue con costo fijo.
     STATE.escalasCosto = {};
@@ -370,12 +371,12 @@ async function loadProductosDisponibles() {
 async function loadKPIs() {
   const { from, to } = getFilterDates('mes', '', '');
   try {
-    const { data } = await sbClient
+    const { data } = await N360Leer.todo(() => sbClient
       .from('compras')
       .select('total, estado, fecha, id')
       .eq('auth_user_id', STATE.userId)
       .gte('fecha', from)
-      .lte('fecha', to);
+      .lte('fecha', to), 'compras');
 
     const todas    = data || [];
     const activas  = todas.filter(c => c.estado !== 'anulada');
@@ -386,12 +387,12 @@ async function loadKPIs() {
     const totalHoy = deHoy.reduce((s, c) => s + Number(c.total), 0);
 
     // Valor inventario actual
-    const { data: prods } = await sbClient
+    const { data: prods } = await N360Leer.todo(() => sbClient
       .from('productos')
       .select('stock_actual, costo')
       .eq('auth_user_id', STATE.userId)
       .eq('tipo', 'producto')
-      .eq('activo', true);
+      .eq('activo', true), 'productos');
 
     const valorInventario = (prods || []).reduce(
       (s, p) => s + (Number(p.stock_actual || 0) * Number(p.costo || 0)), 0
@@ -405,13 +406,13 @@ async function loadKPIs() {
       .eq('activo', true);
 
     // Unidades ingresadas este mes
-    const { data: detalles } = await sbClient
+    // Solo los detalles de compras activas del mes (se leen solo esos, por lotes)
+    const compraIdsActivas = new Set(activas.map(c => c.id));
+    const { data: detalles } = await N360Leer.porIds([...compraIdsActivas], ch => sbClient
       .from('detalle_compras')
       .select('cantidad, compra_id')
-      .eq('auth_user_id', STATE.userId);
-
-    // Solo los detalles de compras activas del mes
-    const compraIdsActivas = new Set(activas.map(c => c.id));
+      .eq('auth_user_id', STATE.userId)
+      .in('compra_id', ch), 'detalle de compras');
     const unidadesMes = (detalles || [])
       .filter(d => compraIdsActivas.has(d.compra_id))
       .reduce((s, d) => s + Number(d.cantidad), 0);
@@ -473,6 +474,16 @@ async function loadCompras() {
     STATE.compras      = data || [];
     STATE.comprasTotal = count || 0;
 
+    // Compras a crédito (con cuenta por pagar viva): se pagan desde Cuentas por pagar,
+    // nunca con el botón "Completar" (antes se descontaban dos veces de Caja).
+    STATE.comprasConCxp = new Set();
+    const idsPend = STATE.compras.filter(c => c.estado === 'pendiente').map(c => c.id);
+    if (idsPend.length) {
+      const { data: cx } = await sbClient.from('cuentas_por_pagar').select('compra_id')
+        .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').in('compra_id', idsPend);
+      (cx || []).forEach(x => STATE.comprasConCxp.add(x.compra_id));
+    }
+
     renderCompras();
     renderPaginacionCompras();
   } catch(e) {
@@ -530,7 +541,7 @@ function renderCompras() {
         <button class="btn-icon" onclick="verDetalleCompra('${c.id}')" title="Ver detalle">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
-        ${c.estado === 'pendiente' ? `
+        ${c.estado === 'pendiente' && !(STATE.comprasConCxp && STATE.comprasConCxp.has(c.id)) ? `
         <button class="btn-icon" style="color:var(--success)" onclick="abrirCompletarCompra('${c.id}')" title="Completar — ya se pagó, descontar de Caja">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
         </button>` : ''}
@@ -1862,7 +1873,15 @@ async function guardarNuevoProveedorDirectaCompra() {
   }
 }
 
+let _guardandoCompraDirecta = false;
 async function guardarCompraDirecta() {
+  if (_guardandoCompraDirecta) return;
+  _guardandoCompraDirecta = true;
+  const b = document.getElementById('cd-btn-guardar'); if (b) b.disabled = true;
+  try { await _guardarCompraDirectaInterno(); }
+  finally { _guardandoCompraDirecta = false; if (b) { b.disabled = false; b.style.opacity = ''; } }
+}
+async function _guardarCompraDirectaInterno() {
   const errEl = document.getElementById('cd-error');
   errEl.textContent = '';
 
@@ -1991,7 +2010,18 @@ async function registrarComisionTarjetaCompra(comision, d) {
   if (!r.ok) { console.error('Comisión por pago con tarjeta:', r.error); showToast('La compra se guardó, pero no se pudo registrar la comisión de la tarjeta. Regístrala en Gastos.', 'warning'); }
 }
 
+// Evita guardar la misma compra dos veces con doble clic: el botón se apagaba recién
+// después de varias revisiones (banco, aviso de efectivo) y un segundo clic rápido
+// alcanzaba a entrar (pasó el 29-oct: C-000315 quedó dos veces, a 0.14 s).
+let _guardandoCompra = false;
 async function guardarCompra() {
+  if (_guardandoCompra) return;
+  _guardandoCompra = true;
+  const b = document.getElementById('nc-btn-save'); if (b) b.disabled = true;
+  try { await _guardarCompraInterno(); }
+  finally { _guardandoCompra = false; if (b) { b.disabled = false; b.style.opacity = ''; } }
+}
+async function _guardarCompraInterno() {
   if (STATE.carrito.length === 0) {
     showToast('El carrito está vacío', 'error');
     return;
@@ -2294,6 +2324,14 @@ async function guardarCompra() {
     } catch(e) {}
 
     await Promise.allSettled([loadKPIs(), loadCompras(), loadProveedores(), loadProductosDisponibles()]);
+
+    // Series del proveedor (solo si el negocio activó números de serie). No bloquea ni cambia la compra.
+    try {
+      if (window.N360Series && STATE.empresaConfig?.usa_numero_serie === true) {
+        window.N360Series.despuesDeCompra({ sb: sbClient, userId: STATE.userId, empresaConfig: STATE.empresaConfig, compraId: compra.id, numero, fecha,
+          proveedor: STATE.proveedorSeleccionado ? { id: STATE.proveedorSeleccionado.id, nombre: STATE.proveedorSeleccionado.nombre } : null });
+      }
+    } catch (eSer) { console.warn('series compra:', eSer); }
 
   } catch(e) {
     console.error('guardarCompra:', e);
@@ -2817,6 +2855,17 @@ async function completarCompra() {
 
   const compra = STATE.compras.find(c => c.id === compraToCompletar);
   if (!compra) { errEl.textContent = 'No se encontró la compra.'; return; }
+
+  // Compra a crédito: ya tiene cuenta por pagar → se paga desde Cuentas por pagar (si no, sale dos veces de Caja).
+  {
+    const { data: cx, error: eCx } = await sbClient.from('cuentas_por_pagar').select('numero')
+      .eq('auth_user_id', STATE.userId).eq('compra_id', compra.id).neq('estado', 'anulado').limit(1);
+    if (eCx) { errEl.textContent = 'No se pudo revisar si la compra es a crédito. Intenta de nuevo.'; return; }
+    if (cx && cx.length) {
+      errEl.textContent = `Esta compra es a crédito (${cx[0].numero || 'cuenta por pagar'}). Págala desde Cuentas por pagar para que no se descuente dos veces de Caja.`;
+      return;
+    }
+  }
 
   const metodoSel = document.getElementById('cc-metodo-pago');
   const metodoPagoId = metodoSel.value || null;

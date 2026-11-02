@@ -10,7 +10,10 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1231,7 +1234,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-5)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           </div>
           <div class="kpi-body">
-            <div class="kpi-label">Movimientos este mes</div>
+            <div class="kpi-label">Movimientos en el período</div>
             <div class="kpi-value" id="kpi-mes">—</div>
           </div>
         </div>
@@ -1405,7 +1408,7 @@
       <div class="panel-card fade-in" style="margin-top:20px">
         <div style="padding:16px 20px 0">
           <h3 style="margin:0 0 2px">Historial de movimientos</h3>
-          <p style="margin:0;font-size:12.5px;color:var(--text-secondary)">Quién hizo qué, en cualquier módulo — creaciones, ediciones y eliminaciones. Solo las últimas 24 horas.</p>
+          <p style="margin:0;font-size:12.5px;color:var(--text-secondary)">Quién hizo qué, en cualquier módulo — creaciones, ediciones y eliminaciones. Se guardan los últimos 90 días (lo más antiguo se borra solo cada madrugada).</p>
         </div>
         <!-- FILTROS -->
         <div class="filtros-row">
@@ -1420,8 +1423,15 @@
           <select id="aud-filtro-modulo" onchange="filtrarPorSelectAud()" style="width:auto;min-width:150px">
             <option value="">Todos los módulos</option>
           </select>
-          <input type="date" id="aud-fecha-desde" onchange="cargarAuditoria()" style="width:auto"/>
-          <input type="date" id="aud-fecha-hasta" onchange="cargarAuditoria()" style="width:auto"/>
+          <span class="aud-rangos" role="group" aria-label="Período">
+            <button type="button" class="filter-btn" data-aud-rango="1" onclick="rangoRapidoAud(1)">Hoy</button>
+            <button type="button" class="filter-btn" data-aud-rango="7" onclick="rangoRapidoAud(7)">7 días</button>
+            <button type="button" class="filter-btn" data-aud-rango="30" onclick="rangoRapidoAud(30)">30 días</button>
+            <button type="button" class="filter-btn" data-aud-rango="90" onclick="rangoRapidoAud(90)">90 días</button>
+          </span>
+          <input type="date" id="aud-fecha-desde" onchange="marcarRangoAud(null); cargarAuditoria()" style="width:auto" aria-label="Desde"/>
+          <input type="date" id="aud-fecha-hasta" onchange="marcarRangoAud(null); cargarAuditoria()" style="width:auto" aria-label="Hasta"/>
+          <button type="button" class="btn btn-secondary" id="aud-excel" onclick="exportarAuditoriaExcel()" style="width:auto">📥 Excel</button>
 
           <div class="search-wrap" style="margin-left:auto">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1455,6 +1465,10 @@
             <button id="btn-pag-next" onclick="paginaSiguiente()">Siguiente →</button>
           </div>
         </div>
+        <div id="aud-mas-wrap" style="display:none;padding:0 20px 16px;text-align:center">
+          <button type="button" class="btn btn-secondary" id="aud-mas" onclick="cargarAuditoria(true)" style="width:auto">⬇ Cargar movimientos más antiguos</button>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Se cargan por partes para que la pantalla vaya rápida.</div>
+        </div>
       </div>
 
     </div><!-- /content -->
@@ -1464,7 +1478,9 @@
 <!-- =====================================================
      SCRIPT
 ===================================================== -->
-<script src="auditoria.js?v=20260928b"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="paginar-lectura.js?v=20261029d"></script>
+<script src="auditoria.js?v=20261031a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
@@ -1498,7 +1514,9 @@
   </div>
 </div>
 
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>
 </html>

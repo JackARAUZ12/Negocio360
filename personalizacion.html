@@ -12,7 +12,11 @@
 <!-- Supabase JS v2 -->
 <script src="ver-como.js?v=20261023b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="clinica-comun.js?v=20261024b"></script>
+<script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+<script src="pais-config.js?v=20261101a"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+<script src="clinica-comun.js?v=20261029b"></script>
 
 <style>
 /* ═══════════════════════════════════════════════════════════
@@ -689,7 +693,41 @@ textarea { resize:vertical; min-height:88px }
           </div>
         </div>
         <div class="card-body">
-          <div class="section-divider" style="margin-top:0"><span>¿Cuál es tu negocio? *</span></div>
+          <div class="section-divider" style="margin-top:0"><span>¿En qué país trabajará tu negocio? *</span></div>
+          <div class="fields-grid cols-2" style="margin-bottom:6px">
+            <div class="field">
+              <label>País <span class="req">*</span></label>
+              <select id="pais" onchange="onPaisCambio()">
+                <option value="">Selecciona país…</option>
+                <option value="NI">🇳🇮 Nicaragua</option>
+                <option value="GT">🇬🇹 Guatemala</option>
+                <option value="SV">🇸🇻 El Salvador</option>
+                <option value="HN">🇭🇳 Honduras</option>
+                <option value="CR">🇨🇷 Costa Rica</option>
+                <option value="PA">🇵🇦 Panamá</option>
+                <option value="MX">🇲🇽 México</option>
+                <option value="CO">🇨🇴 Colombia</option>
+                <option value="PE">🇵🇪 Perú</option>
+                <option value="CL">🇨🇱 Chile</option>
+                <option value="AR">🇦🇷 Argentina</option>
+                <option value="EC">🇪🇨 Ecuador</option>
+                <option value="VE">🇻🇪 Venezuela</option>
+                <option value="BO">🇧🇴 Bolivia</option>
+                <option value="PY">🇵🇾 Paraguay</option>
+                <option value="UY">🇺🇾 Uruguay</option>
+                <option value="DO">🇩🇴 Rep. Dominicana</option>
+                <option value="CU">🇨🇺 Cuba</option>
+                <option value="ES">🇪🇸 España</option>
+                <option value="US">🇺🇸 Estados Unidos</option>
+                <option value="otro">🌎 Otro</option>
+              </select>
+            </div>
+            <div class="field" style="display:flex;align-items:flex-end">
+              <div id="pais_resumen" style="font-size:.82rem;color:var(--muted);line-height:1.4;min-height:20px"></div>
+            </div>
+          </div>
+          <div style="font-size:.78rem;color:var(--muted);margin:-2px 0 14px">Con tu país proponemos la moneda, la zona horaria y los impuestos. Todo se puede cambiar en los pasos siguientes y después en Configuración.</div>
+          <div class="section-divider" style="margin-top:6px"><span>¿Cuál es tu negocio? *</span></div>
           <div id="negocioTiposWrap"></div>
           <div class="fields-grid cols-2">
             <div class="field">
@@ -743,33 +781,6 @@ textarea { resize:vertical; min-height:88px }
         </div>
         <div class="card-body">
           <div class="fields-grid cols-2">
-            <div class="field">
-              <label>País <span class="req">*</span></label>
-              <select id="pais" onchange="autoTimezone()">
-                <option value="">Selecciona país…</option>
-                <option value="NI">🇳🇮 Nicaragua</option>
-                <option value="GT">🇬🇹 Guatemala</option>
-                <option value="SV">🇸🇻 El Salvador</option>
-                <option value="HN">🇭🇳 Honduras</option>
-                <option value="CR">🇨🇷 Costa Rica</option>
-                <option value="PA">🇵🇦 Panamá</option>
-                <option value="MX">🇲🇽 México</option>
-                <option value="CO">🇨🇴 Colombia</option>
-                <option value="PE">🇵🇪 Perú</option>
-                <option value="CL">🇨🇱 Chile</option>
-                <option value="AR">🇦🇷 Argentina</option>
-                <option value="EC">🇪🇨 Ecuador</option>
-                <option value="VE">🇻🇪 Venezuela</option>
-                <option value="BO">🇧🇴 Bolivia</option>
-                <option value="PY">🇵🇾 Paraguay</option>
-                <option value="UY">🇺🇾 Uruguay</option>
-                <option value="DO">🇩🇴 Rep. Dominicana</option>
-                <option value="CU">🇨🇺 Cuba</option>
-                <option value="ES">🇪🇸 España</option>
-                <option value="US">🇺🇸 Estados Unidos</option>
-                <option value="otro">🌎 Otro</option>
-              </select>
-            </div>
             <div class="field">
               <label>Zona horaria <span class="req">*</span></label>
               <select id="zona_horaria">
@@ -1219,8 +1230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 4e. Pre-seleccionar Nicaragua (detección por IP sería ideal,
   //     pero como el usuario es de Managua pre-seleccionamos)
-  document.getElementById('pais').value         = 'NI';
-  document.getElementById('zona_horaria').value = 'America/Managua';
+  // El país ya no se preselecciona: es la primera pregunta y la elige la persona (de ahí salen moneda y zona horaria).
 });
 
 /* ════════════════════════════════════════════════════════════
@@ -1289,6 +1299,7 @@ function prevStep() {
 function validateStep(step) {
   const required = {
     1: [
+      { id: 'pais',             msg: 'Selecciona el país donde trabajará tu negocio' },
       { id: 'nombre_comercial', msg: 'El nombre comercial es obligatorio' },
       { id: 'tipo_negocio',     msg: 'Selecciona el tipo de negocio' },
     ],
@@ -1329,6 +1340,7 @@ const gi = (id) => { const v = g(id); return v ? parseInt(v) : null; };
 function collectStep(step) {
   if (step === 1) {
     Object.assign(formData, {
+      pais:               g('pais')                 || null,
       nombre_comercial:   g('nombre_comercial'),
       razon_social:       g('razon_social')        || null,
       tipo_negocio:       g('tipo_negocio')         || null,
@@ -1479,7 +1491,7 @@ async function finalizarOnboarding() {
     if (moduloEspecialActivo && ['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) { modulosAuto.usa_modulo_diseno = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'insumos_medicos') { modulosAuto.usa_modulo_insumos = true; modulosAuto.maneja_lotes_vencimiento = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'farmacia') { modulosAuto.usa_modulo_farmacia = true; modulosAuto.usa_farmacia_fase2 = true; modulosAuto.maneja_lotes_vencimiento = true; }
-    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'clinica') {
+    if (moduloEspecialActivo && ['clinica', 'fisioterapia'].includes(tipoNegocioSeleccionado)) {
       const esp = [...document.querySelectorAll('[data-onb-esp]:checked')].map(el => el.value);
       modulosAuto.usa_modulo_clinica = true; modulosAuto.maneja_lotes_vencimiento = true;
       modulosAuto.clinica_especialidades = esp.length ? esp : ['multiespecialidad'];
@@ -1527,6 +1539,9 @@ async function finalizarOnboarding() {
       logo_url:         formData.logo_principal_url,
       tipo_negocio:     formData.tipo_negocio,
     }));
+
+    // Recuerda el país y la moneda en este navegador (activa los ajustes de Costa Rica al instante si aplica).
+    try { if (window.N360CR) window.N360CR.guardar(currentUser.id, formData.pais, formData.moneda); } catch (_) {}
 
     // 11e. Ocultar overlay, mostrar pantalla de éxito
     hideSaving();
@@ -1662,6 +1677,7 @@ const TIPOS_NEGOCIO = [
     { v:'consultoria', icono:'📊', nombre:'Consultoría' },
     { v:'salud', icono:'⚕️', nombre:'Salud / Médico' },
     { v:'clinica', icono:'🏥', nombre:'Clínica / Consultorio médico' },
+    { v:'fisioterapia', icono:'🏃', nombre:'Fisioterapia / Quiropraxia / Masajes terapéuticos' },
     { v:'veterinaria', icono:'🐾', nombre:'Veterinaria' },
     { v:'educacion', icono:'🎓', nombre:'Educación / Academia' },
     { v:'tecnologia', icono:'💻', nombre:'Tecnología / Software' },
@@ -1857,7 +1873,8 @@ function renderModuloEspecial() {
   else if (tipoNegocioSeleccionado === 'transporte') especial = { icono:'🚛', nombre:'Módulo de Transporte de carga', desc:'Panel de operación, flota, conductores, viajes, costos y cobros — conectado con Ventas, Créditos, Gastos y Caja.' };
   else if (['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) especial = { icono:'🎨', nombre:'Módulo de Diseño', desc:'Marca de agua: pon tu logo o tu texto a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' };
   else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
-  else if (tipoNegocioSeleccionado === 'clinica') especial = { icono:'🏥', nombre:'Módulo de Clínica', desc:'Agenda por médico, pacientes y expediente clínico con PIN médico, consultas firmadas y cobro por Ventas.' };
+  else if (tipoNegocioSeleccionado === 'fisioterapia') especial = { icono:'🏃', nombre:'Módulo de Clínica (terapias)', desc:'Pacientes y expediente con ficha de fisioterapia, quiropraxia y masajes (dolor antes y después, sesión 4 de 10, ejercicios para la casa), agenda y sala de espera, y cobro por Ventas.' };
+  else if (tipoNegocioSeleccionado === 'clinica') especial = { icono:'🏥', nombre:'Módulo de Clínica', desc:'Pacientes y expediente clínico (médicos con su código de usuario), consultas firmadas, sala de espera sobre la Agenda y cobro por Ventas.' };
 
   if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }
 
@@ -1873,11 +1890,13 @@ function renderModuloEspecial() {
       </div>
     </div>`;
   // Clinica: elegir especialidades (vacio = todas). Se puede cambiar luego en Configuracion.
-  if (tipoNegocioSeleccionado === 'clinica' && typeof CLINICA_ESPECIALIDADES !== 'undefined') {
+  if (['clinica', 'fisioterapia'].includes(tipoNegocioSeleccionado) && typeof CLINICA_ESPECIALIDADES !== 'undefined') {
+    // Centro de terapias: ya vienen marcadas las suyas (se pueden cambiar).
+    const marcadas = tipoNegocioSeleccionado === 'fisioterapia' ? ['fisioterapia', 'quiropraxia', 'masoterapia'] : [];
     card.innerHTML += `<div style="margin-top:12px;font-size:.78rem">
       <div style="font-weight:700;margin-bottom:6px">¿Qué especialidades atiende? <span style="color:var(--muted);font-weight:400">(si no eliges ninguna: todas)</span></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:4px 10px">${Object.entries(CLINICA_ESPECIALIDADES).map(([k, v]) =>
-        `<label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-onb-esp value="${k}" style="width:15px;height:15px"/> ${v.e} ${v.n}</label>`).join('')}</div></div>`;
+        `<label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-onb-esp value="${k}" ${marcadas.includes(k) ? 'checked' : ''} style="width:15px;height:15px"/> ${v.e} ${v.n}</label>`).join('')}</div></div>`;
   }
 }
 
@@ -1935,6 +1954,20 @@ const TIMEZONE_MAP = {
   ES: 'Europe/Madrid',
   US: 'America/New_York',
 };
+
+async function onPaisCambio() {
+  const cod = document.getElementById('pais').value;
+  const res = document.getElementById('pais_resumen');
+  if (!cod || cod === 'otro') { if (res) res.textContent = ''; return; }
+  let p = null;
+  try { p = await window.N360Pais.obtener(db, cod); } catch (_) {}
+  const zona = (p && p.zona_horaria) || TIMEZONE_MAP[cod];
+  const mon  = p && p.moneda;
+  if (zona) document.getElementById('zona_horaria').value = zona;
+  const selMon = document.getElementById('moneda');
+  if (mon && selMon && [...selMon.options].some(o => o.value === mon)) selMon.value = mon;
+  if (res) res.textContent = p ? 'Propuesta: ' + window.N360Pais.resumen(p) + ' · ' + zona : '';
+}
 
 function autoTimezone() {
   const pais = document.getElementById('pais').value;
@@ -2022,6 +2055,6 @@ function showToast(msg, type = 'success') {
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }
 </script>
-<script src="perfiles-guard.js?v=20261021c"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
 </body>
 </html>

@@ -10,7 +10,10 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1104,7 +1107,7 @@
   </style>
 
   <link rel="stylesheet" href="perfiles-guard.css" />
-  <link rel="stylesheet" href="clinica.css?v=20261024b" />
+  <link rel="stylesheet" href="clinica.css?v=20261027a" />
 </head>
 <body>
 
@@ -1319,10 +1322,12 @@
       <div class="hab-page-header">
         <div>
           <h1>🪑 Sala de espera</h1>
-          <p class="hab-page-subtitle">Turnos de hoy por orden de llegada. Se actualiza sola.</p>
+          <p class="hab-page-subtitle">Las citas de hoy de la <a href="agenda.html" style="color:var(--accent)">Agenda</a>, con turnos por orden de llegada. Se actualiza al instante en todos los equipos.</p>
         </div>
         <div class="cl-hbtns">
+          <button class="btn-accion-tabla btn-primary" onclick="abrirSinCita()">🚶 Llegó sin cita</button>
           <button class="btn-accion-tabla btn-ghost" onclick="cargar()">🔄 Actualizar</button>
+          <button class="btn-accion-tabla btn-ghost" onclick="abrirRecordatorios()">📲 Recordatorios</button>
           <button class="btn-accion-tabla btn-primary" onclick="abrirPantalla()">📺 Modo pantalla</button>
         </div>
       </div>
@@ -1333,24 +1338,30 @@
         <div class="kpi-card"><div class="kpi-icon" style="background:#DCFCE7">✅</div><div class="kpi-body"><div class="kpi-value" id="sa-kpi-atendidos">—</div><div class="kpi-label">Atendidos hoy</div></div></div>
       </div>
       <div class="cl-seccion">Esperando</div>
+      <p class="cl-sub" id="sa-pasos" style="margin:-4px 0 10px">Cómo pasa un paciente: <b>🪑 Llegó</b> → <b>▶️ Pasar a consulta</b> (lo anuncia en la pantalla de la sala) → <b>✅ Terminó la consulta</b> (o el médico firma su nota) → <b>💳 Cobrar</b>.</p>
       <div id="sa-espera" class="cl-lista"><p class="cl-sub">Cargando…</p></div>
       <div class="cl-seccion">En consulta</div>
       <div id="sa-consulta" class="cl-lista"></div>
       <div class="cl-seccion">Por llegar hoy</div>
       <div id="sa-llegar" class="cl-lista"></div>
+      <div class="cl-seccion">Atendidos hoy</div>
+      <div id="sa-atendidos" class="cl-lista"></div>
     </div>
 
   </div>
 </div><!-- /#app -->
 <script src="vet-comun.js?v=20261004b"></script>
-<script src="clinica-comun.js?v=20261024b"></script>
-<script src="clinica-sesion.js?v=20261024b"></script>
-<script src="clinica-sala.js?v=20261024b"></script>
+<script src="clinica-comun.js?v=20261029b"></script>
+<script src="clinica-sesion.js?v=20261027a"></script>
+<script src="clinica-citas.js?v=20261027a"></script>
+<script src="clinica-sala.js?v=20261028c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">
@@ -1383,8 +1394,102 @@
 </div>
 
 <div id="sa-pantalla" class="sp" style="display:none" role="dialog" aria-label="Pantalla de la sala">
-  <div class="sp-cab"><span id="sp-negocio"></span><span id="sp-hora"></span><button class="sp-salir" onclick="cerrarPantalla()" aria-label="Salir de la pantalla">✕</button></div>
+  <div class="sp-cab"><span id="sp-negocio"></span><span class="sp-der"><span id="sp-envivo" class="sp-envivo" title="Los llamados llegan al instante">● En vivo</span><button type="button" id="sp-voz" class="sp-voz" onclick="alternarVoz()" aria-pressed="true">🗣️ Voz: sí</button><span id="sp-hora"></span></span><button class="sp-salir" onclick="cerrarPantalla()" aria-label="Salir de la pantalla">✕</button></div>
+  <button id="sp-sonido" class="sp-sonido" style="display:none" onclick="activarSonido()">🔊 Toca aquí para activar el sonido de los llamados</button>
   <div class="sp-cuerpo"><div class="sp-llamado" id="sp-llamado"></div><div class="sp-cola"><div class="sp-tit">En espera</div><div id="sp-lista"></div></div></div>
+</div>
+
+<div class="modal-overlay" id="modal-recordatorios" onclick="if(event.target===this)closeModal('modal-recordatorios')">
+  <div class="modal-box" style="max-width:540px;width:100%" role="dialog" aria-labelledby="re-titulo">
+    <div class="modal-header"><span class="modal-title" id="re-titulo">📲 Recordatorios de citas</span><button class="modal-close" onclick="closeModal('modal-recordatorios')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div class="cl-diabar"><div class="cl-field" style="margin:0"><label for="re-fecha">Citas del día</label><input type="date" id="re-fecha" class="cl-in" onchange="cargarRecordatorios()"/></div><span class="cl-sub" id="re-resumen" style="align-self:flex-end"></span></div>
+      <p class="cl-sub">Cada botón abre WhatsApp con el mensaje listo; solo tienes que enviarlo. Queda marcado como avisado.</p>
+      <div id="re-lista"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-recordatorios')">Cerrar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-sincita" onclick="if(event.target===this)closeModal('modal-sincita')">
+  <div class="modal-box" style="max-width:560px;width:100%" role="dialog" aria-labelledby="sc-titulo">
+    <div class="modal-header"><span class="modal-title" id="sc-titulo">🚶 Paciente sin cita</span><button class="modal-close" onclick="closeModal('modal-sincita')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:72vh;overflow-y:auto">
+      <p class="cl-sub" style="margin-top:0">Llegó sin reserva: se registra su visita de hoy en la Agenda y pasa directo a la fila de espera.</p>
+      <div class="cl-seccion">1 · ¿Quién llegó?</div>
+      <div id="sc-quien">
+        <div class="cl-field"><label for="sc-buscar">Buscar paciente o cliente</label>
+          <input type="text" id="sc-buscar" class="cl-in" placeholder="Nombre, cédula, teléfono o N.º de expediente…" oninput="buscarSinCita(this.value)" autocomplete="off"/>
+          <div id="sc-resultados" class="cl-resultados" style="display:none"></div></div>
+        <button type="button" class="btn-accion-tabla btn-ghost" id="sc-nuevo-btn" style="width:100%;padding:10px" onclick="sinCitaNuevo(true)">➕ Es la primera vez: registrar paciente nuevo</button>
+      </div>
+      <div id="sc-elegido" class="cl-item" style="display:none"></div>
+      <div id="sc-nuevo" style="display:none">
+        <div class="cl-grid2">
+          <div class="cl-field"><label for="sc-nombres">Nombres *</label><input type="text" id="sc-nombres" class="cl-in" maxlength="80" autocomplete="off"/></div>
+          <div class="cl-field"><label for="sc-apellidos">Apellidos</label><input type="text" id="sc-apellidos" class="cl-in" maxlength="80" autocomplete="off"/></div>
+          <div class="cl-field"><label for="sc-telefono">Teléfono</label><input type="tel" id="sc-telefono" class="cl-in" maxlength="30" inputmode="tel" autocomplete="off"/></div>
+          <div class="cl-field"><label for="sc-cedula">Cédula</label><input type="text" id="sc-cedula" class="cl-in" maxlength="30" autocomplete="off"/></div>
+          <div class="cl-field"><label for="sc-nacimiento">Fecha de nacimiento</label><input type="date" id="sc-nacimiento" class="cl-in"/></div>
+          <div class="cl-field"><label for="sc-sexo">Sexo</label><select id="sc-sexo" class="cl-in"><option value="">—</option><option value="femenino">Femenino</option><option value="masculino">Masculino</option></select></div>
+        </div>
+        <button type="button" class="cl-link" onclick="sinCitaNuevo(false)">← Buscar un paciente que ya existe</button>
+      </div>
+      <div class="cl-seccion">2 · Atención</div>
+      <div class="cl-grid2">
+        <div class="cl-field"><label for="sc-medico">Médico</label><select id="sc-medico" class="cl-in" onchange="sinCitaMedico()"></select></div>
+        <div class="cl-field"><label for="sc-consultorio">Consultorio</label><select id="sc-consultorio" class="cl-in"></select></div>
+      </div>
+      <div class="cl-field"><label for="sc-servicio">Servicio *</label><select id="sc-servicio" class="cl-in" onchange="sinCitaServicio()"></select>
+        <div class="cl-ayuda" id="sc-precio"></div></div>
+      <div class="cl-field"><label for="sc-motivo">Motivo de la consulta</label><textarea id="sc-motivo" class="cl-ta" rows="2" maxlength="500" placeholder="Ej: fiebre desde anoche, dolor de garganta…"></textarea></div>
+      <div class="cl-field"><label>Prioridad</label>
+        <div class="sc-prioridad" role="radiogroup" aria-label="Prioridad">
+          <label class="sc-prio"><input type="radio" name="sc-prioridad" value="normal" checked/> <span>🟢 Normal<small>Por orden de llegada</small></span></label>
+          <label class="sc-prio sc-urgente"><input type="radio" name="sc-prioridad" value="urgente"/> <span>🚨 Urgente<small>Pasa primero en la fila</small></span></label>
+        </div></div>
+      <div id="sc-aviso"></div>
+      <p id="sc-error" style="color:var(--danger,#dc2626);font-size:13px;font-weight:600;margin:6px 0 0" role="alert"></p>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-sincita')">Cancelar</button>
+      <button class="btn-accion-tabla btn-primary" id="sc-btn" onclick="guardarSinCita()">🪑 Registrar llegada</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-vincular" onclick="if(event.target===this)closeModal('modal-vincular')">
+  <div class="modal-box" style="max-width:500px;width:100%" role="dialog" aria-labelledby="vi-titulo">
+    <div class="modal-header"><span class="modal-title" id="vi-titulo">🩺 ¿Quién es el paciente?</span><button class="modal-close" onclick="closeModal('modal-vincular')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <p class="cl-sub" id="vi-ayuda" style="margin-top:0"></p>
+      <div class="cl-field"><label for="vi-buscar">Buscar su expediente</label>
+        <input type="text" id="vi-buscar" class="cl-in" placeholder="Nombre, cédula, teléfono o N.º de expediente…" oninput="buscarPacienteVincular(this.value)" autocomplete="off"/>
+        <div id="vi-resultados" class="cl-resultados" style="display:none"></div></div>
+      <button class="btn-accion-tabla btn-primary" style="width:100%;padding:10px;white-space:normal;line-height:1.3;height:auto" onclick="crearPacienteDeCita()">➕ Es nuevo: crear su expediente con los datos de la cita</button>
+      <p id="vi-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-vincular')">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cuenta" onclick="if(event.target===this)closeModal('modal-cuenta')">
+  <div class="modal-box" style="max-width:540px;width:100%" role="dialog" aria-labelledby="cu-titulo">
+    <div class="modal-header"><span class="modal-title" id="cu-titulo">💳 Cuenta</span><button class="modal-close" onclick="closeModal('modal-cuenta')" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div id="cu-seguro-box"></div>
+      <div id="cu-lista"></div>
+      <div class="cl-seccion">Agregar a la cuenta</div>
+      <div class="cl-field"><label for="cu-buscar">Producto o servicio</label>
+        <input type="text" id="cu-buscar" class="cl-in" placeholder="Ej: inyección, medicamento…" oninput="buscarProducto(this.value)" autocomplete="off"/>
+        <div id="cu-resultados" class="cl-resultados" style="display:none"></div>
+        <div id="cu-elegido" class="cl-elegido" style="display:none"></div></div>
+      <div class="cl-grid2">
+        <div class="cl-field"><label for="cu-cantidad">Cantidad</label><input type="number" id="cu-cantidad" class="cl-in" min="0.01" step="any" value="1"/></div>
+        <div class="cl-field" style="display:flex;align-items:flex-end"><button class="btn-accion-tabla btn-ghost" id="cu-btn-agregar" style="width:100%;padding:10px" onclick="agregarCargo()">➕ Agregar</button></div>
+      </div>
+      <p id="cu-error" style="color:var(--danger,#dc2626);font-size:12.5px;margin:6px 0 0" role="alert"></p>
+    </div>
+    <div class="modal-footer"><button class="btn-accion-tabla btn-ghost" onclick="closeModal('modal-cuenta')">Cerrar</button><button class="btn-accion-tabla btn-primary" id="cu-btn-cobrar" onclick="cobrarCita()">💳 Cobrar en Ventas</button></div>
+  </div>
 </div>
 <style>
 .sp{position:fixed;inset:0;z-index:10060;background:#0f172a;color:#fff;flex-direction:column;font-family:inherit}
@@ -1395,8 +1500,28 @@
 .sp-turno{font-size:clamp(22px,4vw,54px);font-weight:700;opacity:.9}.sp-nombre{font-size:clamp(40px,8vw,120px);font-weight:900;line-height:1.05;word-break:break-word}
 .sp-donde{font-size:clamp(20px,3.4vw,46px);margin-top:12px;opacity:.95}
 .sp-cola{background:#1e293b;border-radius:22px;padding:18px;overflow:hidden}.sp-tit{font-size:clamp(18px,2.4vw,30px);font-weight:800;margin-bottom:10px;opacity:.8}
-.sp-item{font-size:clamp(18px,2.6vw,34px);padding:8px 0;border-bottom:1px solid #334155}.sp-item b{display:inline-block;min-width:2.2em;color:#93c5fd}
+.sp-item{font-size:clamp(18px,2.6vw,34px);padding:8px 0;border-bottom:1px solid #334155}.sp-item b{display:inline-block;min-width:1.8em;color:#93c5fd}
+.sp-der{display:flex;align-items:center;gap:14px;margin-left:auto}
+.sp-voz{background:none;border:1px solid #475569;color:#cbd5e1;border-radius:10px;padding:4px 10px;font-size:clamp(12px,1.6vw,17px);font-weight:700;cursor:pointer;white-space:nowrap}
+.sp-envivo{font-size:clamp(12px,1.6vw,18px);font-weight:700;color:#4ade80;opacity:0;transition:opacity .3s}.sp-envivo.on{opacity:1}
+.sp-sonido{margin:10px 22px 0;padding:12px 16px;border:0;border-radius:14px;background:#f59e0b;color:#111827;font-size:clamp(15px,2vw,22px);font-weight:800;cursor:pointer;white-space:normal}
+.sp-llamado.sp-alerta{animation:spAlerta 1s ease-in-out 10}
+@keyframes spAlerta{0%,100%{background:#1d4ed8;transform:scale(1)}50%{background:#f59e0b;color:#111827;transform:scale(1.02)}}
+.sp-item.sp-item-llamado{background:#f59e0b;color:#111827;border-radius:10px;padding-left:10px}.sp-item.sp-item-llamado b{color:#111827}
+.ag-card.sa-llamando{box-shadow:0 0 0 3px #f59e0b}
+@media (prefers-reduced-motion:reduce){.sp-llamado.sp-alerta{animation:none;background:#b45309}}
+.sc-prioridad{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sc-prio{display:flex;gap:8px;align-items:flex-start;border:1.5px solid var(--border,#e5e7eb);border-radius:12px;padding:10px 12px;cursor:pointer;font-weight:700;font-size:13.5px}
+.sc-prio input{width:18px!important;height:18px;margin:2px 0 0;accent-color:var(--accent,#6C63FF);flex:none}
+.sc-prio small{display:block;font-weight:500;font-size:11.5px;color:var(--text-muted)}
+.sc-prio:has(input:checked){border-color:var(--accent,#6C63FF);background:var(--accent-soft,#eef)}
+.sc-urgente:has(input:checked){border-color:#dc2626;background:rgba(220,38,38,.08)}
+.ag-card.sa-urgente{border-left-color:#dc2626!important}
+.sp-item .sp-urg{color:#fca5a5;font-weight:900;margin-left:6px}
+@media (max-width:420px){.sc-prioridad{grid-template-columns:1fr}}
 @media (max-width:700px){.sp-cuerpo{grid-template-columns:1fr}}
+.sp-envivo{white-space:nowrap}#sp-negocio{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:600px){#sp-hora{display:none}.sp-cab{padding:10px 12px;gap:8px}.sp-der{gap:8px}}
 </style>
 </body>
 </html>

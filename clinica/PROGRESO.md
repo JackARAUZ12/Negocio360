@@ -5,8 +5,9 @@
 | 1 — Base para atender y cobrar | ✅ Terminada y probada | ✅ Sí (2026-10-24, commit 7add681) | Agenda, pacientes/expediente con candado, consulta firmada, equipo y seguridad, cobro por Ventas |
 | 2 — Documentos | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Recetas (a Farmacia y a la cuenta), órdenes, constancias, certificados, referencias, consentimiento, CIE-10, adjuntos privados |
 | 3 — Operación diaria | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Sala de espera con turnos y pantalla, recordatorios por WhatsApp, honorarios → Salarios, reportes que cuadran con Ventas |
-| 4 — Especialidades | Pendiente | | |
-| 5 — Crecimiento y cierre | Pendiente | | |
+| Ajuste — Agenda y usuarios del sistema | ✅ Terminado y probado | ✅ Sí (2026-10-24) | Sin agenda propia (se usa la Agenda), médicos = usuarios del multiusuario con su mismo código |
+| 4 — Especialidades | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Plantilla propia de las 16 especialidades con cálculos automáticos y odontograma |
+| 5 — Crecimiento y cierre | ✅ Terminada y probada | ✅ Sí (2026-10-24) | Observación/hospitalización, seguros y convenios, demo "Clínica", guía e informe final |
 
 ## Fase 1 — qué se hizo
 
@@ -173,6 +174,127 @@ eligen en pantalla y su PIN hoy se valida en el navegador). Por eso un permiso d
 - **Regresión contra `main`**: Ventas escribe exactamente lo mismo; Salarios (pago normal con
   bonificación, Clínica apagada) escribe exactamente lo mismo y no lee los honorarios.
 
+## Ajuste pedido por Jack: una sola Agenda y médicos = usuarios del sistema
+
+Jack pidió (2026-10-24) no duplicar lo que el sistema ya tiene:
+- **Sin agenda propia de la clínica.** Las citas se hacen en la **Agenda** de siempre
+  (`agenda.html`: citas por profesional, estados y "Cobrar"). `clinica-agenda.html` quedó solo
+  como redirección a la Agenda; su lógica se borró.
+- **Sin médicos ni PIN aparte.** Un médico ES un **usuario del multiusuario**. En
+  "Clínica · Médicos y seguridad" (antes "Equipo") solo se marca qué usuarios son médicos,
+  su columna en la Agenda, especialidad, consultorio y honorario. Para abrir un expediente
+  escriben **su mismo código de usuario** (si el usuario activo es médico, ni siquiera elige
+  nombre). El servidor lo verifica y bloquea tras 5 intentos fallidos; los usuarios de tipo
+  administrador usan su código de administrador con su propio candado.
+
+**Cómo encaja con la Agenda:**
+- El médico de una cita es el profesional de la Agenda ligado a ese médico.
+- Lo propio de la clínica va aparte (`clinica_cita_info`: expediente, consultorio, llegada,
+  llamado, recordatorio), sin tocar las tablas de la Agenda.
+- **Sala de espera**: muestra las citas de hoy de la Agenda; "Llegó", "Llamar", "Atender"
+  (si la cita no tiene expediente, se busca o se crea con los datos de la cita), "No asistió",
+  modo pantalla, **recordatorios por WhatsApp** (pasaron aquí) y **"Cuenta y cobro"**.
+- Al escribir la nota la cita pasa a "en atención" en la Agenda; al cobrar queda
+  "completada" con su venta, por el camino que la Agenda ya tenía.
+- **Cobro**: un solo camino, el de la Agenda (`n360_agenda_cobro` en Ventas). Lo que el médico
+  deja en la cuenta (medicamentos de la receta, `clinica_cita_cargos`) se cobra junto con la
+  cita, desde la Sala o desde la misma Agenda (pequeño agregado en `agenda-citas.js` que solo
+  actúa si la cuenta usa Clínica). Se quitó de `ventas.js` el cobro propio de la clínica.
+- Reportes y honorarios leen las citas de la Agenda (cuadran con las ventas igual que antes).
+
+**Base de datos** (`supabase/migraciones/20261024_clinica_usuarios_agenda.sql`, aplicada; solo
+agrega): `clinica_personal.perfil_id` y `.agenda_profesional_id`, `clinica_perfil_intentos`,
+`clinica_cita_info`, `clinica_cita_cargos`, `clinica_consultas.agenda_cita_id`, la función
+`clinica_iniciar_sesion_perfil` y nuevas versiones de `clinica_personal_guardar`,
+`clinica_consulta_guardar/cerrar/anular`, `clinica_iniciar_sesion` (redirige al usuario) y
+`clinica_cambiar_pin` (el código se cambia en el menú de usuarios). `clinica_citas`,
+`clinica_cargos` y `clinica_personal_secretos` quedan sin uso (no se borran; estaban vacías).
+
+**Nota de seguridad (para Jack):** el expediente queda tan protegido como los códigos de los
+usuarios. Recomendación: que los médicos usen códigos de 6 números y no los compartan.
+
+**Pruebas (todas en verde):**
+- SQL revertido (25 comprobaciones): marcar médico solo con código de administrador, usuario
+  repetido, columna de la Agenda repetida, usuario de otra cuenta, sesión con el código del
+  usuario (incorrecto, bloqueo tras 5), usuario no médico sin acceso, nota ligada a la cita de
+  la Agenda (pasa a "en atención", no dos notas por cita, anular la regresa), no se cambia el
+  paciente de una cita con nota, cuenta de una visita cobrada bloqueada, otra cuenta no puede
+  tocar ni ver nada, intentos fallidos invisibles.
+- Unitarias: 59 (cita de la Agenda vista por la clínica; cobro = servicios + cuenta).
+- Navegador: 241 en computadora y celular 360 px (sala sobre la Agenda, crear expediente desde
+  la cita, código de usuario, nota, cuenta y cobro, médicos como usuarios, redirección de la
+  agenda vieja) y regresión contra `main`: Ventas, Salarios y el cobro de la Agenda con Clínica
+  apagada mandan exactamente lo mismo que antes. Cuadre: el cobro desde la Clínica escribe lo
+  mismo que una venta directa (única diferencia: la cita queda ligada a su venta).
+
+## Fase 4 — qué se hizo (Especialidades)
+
+Sin cambios en la base de datos: lo propio de cada especialidad se guarda dentro de la nota
+(`clinica_consultas.datos`), con el mismo candado, la misma firma y la misma inmutabilidad.
+Solo aparecen las especialidades elegidas en Configuración / Médicos y seguridad.
+
+**Plantilla por especialidad** (catálogo en `clinica-comun.js`; agregar campos es una línea):
+- Medicina interna: revisión por sistemas, control de crónicas.
+- Pediatría: perímetro cefálico, percentiles, desarrollo, alimentación, vacunas · edad en
+  meses y avisos (vacunas pendientes, retraso del desarrollo).
+- Ginecología y obstetricia: embarazo, FUM, G/P/C/A, FCF, altura uterina, movimientos,
+  presentación, edema, PAP, planificación · **edad gestacional y fecha probable de parto
+  automáticas**, avisos de FCF fuera de rango, movimientos disminuidos y edema (preeclampsia).
+- Cardiología (NYHA, ritmo, ECG, riesgo), dermatología (lesión, tamaño, distribución),
+  oftalmología (agudeza visual, presión intraocular con aviso >21), otorrino, ortopedia
+  (escala de dolor 0–10, fuerza, movilidad), neurología (**Glasgow** calculado y clasificado),
+  psicología (**PHQ-9, GAD-7** clasificados y aviso de riesgo suicida), nutrición (riesgo por
+  cintura e índice cintura/cadera según sexo), fisioterapia (cambio del dolor en la sesión),
+  urología (IPSS y PSA), endocrinología (HbA1c en meta o no, TSH), laboratorio.
+- Los números se validan por rango antes de guardar.
+
+**Odontograma** (numeración FDI): permanente (32), temporal (20) o mixta (52). Se toca un
+diente y se marca su estado (sano, caries, obturado, sellante, endodoncia, corona, fractura,
+extracción indicada, ausente, implante), las caras afectadas y una nota. Una consulta dental
+nueva parte del último odontograma del paciente. Índices **CPO-D / ceo-d** automáticos. En
+la nota firmada queda el odontograma de solo lectura. Funciona en celular de 360 px.
+
+**Pruebas (todas en verde):** unitarias 66 (7 nuevas: catálogo válido, edad gestacional,
+Glasgow, escalas, cintura, índices dentales y limpieza del odontograma, validación de rangos);
+navegador 289 (34 nuevas en computadora y celular: solo especialidades elegidas, odontograma
+que parte del anterior, dentición mixta, marcar diente y caras, índice recalculado, guardado
+dentro de la nota firmada, notas escapadas, FUM futura rechazada, edad gestacional y FCF,
+rangos, Glasgow); regresión contra `main` idéntica.
+
+## Fase 5 — qué se hizo (Crecimiento y cierre)
+
+- **Observación y hospitalización** (`clinica-hospital.html`, modelo de las estancias de
+  Veterinaria): ingreso (OBS-/HOS- numerado), cama, médico, servicio por día; notas de
+  ingreso, evolución, enfermería, indicaciones y alta con signos vitales **con candado**
+  (`clinica_estancia_notas`, solo con sesión médica, solo agregar, en la bitácora); cuenta de
+  medicamentos e insumos; alta (no se reabre) y cobro por Ventas. Una estancia cobrada o
+  anulada ya no cambia su cuenta; un paciente solo puede tener una estancia activa.
+- **Seguros y convenios** (`clinica-seguros.html`): aseguradoras/empresas con % de
+  cobertura (cada una ligada a un cliente), convenio y póliza del paciente, reparto en la
+  cuenta de la Sala (el paciente paga su parte, la aseguradora el resto, al centavo), lo
+  cubierto queda anotado en la cita y se **factura a la aseguradora por Ventas** (normalmente
+  a crédito). Una cita nunca se factura dos veces. Reportes muestra lo cubierto y los
+  honorarios se calculan sobre el total (paciente + seguro).
+- `ventas.js`: cobro de estancias y facturas a aseguradoras (solo con Clínica encendida,
+  mismo patrón que Veterinaria). `agenda-citas.js`: al cobrar desde la Agenda se cobra todo
+  al paciente (se borra un reparto con seguro preparado antes).
+- **Cuenta demo "Clínica"** (`demo-clinica@negocio360oficial.com`, en el selector del login),
+  registrada en `cuentas_prueba` como demo pública, con datos de ejemplo y sin ventas ni caja.
+  Script: `supabase/migraciones/20261024_clinica_demo.sql`. **Ajuste (pedido de Jack): las demos
+  no usan multiusuario** → se quitaron los usuarios de ejemplo de la demo y en cuentas demo el
+  expediente se abre eligiendo el médico, sin código (`clinica_iniciar_sesion_demo`, solo para
+  cuentas demo; `20261025_clinica_demo_sin_usuarios.sql`).
+- **Guía de uso** (`clinica/GUIA.md`) e **informe final** (`clinica/INFORME_FINAL.md`).
+- Base de datos: `supabase/migraciones/20261024_clinica_fase5.sql` (aplicada; solo agrega).
+
+**Pruebas:** SQL revertido 27/27 (convenio ajeno, numeración, una estancia activa, notas con
+sesión y rangos, solo agregar, alta sin reabrir, cuenta cerrada al cobrar/anular, factura sin
+duplicar e inmutable, permisos y RLS entre cuentas); unitarias 70; navegador en computadora y
+celular (ingreso con nota, notas y signos, cuenta, alta, cobro y ligado; seguro: reparto,
+cobro del paciente, factura a la aseguradora a su nombre, sin duplicar; convenios); **cuadre**:
+cobro de estancia y factura a aseguradora escriben lo mismo que la venta directa; con la
+Clínica apagada Ventas ignora estos cobros; regresión contra `main`.
+
 ## Bitácora
 - 2026-10-23: creada la rama `modulo-clinica` con el plan (`PLAN.md`).
 - 2026-10-23: Fase 1 — base de datos aplicada en producción tras prueba revertida.
@@ -181,3 +303,23 @@ eligen en pantalla y su PIN hoy se valida en el navegador). Por eso un permiso d
 - 2026-10-24: Fase 1 integrada a `main` (avance rápido, commit 7add681). El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Fase 2 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
 - 2026-10-24: Fase 3 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
+- 2026-10-24: Ajuste pedido por Jack — sin agenda propia (se usa la Agenda) y médicos = usuarios del sistema. Probado e integrado a `main`.
+- 2026-10-24: Fase 4 terminada, probada e integrada a `main`. El módulo sigue apagado para todas las cuentas.
+- 2026-10-24: Fase 5 terminada, probada e integrada a `main`. Módulo completo; apagado por defecto. Demo "Clínica" publicada.
+- 2026-10-25: La demo "Clínica" ya no usa multiusuario: el expediente se abre eligiendo el médico (solo en cuentas demo).
+- 2026-10-25: Sala de espera **en vivo** (pedido de Jack): al oprimir "Llamar", la pantalla de la sala en otro equipo (TV, computadora o teléfono) lo muestra al instante, suena un "ding-dong" y resalta a la persona. Aviso por Supabase Realtime (broadcast) sin datos del paciente; cada equipo vuelve a leer la sala con su sesión. Respaldo cada 15 s. Sin cambios en la base de datos.
+- 2026-10-25: **Panel de Clínica** (pedido de Jack): una sola entrada en el menú; todas las pantallas de Clínica (y la Agenda) se abren dentro del panel, en orden (día a día, cierre, ajustes), con el ciclo del paciente (agendar → sala → consulta → cobro → control) y "Siguiente paso", lista para preparar la clínica, pendientes y recorrido guiado. Cada pantalla conserva su permiso por usuario. **Agenda**: ahora se puede agendar a un paciente de la Clínica (se le crea su cliente y se liga) o a una persona nueva guardándola como cliente. Sin cambios en la base de datos.
+- 2026-10-25: Tema oscuro arreglado en todas las pantallas de Clínica y el Panel (los cuadros usaban nombres de color que el tema no define y quedaban blancos; etiquetas, avisos e íconos con colores suaves). La pantalla abierta dentro del Panel cambia de tema junto con él.
+- 2026-10-25: Agenda: un solo campo para el cliente (antes había dos cajas parecidas y el nombre nuevo se borraba al salir del buscador). Se busca el cliente o paciente; si no está, lo escrito queda como persona nueva ("➕ Persona nueva: «…»"). Opción nueva y opcional en select-buscable.js (textoLibre): las demás pantallas que lo usan no cambian.
+- 2026-10-25: **Cobrar sin salir de la Clínica** (pedido de Jack): la cita (Sala y Agenda), la estancia, la factura a la aseguradora y la receta se cobran en una ventana dentro de la Clínica que usa la MISMA pantalla de Ventas (mismos pasos, caja, inventario, lotes, impuestos, contabilidad y reportes), abierta directo en "Método de pago". Candado nuevo en Ventas (solo con Clínica): no registra la venta si la visita, estancia o factura ya se cobró (otra ventana u otro equipo). Respaldo: si Ventas no alcanzó a ligar, la Clínica liga solo si sigue libre. El paciente sin cliente se vuelve cliente al cobrar. Cuadre probado: idéntico a la venta directa. Sin cambios en la base de datos.
+- 2026-10-25: **Pantalla de cobro propia de la Clínica** (pedido de Jack, como Restaurante pero registrando la venta): conceptos, impuestos, total, forma de pago, banco, recibido y cambio, "Cobrar" y "✅ Cobrado · V-…". La venta se registra con el MISMO motor de Ventas sin mostrarlo (`ventas.html?clinica_cobro=1&motor=1`, `N360MotorVenta`, solo dentro de la Clínica y con el módulo): mismos pasos y `confirmarVenta`, por eso Caja, inventario, lotes, impuestos, contabilidad y reportes quedan idénticos (cuadre probado). "Otras opciones" muestra la venta completa para pago separado, puntos o certificados. Candado de doble cobro y respaldo de ligado se mantienen.
+- 2026-10-25: Pedido de Jack (punto 2 + mejoras): **Agenda** carga todos los clientes (de 1000 en 1000) con apellido y búsqueda por teléfono; **usuarios limitados** entran al Panel; **cobro**: imprimir ticket (misma ruta de Ventas), WhatsApp y PDF, sin PDF automático en la Clínica; **voz** en la pantalla de la sala; **seguro al cobrar desde la Agenda** y **en hospitalización** (casilla "Aplicar seguro" en la pantalla de cobro; las estancias aparecen en Seguros › Por facturar); **rol de Enfermería** (notas de enfermería con signos y alergias; el servidor le niega expediente, consultas, documentos y antecedentes). Migración `20261025_clinica_seguro_estancias_enfermeria.sql` (probada en transacción revertida y aplicada).
+- 2026-10-27: **Paciente sin cita** en la Sala de espera (pedido de Jack): "🚶 Llegó sin cita" busca o registra al paciente (y su cliente), elige médico, consultorio, servicio, motivo y prioridad **🚨 Urgente**; crea la cita de hoy por la misma función de la Agenda (`agenda_cita_guardar`) y la marca como llegada. Los urgentes van primero (lista y pantalla). Avisa si ya tenía cita hoy. No crea ventas ni mueve caja. Migración `20261027_clinica_sin_cita.sql` (columnas `prioridad` y `sin_cita` en `clinica_cita_info`).
+- 2026-10-27: **Nueva demo "Centro Médico San Rafael"** con datos de simulación (migración `20261027_clinica_demo_simulacion.sql`, probada en transacción revertida: ventas = detalle = caja, 96 874,80; sin existencias negativas; ninguna visita completada sin venta). Se renueva sola cada día con `clinica_demo_preparar()` (solo en esa demo). El login abre la demo nueva; la anterior quedó intacta. Pruebas: 72 unitarias y 537 en navegador (computadora, 360 px y regresión contra `main`) en verde.
+- 2026-10-27: **Pasar a consulta** (Jack no veía cómo entra un paciente): en la Sala, "▶️ Pasar a consulta" lo mueve de Esperando a En consulta (Agenda "En atención", y lo anuncia en la pantalla si no lo habían llamado); en En consulta, "✅ Terminó la consulta" lo pasa a Atendidos (falta cobrar) y "↩ Regresar a la fila" lo devuelve. Antes solo pasaba cuando el médico escribía/firmaba su nota (eso sigue igual). Ayuda de pasos en la Sala. No mueve dinero; sin cambios en la base de datos. Pruebas: 555 en navegador + 72 unitarias.
+- 2026-10-27: **Atención de hoy en Pacientes** (pedido de Jack): arriba de la lista, quién está en consulta y quién espera (urgentes primero, tiempo de espera, médico y consultorio), con "Mis pacientes / Todos" cuando el médico entró con su código y actualización en vivo (mismo aviso de la Sala). "🩺 Atender" lo llama, lo pasa a En consulta y abre la nota de la cita; sin expediente, lleva a la Sala a elegirlo o crearlo. Sala: "🩺 Atender (médico)" y "🛏️ Dejar en observación" (abre el ingreso con paciente y médico). Observación: recuadro "Cómo funciona". Sin cambios en la base de datos ni en dinero. Pruebas: 583 en navegador + 72 unitarias.
+- 2026-10-27: **Buscador del ingreso** a Observación/Hospitalización (pedido de Jack): filtra mientras se escribe desde la primera letra, sin acentos, con varias palabras, por nombre, apellido, cédula, teléfono o expediente; incluye clientes del sistema sin expediente (se les abre al ingresar, ligado a su mismo cliente); marca a quien ya está internado; flechas y Enter; "➕ Paciente nuevo" con formulario (crea expediente y cliente) y aviso si ya existe uno igual. Solo lee hasta registrar; no mueve dinero. Simulador de pruebas: `_` de ilike como comodín (igual que la base real). Pruebas: 615 en navegador + 72 unitarias.
+- 2026-10-28: **Clínica para fisioterapia y terapias** (pedido de Jack): Fisioterapia ampliada (tipo de sesión, zona, lado, diagnóstico fisioterapéutico, sesión N de M, dolor antes/después, movilidad, fuerza, pruebas, agentes físicos, técnicas, ejercicios) y especialidades nuevas: Quiropraxia, Masoterapia, Terapia ocupacional, Terapia de lenguaje, Acupuntura y Podología, con cálculos ("el dolor bajó 3 puntos", "sesión 4 de 10: faltan 6", avisos de contraindicaciones y pie diabético). **Servicios sugeridos** por especialidad en Médicos y seguridad › Especialidades (se agregan al catálogo con su precio, sin duplicar). Tipo de negocio nuevo en Personalización ("Fisioterapia / Quiropraxia / Masajes terapéuticos") que enciende Clínica con esas especialidades. **Demo de fisioterapia** nueva (migración `20261028_clinica_demo_fisioterapia.sql`: la simulación diaria aprende las terapias; probada en transacción revertida: ventas = detalle = caja 100 280; la demo médica sigue igual) con tarjeta en el login. Sin cambios en tablas. Pruebas: 644 en navegador + 74 unitarias; Restaurante 88.
+- 2026-10-28: **Agenda: fotos de los profesionales** (pedido de Jack): foto en la cabecera de cada columna de la vista Día; el administrador cambia la de cualquiera (en la columna o en 👥 Profesionales, donde también liga cada profesional con su usuario del sistema) y cada usuario solo la suya (su profesional ligado; en Clínica, su médico). Se recorta en cuadrado a 400 px (webp) en el equipo y se guarda en `inventario_fotos/{cuenta}/agenda/profesionales/`; al cambiarla se borra la anterior; si no carga se ve la inicial. Migración `20261028_agenda_fotos_profesionales.sql` (columnas `foto_url` —solo https— y `perfil_id`). Arreglado de paso: la fila de horario de "Profesionales" se salía en celular. Nota: el candado "solo la suya" es de la pantalla (los usuarios del multiusuario comparten la misma sesión de la cuenta), igual que el resto de permisos por usuario. Pruebas: 670 en navegador + 74 unitarias; Restaurante 88.
+- 2026-10-28: Pedido de Jack: **Catálogo360 apagado en la demo de fisioterapia** (estaba encendido y desbloqueado; quedó igual que la demo médica: `modulosOpcionales.catalogo360=false`, `catalogo360_desbloqueado=false`) y **"Cerrar sesión" en Catálogo360**: botón en la cabecera, en el menú lateral y en la pantalla de planes (cuenta sin el módulo); sale y lleva al inicio de sesión de Catálogo360, limpiando lo guardado de la pestaña. Simulador de pruebas: cerrar sesión ahora sí quita la sesión. Pruebas: 681 en navegador; Restaurante 88.
+- 2026-10-28: **"➕ Nuevo médico"** en Médicos y seguridad (pedido de Jack): nombre, código (dos veces), rol, especialidad, consultorio y honorarios; con el código de administrador crea en una sola operación (todo o nada) su usuario del sistema (restringido, con las pantallas de su rol y la Agenda, mismo formato del código y mismo límite del plan), su columna en la Agenda ligada a su usuario (opcional; enfermería no lleva) y su ficha de Clínica (por `clinica_personal_guardar`). No permite nombres repetidos. En demo no pide código y lo crea como médico de ejemplo. El botón anterior queda como "Usar un usuario que ya existe". Migración `20261028_clinica_personal_nuevo.sql` (solo agrega una función; probada en transacción revertida). Pruebas: 713 en navegador + 74 unitarias; Restaurante 88.

@@ -175,8 +175,8 @@ async function checkAdminAccess(email) {
 
 async function loadClientes() {
   try {
-    const { data } = await sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre'), 'clientes');
     STATE.clientes = data || [];
     llenarSelectClientes();
   } catch (e) { console.warn('loadClientes:', e); }
@@ -309,9 +309,9 @@ function actualizarProveedorLineaProf(idx, valor) {
 
 async function loadProductos() {
   try {
-    const { data } = await sbClient.from('productos')
+    const { data } = await N360Leer.todo(() => sbClient.from('productos')
       .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio,unidad_codigo,permite_fraccion,proveedor_id,proveedor_nombre,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
+      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre'), 'productos');
     const productos = data || [];
 
     // Combos: se agregan al mismo catálogo de búsqueda/carrito que los
@@ -359,8 +359,8 @@ async function loadProductos() {
 // producto cada vez que se agrega al carrito.
 async function loadEscalasCache() {
   try {
-    const { data } = await sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
-      .eq('auth_user_id', STATE.userId).order('orden');
+    const { data } = await N360Leer.todo(() => sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', STATE.userId).order('orden'), 'escalas de precio');
     const map = {};
     (data||[]).forEach(e => {
       if (!map[e.producto_id]) map[e.producto_id] = [];
@@ -1235,7 +1235,8 @@ STATE.configTicket = null;
 
 
 
-async function enriquecerItemsConCombo(items) {
+async function enriquecerItemsConCombo(items) { const r = await _enriquecerItemsConComboBase(items); return (window.N360CR && window.N360CR.conCabys) ? window.N360CR.conCabys(r) : r; }
+async function _enriquecerItemsConComboBase(items) {
   const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
   if (!combosIds.length) return items;
   try {

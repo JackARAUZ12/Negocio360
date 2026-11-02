@@ -110,6 +110,7 @@ function siguienteDiaISO(fechaISO) {
 }
 function todayISO()        { return ymd(new Date()); }
 function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   // día de cierre del negocio (opcional)
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }
@@ -384,11 +385,13 @@ async function loadKPIs() {
     // FIX: se pide también "impuesto" para poder mostrar el ingreso NETO
     // (sin IVA). El IVA no es ingreso del negocio, es dinero recaudado
     // para el fisco y ya se contabiliza aparte en el módulo de Impuestos.
-    let qDia = sb.from('ventas').select('total,ganancia,impuesto,estado_pago,metodo_pago')
-      .eq('auth_user_id', S.userId).eq('estado','completada')
-      .gte('fecha', today).lt('fecha', siguienteDiaISO(today));
-    if (restriccionKpi) qDia = qDia.eq('creado_por_nombre', restriccionKpi);
-    const { data: diaVentas } = await qDia;
+    const { data: diaVentas } = await N360Leer.todo(() => {
+      let qDia = sb.from('ventas').select('total,ganancia,impuesto,estado_pago,metodo_pago')
+        .eq('auth_user_id', S.userId).eq('estado','completada')
+        .gte('fecha', today).lt('fecha', siguienteDiaISO(today));
+      if (restriccionKpi) qDia = qDia.eq('creado_por_nombre', restriccionKpi);
+      return qDia;
+    }, 'ventas del día');
     // Devoluciones del día: restan (ventas netas). No cuentan como "ventas".
     const devDia = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, S.userId, today, today, { creadoPor: restriccionKpi || null }) : [];
     const dia = (diaVentas || []).concat(devDia);
@@ -401,11 +404,13 @@ async function loadKPIs() {
 
     // Ventas del mes
     // FIX: mismo criterio — ingreso NETO de IVA
-    let qMes = sb.from('ventas').select('total,ganancia,fecha,impuesto,estado_pago,metodo_pago')
-      .eq('auth_user_id', S.userId).eq('estado','completada')
-      .gte('fecha', mesStart).lt('fecha', siguienteDiaISO(today));
-    if (restriccionKpi) qMes = qMes.eq('creado_por_nombre', restriccionKpi);
-    const { data: mesVentas } = await qMes;
+    const { data: mesVentas } = await N360Leer.todo(() => {
+      let qMes = sb.from('ventas').select('total,ganancia,fecha,impuesto,estado_pago,metodo_pago')
+        .eq('auth_user_id', S.userId).eq('estado','completada')
+        .gte('fecha', mesStart).lt('fecha', siguienteDiaISO(today));
+      if (restriccionKpi) qMes = qMes.eq('creado_por_nombre', restriccionKpi);
+      return qMes;
+    }, 'ventas del mes');
     const devMes = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, S.userId, mesStart, today, { creadoPor: restriccionKpi || null }) : [];
     const mes = (mesVentas || []).concat(devMes);
 
@@ -967,7 +972,7 @@ async function abrirDetalle(ventaId) {
             <tbody>
               ${(items||[]).map(it => `
               <tr>
-                <td style="font-weight:500">${esc(it.producto_nombre)}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
+                <td style="font-weight:500">${esc(it.producto_nombre)}${it.cabys && window.N360CR && window.N360CR.activo && window.N360CR.activo() ? `<div style="font-size:11px;color:var(--text-muted);font-weight:400">CAByS: ${esc(it.cabys)}</div>` : ''}${it.escala_nombre ? `<div style="font-size:11px;color:var(--accent);font-weight:600">📊 ${esc(it.escala_nombre)}</div>` : ''}</td>
                 <td><span class="tipo-item-badge ${it.tipo_item==='producto'?'badge-prod':'badge-serv'}">${it.tipo_item}</span></td>
                 <td>${Number(it.cantidad).toLocaleString('es-NI',{maximumFractionDigits:3})}</td>
                 <td>${fmt(it.precio)}</td>
@@ -987,6 +992,10 @@ async function abrirDetalle(ventaId) {
           <div class="detalle-label">Descuento</div>
           <div class="detalle-value">${fmt(venta.descuento)}</div>
         </div>
+        ${Number(venta.descuento_general) > 0 ? `<div class="detalle-item">
+          <div class="detalle-label">Incluye descuento general</div>
+          <div class="detalle-value">${fmt(venta.descuento_general)} <span style="font-size:12px;color:var(--text-muted)">(${venta.descuento_general_modo === 'porcentaje' ? Number(venta.descuento_general_valor) + '%' : 'monto fijo'}${venta.descuento_general_motivo ? ' · ' + esc(venta.descuento_general_motivo) : ''})</span></div>
+        </div>` : ''}
         <div class="detalle-item">
           <div class="detalle-label">Impuestos${venta.iva_porcentaje ? ` (${Number(venta.iva_porcentaje)}%)` : ''}</div>
           <div class="detalle-value">${fmt(venta.impuesto)}</div>
@@ -1010,6 +1019,8 @@ async function abrirDetalle(ventaId) {
     if (esVentaACredito(venta)) pintarCreditoDeVenta(venta);
     // Devoluciones: botón "↩️ Devolución", las ya hechas y sus candados
     try { window.N360Devolucion?.decorarDetalle(venta); } catch (eDev) { console.warn('devoluciones:', eDev); }
+    // Números de serie vendidos en esta venta (solo si el negocio los usa)
+    try { if (S.empresaConfig?.usa_numero_serie === true && window.N360Series) window.N360Series.pintarSeriesVenta({ sb, userId: S.userId, empresaConfig: S.empresaConfig }, ventaId, items, body); } catch (eSer) { console.warn('series de la venta:', eSer); }
   } catch(e) {
     body.innerHTML = `<p style="color:var(--danger);padding:20px">Error al cargar detalle: ${e.message}</p>`;
   }
@@ -1154,8 +1165,8 @@ async function loadProductosCache() {
     // se vende desde aqui -- solo desde Farmacia > Control de
     // Sustancias, que crea la venta real por su cuenta y ya aparece
     // en el historial de Ventas igual que cualquier otra.
-    const { data } = await sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
+      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre'), 'productos');
     const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
     // Combos: se agregan al MISMO catálogo de búsqueda/carrito que los
@@ -1202,6 +1213,7 @@ async function loadProductosCache() {
 
     S.productosCache = [...productos, ...combosCache];
     try { await window.N360Unidades?.cargarPersonalizadas(sb, S.userId); } catch (_) {}
+    await marcarPreparadosAlVender(productos);
   } catch(e) { S.productosCache = []; }
   // Con Stock Compartido activo, el stock del grupo tambien se refresca
   // (ej. despues de una venta), para que la busqueda no muestre
@@ -1211,16 +1223,55 @@ async function loadProductosCache() {
 
 async function loadClientesCache() {
   try {
-    const { data } = await sb.from('clientes').select('id,nombre,apellido,telefono,correo')
-      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('clientes').select('id,nombre,apellido,telefono,correo')
+      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre'), 'clientes');
     S.clientesCache = data || [];
   } catch(e) { S.clientesCache = []; }
 }
 
+/* Platos que se preparan al vender (Producción: receta "se prepara al vender").
+   No llevan inventario propio: no se frenan por existencia, no se manda el plato a
+   descontar (el servidor descuenta sus ingredientes en la misma operación de la venta)
+   y su costo es el de sus ingredientes ahora mismo (como el costo en vivo de los combos).
+   Los ingredientes "que se van gastando" (aceite, gas…) no entran por plato.
+   Sin recetas así, nada cambia. */
+const UNIDAD_BASE_RECETA = { gramo:['peso',1], kilogramo:['peso',1000], libra:['peso',453.59237], onza:['peso',28.349523125], quintal:['peso',45359.237], tonelada:['peso',1000000],
+  mililitro:['volumen',1], litro:['volumen',1000], galon:['volumen',3785.411784], centimetro:['longitud',1], metro:['longitud',100], pulgada:['longitud',2.54],
+  pie:['longitud',30.48], yarda:['longitud',91.44], vara:['longitud',83.59], unidad:['conteo',1], docena:['conteo',12], par:['conteo',2] };
+function factorUnidadReceta(desde, prod) {                    // misma regla que el servidor (_unidad_factor)
+  const u = prod?.unidad_codigo || '';
+  if (!desde || desde === u) return 1;
+  if (desde === prod?.unidad_compra_codigo && Number(prod?.factor_compra) > 0) return Number(prod.factor_compra);
+  const a = UNIDAD_BASE_RECETA[desde], b = UNIDAD_BASE_RECETA[u];
+  return a && b && a[0] === b[0] ? a[1] / b[1] : null;
+}
+async function marcarPreparadosAlVender(productos) {
+  try {
+    const { data: recs, error } = await sb.from('recetas_produccion')
+      .select('producto_terminado_id, cantidad_producida, receta_componentes(producto_id, cantidad, unidad_codigo, uso_continuo)')
+      .eq('auth_user_id', S.userId).eq('al_vender', true).eq('activa', true);
+    if (error || !recs || !recs.length) return;
+    const ids = [...new Set(recs.flatMap(r => (r.receta_componentes || []).map(c => c.producto_id)))];
+    const { data: ings } = ids.length ? await sb.from('productos').select('id,costo,unidad_codigo,unidad_compra_codigo,factor_compra').in('id', ids) : { data: [] };
+    const porId = new Map((ings || []).map(p => [p.id, p]));
+    recs.forEach(r => {
+      const p = productos.find(x => x.id === r.producto_terminado_id);
+      if (!p) return;
+      const costo = (r.receta_componentes || []).filter(c => !c.uso_continuo).reduce((t, c) => {
+        const ing = porId.get(c.producto_id), f = factorUnidadReceta(c.unidad_codigo, ing);
+        return t + (f == null ? 0 : Number(c.cantidad || 0) * f * Number(ing?.costo || 0));
+      }, 0) / (Number(r.cantidad_producida) || 1);
+      p.preparadoAlVender = true;
+      p.costo = Math.round(costo * 100) / 100;
+    });
+  } catch (e) { console.warn('Platos que se preparan al vender (se sigue normal):', e); }
+}
+function esPreparadoAlVender(id) { return !!S.productosCache?.find(p => p.id === id && p.preparadoAlVender); }
+
 async function loadEscalasCache() {
   try {
-    const { data } = await sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
-      .eq('auth_user_id', S.userId).order('orden');
+    const { data } = await N360Leer.todo(() => sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', S.userId).order('orden'), 'escalas de precio');
     const map = {};
     (data || []).forEach(e => {
       if (!map[e.producto_id]) map[e.producto_id] = [];
@@ -1383,12 +1434,12 @@ async function loadClientesRecurrentes() {
   const tbody = document.getElementById('recurrentes-tbody');
   if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="7">Cargando clientes recurrentes…</td></tr>';
   try {
-    const { data, error } = await sb.from('clientes')
+    const { data, error } = await N360Leer.todo(() => sb.from('clientes')
       .select('id,nombre,telefono,correo,tipo_cliente,frecuencia_pago,monto_recurrente,dia_pago,fecha_ultimo_pago,fecha_proxima_pago,saldo_pendiente,frecuencia_personalizada_unidad,frecuencia_personalizada_intervalo')
       .eq('auth_user_id', S.userId)
       .eq('tipo_cliente', 'recurrente')
       .eq('activo', true)
-      .order('fecha_proxima_pago', { ascending: true, nullsFirst: false });
+      .order('fecha_proxima_pago', { ascending: true, nullsFirst: false }), 'clientes');
     if (error) throw error;
     S.clientesRecurrentes = data || [];
     renderClientesRecurrentes();
@@ -1803,11 +1854,14 @@ async function abrirNuevaVenta() {
   S.clienteObjeto = null;
   S.carrito       = [];
   S.canje         = null;
+  S._totalRevisado = null;
+  S.descGeneral   = null;        // descuento general de la factura { modo:'porcentaje'|'monto', valor, motivo }
   S._vetConsultaId = null;
   S._txOrdenId = null;
   S._vetEstanciaId = null;
-  S._clinicaCitaId = null;
   S._agendaCitaId = null;
+  S._clinicaCobro = null;
+  S._restCobro = null;
   S.certificado = null;          // certificado de regalo aplicado a esta venta (certificados-venta.js)
   S._certEmisionId = null;       // esta venta COBRA un certificado (modo "venta")
   S._recompensas  = undefined;
@@ -1822,6 +1876,7 @@ async function abrirNuevaVenta() {
   S.observaciones = '';
   S.numeroVenta   = '';
   S.ivaActivo     = false;
+  S.ivaModo       = 'unica';
   S.otrosImpuestos = [];
   S.retIr = { activo: false, porcentaje: S.retIr?.porcentaje || 2 };
   S.retIr.activo = false;
@@ -1878,7 +1933,26 @@ async function abrirNuevaVenta() {
 function cerrarModalVenta() {
   // En modo "Corregir venta" pide confirmacion si la original ya fue anulada
   if (window.N360Correccion && !window.N360Correccion.permitirCierre()) return;
+  liberarNumeroVentaNormal();
   closeModal('modal-venta');
+}
+
+/* El número de venta se reserva al abrir la pantalla. Si se cierra sin guardar, se
+   devuelve para que la próxima venta lo use (así no quedan huecos en la numeración).
+   El servidor nunca libera un número que ya tiene una venta, aunque se llame de más. */
+async function _liberarNumeroVenta(num) {
+  if (!num || !/^V-\d{1,9}$/.test(num)) return;
+  try { await sb.rpc('liberar_numero_venta', { p_user_id: S.userId, p_numero: num }); } catch (_) {}
+}
+function liberarNumeroVentaNormal() {
+  try {
+    if (S._guardandoVenta) return;                                   // se está guardando: no tocar
+    if (!document.getElementById('modal-venta')?.classList.contains('modal-open')) return;
+    const num = S.numeroVenta;
+    if (!num || S._numeroLiberado === num) return;
+    S._numeroLiberado = num;
+    _liberarNumeroVenta(num);
+  } catch (_) {}
 }
 
 async function generarNumeroVenta() {
@@ -1887,6 +1961,7 @@ async function generarNumeroVenta() {
     const { data, error } = await sb.rpc('generar_numero_venta', { p_user_id: S.userId });
     if (error) throw error;
     S.numeroVenta = data || `V-${Date.now()}`;
+    S._numeroLiberado = '';
     document.getElementById('mv-num').textContent = S.numeroVenta;
   } catch(e) {
     // Fallback local (no definitivo, se asigna al guardar)
@@ -2176,6 +2251,8 @@ function buscarProductosParaVenta(q, tipo) {
     let stockLabel, stockCls;
     if (tipo==='servicio') {
       stockLabel = 'Sin límite'; stockCls = 'stock-ok';
+    } else if (p.preparadoAlVender) {
+      stockLabel = '🍳 Se prepara al vender'; stockCls = 'stock-ok';
     } else if (stockNum <= 0) {
       // Con "Vender sin stock" activo, se avisa igual pero se aclara
       // que sí se puede continuar — nunca se oculta el estado real.
@@ -2187,7 +2264,7 @@ function buscarProductosParaVenta(q, tipo) {
     }
     // Con Stock Compartido O Vender-sin-stock activos, nunca se
     // deshabilita por falta de stock local.
-    const disabled = tipo==='producto' && stockNum<=0 && !S.stockCompartidoActivo && !S.venderSinStockActivo;
+    const disabled = tipo==='producto' && stockNum<=0 && !p.preparadoAlVender && !S.stockCompartidoActivo && !S.venderSinStockActivo;
     const esEscala = p.tipo_precio === 'escala';
     const precioLabel = esEscala
       ? (() => {
@@ -3022,44 +3099,6 @@ async function aplicarCobroVeterinaria() {
   if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock, vencidos o ya no disponibles). Revísalos.`, 'warning');
 }
 
-// Cobro desde la Clinica (solo si el modulo esta activo): mismo camino que Veterinaria. Abre
-// la venta con el paciente (como cliente) y la cuenta de la visita ya cargados; al confirmar,
-// la venta queda ligada a la cita. Si la visita ya se cobro, no se vuelve a cargar.
-async function aplicarCobroClinica() {
-  if (S.empresaConfig?.usa_modulo_clinica !== true) return;
-  const raw = sessionStorage.getItem('n360_clinica_cobro');
-  if (!raw) return;
-  sessionStorage.removeItem('n360_clinica_cobro');      // una sola vez: no se repite al recargar
-  let d;
-  try { d = JSON.parse(raw); }
-  catch (e) { console.error('aplicarCobroClinica, dato corrupto:', e); return; }
-  if (!d || typeof d !== 'object') return;
-
-  if (d.citaId) {
-    try {
-      const { data: c } = await sb.from('clinica_citas').select('id, ventas(estado, numero_venta)').eq('id', d.citaId).eq('auth_user_id', S.userId).maybeSingle();
-      if (!c) { showToast('No se encontró la cita a cobrar.', 'warning'); return; }
-      if (c.ventas && c.ventas.estado === 'completada') { showToast(`Esta visita ya fue cobrada (${c.ventas.numero_venta || 'venta'}).`, 'warning'); return; }
-    } catch (e) { console.warn('aplicarCobroClinica, revisar cita:', e); }
-  }
-
-  await abrirNuevaVenta();                              // reinicia el estado: lo demas se arma DESPUES
-  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
-  else showToast('No se pudo seleccionar al paciente: elígelo manualmente.', 'warning');
-
-  let noAgregados = 0;
-  for (const it of (Array.isArray(d.items) ? d.items : [])) {
-    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
-    if (!prod) { noAgregados++; continue; }             // ya no existe, esta inactivo o es sustancia controlada
-    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'producto', null);
-    if (Number(it.cantidad) > 0 && Number(it.cantidad) !== 1) cambiarCantidad(it.producto_id, Number(it.cantidad));
-    if (!S.carrito.some(x => x.id === it.producto_id)) noAgregados++;
-  }
-  S._clinicaCitaId = d.citaId || null;
-  showToast(`Cuenta de ${d.paciente || 'el paciente'} cargada en la venta.`);
-  if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock, vencidos o ya no disponibles). Revísalos.`, 'warning');
-}
-
 // Cobro de un viaje de Transporte (solo si el modulo esta activo): abre la venta con el
 // cliente y el flete de la orden ya cargados. Al confirmar, la orden queda ligada a la venta.
 async function aplicarCobroTransporte() {
@@ -3136,6 +3175,87 @@ async function aplicarCobroAgenda() {
   if ((d.sinCatalogo || []).length) showToast(`Agrega a mano: ${d.sinCatalogo.join(', ')} (no están en tu catálogo).`, 'warning');
 }
 
+// Cobro desde la Clínica (solo si el módulo está activo): una estancia de observación/hospitalización o
+// la factura a una aseguradora (convenio). Abre la venta con el cliente y las líneas con el monto ya
+// acordado; el cobro sigue el camino NORMAL de Ventas (Caja, crédito, IVA, reportes) y al confirmar
+// queda ligado (ver arriba). Si ya se cobró, no se vuelve a cargar.
+async function aplicarCobroClinica() {
+  if (S.empresaConfig?.usa_modulo_clinica !== true) return;
+  const raw = sessionStorage.getItem('n360_clinica_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_clinica_cobro');      // una sola vez: no se repite al recargar
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { console.error('aplicarCobroClinica, dato corrupto:', e); return; }
+  if (!d || !['estancia', 'reclamo'].includes(d.tipo) || !d.id) return;
+  try {
+    const tabla = d.tipo === 'estancia' ? 'clinica_estancias' : 'clinica_reclamos';
+    const { data: x } = await sb.from(tabla).select('id, venta_id, ventas(estado, numero_venta)').eq('id', d.id).eq('auth_user_id', S.userId).maybeSingle();
+    if (!x) { showToast('No se encontró lo que se iba a cobrar.', 'warning'); return; }
+    if (x.ventas && x.ventas.estado !== 'anulada') { showToast(`Esto ya se cobró (${x.ventas.numero_venta || 'venta'}).`, 'warning'); return; }
+  } catch (e) { console.warn('aplicarCobroClinica, revisar:', e); return; }
+
+  await abrirNuevaVenta();                              // reinicia el estado: lo demás se arma DESPUÉS
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  else showToast('Elige al cliente manualmente.', 'warning');
+  let noAgregados = 0;
+  for (const it of (Array.isArray(d.items) ? d.items : [])) {
+    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
+    if (!prod) { noAgregados++; continue; }
+    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'servicio', null);
+    const linea = S.carrito.find(x => x.id === it.producto_id);
+    if (!linea) { noAgregados++; continue; }
+    const cant = Math.max(0.01, Number(it.cantidad) || 1), tot = Math.round((Number(it.total) || 0) * 100) / 100;
+    linea.cantidad = cant;
+    if (Math.round(tot / cant * 100) * cant !== Math.round(tot * 100)) { linea.cantidad = 1; linea.precio = tot; }
+    else linea.precio = Math.round(tot / cant * 100) / 100;
+    if (d.concepto && d.tipo === 'reclamo') linea.nombre = String(d.concepto).slice(0, 120);
+    recalcItem(linea);
+  }
+  renderCarrito('servicio'); renderCarrito('producto'); calcularResumen();
+  S._clinicaCobro = { tipo: d.tipo, id: d.id };
+  showToast(d.tipo === 'reclamo' ? 'Factura a la aseguradora cargada: si te pagará después, elige "Fiado" como forma de pago.' : 'Cuenta de la estancia cargada en la venta.');
+  if (noAgregados) showToast(`${noAgregados} artículo(s) no se pudieron agregar (sin stock o ya no disponibles). Revísalos.`, 'warning');
+}
+
+// Cobro de una mesa del Restaurante (solo cuentas con el módulo): la pantalla de cobro del restaurante
+// ya apartó en el servidor los platillos que se cobran (restaurante_cobro_reservar). Aquí se arma la venta
+// con esos platillos a su precio; el cobro sigue el camino NORMAL de Ventas (Caja, inventario, IVA,
+// reportes) y al confirmar queda ligado (restaurante_cobro_confirmar). Si ya se cobró, no se carga.
+async function aplicarCobroRestaurante() {
+  if (S.empresaConfig?.usa_modulo_restaurante !== true) return;
+  const raw = sessionStorage.getItem('n360_rest_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_rest_cobro');         // una sola vez: no se repite al recargar
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { console.error('aplicarCobroRestaurante, dato corrupto:', e); return; }
+  if (!d || !d.cobroId || !Array.isArray(d.lineas) || !d.lineas.length) return;
+  try {
+    const { data: k } = await sb.from('restaurante_cobros').select('id, estado').eq('id', d.cobroId).eq('auth_user_id', S.userId).maybeSingle();
+    if (!k || k.estado !== 'reservado') { showToast('Ese cobro de la mesa ya no está pendiente.', 'warning'); return; }
+  } catch (e) { console.warn('aplicarCobroRestaurante, revisar:', e); return; }
+
+  await abrirNuevaVenta();                              // reinicia el estado: lo demás se arma DESPUÉS
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  else selectClienteOpcion('final');
+  let noAgregados = 0;
+  for (const it of d.lineas) {
+    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
+    if (!prod) { noAgregados++; continue; }
+    const yaEstaba = S.carrito.some(x => x.id === it.producto_id);
+    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'producto', null);
+    const linea = S.carrito.find(x => x.id === it.producto_id);
+    if (!linea) { noAgregados++; continue; }
+    const cant = Math.max(0.01, Number(it.cantidad) || 1);
+    const precio = Math.round((Number(it.precio) || 0) * 100) / 100;
+    if (yaEstaba && Math.round(linea.precio * 100) === Math.round(precio * 100)) linea.cantidad = Math.round((linea.cantidad - 1 + cant) * 1000) / 1000;
+    else { linea.cantidad = cant; linea.precio = precio; }
+    recalcItem(linea);
+  }
+  renderCarrito('servicio'); renderCarrito('producto'); calcularResumen();
+  if (noAgregados) { S._restCobro = null; showToast(`${noAgregados} platillo(s) ya no están en tu catálogo o no tienen existencia. Revísalos antes de cobrar.`, 'error'); return; }
+  S._restCobro = { id: d.cobroId };
+}
+
 // Cobro de un certificado de regalo "como venta" (certificados.html): abre la venta con el
 // servicio "Certificado de regalo" al monto del certificado. Al confirmar, la base activa el
 // certificado en la MISMA operación que guarda la venta (certificado_emision_id).
@@ -3183,7 +3303,7 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   // de siempre (stock de esta misma cuenta).
   const origen = S.origenStockElegido; S.origenStockElegido = null;
   const esRemoto = !!(origen && !origen.esLocal);
-  const stockReal = esRemoto ? origen.stockDisponible : parseFloat(prod.stock_actual||0);
+  const stockReal = esRemoto ? origen.stockDisponible : (prod.preparadoAlVender ? Infinity : parseFloat(prod.stock_actual||0));
 
   // Precio a usar: el de la escala elegida, o el precio fijo del producto
   const precioUsar = escalaElegida ? parseFloat(escalaElegida.precio||0) : parseFloat(prod.precio||0);
@@ -3298,7 +3418,7 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
 
   const origen = S.origenStockElegido; S.origenStockElegido = null;
   const esRemoto = !!(origen && !origen.esLocal);
-  const stockReal = esRemoto ? origen.stockDisponible : (Number(prod.stock_actual) || 0);
+  const stockReal = esRemoto ? origen.stockDisponible : (prod.preparadoAlVender ? Infinity : (Number(prod.stock_actual) || 0));
 
   const precioUsar = parseFloat(escalaElegida.precio || 0);
   const existente   = VR.carrito.find(i => i.id === productoId && (i.escalaId || null) === escalaElegida.id && (i.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
@@ -3537,6 +3657,7 @@ function renderModalNumerosSerie(slots) {
       <input type="text" class="form-input ns-input" data-idx="${i}" placeholder="Número de serie"/>
     </div>`).join('');
   document.getElementById('ns-venta-error').textContent = '';
+  try { if (window.N360Series && S.empresaConfig?.usa_numero_serie === true) window.N360Series.decorarModalVenta(sb, S.userId, slots); } catch (e) {}
 }
 
 function cerrarModalNumerosSerie() {
@@ -3558,12 +3679,24 @@ function continuarVentaConSeries() {
     document.getElementById('ns-venta-error').textContent = 'Completa el número de serie de cada unidad.';
     return;
   }
-  S._seriesRecolectadas = slots.map((s, i) => ({ ...s, numero_serie: valores[i] }));
-  closeModal('modal-numeros-serie');
-  const accion = S._accionVentaPendiente;
-  S._seriesSlotsPendientes = null;
-  S._accionVentaPendiente = null;
-  if (accion) accion();
+  const items = slots.map((s, i) => ({ ...s, numero_serie: valores[i] }));
+  const seguir = () => {
+    S._seriesRecolectadas = items;
+    closeModal('modal-numeros-serie');
+    const accion = S._accionVentaPendiente;
+    S._seriesSlotsPendientes = null;
+    S._accionVentaPendiente = null;
+    if (accion) accion();
+  };
+  // Con series de compra: avisa si la serie ya fue vendida / está en reclamo (si algo falla, la venta sigue normal).
+  if (window.N360Series && S.empresaConfig?.usa_numero_serie === true) {
+    window.N360Series.validarVenta(sb, S.userId, items).then(msg => {
+      if (msg) { document.getElementById('ns-venta-error').textContent = msg; return; }
+      seguir();
+    }).catch(() => seguir());
+    return;
+  }
+  seguir();
 }
 
 // CANDADO DOBLE CLIC (16-oct-2026): un doble clic en "Confirmar venta"
@@ -3583,6 +3716,7 @@ function construirStockDeVenta(carrito) {
       continue;
     }
     if (item.tipo !== 'producto') continue;
+    if (!item.origenStockId && esPreparadoAlVender(item.id)) continue;   // el servidor descuenta sus ingredientes
     if (item.origenStockId) { out.push({ tipo: 'remoto', sucursal_id: item.origenStockId, nombre: item.nombre, cantidad: unidadesInventario(item) }); continue; }
     out.push({ tipo: 'producto', producto_id: item.id, cantidad: unidadesInventario(item) });
   }
@@ -3648,7 +3782,13 @@ async function registrarNumerosDeSerie(ventaId, clienteId, fecha) {
   const series = S._seriesRecolectadas;
   if (!series || !series.length) return;
   try {
-    await sb.from('numeros_serie').insert(series.map(s => ({
+    // Series que vinieron de una compra (en stock): pasan a "vendida"; el resto se inserta como siempre.
+    let porInsertar = series;
+    if (window.N360Series && S.empresaConfig?.usa_numero_serie === true) {
+      try { porInsertar = await window.N360Series.marcarVendidas(sb, S.userId, ventaId, clienteId, fecha, series); }
+      catch (eMv) { console.warn('marcarVendidas:', eMv); porInsertar = series; }
+    }
+    if (porInsertar.length) await sb.from('numeros_serie').insert(porInsertar.map(s => ({
       auth_user_id: S.userId, producto_id: s.producto_id, numero_serie: s.numero_serie,
       venta_id: ventaId, combo_id: s.combo_id, combo_nombre: s.combo_nombre,
       cliente_id: clienteId || null, fecha_venta: fecha,
@@ -3897,7 +4037,7 @@ function construirItemCarritoDesdeProducto(prod, cantidad) {
     id: prod.id, nombre: prod.nombre, sku: prod.sku || '', tipo: prod.tipo,
     cantidad, precio, costo, descuento: 0,
     subtotal: round2(cantidad * precio), ganancia: round2(cantidad * (precio - costo)),
-    stockMax: prod.tipo === 'producto' ? Number(prod.stock_actual || 0) : Infinity,
+    stockMax: prod.tipo === 'producto' && !prod.preparadoAlVender ? Number(prod.stock_actual || 0) : Infinity,
     esCombo: !!prod.esCombo, escalaId, escalaNombre, origenStockId: null, origenStockNombre: null,
   };
 }
@@ -4365,6 +4505,75 @@ function toggleIva() {
   calcularResumen();
 }
 
+/* ---------- IVA de Costa Rica: panel para elegir la tarifa (solo cuentas CR con colones) ----------
+   Una tarifa para toda la venta (13, 4, 2, 1 o 0) o una por producto. Con una sola tarifa se usa el mismo cálculo de siempre;
+   solo cuando hay tarifas distintas se suma línea por línea (ver iva-lineas.js). En Nicaragua esto nunca se abre. */
+const TARIFAS_IVA_CR = [{ v: 13, l: '13% (tarifa general)' }, { v: 4, l: '4%' }, { v: 2, l: '2%' }, { v: 1, l: '1%' }, { v: 0, l: '0% (exento)' }];
+function crIva() { return !!(window.N360CR && window.N360CR.activo && window.N360CR.activo() && window.N360IvaLineas); }
+function toggleIvaUI() {            // lo que pulsa la persona en el interruptor; las llamadas internas siguen usando toggleIva()
+  toggleIva();
+  if (S.ivaActivo && crIva()) abrirPanelIvaCR();
+}
+function actualizarBotonIvaCR() {
+  const b = document.getElementById('iva-cr-btn');
+  if (b) b.style.display = (crIva() && S.ivaActivo) ? '' : 'none';
+}
+function tarifaLineaIva(it) {
+  if (it.ivaTarifa != null) return it.ivaTarifa;
+  if (it.esCombo || it.esPromocion) return null;
+  return window.N360IvaLineas ? window.N360IvaLineas.tarifaDe(it.id) : null;
+}
+async function abrirPanelIvaCR() {
+  if (!crIva()) return;
+  try { await window.N360IvaLineas.cargarTarifas(sb); } catch (_) {}
+  const lista = document.getElementById('iva-cr-lista');
+  if (!lista) return;
+  const gen = TARIFAS_IVA_CR.some(t => t.v === Number(S.ivaPorcentaje)) ? Number(S.ivaPorcentaje) : 13;
+  const porProd = S.ivaModo === 'lineas';
+  const opc = (sel) => TARIFAS_IVA_CR.map(t => `<option value="${t.v}" ${Number(sel) === t.v ? 'selected' : ''}>${t.l}</option>`).join('');
+  lista.innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">Una tarifa para toda la venta:</div>
+    ${TARIFAS_IVA_CR.map(t => `
+      <label class="esc-precio-opcion">
+        <input type="radio" name="iva-cr-radio" value="${t.v}" ${!porProd && gen === t.v ? 'checked' : ''} onchange="iva_cr_modo('unica')"/>
+        <span class="esc-precio-nombre">${t.l}</span>
+      </label>`).join('')}
+    <div style="font-size:12.5px;color:var(--text-muted);margin:12px 0 8px">O una tarifa distinta por producto:</div>
+    <label class="esc-precio-opcion">
+      <input type="radio" name="iva-cr-radio" value="lineas" ${porProd ? 'checked' : ''} onchange="iva_cr_modo('lineas')"/>
+      <span class="esc-precio-nombre">Elegir por producto</span>
+    </label>
+    <div id="iva-cr-lineas" style="display:${porProd ? 'block' : 'none'};margin-top:8px">
+      ${S.carrito.length ? S.carrito.map((it, i) => {
+        const t = tarifaLineaIva(it); const sel = t != null ? t : gen;
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--border,#e5e7eb)">
+          <span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(it.nombre)}${t != null && it.ivaTarifa == null ? ' <span style="font-size:11px;color:var(--text-muted)">(del producto)</span>' : ''}</span>
+          <select data-iva-i="${i}" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border,#e5e7eb);background:var(--bg-app);color:var(--text-primary)">${opc(sel)}</select></div>`;
+      }).join('') : '<div style="font-size:13px;color:var(--text-muted)">Agrega productos a la venta para elegir su tarifa.</div>'}
+    </div>`;
+  openModal('modal-iva-cr');
+}
+function iva_cr_modo(m) { const w = document.getElementById('iva-cr-lineas'); if (w) w.style.display = m === 'lineas' ? 'block' : 'none'; }
+function confirmarPanelIvaCR() {
+  const radio = document.querySelector('input[name="iva-cr-radio"]:checked');
+  if (!radio) { showToast('Elige una tarifa', 'error'); return; }
+  if (radio.value === 'lineas') {
+    document.querySelectorAll('#iva-cr-lineas select[data-iva-i]').forEach(s => {
+      const it = S.carrito[Number(s.dataset.ivaI)]; if (it) it.ivaTarifa = Number(s.value);
+    });
+    S.ivaModo = 'lineas';
+    calcularResumen();
+  } else {
+    S.ivaModo = 'unica';
+    S.carrito.forEach(it => { delete it.ivaTarifa; });
+    cambiarIvaPorcentaje(Number(radio.value));
+  }
+  closeModal('modal-iva-cr');
+}
+function cerrarPanelIvaCR() { closeModal('modal-iva-cr'); }
+window.toggleIvaUI = toggleIvaUI; window.abrirPanelIvaCR = abrirPanelIvaCR; window.confirmarPanelIvaCR = confirmarPanelIvaCR;
+window.cerrarPanelIvaCR = cerrarPanelIvaCR; window.iva_cr_modo = iva_cr_modo;
+
 /* ---------- Otros impuestos en la venta (IR 2%, etc.) ---------- */
 async function cargarImpuestosCatalogo() {
   try { await sb.rpc('asegurar_impuestos_base'); } catch (e) { /* ya existe o sin acceso */ }
@@ -4647,7 +4856,32 @@ function calcularResumen() {
   // una columna ni un concepto nuevo en la venta.
   const resultadoPromos = calcularDescuentosPromociones(S.carrito, S.promociones);
   const descuentoPromociones = resultadoPromos.total;
-  const descuentoBase = round2(descuentoManual + descuentoPromociones);
+  // Descuento general de la factura: se calcula sobre lo que queda después de los
+  // descuentos por producto y las promociones. Nunca puede pasar de esa base (ni del tope
+  // configurado), así el total jamás queda negativo ni se descuenta dos veces lo mismo.
+  const baseGeneral = Math.max(round2(subtotal - round2(descuentoManual + descuentoPromociones)), 0);
+  let descuentoGeneral = 0, descuentoGeneralTopado = false;
+  if (S.descGeneral) {
+    const dgCfg = descuentoGeneralConfig();
+    const maxPct = dgCfg.permitido ? dgCfg.maxPct : 0;
+    const v = Math.max(Number(S.descGeneral.valor) || 0, 0);
+    const bruto = S.descGeneral.modo === 'porcentaje' ? round2(baseGeneral * Math.min(v, 100) / 100) : round2(v);
+    const tope = round2(baseGeneral * maxPct / 100);
+    if (!dgCfg.permitido || !(bruto > 0)) {
+      S.descGeneral = null;                      // sin permiso o sin valor: no se aplica nada
+    } else if (S.descGeneral.modo === 'monto' && bruto > baseGeneral + 0.004) {
+      // Un monto fijo que ya no cabe en la factura (se quitaron productos): NO se recorta hasta
+      // dejarla en cero en silencio; se quita y se avisa para que la persona lo vuelva a poner.
+      S.descGeneral = null;
+      showToast('El descuento general se quitó porque ya no cabe en la factura. Vuelve a aplicarlo si lo necesitas.', 'warning');
+    } else {
+      if (S.descGeneral.modo === 'porcentaje') S.descGeneral.valor = Math.min(v, 100, maxPct);   // lo guardado = lo realmente aplicado
+      descuentoGeneral = Math.min(bruto, baseGeneral, tope);
+      descuentoGeneralTopado = bruto > descuentoGeneral + 0.004;
+      if (!(descuentoGeneral > 0)) { descuentoGeneral = 0; S.descGeneral = null; }
+    }
+  }
+  const descuentoBase = round2(descuentoManual + descuentoPromociones + descuentoGeneral);
   // Canje de puntos: se suma al mismo descuento. Si ya no aplica (cambio de
   // cliente, se quito el producto regalado, o el descuento es 0), se quita solo.
   let descuentoPuntos = 0;
@@ -4666,7 +4900,14 @@ function calcularResumen() {
   }
   const descuento = round2(descuentoBase + descuentoPuntos + descuentoCert);
   const baseImponible = Math.max(subtotal - descuento, 0);
-  const ivaMonto = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
+  let ivaMonto = S.ivaActivo ? round2(baseImponible * (S.ivaPorcentaje/100)) : 0;
+  // Costa Rica: si la persona eligió tarifas distintas por producto, el IVA se suma línea por línea. Si no hay tarifas distintas,
+  // se queda EXACTAMENTE el cálculo de arriba (el de siempre).
+  let ivaLineas = null, ivaEfectivo = null;
+  if (S.ivaActivo && S.ivaModo === 'lineas' && crIva()) {
+    const rl = window.N360IvaLineas.calcular(S.carrito.map(i => ({ bruto: round2(i.cantidad*i.precio), descLinea: i.descuento || 0, tarifa: tarifaLineaIva(i) })), baseImponible, S.ivaPorcentaje);
+    if (rl.mixto) { ivaMonto = rl.iva; ivaLineas = rl.lineas; ivaEfectivo = rl.efectivo; }
+  }
   const otros = (S.otrosImpuestos || []).map(o => ({ id: o.id, nombre: o.nombre, porcentaje: Number(o.porcentaje)||0, monto: round2(baseImponible * ((Number(o.porcentaje)||0)/100)) })).filter(o => o.monto > 0);
   const otrosMonto = round2(otros.reduce((a,o) => a + o.monto, 0));
   const impuestos = round2(ivaMonto + otrosMonto);   // IVA + otros: es lo que se separa de Caja y va a Impuestos
@@ -4680,11 +4921,11 @@ function calcularResumen() {
   const certPago = (S.certificado && S.certificado.modo === 'anticipo')
     ? round2(Math.min(Number(S.certificado.saldo) || 0, Math.max(cobrarSinCert, 0))) : 0;
   const cobrar = round2(cobrarSinCert - certPago);
-  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoPuntos - descuentoCert;
+  const ganancia  = round2(S.carrito.reduce((s,i) => s+i.ganancia, 0)) - descuentoPromociones - descuentoGeneral - descuentoPuntos - descuentoCert;
   const costoTotal= round2(S.carrito.reduce((s,i) => s+i.cantidad*i.costo, 0));
 
   // Guardar en estado para confirmar
-  S._resumen = { subtotal, descuento, impuestos, ivaMonto, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, promocionesAplicadas: resultadoPromos.detalle,
+  S._resumen = { subtotal, descuento, impuestos, ivaMonto, ivaLineas, ivaEfectivo, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, descuentoGeneral, descuentoGeneralTopado, baseGeneral, promocionesAplicadas: resultadoPromos.detalle,
                  descuentoCert, certPago, certAplicado: round2(descuentoCert + certPago) };
   if (window.N360CertVenta) { try { N360CertVenta.pintar(); } catch (_) {} }
 
@@ -4719,14 +4960,17 @@ function calcularResumen() {
   const lbl = document.getElementById('res-impuestos-label');
   if (lbl) {
     const partesLbl = [];
-    if (S.ivaActivo) partesLbl.push(`IVA ${S.ivaPorcentaje}%`);
+    if (S.ivaActivo) partesLbl.push(ivaEfectivo != null ? `IVA por producto ${ivaEfectivo}%` : `IVA ${S.ivaPorcentaje}%`);
     otros.forEach(o => partesLbl.push(`${o.nombre} ${o.porcentaje}%`));
     lbl.textContent = partesLbl.length ? `Impuestos (${partesLbl.join(' + ')})` : 'Impuestos';
   }
   renderOtrosImpuestos();
 
+  actualizarBotonIvaCR();
+  { const inpIva = document.getElementById('iva-porcentaje'); if (inpIva) { const porProd = S.ivaActivo && S.ivaModo === 'lineas' && crIva(); inpIva.disabled = !S.ivaActivo || porProd; if (porProd && ivaEfectivo != null) inpIva.value = ivaEfectivo; } }
   setEl2('res-subtotal',  fmt(subtotal));
   setEl2('res-descuento', descuento>0 ? `-${fmt(descuento)}` : fmt(0));
+  pintarDescuentoGeneral();
   setEl2('res-impuestos', fmt(impuestos));
   setEl2('res-total',     fmt(total));
   const rowRet = document.getElementById('res-ret-row');
@@ -4736,6 +4980,131 @@ function calcularResumen() {
   setEl2('res-cobrar', fmt(cobrar));
   setEl2('res-ganancia',  fmt(ganancia));
   actualizarPuntosEstimados();
+}
+
+/* ============================================================
+   DESCUENTO GENERAL DE LA FACTURA
+   ------------------------------------------------------------
+   Un descuento al total (en % o en monto) además de los descuentos
+   por producto. Se suma al MISMO "descuento" de la venta (junto con
+   promociones, puntos y certificados), así Caja, impuestos,
+   devoluciones, anulaciones y contabilidad leen lo mismo de siempre.
+   Candados: nunca más que la base ni que el tope configurado, se
+   recalcula con cada cambio del carrito, se vuelve a calcular justo
+   antes de guardar, y la base de datos valida que los montos cuadren.
+   ============================================================ */
+function descuentoGeneralConfig() {
+  try { if (window.N360VentasConfig && N360VentasConfig.descuentoGeneral) return N360VentasConfig.descuentoGeneral(); } catch (_) {}
+  return { permitido: true, maxPct: 100 };
+}
+
+function pintarDescuentoGeneral() {
+  const box = document.getElementById('res-dg');
+  if (!box) return;
+  const cfg = descuentoGeneralConfig();
+  const r = S._resumen || {};
+  const hay = (r.descuentoGeneral || 0) > 0;
+  if (!cfg.permitido && !hay) { box.innerHTML = ''; return; }
+  if (!S.carrito.length) { box.innerHTML = ''; return; }
+  if (hay) {
+    const g = S.descGeneral || {};
+    const detalle = g.modo === 'porcentaje' ? `${Number(g.valor) || 0}%` : 'monto fijo';
+    box.innerHTML = `<div class="resumen-row" style="align-items:center">
+        <span class="label">Descuento general <span style="color:var(--text-muted);font-weight:400">(${esc(detalle)}${g.motivo ? ' · ' + esc(g.motivo) : ''})</span></span>
+        <span class="value" style="color:var(--warning)">-${fmt(r.descuentoGeneral)}</span>
+      </div>
+      ${r.descuentoGeneralTopado ? `<div style="font-size:12px;color:var(--danger);margin:-4px 0 6px">Se limitó al máximo permitido.</div>` : ''}
+      <div style="display:flex;gap:8px;margin:-2px 0 8px">
+        <button type="button" class="btn-ghost btn-sm" onclick="abrirDescuentoGeneral()">Cambiar</button>
+        <button type="button" class="btn-ghost btn-sm" onclick="quitarDescuentoGeneral()">Quitar</button>
+      </div>`;
+  } else {
+    box.innerHTML = `<div style="margin:2px 0 10px"><button type="button" class="btn-ghost btn-sm" onclick="abrirDescuentoGeneral()">🏷️ Descuento general</button></div>`;
+  }
+}
+
+function quitarDescuentoGeneral() {
+  S.descGeneral = null;
+  calcularResumen();
+}
+
+function abrirDescuentoGeneral() {
+  const cfg = descuentoGeneralConfig();
+  if (!cfg.permitido) { showToast('No tienes permiso para aplicar descuento general', 'error'); return; }
+  if (!S.carrito.length) { showToast('Agrega productos antes de aplicar un descuento', 'warning'); return; }
+  const prev = S.descGeneral || { modo: 'porcentaje', valor: '', motivo: '' };
+  document.getElementById('dg-overlay')?.remove();
+  const o = document.createElement('div');
+  o.id = 'dg-overlay';
+  o.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(15,18,30,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  o.innerHTML = `<div style="background:var(--bg-surface,#fff);color:var(--text-primary,#111);width:100%;max-width:400px;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:18px" role="dialog" aria-modal="true">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong style="font-size:16px">🏷️ Descuento general</strong>
+      <button type="button" id="dg-x" style="border:none;background:none;font-size:20px;cursor:pointer;color:inherit" aria-label="Cerrar">✕</button>
+    </div>
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">Se aplica al total de la factura, después de los descuentos por producto.</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <button type="button" id="dg-modo" style="flex:none;width:44px;height:44px;border-radius:10px;border:1px solid var(--border);background:var(--bg-hover,#f0f0f5);cursor:pointer;font-weight:700;color:inherit"></button>
+      <input type="number" id="dg-valor" min="0" step="0.01" inputmode="decimal" style="flex:1;min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;font-size:16px;background:var(--bg-surface,#fff);color:inherit">
+    </div>
+    <input type="text" id="dg-motivo" maxlength="80" placeholder="Motivo (opcional): cliente frecuente, pago de contado…" style="width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;margin-bottom:12px;background:var(--bg-surface,#fff);color:inherit">
+    <div id="dg-vista" style="padding:10px 12px;background:var(--bg-app,#f5f5fa);border-radius:10px;font-size:13px;line-height:1.7;margin-bottom:8px"></div>
+    <div id="dg-error" style="color:var(--danger);font-size:12.5px;min-height:18px;margin-bottom:6px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn-secondary" id="dg-cancelar">Cancelar</button>
+      <button type="button" class="btn-primary" id="dg-aplicar">Aplicar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(o);
+  let modo = prev.modo === 'monto' ? 'monto' : 'porcentaje';
+  const $v = o.querySelector('#dg-valor'), $m = o.querySelector('#dg-modo');
+  $v.value = prev.valor === '' ? '' : String(prev.valor);
+  o.querySelector('#dg-motivo').value = prev.motivo || '';
+  const r0 = S._resumen || {};
+  // Base sobre la que se calcula (sin contar el descuento general que ya tenía puesto)
+  const sub = Number(r0.subtotal) || 0;
+  const conOtros = Math.max(sub - (Number(r0.descuento) || 0) + (Number(r0.descuentoGeneral) || 0) - (Number(r0.descuentoPuntos) || 0) - (Number(r0.descuentoCert) || 0), 0);
+  const base = Number(r0.baseGeneral) > 0 ? Number(r0.baseGeneral) : round2(conOtros);
+  const calcular = () => {
+    const v = Math.max(parseFloat($v.value) || 0, 0);
+    const bruto = modo === 'porcentaje' ? round2(base * Math.min(v, 100) / 100) : round2(v);
+    const tope = round2(base * cfg.maxPct / 100);
+    let err = '';
+    if (modo === 'porcentaje' && v > cfg.maxPct) err = `El máximo permitido es ${cfg.maxPct}%.`;
+    else if (modo === 'monto' && bruto > tope + 0.004) err = `El máximo permitido es ${fmt(tope)}.`;
+    else if (bruto > base + 0.004) err = `No puede pasar de ${fmt(base)}.`;
+    return { v, desc: Math.min(bruto, base, tope), err };
+  };
+  const pintar = () => {
+    $m.textContent = modo === 'porcentaje' ? '%' : 'C$';
+    $m.title = modo === 'porcentaje' ? 'Cambiar a monto' : 'Cambiar a porcentaje';
+    $v.placeholder = modo === 'porcentaje' ? '0 %' : '0.00';
+    const c = calcular();
+    const nuevoDesc = round2((Number(r0.descuento) || 0) - (Number(r0.descuentoGeneral) || 0) + c.desc);
+    o.querySelector('#dg-vista').innerHTML = `<div style="display:flex;justify-content:space-between"><span>Base</span><span>${fmt(base)}</span></div>
+      <div style="display:flex;justify-content:space-between"><span>Descuento general</span><b style="color:var(--warning)">-${fmt(c.desc)}</b></div>
+      <div style="display:flex;justify-content:space-between"><span>Descuento total de la factura</span><span>-${fmt(nuevoDesc)}</span></div>`;
+    o.querySelector('#dg-error').textContent = c.err;
+  };
+  $m.onclick = () => { modo = modo === 'porcentaje' ? 'monto' : 'porcentaje'; $v.value = ''; pintar(); };
+  $v.oninput = pintar;
+  const cerrar = () => { o.remove(); document.removeEventListener('keydown', esc2); };
+  const esc2 = (e) => { if (e.key === 'Escape') cerrar(); };
+  document.addEventListener('keydown', esc2);
+  o.addEventListener('mousedown', (e) => { if (e.target === o) cerrar(); });
+  o.querySelector('#dg-x').onclick = cerrar; o.querySelector('#dg-cancelar').onclick = cerrar;
+  o.querySelector('#dg-aplicar').onclick = () => {
+    const c = calcular();
+    if (c.err) { o.querySelector('#dg-error').textContent = c.err; return; }
+    if (!(c.v > 0) || !(c.desc > 0)) { o.querySelector('#dg-error').textContent = 'Escribe un descuento mayor que cero (o usa "Quitar").'; return; }
+    // Descuentos grandes (la mitad o más de la factura): se pide confirmar para evitar un error de dedo.
+    if (base > 0 && c.desc >= base * 0.5 && !confirm(`El descuento es de ${fmt(c.desc)} (${Math.round(c.desc / base * 100)}% de la factura). ¿Confirmas?`)) return;
+    S.descGeneral = { modo, valor: c.v, motivo: (o.querySelector('#dg-motivo').value || '').trim().slice(0, 80) };
+    cerrar();
+    calcularResumen();
+  };
+  pintar();
+  setTimeout(() => $v.focus(), 50);
 }
 
 function setEl2(id, val) {
@@ -4876,6 +5245,30 @@ function _psAdjuntarMoneda(prefijo, lineas, alCambiar) {
   });
 }
 
+// Otra línea con un método que ya está (p. ej. dos transferencias a bancos distintos, o una parte
+// en dólares y otra en córdobas). Cada línea sigue siendo un movimiento de Caja con su banco, como siempre.
+function _psControlAgregar(cont, prefijo) {
+  const lineas = prefijo === 'vr-' ? VR.pagoSeparadoLineas : S.pagoSeparadoLineas;
+  const div = document.createElement('div');
+  div.style.cssText = 'padding:10px 0 2px';
+  div.innerHTML = `<select id="${prefijo}ps-agregar" aria-label="Agregar otra línea de pago" style="width:100%">
+    <option value="">＋ Agregar otra línea (otro banco)…</option>
+    ${(S.metodosPago || []).map(m => `<option value="${esc(m.id)}">${esc(m.nombre)}</option>`).join('')}</select>`;
+  cont.appendChild(div);
+  div.querySelector('select').addEventListener('change', e => {
+    const m = (S.metodosPago || []).find(x => x.id === e.target.value); if (!m) return;
+    lineas.push({ metodoId: m.id, metodoNombre: m.nombre, monto: 0, bancoId: null, bancoNombre: null, montoBancoConvertido: null, extra: true });
+    (prefijo === 'vr-' ? renderLineasPagoSeparadoVR : renderLineasPagoSeparado)();
+  });
+}
+function quitarLineaPagoSeparado(prefijo, idx) {
+  const lineas = prefijo === 'vr-' ? VR.pagoSeparadoLineas : S.pagoSeparadoLineas;
+  if (!lineas[idx] || !lineas[idx].extra) return;
+  lineas.splice(idx, 1);
+  (prefijo === 'vr-' ? renderLineasPagoSeparadoVR : renderLineasPagoSeparado)();
+}
+window.quitarLineaPagoSeparado = quitarLineaPagoSeparado;
+
 async function renderLineasPagoSeparado() {
   const cont = document.getElementById('pago-separado-lineas');
   if (!cont || !S.pagoSeparadoLineas) return;
@@ -4896,6 +5289,7 @@ async function renderLineasPagoSeparado() {
         <span style="flex:1;font-size:13px;font-weight:600">${esc(linea.metodoNombre)}</span>
         <input type="number" id="ps-monto-${i}" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
           style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparado(${i}, this.value)"/>
+        ${linea.extra ? `<button type="button" class="btn-icon" title="Quitar esta línea" aria-label="Quitar esta línea" style="width:24px;height:24px;display:inline-flex" onclick="quitarLineaPagoSeparado('', ${i})">✕</button>` : ''}
       </div>
       <div id="ps-ma-${i}" style="padding:0 0 4px 28px"></div>
       <div id="pago-separado-banco-wrap-${i}" style="padding:6px 0 10px 28px;display:${mostrarAhora ? '' : 'none'}">
@@ -4907,6 +5301,7 @@ async function renderLineasPagoSeparado() {
   }).join('');
 
   _psAdjuntarMoneda('', S.pagoSeparadoLineas);
+  _psControlAgregar(cont, '');
   renderResumenPagoSeparado();
 }
 
@@ -4994,6 +5389,7 @@ function validarPagoSeparado() {
 function renderResumenFinal() {
   S.observaciones = document.getElementById('venta-observaciones')?.value || '';
   const r = S._resumen || {};
+  S._totalRevisado = Number(r.total) || 0;   // el total que la persona ve antes de confirmar
   const el = document.getElementById('resumen-final-contenido');
   if (!el) return;
   el.innerHTML = `
@@ -5008,7 +5404,7 @@ function renderResumenFinal() {
         <span>Subtotal</span><strong>${fmt(r.subtotal||0)}</strong>
       </div>
       ${(r.descuento||0)>0 ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <span>Descuento</span><strong style="color:var(--warning)">-${fmt(r.descuento)}</strong>
+        <span>Descuento${(r.descuentoGeneral||0)>0 ? ` <span style="color:var(--text-muted);font-weight:400">(incluye descuento general ${fmt(r.descuentoGeneral)})</span>` : ''}</span><strong style="color:var(--warning)">-${fmt(r.descuento)}</strong>
       </div>` : ''}
       ${S.ivaActivo ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
         <span>IVA (${S.ivaPorcentaje}%)</span><strong>${fmt(r.ivaMonto != null ? r.ivaMonto : (r.impuestos||0))}</strong>
@@ -5252,7 +5648,8 @@ function entregarPDFRecibo(doc, nombreArchivo, descargarAutomatico) {
 // nombre la lista de productos que incluye (solo texto, no toca
 // precios ni cálculos). comprobante-carta.js no necesita ningún
 // cambio porque simplemente imprime el nombre tal cual llega.
-async function enriquecerItemsConCombo(items) {
+async function enriquecerItemsConCombo(items) { const r = await _enriquecerItemsConComboBase(items); return (window.N360CR && window.N360CR.conCabys) ? window.N360CR.conCabys(r) : r; }
+async function _enriquecerItemsConComboBase(items) {
   const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
   if (!combosIds.length) return items;
   try {
@@ -5285,6 +5682,8 @@ async function enriquecerItemsConCombo(items) {
 // sigue saliendo por su propia vía, como siempre. El botón "Descargar recibo"
 // del detalle (opciones.manual) siempre descarga, porque lo pide la persona.
 async function descargarReciboDeVenta(venta, items, opciones = {}) {
+  // En el cobro de la Clínica el recibo no se descarga solo: la Clínica ofrece ticket, PDF y WhatsApp.
+  if (opciones.manual !== true && S._motorClinica === true) return;
   try {
     await cargarConfigVentaRapida();
     const cfg = VR.config || {};
@@ -5756,16 +6155,21 @@ async function registrarGarantiasAutomaticas(ventaId, carrito, clienteId, client
 
       const vencimiento = new Date(hoy + 'T00:00:00');
       vencimiento.setMonth(vencimiento.getMonth() + meses);
-      const { data: numero } = await sb.rpc('generar_numero_garantia', { p_user_id: S.userId });
-
-      filas.push({
-        auth_user_id: S.userId, numero: numero || `GT-${Date.now()}`,
-        cliente_id: clienteId || null, cliente_nombre: clienteId ? clienteNombre : null,
-        producto_id: productoIdParaGarantia, producto_nombre: nombreParaGarantia,
-        venta_id: ventaId, fecha_compra: hoy, garantia_meses: meses,
-        fecha_vencimiento: ymd(vencimiento), origen: 'automatica',
-        numero_serie: numeroSerieGarantia,
-      });
+      // Con números de serie activados y varias unidades vendidas: una garantía por cada serie
+      // (así cada unidad queda con su propia garantía). Sin eso, queda 1 por línea como siempre.
+      const unaPorSerie = S.empresaConfig?.usa_numero_serie === true && !item.esCombo && !item.esPromocion && seriesCoincidentes.length > 1;
+      const listaSeries = unaPorSerie ? seriesCoincidentes.map(x => x.numero_serie) : [numeroSerieGarantia];
+      for (const serieGar of listaSeries) {
+        const { data: numero } = await sb.rpc('generar_numero_garantia', { p_user_id: S.userId });
+        filas.push({
+          auth_user_id: S.userId, numero: numero || `GT-${Date.now()}-${filas.length}`,
+          cliente_id: clienteId || null, cliente_nombre: clienteId ? clienteNombre : null,
+          producto_id: productoIdParaGarantia, producto_nombre: nombreParaGarantia,
+          venta_id: ventaId, fecha_compra: hoy, garantia_meses: meses,
+          fecha_vencimiento: ymd(vencimiento), origen: 'automatica',
+          numero_serie: serieGar,
+        });
+      }
     }
     if (filas.length) await sb.from('garantias_clientes').insert(filas);
   } catch (e) {
@@ -5798,6 +6202,35 @@ async function _confirmarVentaInterno(conImpresion) {
         }
       }
     } catch (eTxChk) { console.warn('Revisar orden de transporte:', eTxChk); }
+  }
+
+  // Clínica (solo cuentas con el módulo): candado para no cobrar dos veces la misma visita, estancia o
+  // factura a la aseguradora (otra pestaña, otro equipo o la misma ventana abierta dos veces).
+  if (S.empresaConfig?.usa_modulo_clinica === true && (S._agendaCitaId || S._clinicaCobro?.id)) {
+    try {
+      const cc = S._clinicaCobro;
+      const tabla = cc?.id ? (cc.tipo === 'estancia' ? 'clinica_estancias' : 'clinica_reclamos') : 'agenda_citas';
+      const id = cc?.id || S._agendaCitaId;
+      const { data: x, error: eX } = await sb.from(tabla).select('venta_id' + (tabla === 'clinica_reclamos' ? ', estado' : '')).eq('id', id).eq('auth_user_id', S.userId).maybeSingle();
+      if (eX) throw eX;
+      if (!x) { showToast('Ya no existe lo que se iba a cobrar. No se registró la venta.', 'error'); return; }
+      if (tabla === 'clinica_reclamos' && x.estado !== 'enviado') { showToast('Esa factura a la aseguradora ya no está pendiente. No se registró otra venta.', 'error'); return; }
+      if (x.venta_id) {
+        const { data: vPrev } = await sb.from('ventas').select('numero_venta, estado').eq('id', x.venta_id).eq('auth_user_id', S.userId).maybeSingle();
+        if (vPrev && vPrev.estado !== 'anulada') { showToast(`Esto ya se cobró en la venta ${vPrev.numero_venta || ''}. No se registró otra venta.`, 'error'); return; }
+      }
+    } catch (eClChk) { console.warn('Revisar cobro de la clínica:', eClChk); showToast('No se pudo comprobar si ya estaba cobrado. Revisa tu conexión e intenta de nuevo.', 'error'); return; }
+  }
+
+  // Restaurante (solo cuentas con el módulo): candado para no cobrar dos veces los mismos platillos de una
+  // mesa (otro equipo, otra pestaña o la misma ventana abierta dos veces). El servidor aparta los platillos
+  // al empezar el cobro; si esa reserva ya no está vigente, no se registra la venta.
+  if (S.empresaConfig?.usa_modulo_restaurante === true && S._restCobro?.id) {
+    try {
+      const { data: k, error: eK } = await sb.from('restaurante_cobros').select('estado, venta_id').eq('id', S._restCobro.id).eq('auth_user_id', S.userId).maybeSingle();
+      if (eK) throw eK;
+      if (!k || k.estado !== 'reservado' || k.venta_id) { showToast('Esa cuenta de la mesa ya se cobró o se soltó. No se registró otra venta.', 'error'); return; }
+    } catch (eRc) { console.warn('Revisar cobro del restaurante:', eRc); showToast('No se pudo comprobar si la mesa ya estaba cobrada. Revisa tu conexión e intenta de nuevo.', 'error'); return; }
   }
 
   // Aviso (no bloquea): productos con costo 0 o vendidos por debajo del costo
@@ -5862,6 +6295,22 @@ async function _confirmarVentaInterno(conImpresion) {
 
   try {
     S.observaciones = document.getElementById('venta-observaciones')?.value.trim() || '';
+    // Con descuento general: se recalcula todo justo antes de guardar y se compara con el total
+    // que la persona revisó en pantalla. Si algo cambió (carrito, tope, etc.), no se guarda nada.
+    if (S.descGeneral) {
+      calcularResumen();
+      const rr = S._resumen;
+      if (!rr || (S._totalRevisado != null && Math.abs((Number(rr.total) || 0) - S._totalRevisado) > 0.005)) {
+        throw new Error('El total cambió mientras se preparaba la venta. Revisa el resumen y confirma de nuevo.');
+      }
+    }
+    // IVA por producto (Costa Rica): si las tarifas de los productos no estaban cargadas, NO se guarda con tarifas supuestas.
+    if (S.ivaActivo && S.ivaModo === 'lineas' && crIva() && !window.N360IvaLineas.listo()) {
+      await window.N360IvaLineas.cargarTarifas(sb);
+      if (!window.N360IvaLineas.listo()) throw new Error('No se pudieron cargar las tarifas de IVA de tus productos. Revisa tu conexión e intenta de nuevo.');
+      calcularResumen();
+      throw new Error('Se cargaron las tarifas de IVA de tus productos y el total pudo cambiar. Revisa el resumen y confirma de nuevo.');
+    }
     const r = S._resumen;
 
     // "Corregir venta": primero se anula la original (misma rutina de
@@ -5947,6 +6396,10 @@ async function _confirmarVentaInterno(conImpresion) {
       // Certificado de regalo: la base valida el saldo y lo descuenta EN LA MISMA operación que guarda la venta.
       ...((S.certificado && certAplicado > 0) ? { certificados_aplicados: [{ certificado_id: S.certificado.id, monto: certAplicado }] } : {}),
       ...(S._certEmisionId ? { certificado_emision_id: S._certEmisionId } : {}),
+      // Descuento general: queda constancia de cuánto fue y cómo se puso (el total ya lo incluye en "descuento").
+      ...((Number(r.descuentoGeneral) || 0) > 0 && S.descGeneral
+        ? { descuento_general: r.descuentoGeneral, descuento_general_modo: S.descGeneral.modo,
+            descuento_general_valor: Number(S.descGeneral.valor) || 0, descuento_general_motivo: S.descGeneral.motivo || null } : {}),
       // Canje de puntos: va en el payload BASE para que el reintento sin
       // columnas de IVA tambien lo lleve (nunca debe haber descuento sin canje).
       ...((S.canje && S.canje.clienteId === S.clienteId && (r.descuentoPuntos || 0) > 0)
@@ -5958,7 +6411,7 @@ async function _confirmarVentaInterno(conImpresion) {
     const ventaPayloadConIva = {
       ...ventaPayload,
       iva_activo:      S.ivaActivo,
-      iva_porcentaje:  S.ivaActivo ? S.ivaPorcentaje : 0,
+      iva_porcentaje:  S.ivaActivo ? (r.ivaEfectivo != null ? r.ivaEfectivo : S.ivaPorcentaje) : 0,
       ...((!esFiado && Number(r.retencionIr) > 0) ? { retencion_ir_monto: r.retencionIr, retencion_ir_porcentaje: r.retencionPct } : {}),
     };
 
@@ -5968,7 +6421,8 @@ async function _confirmarVentaInterno(conImpresion) {
        PASO D: Productos de la venta (se guardan JUNTO con la venta,
        en una sola operación del servidor — ver PASO C+D+E+F abajo)
     ---------------------------------------------------------- */
-    const detallesPayload = S.carrito.map(item => ({
+    const detallesPayload = S.carrito.map((item, idxIva) => ({
+      ...(r.ivaLineas && r.ivaLineas[idxIva] ? { iva_tarifa: r.ivaLineas[idxIva].tarifa, iva_monto: r.ivaLineas[idxIva].iva } : {}),
       auth_user_id:   S.userId,
       venta_id:       null,
       // Un combo o una promoción vendida como línea propia no existen
@@ -5980,6 +6434,7 @@ async function _confirmarVentaInterno(conImpresion) {
       producto_id:    (item.esCombo || item.esPromocion) ? null : item.id,
       combo_id:       item.esCombo ? item.id : null,
       promocion_id:   item.esPromocion ? item.id : null,
+      ...(item.esPromocion && item.componentesPromo?.length ? { componentes_promo: item.componentesPromo } : {}),
       producto_nombre:item.nombre,
       producto_sku:   item.sku || null,
       tipo_item:      (item.esCombo || item.esPromocion) ? 'producto' : item.tipo,
@@ -5989,7 +6444,7 @@ async function _confirmarVentaInterno(conImpresion) {
       descuento:      item.descuento,
       subtotal:       item.subtotal,
       ganancia:       item.ganancia,
-      escala_id:      item.escalaId || null,
+      escala_id:      (item.esCombo || item.esPromocion) ? null : (item.escalaId || null),   // la escala de un combo es de combo_precios_escala (no cabe aquí); su nombre sí queda
       escala_nombre:  item.escalaNombre || null,
       vendido_sin_stock: !!item.sinStock,
       es_regalia:     !!item.esRegalia,
@@ -6130,15 +6585,6 @@ async function _confirmarVentaInterno(conImpresion) {
       }
     } catch (eVet) { console.warn('Vincular consulta veterinaria:', eVet); }
 
-    // Cobro de una visita de la Clinica: la venta queda ligada a la cita. Aislado: la venta YA
-    // se confirmo, nada de esto la revierte.
-    try {
-      if (S._clinicaCitaId) {
-        const { error: eCl } = await sb.from('clinica_citas').update({ venta_id: ventaId }).eq('id', S._clinicaCitaId).eq('auth_user_id', S.userId);
-        if (eCl) console.warn('Vincular cita de la clinica:', eCl);
-        S._clinicaCitaId = null;
-      }
-    } catch (eCl) { console.warn('Vincular cita de la clinica:', eCl); }
     // Cobro de una cita de la Agenda: la cita queda ligada a la venta y completada. Aislado:
     // la venta YA se confirmó, nada de esto la revierte.
     try {
@@ -6149,6 +6595,31 @@ async function _confirmarVentaInterno(conImpresion) {
         S._agendaCitaId = null;
       }
     } catch (eCita) { console.warn('Vincular cita de agenda:', eCita); }
+
+    // Clínica (solo cuentas con el módulo): la estancia (observación/hospitalización) o la factura a la
+    // aseguradora queda ligada a su venta. Aislado: la venta YA se confirmó, nada de esto la revierte.
+    try {
+      const cc = S._clinicaCobro;
+      if (cc && cc.id && (cc.tipo === 'estancia' || cc.tipo === 'reclamo')) {
+        const q = cc.tipo === 'estancia'
+          ? sb.from('clinica_estancias').update({ venta_id: ventaId }).eq('id', cc.id).eq('auth_user_id', S.userId)
+          : sb.from('clinica_reclamos').update({ venta_id: ventaId, estado: 'facturado' }).eq('id', cc.id).eq('auth_user_id', S.userId).eq('estado', 'enviado');
+        const { error: eCc } = await q;
+        if (eCc) console.warn('Vincular cobro de la clínica:', eCc);
+      }
+      S._clinicaCobro = null;
+    } catch (eCc) { console.warn('Vincular cobro de la clínica:', eCc); }
+
+    // Restaurante (solo cuentas con el módulo): los platillos cobrados quedan ligados a su venta y, si ya
+    // no queda nada por pagar, la mesa se cierra. Aislado: la venta YA se confirmó, nada de esto la revierte.
+    try {
+      if (S._restCobro?.id) {
+        const { data: rc, error: eRc } = await sb.rpc('restaurante_cobro_confirmar', { p_cobro_id: S._restCobro.id, p_venta_id: ventaId });
+        if (eRc || !rc?.ok) console.warn('Vincular cobro del restaurante:', eRc || rc);
+        S._restCobroHecho = { cobroId: S._restCobro.id, ventaId, cerrada: !!rc?.cerrada };
+      }
+      S._restCobro = null;
+    } catch (eRc) { console.warn('Vincular cobro del restaurante:', eRc); }
 
     // Facturacion de un viaje de Transporte: la orden queda ligada a la venta. Aislado.
     try {
@@ -6225,6 +6696,7 @@ async function _confirmarVentaInterno(conImpresion) {
     // avisa al padre que la venta sí se registró — igual que con los
     // pagos de Créditos, Rutas nunca calcula nada, solo reacciona.
     if (window.self !== window.top) {
+      S._ultimaVenta = { ventaId, numero: S.numeroVenta, total: r.total };
       try { window.parent.postMessage({ tipo: 'n360_operacion_completada', monto: r.total, nota: `Venta ${S.numeroVenta}`, ventaId, txOrdenId: S._txVinculo?.ordenId || null, txVinculada: !!S._txVinculo?.ok }, '*'); } catch(e) {}
       S._txVinculo = null;
     }
@@ -6362,12 +6834,24 @@ function abrirConfigVentaRapida(esAjusteManual, origen) {
 
   const c = VR.config || {};
   const ivaActivo = c.iva_activo != null ? !!c.iva_activo : !!(S.empresaConfig?.maneja_iva);
-  const ivaPct    = c.iva_porcentaje ?? (S.empresaConfig?.porcentaje_iva ?? 15);
+  const ivaPct    = c.iva_porcentaje ?? ((window.N360CR && window.N360CR.activo && window.N360CR.activo()) ? (S.empresaConfig?.iva_porcentaje_default ?? 13) : (S.empresaConfig?.porcentaje_iva ?? 15));
 
   const sw  = document.getElementById('vrc-iva-switch');
   const inp = document.getElementById('vrc-iva-porcentaje');
   if (sw)  sw.classList.toggle('on', ivaActivo);
   if (inp) { inp.value = ivaPct; inp.disabled = !ivaActivo; }
+  { // Costa Rica: en vez de escribir el porcentaje, se elige la tarifa (13, 4, 2, 1 o 0) y, si se quiere, usar la de cada producto
+    const crBox = document.getElementById('vrc-iva-cr'), crSel = document.getElementById('vrc-iva-cr-tarifa'), crProd = document.getElementById('vrc-iva-cr-prod');
+    const esCR = !!(window.N360CR && window.N360CR.activo && window.N360CR.activo());
+    if (crBox) crBox.style.display = esCR ? '' : 'none';
+    const derecha = inp && inp.closest ? inp.closest('.iva-right') : null; if (derecha) derecha.style.display = esCR ? 'none' : '';
+    if (esCR && crSel) {
+      const lista = [13, 4, 2, 1, 0]; if (!lista.includes(Number(ivaPct))) lista.push(Number(ivaPct));
+      crSel.innerHTML = lista.map(t => `<option value="${t}" ${Number(ivaPct) === t ? 'selected' : ''}>${t}%${t === 13 ? ' (tarifa general)' : (t === 0 ? ' (exento)' : '')}</option>`).join('');
+      crSel.disabled = !ivaActivo;
+      if (crProd) { crProd.checked = S.empresaConfig?.iva_por_producto === true; crProd.disabled = !ivaActivo; }
+    }
+  }
 
   document.querySelectorAll('input[name="vrc-ancho"]').forEach(r => {
     r.checked = r.value === (c.ancho_ticket || '80mm');
@@ -6414,6 +6898,7 @@ function vrToggleIvaConfig() {
   const activo = !sw.classList.contains('on');
   sw.classList.toggle('on', activo);
   inp.disabled = !activo;
+  { const s1 = document.getElementById('vrc-iva-cr-tarifa'), s2 = document.getElementById('vrc-iva-cr-prod'); if (s1) s1.disabled = !activo; if (s2) s2.disabled = !activo; }
 }
 
 /* =====================================================
@@ -6632,6 +7117,8 @@ async function conectarImpresoraUSBDesdeUI(contexto) {
 async function guardarConfigVentaRapida() {
   const ivaActivo = document.getElementById('vrc-iva-switch')?.classList.contains('on') || false;
   let ivaPct = parseFloat(document.getElementById('vrc-iva-porcentaje')?.value);
+  const esCRcfg = !!(window.N360CR && window.N360CR.activo && window.N360CR.activo());
+  if (esCRcfg) { const t = parseFloat(document.getElementById('vrc-iva-cr-tarifa')?.value); if (!isNaN(t)) ivaPct = t; }
   if (isNaN(ivaPct) || ivaPct < 0) ivaPct = 0;
   if (ivaPct > 100) ivaPct = 100;
   const ancho = document.querySelector('input[name="vrc-ancho"]:checked')?.value || '80mm';
@@ -6659,6 +7146,13 @@ async function guardarConfigVentaRapida() {
       .upsert(payload, { onConflict: 'auth_user_id' })
       .select('*').single();
     if (error) throw error;
+    if (esCRcfg) {   // Costa Rica: "usar la tarifa de cada producto" se guarda en la configuración de la empresa
+      const flag = !!ivaActivo && !!document.getElementById('vrc-iva-cr-prod')?.checked;
+      const { error: eFlag } = await sb.from('configuracion_empresa').update({ iva_por_producto: flag }).eq('auth_user_id', S.userId);
+      if (eFlag) throw eFlag;
+      if (S.empresaConfig) S.empresaConfig.iva_por_producto = flag;
+      if (flag) { try { await window.N360IvaLineas.cargarTarifas(sb, true); } catch (_) {} }
+    }
     VR.config = data;
     // BUG REAL CORREGIDO: al guardar, se actualizaba VR.config pero
     // nunca S.mostrarCostoVenta (la bandera que realmente controla si
@@ -6712,6 +7206,7 @@ function abrirPantallaVentaRapida() {
   if (input) input.value = '';
 
   initScannerVR();
+  if (VR.config?.iva_activo && vrIvaPorProducto()) { window.N360IvaLineas.cargarTarifas(sb, true).then(() => { try { renderCarritoVentaRapida(); } catch (_) {} }); }
   openModal('modal-vr-pos');
   generarNumeroVentaRapida();
   setTimeout(enfocarScannerVR, 150);
@@ -6828,7 +7323,7 @@ function continuarEscaneoConProducto(prod) {
     return;
   }
 
-  if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0 && !S.venderSinStockActivo) {
+  if (prod.tipo === 'producto' && Number(prod.stock_actual) <= 0 && !prod.preparadoAlVender && !S.venderSinStockActivo) {
     showToast(`⚠️ "${prod.nombre}" no tiene stock disponible`, 'error');
     if (status) status.textContent = '📡 Listo para escanear';
     enfocarScannerVR();
@@ -6938,7 +7433,7 @@ async function procesarCodigoEscaneado(codigo) {
 function agregarAlCarritoVR(prod) {
   const origen = S.origenStockElegido; S.origenStockElegido = null;
   const esRemoto = !!(origen && !origen.esLocal);
-  const stockReal = esRemoto ? origen.stockDisponible : (Number(prod.stock_actual) || 0);
+  const stockReal = esRemoto ? origen.stockDisponible : (prod.preparadoAlVender ? Infinity : (Number(prod.stock_actual) || 0));
 
   const existente = VR.carrito.find(i => i.id === prod.id && (i.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
   if (existente) {
@@ -7038,6 +7533,9 @@ function cambiarPrecioVR(id, val) {
   renderCarritoVentaRapida();
 }
 
+function vrIvaPorProducto() {       // Costa Rica + el negocio eligió usar la tarifa guardada en cada producto
+  return !!(window.N360CR && window.N360CR.activo && window.N360CR.activo() && window.N360IvaLineas && S.empresaConfig && S.empresaConfig.iva_por_producto === true);
+}
 function calcularResumenVR() {
   const subtotal = round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.precio, 0));
   const resultadoPromos = calcularDescuentosPromociones(VR.carrito, S.promociones);
@@ -7045,10 +7543,19 @@ function calcularResumenVR() {
   const ivaActivo = !!VR.config?.iva_activo;
   const ivaPct    = Number(VR.config?.iva_porcentaje) || 0;
   const baseImponible = Math.max(subtotal - descuentoPromociones, 0);
-  const impuesto  = ivaActivo ? round2(baseImponible * (ivaPct/100)) : 0;
+  let impuesto  = ivaActivo ? round2(baseImponible * (ivaPct/100)) : 0;
+  // Costa Rica + "usar la tarifa de cada producto": el IVA se suma línea por línea SOLO si hay tarifas distintas; si no, queda el cálculo de siempre.
+  let ivaLineas = null, ivaPctMostrar = ivaPct, tarifasPendientes = false;
+  if (ivaActivo && vrIvaPorProducto()) {
+    if (!window.N360IvaLineas.listo()) tarifasPendientes = true;
+    else {
+      const rl = window.N360IvaLineas.calcular(VR.carrito.map(i => ({ bruto: round2(i.cantidad*i.precio), descLinea: 0, tarifa: (i.esCombo || i.esPromocion) ? null : window.N360IvaLineas.tarifaDe(i.id) })), baseImponible, ivaPct);
+      if (rl.mixto) { impuesto = rl.iva; ivaLineas = rl.lineas; ivaPctMostrar = rl.efectivo; }
+    }
+  }
   const total     = round2(subtotal - descuentoPromociones + impuesto);
   const costoTotal= round2(VR.carrito.reduce((s,i) => s + i.cantidad*i.costo, 0));
-  return { subtotal, impuesto, total, costoTotal, ivaActivo, ivaPct, descuentoPromociones, promocionesAplicadas: resultadoPromos.detalle };
+  return { subtotal, impuesto, total, costoTotal, ivaActivo, ivaPct: ivaPctMostrar, ivaLineas, tarifasPendientes, descuentoPromociones, promocionesAplicadas: resultadoPromos.detalle };
 }
 
 function renderCarritoVentaRapida() {
@@ -7096,7 +7603,7 @@ function renderCarritoVentaRapida() {
   setEl2('vr-res-total',    fmt(r.total));
   const ivaRow = document.getElementById('vr-res-iva-row');
   if (ivaRow) ivaRow.style.display = r.ivaActivo ? 'flex' : 'none';
-  if (r.ivaActivo) setEl2('vr-res-iva', `${fmt(r.impuesto)} (${r.ivaPct}%)`);
+  if (r.ivaActivo) setEl2('vr-res-iva', `${fmt(r.impuesto)} (${r.ivaPct}%${r.ivaLineas ? ' · por producto' : ''})`);
 
   const avisoPromoVR = document.getElementById('vr-res-promociones-aviso');
   if (avisoPromoVR) {
@@ -7185,6 +7692,7 @@ async function renderLineasPagoSeparadoVR() {
         <span style="flex:1;font-size:13px;font-weight:600">${esc(linea.metodoNombre)}</span>
         <input type="number" id="vr-ps-monto-${i}" min="0" step="0.01" value="${linea.monto || ''}" placeholder="0.00"
           style="width:110px;text-align:right" oninput="actualizarMontoPagoSeparadoVR(${i}, this.value)"/>
+        ${linea.extra ? `<button type="button" class="btn-icon" title="Quitar esta línea" aria-label="Quitar esta línea" style="width:24px;height:24px;display:inline-flex" onclick="quitarLineaPagoSeparado('vr-', ${i})">✕</button>` : ''}
       </div>
       <div id="vr-ps-ma-${i}" style="padding:0 0 4px 28px"></div>
       <div id="vr-pago-separado-banco-wrap-${i}" style="padding:6px 0 10px 28px;display:${mostrarAhora ? '' : 'none'}">
@@ -7196,6 +7704,7 @@ async function renderLineasPagoSeparadoVR() {
   }).join('');
 
   _psAdjuntarMoneda('vr-', VR.pagoSeparadoLineas);
+  _psControlAgregar(cont, 'vr-');
   renderResumenPagoSeparadoVR();
 }
 
@@ -7275,6 +7784,11 @@ function confirmarCerrarVentaRapida() {
   if (VR.carrito.length && !VR.procesando) {
     if (!confirm('Hay productos escaneados sin cobrar. ¿Cerrar Venta rápida de todos modos?')) return;
   }
+  if (!VR.procesando && VR.numeroVenta) {            // número reservado que no se usó: se devuelve
+    const _numVR = VR.numeroVenta;
+    VR.numeroVenta = '';
+    _liberarNumeroVenta(_numVR);
+  }
   closeModal('modal-vr-pos');
 }
 
@@ -7352,6 +7866,13 @@ async function _confirmarVentaRapidaInterno() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
 
   try {
+    // Candado (Costa Rica, IVA por producto): sin las tarifas cargadas NO se cobra con tarifas supuestas.
+    if (VR.config?.iva_activo && vrIvaPorProducto() && !window.N360IvaLineas.listo()) {
+      await window.N360IvaLineas.cargarTarifas(sb);
+      if (!window.N360IvaLineas.listo()) throw new Error('No se pudieron cargar las tarifas de IVA de tus productos. Revisa tu conexión e intenta de nuevo.');
+      renderCarritoVentaRapida();
+      throw new Error('Se cargaron las tarifas de IVA de tus productos y el total pudo cambiar. Revisa el total y cobra de nuevo.');
+    }
     const r = calcularResumenVR();
 
     if (!VR.numeroVenta || VR.numeroVenta.startsWith('V-TMP')) {
@@ -7392,12 +7913,14 @@ async function _confirmarVentaRapidaInterno() {
       iva_porcentaje: r.ivaActivo ? r.ivaPct : 0,
     };
 
-    const detallesPayload = VR.carrito.map(item => ({
+    const detallesPayload = VR.carrito.map((item, idxIva) => ({
+      ...(r.ivaLineas && r.ivaLineas[idxIva] ? { iva_tarifa: r.ivaLineas[idxIva].tarifa, iva_monto: r.ivaLineas[idxIva].iva } : {}),
       auth_user_id:    S.userId,
       venta_id:        null,
       producto_id:     (item.esCombo || item.esPromocion) ? null : item.id,
       combo_id:        item.esCombo ? item.id : null,
       promocion_id:    item.esPromocion ? item.id : null,
+      ...(item.esPromocion && item.componentesPromo?.length ? { componentes_promo: item.componentesPromo } : {}),
       producto_nombre: item.nombre,
       producto_sku:    item.sku || null,
       tipo_item:       (item.esCombo || item.esPromocion) ? 'producto' : item.tipo,
@@ -7407,7 +7930,7 @@ async function _confirmarVentaRapidaInterno() {
       descuento:       0,
       subtotal:        round2(item.cantidad*item.precio),
       ganancia:        round2(item.cantidad*(item.precio-item.costo)),
-      escala_id:       item.escalaId || null,
+      escala_id:       (item.esCombo || item.esPromocion) ? null : (item.escalaId || null),
       escala_nombre:   item.escalaNombre || null,
       vendido_sin_stock: !!item.sinStock,
       es_regalia:      !!item.esRegalia,
@@ -8128,6 +8651,7 @@ document.addEventListener('click', e => {
    ============================================================ */
 document.addEventListener('keydown', e => {
   if (e.key==='Escape') {
+    liberarNumeroVentaNormal();
     closeModal('modal-venta');
     closeModal('modal-detalle');
     closeModal('modal-anular');
@@ -8206,9 +8730,10 @@ async function initVentas() {
     // armar el carrito con los medicamentos de esa receta.
     await aplicarRecetaPendienteDeVender();
     await aplicarCobroVeterinaria();
-    await aplicarCobroClinica();
     await aplicarCobroTransporte();
     await aplicarCobroAgenda();
+    await aplicarCobroClinica();
+    await aplicarCobroRestaurante();
     await aplicarCobroCertificado();
 
     // 5c. Configuración del módulo (¿este usuario puede ver las ventas de todo el negocio?)
@@ -8227,6 +8752,16 @@ async function initVentas() {
     if (params.get('action')==='new') {
       setTimeout(abrirNuevaVenta, 400);
     }
+    // Cobro desde la Clínica (ventana dentro de la Clínica): la venta ya viene armada; se avanza sola hasta
+    // "Método de pago" validando cada paso igual que si el usuario tocara "Siguiente".
+    if (params.get('clinica_cobro') === '1' && S.empresaConfig?.usa_modulo_clinica === true && S.carrito.length) {
+      for (let i = 0; S.clienteId && i < 6 && S.paso < 5; i++) { const antes = S.paso; pasoSiguiente(); if (S.paso === antes) break; }
+    }
+    if (params.get('clinica_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_clinica === true && window.self !== window.top) instalarMotorClinica();
+    // Cobro de una mesa del Restaurante: el mismo motor (la pantalla de cobro es la del restaurante).
+    if (params.get('rest_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_restaurante === true && window.self !== window.top) instalarMotorClinica();
+    // Cobro de un viaje de Transporte: el mismo motor (la pantalla de cobro es la de Transporte).
+    if (params.get('tx_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_transporte === true && window.self !== window.top) instalarMotorClinica();
     // Deep link desde el módulo de Rutas ("Vender aquí") — abre Nueva
     // Venta con ese cliente ya elegido, mismo flujo de siempre.
     const rutaClienteId = params.get('ruta_cliente');
@@ -8257,6 +8792,116 @@ async function initVentas() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
   }
+}
+
+/* ============================================================
+   MOTOR DE COBRO PARA LA CLÍNICA
+   La Clínica muestra SU propia pantalla de cobro y aquí se registra la venta por el MISMO camino de
+   siempre (los pasos de la venta y confirmarVenta): mismos cálculos, candados, Caja, inventario, lotes,
+   impuestos, contabilidad y reportes. Solo existe dentro de la ventana de cobro de la Clínica, en
+   cuentas con el módulo (ventas.html?clinica_cobro=1&motor=1); en cualquier otro caso no se instala.
+   ============================================================ */
+function instalarMotorClinica() {
+  S._motorClinica = true;
+  const traerVenta = async ventaId => {
+    const { data: v } = await sb.from('ventas').select('*').eq('id', ventaId).eq('auth_user_id', S.userId).maybeSingle();
+    if (v && !(S.ventas || []).some(x => x.id === v.id)) S.ventas = [v, ...(S.ventas || [])];
+    return v;
+  };
+  const llegarAlPago = () => { for (let i = 0; i < 6 && S.paso < 5; i++) { const antes = S.paso; pasoSiguiente(); if (S.paso === antes) break; } return S.paso >= 5; };
+  window.N360MotorVenta = {
+    estado() {
+      if (S.carrito.length) calcularResumen();
+      const r = S._resumen || {};
+      return {
+        listo: S.carrito.length > 0, clienteId: S.clienteId || null, cliente: S.clienteNombre || '',
+        items: S.carrito.map(i => ({ nombre: i.nombre, tipo: i.tipo, cantidad: i.cantidad, precio: i.precio, subtotal: i.subtotal, texto: fmt(i.subtotal), precioTexto: fmt(i.precio) })),
+        resumen: { subtotal: r.subtotal, descuento: r.descuento, impuestos: r.impuestos, total: r.total, cobrar: r.cobrar, retencionIr: r.retencionIr || 0, retencionPct: r.retencionPct || 0,
+          texto: { subtotal: fmt(r.subtotal || 0), descuento: fmt(r.descuento || 0), impuestos: fmt(r.impuestos || 0), total: fmt(r.total || 0), cobrar: fmt(r.cobrar ?? r.total ?? 0), retencionIr: fmt(r.retencionIr || 0) } },
+        retencion: !!S.retIr,
+        impuestosTexto: document.getElementById('res-impuestos-label')?.textContent || 'Impuestos',
+        metodos: (S.metodosPago || []).map(m => ({ id: m.id, nombre: m.nombre })),
+        fiado: S.empresaConfig?.usa_modulo_fiados === true && !!S.clienteId,
+        separado: (S.metodosPago || []).length > 0,         // pago separado (varias formas de pago, bancos o monedas)
+        moneda: { base: S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO', tasa: Number(S.empresaConfig?.tasa_cambio_usd) || 0 },
+      };
+    },
+    fmt: n => fmt(n),
+    // "El cliente me retiene IR" (lo usa el cobro de Transporte): la misma retención de la venta normal
+    // (no cambia el total de la factura; baja lo que se cobra y queda como retención a favor en Impuestos).
+    retencion(activo, pct) {
+      if (!S.retIr) return false;
+      S.retIr.activo = !!activo;
+      if (pct != null) { let n = Number(pct); if (!(n >= 0)) n = 0; if (n > 100) n = 100; S.retIr.porcentaje = n; }
+      try { renderOtrosImpuestos(); } catch (_) {}
+      calcularResumen();
+      return true;
+    },
+    // Ticket de la venta por la misma ruta de siempre (Bluetooth, app de escritorio, USB o impresión normal).
+    // La Clínica abre la ventana de impresión en el mismo toque y la pasa aquí; si hay impresora directa, se cierra.
+    async imprimirTicket(ventaId, ventana) {
+      const v = await traerVenta(ventaId); if (!v) return false;
+      S.ventaDetalleId = v.id;
+      let usada = false; const abrir = window.open;
+      if (ventana) window.open = () => { usada = true; return ventana; };
+      try { await reimprimirTicketVenta(); } finally { window.open = abrir; }
+      if (ventana && !usada) { try { ventana.close(); } catch (_) {} }
+      return true;
+    },
+    async descargarRecibo(ventaId) {
+      const v = await traerVenta(ventaId); if (!v) return false;
+      const { data: items } = await sb.from('venta_detalles').select('*').eq('venta_id', v.id).eq('auth_user_id', S.userId);
+      await descargarReciboDeVenta(v, items || [], { manual: true });
+      return true;
+    },
+    clienteTelefono() { return S.clienteObjeto?.telefono || ''; },
+    async bancos() { return (await cargarBancosDisponibles()).map(b => ({ id: b.id, nombre: b.nombre, moneda: b.moneda || 'NIO' })); },
+    irAPago: llegarAlPago,
+    // op: { metodoId, metodoNombre, fiado, banco: {id, nombre, moneda}, notas }
+    async cobrar(op = {}) {
+      const avisos = [], tOrig = window.showToast;
+      window.showToast = (m, t) => { if (t === 'error' || t === 'warning') avisos.push(String(m)); return tOrig && tOrig(m, t); };
+      S._ultimaVenta = null;
+      try {
+        if (!S.carrito.length) return { ok: false, motivo: 'La cuenta está vacía.' };
+        if (!llegarAlPago()) return { ok: false, motivo: avisos.pop() || 'Falta un dato de la venta (por ejemplo, el cliente).' };
+        if (op.notas) { const ob = document.getElementById('venta-observaciones'); if (ob && !ob.value.trim()) ob.value = String(op.notas).slice(0, 1000); }
+        if (op.fiado) seleccionarFiado();
+        else if (Array.isArray(op.separado) && op.separado.length) {
+          // Pago separado: el MISMO de Ventas (un movimiento de Caja por cada forma de pago, con su banco).
+          await seleccionarPagoSeparado();
+          // Cada parte va a la primera línea libre de su método; si el método se repite (otro banco u
+          // otra moneda), se agrega otra línea igual que con "＋ Agregar otra línea" en Ventas.
+          const usadas = new Set();
+          op.separado.forEach(x => {
+            let i = (S.pagoSeparadoLineas || []).findIndex((l, k) => !usadas.has(k) && l.metodoId === x.metodoId);
+            if (i < 0) {
+              const m = (S.metodosPago || []).find(y => y.id === x.metodoId); if (!m) return;
+              S.pagoSeparadoLineas.push({ metodoId: m.id, metodoNombre: m.nombre, monto: 0, bancoId: null, bancoNombre: null, montoBancoConvertido: null, extra: true });
+              i = S.pagoSeparadoLineas.length - 1;
+            }
+            usadas.add(i);
+            const l = S.pagoSeparadoLineas[i];
+            l.monto = Math.max(0, round2(Number(x.monto) || 0));
+            if (x.otra && x.otra.monto > 0 && Math.abs(Number(x.otra.base) - l.monto) < 0.005) l.otra = { moneda: x.otra.moneda, monto: round2(x.otra.monto), tasa: Number(x.otra.tasa), base: l.monto };
+            if (x.banco && x.banco.id) { l.bancoId = x.banco.id; l.bancoNombre = x.banco.nombre; l.bancoMoneda = x.banco.moneda || 'NIO'; l.montoBancoConvertido = _psMontoBanco(l); }
+          });
+          renderResumenPagoSeparado();
+        }
+        else {
+          seleccionarMetodoPago(op.metodoId, op.metodoNombre);
+          await mostrarSelectorBanco(op.metodoNombre);       // (seleccionarMetodoPago lo lanza sin esperar)
+          if (op.banco && op.banco.id) elegirBancoVenta(op.banco.id, op.banco.nombre, op.banco.moneda || 'NIO');
+        }
+        await confirmarVenta(false);
+        if (S._ultimaVenta) return { ok: true, ...S._ultimaVenta };
+        return { ok: false, motivo: avisos.filter(Boolean).pop() || 'No se registró la venta.' };
+      } catch (e) {
+        console.error('motor de cobro de la clínica:', e);
+        return { ok: false, motivo: 'No se pudo registrar la venta. Revisa tu conexión e intenta de nuevo.' };
+      } finally { window.showToast = tOrig; }
+    },
+  };
 }
 
 /* ============================================================

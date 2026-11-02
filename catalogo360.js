@@ -123,6 +123,16 @@ function renderUserInfo(profile, email) {
   const hAv = document.getElementById('header-avatar'); if (hAv) hAv.textContent = (name||'U')[0].toUpperCase();
 }
 
+// Cerrar sesión (cabecera, menú lateral y pantalla de planes): sale de la cuenta y vuelve al inicio de
+// sesión de Catálogo360. Limpia lo guardado de la sesión en esta pestaña (usuario elegido, respaldos).
+async function cerrarSesionCatalogo() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  try { await sb.auth.signOut(); } catch (e) { console.warn('cerrar sesión:', e); }
+  try { ['n360_perfil_activo', 'n360_central_session_backup', 'n360_sucursal_modulos'].forEach(k => sessionStorage.removeItem(k)); } catch (_) {}
+  try { localStorage.removeItem('n360_central_session_backup_ls'); } catch (_) {}
+  window.location.href = 'catalogo360-login.html';
+}
+
 async function init() {
   applyTheme(localStorage.getItem('n360_theme') || 'light');
   const fechaEl = document.getElementById('header-fecha');

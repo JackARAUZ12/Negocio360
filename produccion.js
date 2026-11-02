@@ -123,6 +123,7 @@ function abrirModalIngresarMateriaPrima() {
   document.getElementById('mp-costo').value = '';
   document.getElementById('mp-stock-inicial').value = '';
   document.getElementById('mp-stock-minimo').value = '';
+  llenarUnidadesMP();
   setDescontarCajaMateriaPrima(true);
   actualizarResumenMateriaPrima();
 
@@ -139,6 +140,29 @@ function abrirModalIngresarMateriaPrima() {
   // Siempre arranca en la pantalla de elección
   volverAEleccionMateriaPrima();
   openModal('modal-materia-prima');
+}
+
+// Unidad de la materia prima (la de inventario y, si se compra distinto, la de compra con su equivalencia).
+function llenarUnidadesMP() {
+  const U = window.N360Unidades; const todas = U ? U.todas() : [];
+  const ops = todas.map(u => `<option value="${esc(u.codigo)}">${esc(u.nombre)}${u.abreviatura ? ' (' + esc(u.abreviatura) + ')' : ''}</option>`).join('');
+  document.getElementById('mp-unidad').innerHTML = '<option value="">Unidad (sin especificar)</option>' + ops;
+  document.getElementById('mp-unidad-compra').innerHTML = '<option value="">No, igual</option>' + ops;
+  document.getElementById('mp-factor').value = '';
+  alCambiarUnidadMP();
+}
+function alCambiarUnidadMP() {
+  const u = document.getElementById('mp-unidad').value, c = document.getElementById('mp-unidad-compra').value;
+  const nu = u ? nombreUnidad(u) : 'unidad', nus = u ? nombreUnidad(u, true) : 'unidades';
+  document.getElementById('mp-costo-label').textContent = `Costo por ${nu} *`;
+  document.getElementById('mp-stock-label').textContent = `Cantidad que tienes (en ${nus}) *`;
+  const wrap = document.getElementById('mp-factor-wrap'), f = document.getElementById('mp-factor');
+  if (c && c !== u) {
+    wrap.style.display = '';
+    document.getElementById('mp-factor-label').textContent = `¿Cuántas ${nus} trae 1 ${nombreUnidad(c)}? *`;
+    const auto = factorUnidad(c, { unidad_codigo: u });           // quintal → libras = 100, etc.
+    if (auto && auto !== 1 && !f.value) f.value = Math.round(auto * 10000) / 10000;
+  } else { wrap.style.display = 'none'; f.value = ''; }
 }
 
 // El modal siempre arranca preguntando que se quiere hacer -- no
@@ -168,10 +192,10 @@ async function cargarMateriasPrimasParaSelector() {
   const sel = document.getElementById('mp-existente-select');
   sel.innerHTML = '<option value="">Cargando…</option>';
   try {
-    const { data } = await sb.from('productos')
+    const { data } = await N360Leer.todo(() => sb.from('productos')
       .select('id,nombre,sku,costo,stock_actual')
       .eq('auth_user_id', STATE.userId).eq('es_materia_prima', true).eq('activo', true)
-      .order('nombre');
+      .order('nombre'), 'productos');
     STATE.materiasPrimasDisponibles = data || [];
     poblarSelectorMateriaPrimaExistente(STATE.materiasPrimasDisponibles);
   } catch (e) {
@@ -261,6 +285,13 @@ async function guardarMateriaPrima() {
   const categoria = document.getElementById('mp-categoria')?.value.trim() || null;
   const descontarCaja = STATE.descontarCajaMateriaPrima !== false;
   const montoCompra = costo * stockInicial;
+  const unidad = document.getElementById('mp-unidad')?.value || '';
+  const unidadCompra = document.getElementById('mp-unidad-compra')?.value || '';
+  const factorCompra = parseFloat(document.getElementById('mp-factor')?.value);
+  if (unidadCompra && unidadCompra !== unidad && !(factorCompra > 0)) { errEl.textContent = 'Escribe cuántas trae la unidad de compra.'; return; }
+  const uSel = unidad && window.N360Unidades ? window.N360Unidades.porCodigo(unidad) : null;
+  const camposUnidad = uSel ? { unidad_codigo: uSel.codigo, unidad_medida: uSel.nombre.toLowerCase(), permite_fraccion: !!uSel.fraccionable } : {};
+  if (unidadCompra && unidadCompra !== unidad && factorCompra > 0) Object.assign(camposUnidad, { unidad_compra_codigo: unidadCompra, factor_compra: factorCompra });
 
   setBtnLoading('mp-btn-guardar', true);
   try {
@@ -268,7 +299,7 @@ async function guardarMateriaPrima() {
       auth_user_id: STATE.userId, tipo: 'producto', nombre, sku, categoria,
       costo, precio: 0, tipo_precio: 'fijo',
       stock_actual: stockInicial, stock_minimo: stockMinimo,
-      es_materia_prima: true, activo: true,
+      es_materia_prima: true, activo: true, ...camposUnidad,
     }).select().single();
     if (errMP) throw errMP;
 
@@ -366,10 +397,11 @@ async function guardarStockMateriaPrimaExistente() {
 
 async function cargarProductosCache() {
   try {
-    const { data } = await sb.from('productos').select('id,nombre,sku,tipo,costo,precio,stock_actual,activo')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sb.from('productos').select('id,nombre,sku,tipo,costo,precio,stock_actual,activo,es_materia_prima,unidad_codigo,unidad_compra_codigo,factor_compra')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre'), 'productos');
     STATE.productos = data || [];
   } catch (e) { STATE.productos = []; }
+  try { if (STATE.recetas.length) renderProducirHoy(); } catch (e) {}
 }
 
 /* =====================================================
@@ -403,7 +435,7 @@ function cambiarVistaRecetasCompleta() {
 async function cargarRecetas() {
   try {
     const { data } = await sb.from('recetas_produccion')
-      .select('*, receta_componentes(id, producto_id, cantidad), receta_despiece_salidas(id, producto_id, cantidad_rendimiento, es_merma)')
+      .select('*, receta_componentes(id, producto_id, cantidad, unidad_codigo, uso_continuo), receta_despiece_salidas(id, producto_id, cantidad_rendimiento, es_merma)')
       .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
     STATE.recetas = data || [];
     renderTablaRecetas();
@@ -411,6 +443,36 @@ async function cargarRecetas() {
 }
 
 function nombreProducto(id) { return STATE.productos.find(p => p.id === id)?.nombre || '—'; }
+
+/* ---------- Unidades en las recetas (misma regla que el servidor: _unidad_factor) ----------
+   La receta puede decir "0.25 quintal" o "2 onzas" aunque el inventario esté en libras.
+   Factor = cuántas unidades de inventario del producto son 1 unidad de la receta. */
+const UNIDAD_BASE = { gramo:['peso',1], kilogramo:['peso',1000], libra:['peso',453.59237], onza:['peso',28.349523125], quintal:['peso',45359.237], tonelada:['peso',1000000],
+  mililitro:['volumen',1], litro:['volumen',1000], galon:['volumen',3785.411784],
+  centimetro:['longitud',1], metro:['longitud',100], pulgada:['longitud',2.54], pie:['longitud',30.48], yarda:['longitud',91.44], vara:['longitud',83.59],
+  unidad:['conteo',1], docena:['conteo',12], par:['conteo',2] };
+function factorUnidad(desde, prod) {
+  const u = prod?.unidad_codigo || '';
+  if (!desde || desde === u) return 1;
+  if (desde === prod?.unidad_compra_codigo && Number(prod?.factor_compra) > 0) return Number(prod.factor_compra);
+  const a = UNIDAD_BASE[desde], b = UNIDAD_BASE[u];
+  return a && b && a[0] === b[0] ? a[1] / b[1] : null;
+}
+function nombreUnidad(cod, plural) {
+  if (!cod) return '';
+  const u = window.N360Unidades?.porCodigo(cod);
+  return u ? (plural ? u.plural : u.nombre).toLowerCase() : cod;
+}
+// Unidades en que se puede escribir un ingrediente: la suya, la de compra y las convertibles.
+function unidadesPosibles(prod) {
+  if (!prod) return [];
+  const lista = [prod.unidad_codigo || ''];
+  if (prod.unidad_compra_codigo && Number(prod.factor_compra) > 0) lista.push(prod.unidad_compra_codigo);
+  const base = UNIDAD_BASE[prod.unidad_codigo];
+  if (base) Object.keys(UNIDAD_BASE).forEach(k => { if (UNIDAD_BASE[k][0] === base[0]) lista.push(k); });
+  return [...new Set(lista)];
+}
+function textoUnidadInventario(prod) { return prod?.unidad_codigo ? nombreUnidad(prod.unidad_codigo, true) : 'unidades'; }
 
 function renderTablaRecetas() {
   const tbody = document.getElementById('tabla-recetas');
@@ -453,6 +515,7 @@ async function eliminarReceta(id) {
     await sb.from('recetas_produccion').delete().eq('id', id).eq('auth_user_id', STATE.userId);
     showToast('Receta eliminada');
     await cargarRecetas();
+    actualizarKPIsProduccion();
   } catch (e) { showToast('No se pudo eliminar', 'error'); }
 }
 
@@ -463,6 +526,11 @@ function llenarSelectProductosTerminados() {
   if (sel) sel.innerHTML = opciones;
 }
 
+function alCambiarAlVender() {
+  const si = document.getElementById('rc-al-vender').checked;
+  const cant = document.getElementById('rc-cantidad-produce');
+  if (si && (!cant.value || Number(cant.value) !== 1)) cant.value = 1;          // un plato = una receta
+}
 function cambiarTipoReceta(tipo) {
   STATE.tipoRecetaActual = tipo;
   document.querySelectorAll('.prod-tipo-receta-btn').forEach(b => b.classList.toggle('active', b.dataset.tipo === tipo));
@@ -499,12 +567,16 @@ function abrirModalReceta(id) {
       document.getElementById('rc-cantidad-produce').value = r.cantidad_producida;
     }
     STATE.componentesRecetaActual = (r.receta_componentes||[]).map(c => ({
-      producto_id: c.producto_id, nombre: nombreProducto(c.producto_id), cantidad: c.cantidad,
+      producto_id: c.producto_id, nombre: nombreProducto(c.producto_id), cantidad: c.cantidad, unidad_codigo: c.unidad_codigo || '', uso_continuo: !!c.uso_continuo,
     }));
+    document.getElementById('rc-al-vender').checked = !!r.al_vender;
+    document.getElementById('rc-costo-extra').value = Number(r.costo_extra_tanda || 0) || '';
   } else {
     document.getElementById('receta-titulo-modal').textContent = '🧪 Nueva receta';
     document.getElementById('rc-nombre').value = 'Receta estándar';
     document.getElementById('rc-cantidad-produce').value = 1;
+    document.getElementById('rc-costo-extra').value = '';
+    document.getElementById('rc-al-vender').checked = false;
     cambiarTipoReceta('normal');
   }
   renderListaComponentesReceta();
@@ -568,19 +640,33 @@ function renderListaComponentesReceta() {
     cont.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Todavía no has agregado materia prima.</p>';
     return;
   }
-  cont.innerHTML = STATE.componentesRecetaActual.map((c, i) => `
-    <div class="prod-componente-row">
-      <span>${esc(c.nombre)}</span>
-      <div style="display:flex;align-items:center;gap:8px">
-        <input type="number" min="0.01" step="0.01" value="${c.cantidad}" style="width:80px" onchange="cambiarCantidadComponente(${i}, this.value)"/>
+  cont.innerHTML = STATE.componentesRecetaActual.map((c, i) => {
+    const prod = STATE.productos.find(p => p.id === c.producto_id);
+    const ops = unidadesPosibles(prod);
+    const fu = factorUnidad(c.unidad_codigo, prod);
+    const equiv = c.unidad_codigo && fu != null && prod?.unidad_codigo && c.unidad_codigo !== prod.unidad_codigo
+      ? `= ${fmtNum(Math.round(c.cantidad * fu * 1000) / 1000)} ${textoUnidadInventario(prod)}` : '';
+    return `
+    <div class="prod-componente-row" style="flex-wrap:wrap;gap:6px">
+      <span style="min-width:0;flex:1 1 140px">${esc(c.nombre)}<span class="rc-equiv" style="display:block;font-size:11px;color:var(--text-muted)">${esc(equiv)}</span></span>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <input type="number" min="0.001" step="0.001" value="${c.cantidad}" style="width:78px" aria-label="Cantidad de ${esc(c.nombre)}" onchange="cambiarCantidadComponente(${i}, this.value)"/>
+        ${ops.length > 1 ? `<select data-unidad="${i}" aria-label="Unidad de ${esc(c.nombre)}" style="width:auto;max-width:120px" onchange="cambiarUnidadComponente(${i}, this.value)">
+          ${ops.map(u => `<option value="${esc(u === (prod?.unidad_codigo || '') ? '' : u)}" ${(c.unidad_codigo || '') === (u === (prod?.unidad_codigo || '') ? '' : u) ? 'selected' : ''}>${esc(u ? nombreUnidad(u, true) : 'unidades')}</option>`).join('')}
+        </select>` : `<span style="font-size:12px;color:var(--text-muted)">${esc(textoUnidadInventario(prod))}</span>`}
         <button type="button" class="row-action-btn" title="Quitar" onclick="quitarComponenteReceta(${i})" style="color:var(--danger)">✕</button>
       </div>
-    </div>`).join('');
+      <label class="rc-continuo" style="flex-basis:100%"><input type="checkbox" data-continuo="${i}" ${c.uso_continuo ? 'checked' : ''} onchange="STATE.componentesRecetaActual[${i}].uso_continuo = this.checked"/> Se va gastando con el tiempo (aceite, gas, sal…): no se descuenta por ${STATE.tipoRecetaActual === 'despiece' ? 'lote' : 'tanda ni por plato'}</label>
+    </div>`; }).join('');
+}
+function cambiarUnidadComponente(idx, valor) {
+  STATE.componentesRecetaActual[idx].unidad_codigo = valor || '';
+  renderListaComponentesReceta();
 }
 
 function cambiarCantidadComponente(idx, valor) {
   const n = parseFloat(valor);
-  if (!isNaN(n) && n > 0) STATE.componentesRecetaActual[idx].cantidad = n;
+  if (!isNaN(n) && n > 0) { STATE.componentesRecetaActual[idx].cantidad = n; renderListaComponentesReceta(); }
 }
 function quitarComponenteReceta(idx) {
   STATE.componentesRecetaActual.splice(idx, 1);
@@ -588,7 +674,7 @@ function quitarComponenteReceta(idx) {
 }
 function agregarComponenteReceta(productoId, nombre) {
   if (STATE.componentesRecetaActual.some(c => c.producto_id === productoId)) return;
-  STATE.componentesRecetaActual.push({ producto_id: productoId, nombre, cantidad: 1 });
+  STATE.componentesRecetaActual.push({ producto_id: productoId, nombre, cantidad: 1, unidad_codigo: '', uso_continuo: false });
   document.getElementById('rc-buscar-componente').value = '';
   document.getElementById('rc-buscar-resultados').innerHTML = '';
   renderListaComponentesReceta();
@@ -609,7 +695,7 @@ function initBusquedaComponenteReceta() {
     cont.innerHTML = resultados.map(p => `
       <div style="padding:6px 10px;background:var(--bg-app);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px"
            onclick="agregarComponenteReceta('${p.id}','${esc(p.nombre)}')">
-        ${esc(p.nombre)} <span style="color:var(--text-muted)">— stock: ${fmtNum(p.stock_actual)}</span>
+        ${esc(p.nombre)} <span style="color:var(--text-muted)">— hay ${fmtNum(p.stock_actual)} ${esc(textoUnidadInventario(p))}</span>
       </div>
     `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
   });
@@ -624,6 +710,11 @@ async function guardarReceta() {
 
   if (!nombre) { errEl.textContent = 'El nombre de la receta es obligatorio.'; return; }
   if (!STATE.componentesRecetaActual.length) { errEl.textContent = 'Agrega al menos una materia prima.'; return; }
+  if (STATE.componentesRecetaActual.every(c => c.uso_continuo)) { errEl.textContent = 'Al menos un ingrediente debe descontarse siempre (no todos pueden ser "se va gastando").'; return; }
+  const costoExtra = parseFloat(document.getElementById('rc-costo-extra').value) || 0;
+  if (costoExtra < 0) { errEl.textContent = 'El costo extra no puede ser negativo.'; return; }
+  const malaUnidad = STATE.componentesRecetaActual.find(c => factorUnidad(c.unidad_codigo, STATE.productos.find(p => p.id === c.producto_id)) == null);
+  if (malaUnidad) { errEl.textContent = `Revisa la unidad de "${malaUnidad.nombre}".`; return; }
 
   let productoTerminadoId = null, cantidadProduce = null;
   if (tipo === 'normal') {
@@ -641,6 +732,8 @@ async function guardarReceta() {
       auth_user_id: STATE.userId, tipo,
       producto_terminado_id: tipo === 'normal' ? productoTerminadoId : null,
       nombre, cantidad_producida: tipo === 'normal' ? cantidadProduce : 1,
+      costo_extra_tanda: round2(costoExtra),
+      al_vender: tipo === 'normal' && document.getElementById('rc-al-vender').checked,
       updated_at: new Date().toISOString(),
     };
     let recetaId = id;
@@ -657,6 +750,7 @@ async function guardarReceta() {
 
     const filas = STATE.componentesRecetaActual.map(c => ({
       auth_user_id: STATE.userId, receta_id: recetaId, producto_id: c.producto_id, cantidad: c.cantidad,
+      unidad_codigo: c.unidad_codigo || null, uso_continuo: !!c.uso_continuo,
     }));
     const { error: errComp } = await sb.from('receta_componentes').insert(filas);
     if (errComp) throw errComp;
@@ -672,7 +766,7 @@ async function guardarReceta() {
 
     showToast(id ? 'Receta actualizada' : 'Receta creada');
     closeModal('modal-receta');
-    await cargarRecetas();
+    await cargarRecetas(); await cargarInsumos();
     actualizarKPIsProduccion();
   } catch (e) {
     console.error('guardarReceta:', e);
@@ -691,6 +785,15 @@ async function cargarOrdenes() {
     const { data } = await sb.from('ordenes_produccion').select('*')
       .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
     STATE.ordenes = data || [];
+    // Ciclo opcional proforma -> producción: de qué proforma viene cada orden (solo si el negocio lo activó).
+    STATE.ordenProforma = {};
+    if (STATE.empresaConfig?.usa_ciclo_produccion_pedidos === true) {
+      try {
+        const { data: ls } = await sb.from('proforma_produccion').select('orden_id,proformas(numero_proforma,cliente_nombre)')
+          .eq('auth_user_id', STATE.userId).limit(1000);
+        (ls || []).forEach(l => { if (l.proformas) STATE.ordenProforma[l.orden_id] = l.proformas; });
+      } catch (_) { /* opcional */ }
+    }
     renderTablaOrdenes();
   } catch (e) { console.error('cargarOrdenes:', e); }
 }
@@ -725,7 +828,7 @@ function renderTablaOrdenes() {
       ? `🍗 ${esc(STATE.recetas.find(r => r.id === o.receta_id)?.nombre || 'Despiece')}`
       : esc(nombreProducto(o.producto_terminado_id));
     return `<tr>
-      <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(o.numero)}</span></td>
+      <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${esc(o.numero)}</span>${STATE.ordenProforma?.[o.id] ? `<div style="font-size:11px;color:var(--text-muted);white-space:nowrap" title="Pedido de un cliente">📄 ${esc(STATE.ordenProforma[o.id].numero_proforma)} · ${esc(STATE.ordenProforma[o.id].cliente_nombre || 'Cliente')}</div>` : ''}</td>
       <td>${nombreCol}</td>
       <td>${fmtNum(o.cantidad_planificada)} ${esDespiece ? 'lote(s)' : 'unidades'}</td>
       <td><span class="status-badge ${ESTADO_ORDEN_CLASE[o.estado]}">${ESTADO_ORDEN_LABEL[o.estado]}</span></td>
@@ -738,6 +841,7 @@ function renderTablaOrdenes() {
       <td>${o.fecha_entrega ? fmtFechaCorta(o.fecha_entrega) : '—'}</td>
       <td>
         <button class="row-action-btn" title="Ver detalle" onclick="verDetalleOrden('${o.id}')">👁️</button>
+        ${((o.estado==='pendiente'||o.estado==='en_proceso') && !esDespiece && STATE.empresaConfig?.usa_ciclo_produccion_pedidos === true && window.N360Faltantes) ? `<button class="row-action-btn" title="Materia prima: qué falta y comprar" onclick="N360Faltantes.abrir(['${o.id}'],'${esc(o.numero)}')">🛒</button>` : ''}
         ${o.estado==='pendiente' ? `<button class="row-action-btn" title="Iniciar producción" onclick="marcarOrdenEnProceso('${o.id}')" style="color:var(--accent)">▶️</button>` : ''}
         ${o.estado==='en_proceso' ? `<button class="row-action-btn" title="Actualizar avance" onclick="abrirModalProgreso('${o.id}')" style="color:var(--accent)">📈</button>` : ''}
         ${(o.estado==='pendiente'||o.estado==='en_proceso') ? `<button class="row-action-btn" title="Completar" onclick="completarOrdenPlanificada('${o.id}')" style="color:var(--success)">✅</button>` : ''}
@@ -789,7 +893,7 @@ async function guardarProgresoOrden() {
 }
 
 function llenarSelectRecetasOrden() {
-  const opciones = STATE.recetas.filter(r => r.activa).map(r =>
+  const opciones = STATE.recetas.filter(r => r.activa && !r.al_vender).map(r =>      // las "al vender" se descuentan solas en Ventas
     `<option value="${r.id}">${esc(r.nombre)} — ${esc(nombreProducto(r.producto_terminado_id))}</option>`).join('');
   const sel = document.getElementById('op-receta');
   if (sel) sel.innerHTML = opciones || '<option value="">— No hay recetas activas —</option>';
@@ -801,6 +905,7 @@ function abrirModalOrden() {
   document.getElementById('op-cantidad').value = '';
   document.getElementById('op-fecha-entrega').value = '';
   document.getElementById('op-costo-mano-obra').value = 0;
+  delete document.getElementById('op-costo-mano-obra').dataset.manual;
   document.getElementById('op-costo-indirecto').value = 0;
   document.getElementById('op-merma-cantidad').value = 0;
   document.getElementById('op-merma-motivo').value = '';
@@ -854,19 +959,20 @@ function asignarCostoSalidasDespiece(salidas, costoTotal) {
 // esto es lo que el cajero VE antes de decidir producir.
 function calcularNecesidadesOrden(receta, cantidadProducir) {
   const factor = cantidadProducir / Number(receta.cantidad_producida || 1);
-  const necesidades = (receta.receta_componentes || []).map(c => {
+  const necesidades = (receta.receta_componentes || []).filter(c => !c.uso_continuo).map(c => {
     const prod = STATE.productos.find(p => p.id === c.producto_id);
-    const necesario = round2(c.cantidad * factor);
+    const fu = factorUnidad(c.unidad_codigo, prod);
+    const necesario = c.unidad_codigo ? Math.round(c.cantidad * (fu ?? 0) * factor * 1000) / 1000 : round2(c.cantidad * factor);
     const disponible = Number(prod?.stock_actual || 0);
     return {
       producto_id: c.producto_id, nombre: prod?.nombre || '—',
-      necesario, disponible, costoUnitario: Number(prod?.costo || 0),
+      necesario, disponible, costoUnitario: Number(prod?.costo || 0), unidadTxt: textoUnidadInventario(prod),
       subtotal: round2(necesario * Number(prod?.costo || 0)),
-      suficiente: disponible >= necesario,
+      suficiente: disponible >= necesario, unidadMala: fu == null,
     };
   });
   const costoMateriales = round2(necesidades.reduce((s, n) => s + n.subtotal, 0));
-  return { necesidades, costoMateriales, todoSuficiente: necesidades.every(n => n.suficiente) };
+  return { necesidades, costoMateriales, todoSuficiente: necesidades.every(n => n.suficiente && !n.unidadMala) };
 }
 
 function recalcularNecesidadesOrden() {
@@ -880,11 +986,14 @@ function recalcularNecesidadesOrden() {
   const receta = STATE.recetas.find(r => r.id === recetaId);
   if (!receta) return;
 
+  // Costo extra por tanda de la receta (mano de obra, gas…), si no se escribió a mano.
+  const moEl = document.getElementById('op-costo-mano-obra');
+  if (moEl && moEl.dataset.manual !== '1') moEl.value = round2(Number(receta.costo_extra_tanda || 0) * cantidad / Number(receta.cantidad_producida || 1)) || 0;
   const { necesidades, costoMateriales, todoSuficiente } = calcularNecesidadesOrden(receta, cantidad);
   document.getElementById('op-necesidades-lista').innerHTML = necesidades.map(n => `
     <div class="prod-componente-row">
       <span>${n.suficiente ? '✅' : '⚠️'} ${esc(n.nombre)}</span>
-      <span style="font-family:var(--font-mono)">${fmtNum(n.necesario)} / ${fmtNum(n.disponible)} disp.</span>
+      <span style="font-family:var(--font-mono)">${fmtNum(n.necesario)} / ${fmtNum(n.disponible)} ${esc(n.unidadTxt)}</span>
     </div>`).join('');
   wrap.style.display = '';
 
@@ -1004,6 +1113,29 @@ async function procesarConsumoYSalidasDespiece(ordenId, necesidades, salidasConC
   }
 }
 
+/* Completar producción: UNA sola operación en el servidor (todo o nada). Descuenta la
+   materia prima, suma el producto terminado, ACTUALIZA SU COSTO (promedio) y cierra la
+   orden; una orden ya completada no se completa dos veces. Producir no toca Caja. */
+let PRODUCIENDO = false;
+function textoMotivoProduccion(r) {
+  const m = r && r.motivo;
+  if (m === 'falta_materia' && Array.isArray(r.faltantes) && r.faltantes.length)
+    return 'No alcanza la materia prima: ' + r.faltantes.map(f => `${f.nombre} (necesitas ${fmtNum(f.necesario)}, hay ${fmtNum(f.disponible)})`).join(', ') + '.';
+  return ({
+    ya_completada: 'Esta producción ya estaba completada (no se descontó nada otra vez).',
+    cancelada: 'Esta orden está cancelada.', sin_receta: 'No se encontró la receta de esta orden.',
+    cantidad: 'La cantidad a producir debe ser mayor a cero.', cantidad_buena: 'Las unidades buenas deben ser más de 0 y no más de lo planificado.',
+    materia_no_existe: 'Una materia prima de la receta ya no existe. Revisa la receta.',
+    salida_no_existe: 'Un corte de la receta ya no existe. Revisa la receta.',
+    terminado_no_existe: 'El producto terminado de la receta ya no existe. Revisa la receta.',
+    no_existe: 'No se encontró la orden.', receta: 'La receta tiene una cantidad inválida.',
+  })[m] || 'No se pudo completar. Intenta de nuevo.';
+}
+function textoCostoNuevo(r) {
+  return r && r.costo_nuevo != null && Number(r.costo_nuevo) !== Number(r.costo_anterior)
+    ? ` · costo del producto: ${fmt(r.costo_anterior)} → ${fmt(r.costo_nuevo)}` : '';
+}
+
 async function guardarOrden(estadoDeseado) {
   const errEl = document.getElementById('op-error');
   errEl.textContent = '';
@@ -1023,6 +1155,28 @@ async function guardarOrden(estadoDeseado) {
 
   if (estadoDeseado === 'completada' && !todoSuficiente) {
     errEl.textContent = 'No hay suficiente materia prima para completar esta producción ahora. Guárdala como pendiente, o ajusta la cantidad.';
+    return;
+  }
+
+  if (estadoDeseado === 'completada') {
+    if (PRODUCIENDO) return;
+    PRODUCIENDO = true;
+    try {
+      const { data: r, error } = await sb.rpc('produccion_crear_y_completar', { p_datos: {
+        receta_id: recetaId, cantidad_planificada: cantidad, fecha_entrega: fechaEntrega,
+        costo_mano_obra: manoObra, costo_indirecto: indirecto,
+        merma_cantidad: receta.tipo === 'despiece' ? 0 : mermaCantidad, merma_motivo: mermaMotivo,
+        usuario_nombre: STATE.currentUser?.nombre || 'Usuario' } });
+      if (error) throw error;
+      if (!r || !r.ok) { errEl.textContent = textoMotivoProduccion(r); return; }
+      showToast((receta.tipo === 'despiece' ? '🍗 Despiece completado' : '🏭 Producción completada') + textoCostoNuevo(r));
+      closeModal('modal-orden');
+      await Promise.all([cargarOrdenes(), cargarProductosCache()]);
+      actualizarKPIsProduccion();
+    } catch (e) {
+      console.error('guardarOrden:', e);
+      errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+    } finally { PRODUCIENDO = false; }
     return;
   }
 
@@ -1142,18 +1296,12 @@ function completarOrdenPlanificada(ordenId) {
 }
 
 async function completarOrdenDespieceDirecto(orden, receta) {
+  if (PRODUCIENDO) return;
+  PRODUCIENDO = true;
   try {
-    const { necesidades, costoMateriales } = calcularNecesidadesOrden(receta, orden.cantidad_planificada);
-    const costoTotal = round2(costoMateriales + Number(orden.costo_mano_obra||0) + Number(orden.costo_indirecto||0));
-    const salidas = calcularSalidasDespiece(receta, orden.cantidad_planificada);
-    const salidasConCosto = asignarCostoSalidasDespiece(salidas, costoTotal);
-
-    await procesarConsumoYSalidasDespiece(orden.id, necesidades, salidasConCosto);
-
-    await sb.from('ordenes_produccion').update({
-      estado: 'completada', costo_materiales: costoMateriales, costo_total: costoTotal,
-      fecha_completada: new Date().toISOString(), updated_at: new Date().toISOString(),
-    }).eq('id', orden.id).eq('auth_user_id', STATE.userId);
+    const { data: r, error } = await sb.rpc('produccion_completar_orden', { p_orden_id: orden.id });
+    if (error) throw error;
+    if (!r || !r.ok) { showToast(textoMotivoProduccion(r), 'error'); await cargarOrdenes(); return; }
 
     showToast('🍗 Despiece completado');
     await Promise.all([cargarOrdenes(), cargarProductosCache()]);
@@ -1161,7 +1309,7 @@ async function completarOrdenDespieceDirecto(orden, receta) {
   } catch (e) {
     console.error('completarOrdenDespieceDirecto:', e);
     showToast('No se pudo completar el despiece', 'error');
-  }
+  } finally { PRODUCIENDO = false; }
 }
 
 function onCambiarCantidadBuenaCompletar() {
@@ -1191,34 +1339,36 @@ async function confirmarCompletarOrden() {
   const mermaCantidad = Math.max(0, round2(orden.cantidad_planificada - cantidadBuenaRaw));
   const mermaMotivo = document.getElementById('co-merma-motivo').value.trim() || null;
 
-  const { necesidades, costoMateriales } = calcularNecesidadesOrden(receta, orden.cantidad_planificada);
-
+  if (cantidadBuenaRaw <= 0) { errEl.textContent = 'Las unidades buenas deben ser más de 0.'; return; }
+  if (PRODUCIENDO) return;
+  PRODUCIENDO = true;
   try {
-    const costoTotal = round2(costoMateriales + Number(orden.costo_mano_obra||0) + Number(orden.costo_indirecto||0));
-    const costoUnitario = round2(costoTotal / cantidadBuena);
+    const { data: r, error } = await sb.rpc('produccion_completar_orden', { p_orden_id: ordenId, p_cantidad_buena: cantidadBuena, p_merma_motivo: mermaCantidad > 0 ? mermaMotivo : null });
+    if (error) throw error;
+    if (!r || !r.ok) { errEl.textContent = textoMotivoProduccion(r); if (r && r.motivo === 'ya_completada') { await cargarOrdenes(); } return; }
 
-    await procesarConsumoYProduccion(ordenId, receta, necesidades, cantidadBuena, orden.producto_terminado_id);
-
-    await sb.from('ordenes_produccion').update({
-      estado: 'completada', cantidad_producida: cantidadBuena,
-      costo_materiales: costoMateriales, costo_total: costoTotal, costo_unitario: costoUnitario,
-      merma_cantidad: mermaCantidad, merma_motivo: mermaCantidad > 0 ? mermaMotivo : null,
-      fecha_completada: new Date().toISOString(), updated_at: new Date().toISOString(),
-    }).eq('id', ordenId).eq('auth_user_id', STATE.userId);
-
-    showToast('🏭 Producción completada');
+    showToast('🏭 Producción completada' + textoCostoNuevo(r));
+    // Opcional (apagado por defecto): reserva lo producido para la proforma que lo pidió.
+    if (STATE.empresaConfig?.usa_ciclo_produccion_pedidos === true && STATE.empresaConfig?.usa_reserva_producto_terminado === true) {
+      try {
+        const { data: rv } = await sb.rpc('proforma_reservar_por_orden', { p_orden_id: ordenId });
+        const n = (rv?.proformas || []).reduce((t, x) => t + (x.creadas || []).length, 0);
+        if (n) showToast('🔒 Producto reservado para el pedido del cliente');
+      } catch (_) { /* la reserva se puede hacer a mano desde la proforma */ }
+    }
     closeModal('modal-completar-orden');
     await Promise.all([cargarOrdenes(), cargarProductosCache()]);
     actualizarKPIsProduccion();
   } catch (e) {
     console.error('confirmarCompletarOrden:', e);
     errEl.textContent = 'No se pudo completar. Intenta de nuevo.';
-
-  }
+  } finally { PRODUCIENDO = false; }
 }
 
 async function cancelarOrden(ordenId) {
-  if (!confirm('¿Cancelar esta orden pendiente? No se ha consumido ningún material todavía, así que no hay nada que revertir.')) return;
+  const _pf = STATE.ordenProforma?.[ordenId];
+  if (!confirm('¿Cancelar esta orden pendiente? No se ha consumido ningún material todavía, así que no hay nada que revertir.' +
+      (_pf ? `\n\nViene de la proforma ${_pf.numero_proforma}: después podrás volver a pasarla a producción.` : ''))) return;
   try {
     await sb.from('ordenes_produccion').update({ estado: 'cancelada', updated_at: new Date().toISOString() })
       .eq('id', ordenId).eq('auth_user_id', STATE.userId);
@@ -1287,7 +1437,394 @@ async function verDetalleOrden(ordenId) {
 /* =====================================================
    KPIs
 ===================================================== */
+/* =====================================================
+   PRODUCIR HOY — lo de todos los días en 2 toques: tocar lo que hiciste,
+   escribir cuántos salieron (y cuántos malos) y "Listo". Usa la misma función
+   del servidor (todo o nada, costo al día, sin tocar Caja).
+===================================================== */
+function esHoy(iso) { return iso && ymdLocal(new Date(iso)) === todayLocalISO(); }
+// Cuánto alcanza la materia prima para hacer (unidades, o lotes en despiece).
+function alcanzaPara(receta) {
+  const base = Number(receta.cantidad_producida || 1);
+  const { necesidades } = calcularNecesidadesOrden(receta, base);
+  if (!necesidades.length) return null;
+  let tandas = Infinity;
+  necesidades.forEach(n => { if (n.unidadMala) tandas = 0; else if (n.necesario > 0) tandas = Math.min(tandas, n.disponible / n.necesario); });
+  return tandas === Infinity ? null : Math.max(0, Math.floor(tandas * base + 1e-9));
+}
+function tituloReceta(r) { return r.tipo === 'despiece' ? (r.nombre || 'Despiece') : (nombreProducto(r.producto_terminado_id) || r.nombre); }
+function renderProducirHoy() {
+  const cont = document.getElementById('ph-tarjetas');
+  if (!cont) return;
+  const todas = STATE.recetas.filter(r => r.activa !== false);
+  const activas = todas.filter(r => !r.al_vender);
+  const alVender = todas.filter(r => r.al_vender);
+  if (!activas.length && alVender.length) {
+    cont.innerHTML = '';
+  } else if (!activas.length) {
+    cont.innerHTML = `<div class="ph-vacio">Todavía no tienes recetas. <button type="button" class="btn-secondary" onclick="abrirModalReceta()">🧪 Crear mi primera receta</button></div>`;
+  } else {
+    cont.innerHTML = activas.map(r => {
+      const desp = r.tipo === 'despiece', base = Number(r.cantidad_producida || 1);
+      const { costoMateriales } = calcularNecesidadesOrden(r, base);
+      const unit = desp ? null : round2((costoMateriales + Number(r.costo_extra_tanda || 0)) / base);
+      const alc = alcanzaPara(r);
+      const txtAlc = alc == null ? '' : alc <= 0 ? '<span class="ph-falta">⚠️ Falta materia prima</span>'
+        : `Alcanza para <b>${fmtNum(alc)}</b> ${desp ? 'lote(s)' : ''}`;
+      return `<button type="button" class="ph-card" data-receta="${esc(r.id)}" onclick="abrirProducirHoy('${esc(r.id)}')">
+        <span class="ph-ico">${desp ? '🍗' : '🍞'}</span>
+        <span class="ph-nombre">${esc(tituloReceta(r))}</span>
+        <span class="ph-sub">${desp ? 'Despiece' : `Receta para ${fmtNum(base)}`}${unit != null ? ` · ${fmt(unit)} c/u` : ''}</span>
+        <span class="ph-sub">${txtAlc}</span>
+      </button>`;
+    }).join('');
+  }
+  if (alVender.length) cont.insertAdjacentHTML('beforeend', `<div class="ph-preparados" style="grid-column:1/-1">🍳 Se preparan al vender (se descuentan solos en Ventas): ${alVender.map(r => esc(tituloReceta(r))).join(', ')}</div>`);
+  const hoy = STATE.ordenes.filter(o => o.estado === 'completada' && esHoy(o.fecha_completada));
+  const lista = document.getElementById('ph-hoy');
+  if (lista) lista.innerHTML = hoy.length ? '<div class="ph-hoy-titulo">Hoy produjiste</div>' + hoy.map(o => {
+    const r = STATE.recetas.find(x => x.id === o.receta_id);
+    return `<div class="prod-componente-row"><span>${esc(r ? tituloReceta(r) : o.numero)}</span>
+      <span>${o.tipo === 'despiece' ? `${fmtNum(o.cantidad_planificada)} lote(s)` : `${fmtNum(o.cantidad_producida)} buenos${Number(o.merma_cantidad) > 0 ? ` · ${fmtNum(o.merma_cantidad)} malos` : ''}`} · ${fmt(o.costo_total)}</span></div>`;
+  }).join('') : '';
+}
+function abrirProducirHoy(recetaId) {
+  const r = STATE.recetas.find(x => x.id === recetaId);
+  if (!r) return;
+  STATE.phReceta = r;
+  const desp = r.tipo === 'despiece';
+  document.getElementById('ph-titulo').textContent = (desp ? '🍗 ' : '🍞 ') + tituloReceta(r);
+  document.getElementById('ph-cantidad-label').textContent = desp ? '¿Cuántos lotes procesaste?' : '¿Cuántos hiciste?';
+  document.getElementById('ph-cantidad').value = desp ? 1 : Number(r.cantidad_producida || 1);
+  document.getElementById('ph-malos').value = 0;
+  document.getElementById('ph-malos-wrap').style.display = desp ? 'none' : '';
+  document.getElementById('ph-motivo').value = '';
+  document.getElementById('ph-error').textContent = '';
+  STATE.phPesos = {};                          // pesos reales escritos a mano (despiece)
+  recalcularProducirHoy();
+  openModal('modal-producir-hoy');
+  // Solo pone el cursor en la cantidad si no se está escribiendo ya en otra casilla (si no, lo escrito saltaría).
+  setTimeout(() => { const a = document.activeElement; if (a && a.matches && a.matches('#modal-producir-hoy input')) return;
+    const el = document.getElementById('ph-cantidad'); el.focus(); el.select(); }, 60);
+}
+function recalcularProducirHoy() {
+  const r = STATE.phReceta; if (!r) return;
+  const desp = r.tipo === 'despiece';
+  const cant = parseFloat(document.getElementById('ph-cantidad').value) || 0;
+  const malos = desp ? 0 : Math.min(cant, Math.max(0, parseFloat(document.getElementById('ph-malos').value) || 0));
+  document.getElementById('ph-motivo-wrap').style.display = malos > 0 ? '' : 'none';
+  const prev = document.getElementById('ph-preview');
+  if (cant <= 0) { prev.innerHTML = ''; return; }
+  if (desp) return pintarDespieceReal(r, cant, prev);
+  const { necesidades, costoMateriales, todoSuficiente } = calcularNecesidadesOrden(r, cant);
+  const extra = round2(Number(r.costo_extra_tanda || 0) * cant / Number(r.cantidad_producida || 1));
+  const total = round2(costoMateriales + extra), buenos = round2(cant - malos);
+  prev.innerHTML = `<div class="ph-prev-titulo">Se va a usar</div>` + necesidades.map(n => `
+    <div class="prod-componente-row ${n.suficiente && !n.unidadMala ? '' : 'ph-fila-falta'}"><span>${n.suficiente && !n.unidadMala ? '✅' : '⚠️'} ${esc(n.nombre)}</span>
+      <span>${n.unidadMala ? 'revisa la unidad en la receta' : `${fmtNum(n.necesario)} ${esc(n.unidadTxt)} <small>(hay ${fmtNum(n.disponible)})</small>`}</span></div>`).join('') +
+    `<div class="ph-totales">
+      <div><span>Materia prima</span><b>${fmt(costoMateriales)}</b></div>
+      ${extra > 0 ? `<div><span>Costo extra (mano de obra, gas…)</span><b>${fmt(extra)}</b></div>` : ''}
+      ${desp ? `<div><span>Costo total (se reparte entre los cortes)</span><b>${fmt(total)}</b></div>`
+        : `<div class="ph-unidad"><span>Cada uno te cuesta</span><b>${buenos > 0 ? fmt(round2(total / buenos)) : '—'}</b></div>`}
+      ${!todoSuficiente ? '<div class="ph-falta">⚠️ No alcanza la materia prima para esta cantidad.</div>' : ''}
+    </div>`;
+}
+/* Despiece (carnicería): cada animal pesa distinto. Se proponen los pesos de la receta y se
+   pueden cambiar por los de verdad (lo que entró y lo que salió de cada corte); el costo se
+   reparte con esos pesos. Los que no se tocan quedan como dice la receta. */
+function datosDespieceReal(r, cant) {
+  const { necesidades } = calcularNecesidadesOrden(r, cant);
+  const P = STATE.phPesos || {};
+  const entradas = necesidades.map(n => {
+    const prod = STATE.productos.find(p => p.id === n.producto_id);
+    const real = P['c:' + n.producto_id];
+    return { ...n, peso: real != null ? real : n.necesario, costo: Number(prod?.costo || 0) };
+  });
+  const salidas = (r.receta_despiece_salidas || []).map(sd => {
+    const prod = STATE.productos.find(p => p.id === sd.producto_id);
+    const real = P['s:' + sd.producto_id];
+    const peso = real != null ? real : round2(sd.cantidad_rendimiento * cant);
+    return { producto_id: sd.producto_id, nombre: prod?.nombre || '—', peso, esMerma: !!sd.es_merma, unidadTxt: textoUnidadInventario(prod),
+             valor: sd.es_merma ? 0 : round2(peso * Number(prod?.precio || 0)) };
+  });
+  const extra = round2(Number(r.costo_extra_tanda || 0) * cant / Number(r.cantidad_producida || 1));
+  const costoMat = round2(entradas.reduce((t, e) => t + round2(e.peso * e.costo), 0));
+  const total = round2(costoMat + extra), sumaValor = salidas.reduce((t, x) => t + x.valor, 0);
+  salidas.forEach(x => { x.costoUnit = x.peso > 0 && sumaValor > 0 ? round2(round2(x.valor / sumaValor * total) / x.peso) : 0; });
+  const entro = entradas.reduce((t, e) => t + e.peso, 0), salio = salidas.reduce((t, x) => t + x.peso, 0);
+  return { entradas, salidas, extra, costoMat, total, entro, salio, todoSuficiente: entradas.every(e => !e.unidadMala && e.disponible >= e.peso) };
+}
+function pintarDespieceReal(r, cant, prev) {
+  const d = datosDespieceReal(r, cant);
+  const inp = (clave, valor, etiqueta) => `<input type="number" class="ph-peso" min="0" step="0.001" inputmode="decimal" value="${valor}" aria-label="${esc(etiqueta)}" oninput="cambiarPesoReal('${clave}', this.value)"/>`;
+  prev.innerHTML = `<div class="ph-prev-titulo">Lo que entró (puedes poner el peso real)</div>` + d.entradas.map(e => `
+    <div class="prod-componente-row" data-fila="c:${esc(e.producto_id)}"><span><span class="ph-ok"></span> ${esc(e.nombre)} <small>(hay ${fmtNum(e.disponible)})</small></span>
+      <span class="ph-peso-wrap">${inp('c:' + e.producto_id, e.peso, 'Peso real de ' + e.nombre)} ${esc(e.unidadTxt)}</span></div>`).join('') +
+    `<div class="ph-prev-titulo">Lo que salió</div>` + d.salidas.map(x => `
+    <div class="prod-componente-row" data-fila="s:${esc(x.producto_id)}"><span>${x.esMerma ? '🗑️' : '📦'} ${esc(x.nombre)}${x.esMerma ? ' <small>(desecho)</small>' : ' <small class="ph-cu"></small>'}</span>
+      <span class="ph-peso-wrap">${inp('s:' + x.producto_id, x.peso, 'Peso real de ' + x.nombre)} ${esc(x.unidadTxt)}</span></div>`).join('') +
+    `<div class="ph-totales" id="ph-desp-totales"></div>`;
+  actualizarTotalesDespiece(d);
+}
+// Al escribir un peso solo cambian los totales y los costos (las casillas no se vuelven a dibujar:
+// así no se pierde lo escrito ni se cierra el teclado del celular).
+function actualizarTotalesDespiece(d) {
+  const prev = document.getElementById('ph-preview');
+  d.entradas.forEach(e => { const f = prev.querySelector(`[data-fila="c:${CSS.escape(e.producto_id)}"]`); if (!f) return;
+    const ok = !e.unidadMala && e.disponible >= e.peso; f.classList.toggle('ph-fila-falta', !ok); f.querySelector('.ph-ok').textContent = ok ? '✅' : '⚠️'; });
+  d.salidas.forEach(x => { const el = prev.querySelector(`[data-fila="s:${CSS.escape(x.producto_id)}"] .ph-cu`); if (el) el.textContent = x.peso > 0 ? `· ${fmt(x.costoUnit)} c/u` : ''; });
+  document.getElementById('ph-desp-totales').innerHTML = `
+      <div><span>Costo de lo que entró</span><b>${fmt(d.costoMat)}</b></div>
+      ${d.extra > 0 ? `<div><span>Costo extra (mano de obra…)</span><b>${fmt(d.extra)}</b></div>` : ''}
+      <div><span>Entró / salió</span><b>${fmtNum(d.entro)} / ${fmtNum(d.salio)}</b></div>
+      ${d.entro - d.salio > 0.0005 ? `<div class="ph-perdida"><span>Se perdió en el proceso (agua, sangre…)</span><b>${fmtNum(Math.round((d.entro - d.salio) * 1000) / 1000)}</b></div>` : ''}
+      ${!d.todoSuficiente ? '<div class="ph-falta">⚠️ No alcanza la materia prima para esta cantidad.</div>' : ''}`;
+}
+function cambiarPesoReal(clave, valor) {
+  const n = parseFloat(valor);
+  STATE.phPesos = STATE.phPesos || {};
+  if (isNaN(n)) delete STATE.phPesos[clave]; else STATE.phPesos[clave] = n;
+  const cant = parseFloat(document.getElementById('ph-cantidad').value) || 0;
+  actualizarTotalesDespiece(datosDespieceReal(STATE.phReceta, cant));
+}
+
+async function guardarProducirHoy() {
+  const r = STATE.phReceta; if (!r) return;
+  const err = document.getElementById('ph-error'); err.textContent = '';
+  const desp = r.tipo === 'despiece';
+  const cant = parseFloat(document.getElementById('ph-cantidad').value);
+  const malos = desp ? 0 : Math.max(0, parseFloat(document.getElementById('ph-malos').value) || 0);
+  if (!cant || cant <= 0) { err.textContent = desp ? 'Escribe cuántos lotes procesaste.' : 'Escribe cuántos hiciste.'; return; }
+  if (malos >= cant) { err.textContent = 'Los malos deben ser menos que los que hiciste.'; return; }
+  let reales = null;
+  if (desp) {
+    const d = datosDespieceReal(r, cant);
+    if (d.entradas.some(e => !(e.peso > 0)) || d.salidas.some(x => !(x.peso >= 0))) { err.textContent = 'Revisa los pesos: deben ser números mayores que 0.'; return; }
+    if (!d.todoSuficiente) { err.textContent = 'No alcanza la materia prima. Ingresa más materia prima o baja la cantidad.'; return; }
+    if (d.salio > d.entro + 0.0005) { err.textContent = 'Salió más de lo que entró. Revisa los pesos.'; return; }
+    reales = { consumo: {}, salidas: {} };
+    d.entradas.forEach(e => { reales.consumo[e.producto_id] = e.peso; });
+    d.salidas.forEach(x => { reales.salidas[x.producto_id] = x.peso; });
+  } else {
+    const { todoSuficiente } = calcularNecesidadesOrden(r, cant);
+    if (!todoSuficiente) { err.textContent = 'No alcanza la materia prima. Ingresa más materia prima o baja la cantidad.'; return; }
+  }
+  if (PRODUCIENDO) return;
+  PRODUCIENDO = true;
+  const btn = document.getElementById('ph-btn'); btn.disabled = true;
+  try {
+    const { data: res, error } = await sb.rpc('produccion_crear_y_completar', { p_datos: {
+      receta_id: r.id, cantidad_planificada: cant, merma_cantidad: malos, ...(reales ? { reales } : {}),
+      merma_motivo: malos > 0 ? (document.getElementById('ph-motivo').value.trim() || null) : null,
+      usuario_nombre: STATE.currentUser?.nombre || 'Usuario' } });   // sin costo_mano_obra: el servidor usa el costo extra de la receta
+    if (error) throw error;
+    if (!res || !res.ok) { err.textContent = textoMotivoProduccion(res); return; }
+    showToast(`✅ Listo: ${desp ? fmtNum(cant) + ' lote(s) de ' + tituloReceta(r) : fmtNum(round2(cant - malos)) + ' ' + tituloReceta(r)} al inventario` + textoCostoNuevo(res));
+    closeModal('modal-producir-hoy');
+    await Promise.all([cargarOrdenes(), cargarProductosCache()]);
+    actualizarKPIsProduccion();
+  } catch (e) {
+    console.error('guardarProducirHoy:', e);
+    err.textContent = 'No se pudo guardar. Intenta de nuevo.';
+  } finally { PRODUCIENDO = false; btn.disabled = false; }
+}
+
+/* =====================================================
+   MERMA DESPUÉS DE PRODUCIR (pan vencido, dañado, que no se vendió).
+   Baja la existencia en el servidor y queda como "ajuste de existencia (baja)"
+   con su costo, que la contabilidad ya toma. No toca Caja.
+===================================================== */
+const MOTIVOS_MERMA = [
+  { id: 'vencido', txt: '⏰ Se venció' }, { id: 'danado', txt: '💥 Se dañó' },
+  { id: 'no_vendido', txt: '🥖 No se vendió' }, { id: 'otro', txt: '📝 Otro' },
+];
+function abrirMermaProducto() {
+  const terminados = new Set(STATE.recetas.map(r => r.producto_terminado_id).filter(Boolean));
+  STATE.recetas.forEach(r => (r.receta_despiece_salidas || []).forEach(x => { if (!x.es_merma) terminados.add(x.producto_id); }));
+  const lista = STATE.productos.filter(p => p.tipo === 'producto' && !p.es_materia_prima)
+    .sort((a, b) => (terminados.has(b.id) - terminados.has(a.id)) || a.nombre.localeCompare(b.nombre));
+  document.getElementById('mm-producto').innerHTML = '<option value="">— Elige el producto —</option>' +
+    lista.map(p => `<option value="${esc(p.id)}">${esc(p.nombre)} (hay ${fmtNum(p.stock_actual)})</option>`).join('');
+  document.getElementById('mm-motivos').innerHTML = MOTIVOS_MERMA.map((m, i) =>
+    `<label class="mm-motivo"><input type="radio" name="mm-motivo" value="${m.id}" ${i === 0 ? 'checked' : ''}/> ${m.txt}</label>`).join('');
+  document.getElementById('mm-cantidad').value = '';
+  document.getElementById('mm-nota').value = '';
+  document.getElementById('mm-error').textContent = '';
+  document.getElementById('mm-valor').textContent = '';
+  openModal('modal-merma');
+}
+function recalcularMerma() {
+  const p = STATE.productos.find(x => x.id === document.getElementById('mm-producto').value);
+  const c = parseFloat(document.getElementById('mm-cantidad').value) || 0;
+  document.getElementById('mm-valor').textContent = p && c > 0 ? `Pierdes ${fmt(round2(c * Number(p.costo || 0)))} (a costo). No sale dinero de la Caja.` : '';
+}
+let REGISTRANDO_MERMA = false;
+async function guardarMerma() {
+  const err = document.getElementById('mm-error'); err.textContent = '';
+  const id = document.getElementById('mm-producto').value, c = parseFloat(document.getElementById('mm-cantidad').value);
+  const motivo = document.querySelector('input[name="mm-motivo"]:checked')?.value;
+  if (!id) { err.textContent = 'Elige el producto.'; return; }
+  if (!(c > 0)) { err.textContent = 'Escribe cuántos se perdieron.'; return; }
+  if (REGISTRANDO_MERMA) return;
+  REGISTRANDO_MERMA = true;
+  const btn = document.getElementById('mm-btn'); btn.disabled = true;
+  try {
+    const { data: r, error } = await sb.rpc('produccion_merma_registrar', { p_producto_id: id, p_cantidad: c, p_motivo: motivo, p_nota: document.getElementById('mm-nota').value.trim() || null });
+    if (error) throw error;
+    if (!r || !r.ok) { err.textContent = r && r.motivo === 'sin_existencia' ? `No hay tanto: solo hay ${fmtNum(r.disponible)}.` : 'No se pudo registrar. Revisa los datos.'; return; }
+    showToast(`🗑️ Merma registrada: ${fmt(r.costo_total)} a costo`);
+    closeModal('modal-merma');
+    await cargarProductosCache(); await cargarMermasMes(); renderReporteMes();
+  } catch (e) { console.error('guardarMerma:', e); err.textContent = 'No se pudo registrar. Intenta de nuevo.'; }
+  finally { REGISTRANDO_MERMA = false; btn.disabled = false; }
+}
+
+/* =====================================================
+   INSUMOS QUE SE VAN GASTANDO (aceite, gas, sal…)
+   No se descuentan por plato ni por tanda. Al abrir uno nuevo se descuenta del
+   inventario como ajuste (gasto de cocina) con su costo; no toca Caja.
+   Rendimiento: platos vendidos / unidades producidas entre una apertura y la siguiente.
+===================================================== */
+async function cargarInsumos() {
+  const ids = new Set();
+  STATE.recetas.forEach(r => (r.receta_componentes || []).forEach(c => { if (c.uso_continuo) ids.add(c.producto_id); }));
+  STATE.insumoIds = [...ids];
+  STATE.aperturas = []; STATE.usosInsumo = [];
+  if (!ids.size) return;
+  try {
+    const { data } = await sb.from('insumo_aperturas').select('producto_id, cantidad, costo_total, created_at')
+      .eq('auth_user_id', STATE.userId).in('producto_id', [...ids]).order('created_at');
+    STATE.aperturas = data || [];
+    const desde = STATE.aperturas.length ? STATE.aperturas[0].created_at : null;
+    const platos = [...new Set(STATE.recetas.filter(r => r.al_vender && (r.receta_componentes || []).some(c => c.uso_continuo)).map(r => r.producto_terminado_id))];
+    if (desde && platos.length) {
+      const { data: vd } = await N360Leer.todo(() => sb.from('venta_detalles').select('producto_id, cantidad, created_at, ventas(estado)')
+        .eq('auth_user_id', STATE.userId).in('producto_id', platos).gte('created_at', desde), 'ventas');
+      STATE.usosInsumo = (vd || []).filter(x => x.ventas?.estado !== 'anulada').map(x => ({ producto_id: x.producto_id, cantidad: Number(x.cantidad || 0), fecha: x.created_at }));
+    }
+  } catch (e) { console.warn('cargarInsumos:', e); }
+}
+// Cuántos platos/unidades usaron este insumo entre dos fechas.
+function usosDeInsumo(insumoId, desde, hasta) {
+  const recetas = STATE.recetas.filter(r => (r.receta_componentes || []).some(c => c.producto_id === insumoId && c.uso_continuo));
+  const platos = new Set(recetas.filter(r => r.al_vender).map(r => r.producto_terminado_id));
+  const tandas = new Set(recetas.filter(r => !r.al_vender).map(r => r.id));
+  const enRango = f => f && new Date(f) >= new Date(desde) && (!hasta || new Date(f) < new Date(hasta));
+  const vendidos = (STATE.usosInsumo || []).filter(u => platos.has(u.producto_id) && enRango(u.fecha)).reduce((t, u) => t + u.cantidad, 0);
+  const producidos = STATE.ordenes.filter(o => o.estado === 'completada' && tandas.has(o.receta_id) && enRango(o.fecha_completada))
+    .reduce((t, o) => t + Number(o.tipo === 'despiece' ? o.cantidad_planificada : o.cantidad_producida || 0), 0);
+  return vendidos + producidos;
+}
+function renderInsumos() {
+  const panel = document.getElementById('prod-insumos'); if (!panel) return;
+  const ids = STATE.insumoIds || [];
+  panel.style.display = ids.length ? '' : 'none';
+  if (!ids.length) return;
+  document.getElementById('in-lista').innerHTML = ids.map(id => {
+    const p = STATE.productos.find(x => x.id === id); if (!p) return '';
+    const ab = (STATE.aperturas || []).filter(a => a.producto_id === id);
+    const u = textoUnidadInventario(p);
+    let rinde = null;
+    const ciclos = [];
+    for (let i = 0; i + 1 < ab.length; i++) { const n = usosDeInsumo(id, ab[i].created_at, ab[i + 1].created_at); if (n > 0) ciclos.push(n / Number(ab[i].cantidad || 1)); }
+    if (ciclos.length) rinde = ciclos.reduce((t, x) => t + x, 0) / ciclos.length;
+    const ult = ab[ab.length - 1];
+    const desdeUlt = ult ? usosDeInsumo(id, ult.created_at, null) : 0;
+    const quedan = rinde && ult ? Math.round(rinde * Number(ult.cantidad || 1) - desdeUlt) : null;
+    const dias = ult ? Math.floor((Date.now() - new Date(ult.created_at)) / 86400000) : null;
+    return `<div class="in-card">
+      <span class="in-nombre">${esc(p.nombre)}</span>
+      <span class="in-dato">Guardados sin abrir: <b>${fmtNum(p.stock_actual)}</b> ${esc(u)}</span>
+      ${ult ? `<span class="in-dato">Último abierto ${dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`} · desde entonces: ${fmtNum(desdeUlt)} usados</span>` : '<span class="in-dato">Todavía no has registrado ninguno abierto.</span>'}
+      ${rinde ? `<span class="in-dato">Rinde aprox. <b>${fmtNum(Math.round(rinde))}</b> por ${esc(nombreUnidad(p.unidad_codigo) || 'unidad')} · ${fmt(round2(Number(p.costo || 0) / rinde))} c/u</span>` : ult ? '<span class="in-dato">Cuando abras el siguiente, te diré cuánto rinde.</span>' : ''}
+      ${quedan != null ? (quedan <= Math.max(5, rinde * 0.15) ? `<span class="in-alerta">⚠️ Se está por acabar: quedan unos ${fmtNum(Math.max(0, quedan))}</span>` : `<span class="in-dato">Al abierto le quedan unos ${fmtNum(quedan)}</span>`) : ''}
+      ${Number(p.stock_actual) <= 0 ? '<span class="in-alerta">⚠️ No te queda ninguno guardado</span>' : ''}
+      <button type="button" class="btn-secondary" style="margin-top:4px" onclick="abrirInsumo('${esc(id)}')">🫙 Abrí uno nuevo</button>
+    </div>`;
+  }).join('');
+}
+function abrirInsumo(id) {
+  const p = STATE.productos.find(x => x.id === id); if (!p) return;
+  STATE.insumoActual = p;
+  document.getElementById('in-titulo').textContent = `🫙 Abrí ${p.nombre}`;
+  document.getElementById('in-cantidad-label').textContent = `¿Cuántos ${textoUnidadInventario(p)} abriste?`;
+  document.getElementById('in-cantidad').value = 1;
+  document.getElementById('in-nota').value = '';
+  document.getElementById('in-error').textContent = '';
+  recalcularInsumo();
+  openModal('modal-insumo');
+}
+function recalcularInsumo() {
+  const p = STATE.insumoActual, c = parseFloat(document.getElementById('in-cantidad').value) || 0;
+  document.getElementById('in-valor').textContent = p && c > 0 ? `Pasa a gasto de cocina: ${fmt(round2(c * Number(p.costo || 0)))}. No sale dinero de la Caja.` : '';
+}
+let ABRIENDO_INSUMO = false;
+async function guardarInsumo() {
+  const err = document.getElementById('in-error'); err.textContent = '';
+  const p = STATE.insumoActual, c = parseFloat(document.getElementById('in-cantidad').value);
+  if (!p) return;
+  if (!(c > 0)) { err.textContent = 'Escribe cuántos abriste.'; return; }
+  if (ABRIENDO_INSUMO) return;
+  ABRIENDO_INSUMO = true;
+  const btn = document.getElementById('in-btn'); btn.disabled = true;
+  try {
+    const { data: r, error } = await sb.rpc('produccion_insumo_abrir', { p_producto_id: p.id, p_cantidad: c, p_nota: document.getElementById('in-nota').value.trim() || null });
+    if (error) throw error;
+    if (!r || !r.ok) { err.textContent = r && r.motivo === 'sin_existencia' ? `No tienes tantos guardados: hay ${fmtNum(r.disponible)}. Ingresa la compra primero.` : 'No se pudo registrar.'; return; }
+    showToast(`🫙 Registrado: ${p.nombre} (${fmt(r.costo_total)} a gasto de cocina)`);
+    closeModal('modal-insumo');
+    await cargarProductosCache(); await cargarInsumos(); renderInsumos();
+  } catch (e) { console.error('guardarInsumo:', e); err.textContent = 'No se pudo registrar. Intenta de nuevo.'; }
+  finally { ABRIENDO_INSUMO = false; btn.disabled = false; }
+}
+
+/* =====================================================
+   COSTOS Y MERMA DEL MES (solo lectura)
+===================================================== */
+function inicioMes() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); }
+async function cargarMermasMes() {
+  try {
+    const { data } = await sb.from('movimientos_inventario').select('producto_id, cantidad, costo_total, razon, created_at')
+      .eq('auth_user_id', STATE.userId).like('razon', 'merma_%').gte('created_at', inicioMes().toISOString());
+    STATE.mermasMes = data || [];
+  } catch (e) { STATE.mermasMes = []; }
+}
+function renderReporteMes() {
+  const cont = document.getElementById('rp-mes'); if (!cont) return;
+  const desde = inicioMes();
+  const ords = STATE.ordenes.filter(o => o.estado === 'completada' && o.fecha_completada && new Date(o.fecha_completada) >= desde);
+  const filas = {};
+  const fila = (id, nombre) => (filas[id] = filas[id] || { nombre, producido: 0, costo: 0, mermaProd: 0, valorMermaProd: 0, mermaDesp: 0, valorMermaDesp: 0 });
+  ords.forEach(o => {
+    if (o.tipo === 'despiece') { const r = STATE.recetas.find(x => x.id === o.receta_id); const f = fila('d:' + o.receta_id, (r ? tituloReceta(r) : 'Despiece') + ' (despiece)'); f.producido += Number(o.cantidad_planificada || 0); f.costo += Number(o.costo_total || 0); return; }
+    const f = fila(o.producto_terminado_id, nombreProducto(o.producto_terminado_id));
+    f.producido += Number(o.cantidad_producida || 0); f.costo += Number(o.costo_total || 0);
+    f.mermaProd += Number(o.merma_cantidad || 0); f.valorMermaProd += Number(o.merma_cantidad || 0) * Number(o.costo_unitario || 0);
+  });
+  (STATE.mermasMes || []).forEach(m => { const f = fila(m.producto_id, nombreProducto(m.producto_id)); f.mermaDesp += Math.abs(Number(m.cantidad || 0)); f.valorMermaDesp += Number(m.costo_total || 0); });
+  const lista = Object.values(filas).sort((a, b) => b.costo - a.costo);
+  const tot = lista.reduce((t, f) => ({ costo: t.costo + f.costo, perdido: t.perdido + f.valorMermaProd + f.valorMermaDesp }), { costo: 0, perdido: 0 });
+  if (!lista.length) { cont.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted)">Todavía no hay producción ni merma este mes.</p>'; return; }
+  cont.innerHTML = `
+    <div class="rp-resumen">
+      <div><span>Produjiste este mes por</span><b>${fmt(round2(tot.costo))}</b></div>
+      <div class="${tot.perdido > 0 ? 'rp-perdido' : ''}"><span>Perdiste en merma</span><b>${fmt(round2(tot.perdido))}</b></div>
+    </div>
+    <div class="table-wrap"><table class="rp-tabla">
+      <thead><tr><th>Producto</th><th>Producido</th><th>Costo c/u</th><th>Malos al producir</th><th>Merma después</th><th>Perdido</th></tr></thead>
+      <tbody>${lista.map(f => `<tr><td>${esc(f.nombre)}</td><td>${fmtNum(f.producido)}</td>
+        <td>${f.producido > 0 && !f.nombre.endsWith('(despiece)') ? fmt(round2(f.costo / f.producido)) : '—'}</td>
+        <td>${f.mermaProd ? fmtNum(f.mermaProd) : '—'}</td><td>${f.mermaDesp ? fmtNum(f.mermaDesp) : '—'}</td>
+        <td>${f.valorMermaProd + f.valorMermaDesp > 0 ? fmt(round2(f.valorMermaProd + f.valorMermaDesp)) : '—'}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:6px 0 0">"Malos al producir" ya va incluido en el costo de los buenos. "Merma después" baja el inventario como ajuste y no saca dinero de la Caja.</p>`;
+}
+
 function actualizarKPIsProduccion() {
+  try { renderReporteMes(); } catch (e) { console.error('renderReporteMes:', e); }
+  try { renderInsumos(); } catch (e) { console.error('renderInsumos:', e); }
+  try { renderProducirHoy(); } catch (e) { console.error('renderProducirHoy:', e); }
   const pendientes = STATE.ordenes.filter(o => o.estado === 'pendiente');
   const enProceso = STATE.ordenes.filter(o => o.estado === 'en_proceso');
   const activas = pendientes.length + enProceso.length;
@@ -1449,8 +1986,10 @@ async function init() {
     document.getElementById('loader').classList.add('hidden');
     document.getElementById('app').style.display = 'flex';
 
+    if (window.N360Unidades) await window.N360Unidades.cargarPersonalizadas(sb, user.id);
     await cargarProductosCache();
-    await Promise.all([cargarRecetas(), cargarOrdenes()]);
+    await Promise.all([cargarRecetas(), cargarOrdenes(), cargarMermasMes()]);
+    await cargarInsumos();
     actualizarKPIsProduccion();
 
     // Llegada directa desde "+ Nueva materia prima" en Productos/Servicios

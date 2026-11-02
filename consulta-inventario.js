@@ -110,7 +110,7 @@ async function checkAdminAccess(email) {
 ===================================================== */
 async function cargarTodo() {
   try { const { data: { user: _u } } = await sb.auth.getUser(); if (_u) await window.N360Unidades?.cargarPersonalizadas(sb, _u.id); } catch (_) {}
-  const { data: productos, error } = await sb.from('productos').select('*');
+  const { data: productos, error } = await N360Leer.todo(() => sb.from('productos').select('*'), 'productos');
   if (error) { console.error('cargarTodo productos:', error); STATE.productos = []; return; }
   STATE.productos = productos || [];
 

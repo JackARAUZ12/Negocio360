@@ -61,6 +61,8 @@
                                desc: 'Compras a crédito a proveedores y sus pagos.' },
     'salarios.html':         { key: 'salarios',         label: 'Salarios',            icon: '🧑‍💼', obligatorio: false,
                                desc: 'Empleados, pagos, adelantos y bonificaciones.' },
+    'comisiones.html':       { key: 'comisiones',       label: 'Comisiones',          icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_comisiones',
+                               desc: 'Comisión por cada venta de tus vendedores, aparte de Salarios: se calcula sola, se paga junta y sale de Caja.' },
     'auditoria.html':        { key: 'auditoria',        label: 'Auditoría',           icon: '🕵️', obligatorio: false, soloAdmin: true,
                                desc: 'Registro de movimientos por usuario, con fecha y hora. Requiere código de administrador.' },
     'personalizacion.html':  { key: 'personalizacion',  label: 'Personalización',     icon: '🎨', obligatorio: false,
@@ -145,50 +147,85 @@
                                desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
 
     // ---- Clínica (secundario: apagado para toda cuenta hasta encender "Módulo de Clínica" en Configuración) ----
-    'clinica-agenda.html': { key: 'clinica_agenda', label: 'Clínica · Agenda', icon: '📅', obligatorio: false, flagPropio: 'usa_modulo_clinica',
-                       desc: 'Citas por día, semana y médico, sala de espera, recordatorio por WhatsApp y cobro de la visita por Ventas.' },
-    'clinica-pacientes.html': { key: 'clinica_pacientes', label: 'Clínica · Pacientes', icon: '🩺', obligatorio: false, flagPropio: 'usa_modulo_clinica',
-                       desc: 'Pacientes y expediente clínico (antecedentes, alergias, consultas firmadas), protegido con PIN médico.' },
-    'clinica-sala.html': { key: 'clinica_sala', label: 'Clínica · Sala de espera', icon: '🪑', obligatorio: false, flagPropio: 'usa_modulo_clinica',
-                       desc: 'Turnos del día por orden de llegada, tiempo de espera, llamar al paciente y pantalla para la sala.' },
-    'clinica-reportes.html': { key: 'clinica_reportes', label: 'Clínica · Reportes y honorarios', icon: '📊', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+    // El Panel es la entrada única de Clínica en el menú: las demás pantallas se abren DENTRO del panel
+    // ("enPanel"), pero conservan su propia llave para los permisos por usuario.
+    'clinica-panel.html': { key: 'clinica_panel', label: 'Clínica · Panel', icon: '🏥', obligatorio: false, flagPropio: 'usa_modulo_clinica',
+                       desc: 'Toda la clínica en un solo lugar: el ciclo del paciente de hoy (agendar, sala, consulta, cobro y control), lo que falta preparar y lo pendiente.' },
+    'clinica-pacientes.html': { key: 'clinica_pacientes', label: 'Clínica · Pacientes', icon: '🩺', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
+                       desc: 'Pacientes y expediente clínico (antecedentes, alergias, consultas firmadas): solo lo abren los médicos con su código de usuario.' },
+    'clinica-sala.html': { key: 'clinica_sala', label: 'Clínica · Sala de espera', icon: '🪑', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
+                       desc: 'Las citas de hoy de la Agenda: turnos por llegada, llamar al paciente, pantalla para la sala, recordatorios por WhatsApp y cobro.' },
+    'clinica-hospital.html': { key: 'clinica_hospital', label: 'Clínica · Observación y hospitalización', icon: '🛏️', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
+                       desc: 'Pacientes en observación o internados: cama, médico, notas de evolución con candado, cuenta por día y medicamentos, alta y cobro.' },
+    'clinica-seguros.html': { key: 'clinica_seguros', label: 'Clínica · Seguros y convenios', icon: '🛡️', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
+                       desc: 'Aseguradoras y empresas con su cobertura: el paciente paga su parte y lo cubierto se factura a la aseguradora por Ventas.' },
+    'clinica-reportes.html': { key: 'clinica_reportes', label: 'Clínica · Reportes y honorarios', icon: '📊', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
                        desc: 'Atendidos, inasistencias, ingresos por médico y servicio, diagnósticos frecuentes y honorarios pagados por Salarios.' },
-    'clinica-equipo.html': { key: 'clinica_equipo', label: 'Clínica · Equipo y seguridad', icon: '👩‍⚕️', obligatorio: false, flagPropio: 'usa_modulo_clinica',
-                       desc: 'Médicos y su PIN, recepción, consultorios, especialidades y bitácora de accesos al expediente.' },
+    'clinica-equipo.html': { key: 'clinica_equipo', label: 'Clínica · Médicos y seguridad', icon: '👩‍⚕️', obligatorio: false, flagPropio: 'usa_modulo_clinica', enPanel: 'clinica-panel.html',
+                       desc: 'Qué usuarios del sistema son médicos (su columna en la Agenda y honorarios), consultorios, especialidades y bitácora de accesos.' },
 
     // ---- Transporte de carga (secundario -- mismo criterio que Hotel/Restaurante) ----
+    // El Panel es la entrada única de Transporte en el menú: las demás pantallas se abren DENTRO del panel
+    // ("enPanel"), pero conservan su propia llave para los permisos por usuario.
     'transporte.html': { key: 'transporte', label: 'Transporte · Panel', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
-                       desc: 'Centro de mando del transporte de carga: flota, viajes, costos y cobros, conectado con Ventas, Créditos, Gastos y Caja.' },
-    'flota.html': { key: 'transporte_flota', label: 'Transporte · Flota', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+                       desc: 'Todo el transporte en un solo lugar y en orden: orden, despacho, viaje, entrega, cobro (aquí mismo, conectado con Ventas y Caja) y pago al conductor.' },
+    // Taller mecánico (vehículos terrestres): el Panel es la entrada única; las partes se abren dentro de él.
+    'taller.html': { key: 'taller', label: 'Taller mecánico · Panel', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_taller',
+                       desc: 'Todo el taller en un solo lugar: recepción, diagnóstico, presupuesto aprobado línea por línea, reparación, control de calidad y entrega con cobro.' },
+    'taller-vehiculos.html': { key: 'taller_vehiculos', label: 'Taller · Vehículos y flotas', icon: '🚗', obligatorio: false, flagPropio: 'usa_modulo_taller', enPanel: 'taller.html',
+                       desc: 'Autos, camionetas, motos, camiones, buses y pesados con placa, VIN, kilometraje y dueño.' },
+    'taller-ordenes.html': { key: 'taller_ordenes', label: 'Taller · Órdenes y presupuestos', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_taller', enPanel: 'taller.html',
+                       desc: 'Tablero por estado, presupuesto por líneas con aprobación del cliente, repuestos del inventario y entrega con cobro.' },
+    'flota.html': { key: 'transporte_flota', label: 'Transporte · Flota', icon: '🚛', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Tus cabezales, camiones, furgones y plataformas con fotos, documentos con vencimiento y estado.' },
-    'conductores.html': { key: 'transporte_conductores', label: 'Transporte · Conductores', icon: '🧑‍✈️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'conductores.html': { key: 'transporte_conductores', label: 'Transporte · Conductores', icon: '🧑‍✈️', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Conductores y ayudantes con documentos, licencias y disponibilidad.' },
 
-    'transporte-rutas.html': { key: 'transporte_rutas', label: 'Transporte · Rutas y tarifas', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-rutas.html': { key: 'transporte_rutas', label: 'Transporte · Rutas y tarifas', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Tus rutas habituales con distancia, fronteras y tarifas por viaje, km o tonelada.' },
-    'transporte-ordenes.html': { key: 'transporte_ordenes', label: 'Transporte · Órdenes', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-ordenes.html': { key: 'transporte_ordenes', label: 'Transporte · Órdenes', icon: '📋', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Órdenes de transporte con tablero de despacho, costos del viaje y rentabilidad.' },
 
-    'transporte-liquidaciones.html': { key: 'transporte_liquidaciones', label: 'Transporte · Liquidación de conductores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-liquidaciones.html': { key: 'transporte_liquidaciones', label: 'Transporte · Liquidación de conductores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Pago a conductores y ayudantes por viaje, km o comisión, con anticipos y descuentos.' },
 
-    'transporte-subcontratistas.html': { key: 'transporte_subcontratistas', label: 'Transporte · Subcontratistas', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-subcontratistas.html': { key: 'transporte_subcontratistas', label: 'Transporte · Subcontratistas', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Transportistas externos: subcontrata viajes y paga de contado o a crédito (Cuentas por Pagar).' },
 
-    'transporte-facturacion.html': { key: 'transporte_facturacion', label: 'Transporte · Facturación y cobranza', icon: '🧾', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-facturacion.html': { key: 'transporte_facturacion', label: 'Transporte · Facturación y cobranza', icon: '🧾', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Convierte los viajes entregados en venta (contado o crédito) y da seguimiento al cobro.' },
 
-    'transporte-fronteras.html': { key: 'transporte_fronteras', label: 'Transporte · Fronteras y documentos', icon: '🛂', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-fronteras.html': { key: 'transporte_fronteras', label: 'Transporte · Fronteras y documentos', icon: '🛂', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Cruces de frontera, trámites aduaneros, carta de porte y documentos de cada orden.' },
 
-    'transporte-mantenimiento.html': { key: 'transporte_mantenimiento', label: 'Transporte · Mantenimiento y llantas', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-mantenimiento.html': { key: 'transporte_mantenimiento', label: 'Transporte · Mantenimiento y llantas', icon: '🔧', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Servicios preventivos por km o fecha, órdenes de trabajo del taller y control de llantas.' },
 
-    'transporte-entregas.html': { key: 'transporte_entregas', label: 'Transporte · Entregas e incidencias', icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-entregas.html': { key: 'transporte_entregas', label: 'Transporte · Entregas e incidencias', icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Prueba de entrega con firma, y registro y seguimiento de incidencias y reclamos de cada viaje.' },
 
-    'transporte-reportes.html': { key: 'transporte_reportes', label: 'Transporte · Reportes e indicadores', icon: '📈', obligatorio: false, flagPropio: 'usa_modulo_transporte',
+    'transporte-reportes.html': { key: 'transporte_reportes', label: 'Transporte · Reportes e indicadores', icon: '📈', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Viajes, ingresos, costos, utilidad, cumplimiento, mantenimiento e incidencias por cliente, ruta, unidad y conductor.' },
+
+    // ---- Mensajería / empresa de delivery: el Panel es la entrada única; las partes se abren dentro de él ----
+    'mensajeria.html': { key: 'mensajeria', label: 'Mensajería · Panel', icon: '🛵', obligatorio: false, flagPropio: 'usa_modulo_mensajeria',
+                       desc: 'Toda la empresa de delivery en un solo lugar y en orden: recibir el envío, despachar, entregar con foto y cuadrar el efectivo de cada repartidor.' },
+    'mensajeria-envios.html': { key: 'mensajeria_envios', label: 'Mensajería · Envíos', icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Guías de envío: quién manda, a quién va, dirección, cuánto cobrar contra entrega y la tarifa por zona calculada sola.' },
+    'mensajeria-despacho.html': { key: 'mensajeria_despacho', label: 'Mensajería · Despacho', icon: '🗂️', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Tablero por estado: asigna envíos a repartidores (uno o varios a la vez) y sigue cada entrega.' },
+    'mensajeria-repartidor.html': { key: 'mensajeria_repartidor', label: 'Mensajería · Mis entregas', icon: '🛵', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'La pantalla del repartidor en su celular: sus entregas, Waze o Google Maps, llamar o WhatsApp, y marcar entregado con foto.' },
+    'mensajeria-cuadre.html': { key: 'mensajeria_cuadre', label: 'Mensajería · Cuadre de repartidores', icon: '💵', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Cuánto efectivo debe entregar cada repartidor, cuánto entregó y la diferencia (faltantes y abonos).' },
+    'mensajeria-liquidaciones.html': { key: 'mensajeria_liquidaciones', label: 'Mensajería · Liquidar comercios', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'A cada comercio: lo cobrado a su nombre menos tus tarifas (que entran a Ventas y Caja), con estado de cuenta.' },
+    'mensajeria-pagos.html': { key: 'mensajeria_pagos', label: 'Mensajería · Pago a repartidores', icon: '💼', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Lo que ganó cada repartidor por entrega o porcentaje, con descuento de su deuda. Queda como gasto.' },
+    'mensajeria-reportes.html': { key: 'mensajeria_reportes', label: 'Mensajería · Reportes', icon: '📊', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Entregas, porcentaje a la primera, tiempos, tarifas y detalle por repartidor, zona y comercio, con Excel.' },
+    'mensajeria-ajustes.html': { key: 'mensajeria_ajustes', label: 'Mensajería · Zonas, tarifas y repartidores', icon: '🗺️', obligatorio: false, flagPropio: 'usa_modulo_mensajeria', enPanel: 'mensajeria.html',
+                       desc: 'Zonas con su tarifa, precios especiales por comercio, recargos, tope de efectivo y tus repartidores.' },
 
     // ---- Diseño (secundario: herramientas para diseñadores; interruptor propio) ----
     'diseno-marca-agua.html': { key: 'diseno_marca_agua', label: 'Diseño · Marca de agua', icon: '💧', obligatorio: false, flagPropio: 'usa_modulo_diseno',
@@ -216,4 +253,10 @@
   };
 
   window.NEGOCIO360_MODULOS = MODULOS;
+  // Un panel (p. ej. Clínica) se puede abrir si el usuario tiene el panel o cualquiera de las pantallas que van dentro.
+  window.NEGOCIO360_PANEL_PERMITIDO = function (archivo, permitidos) {
+    const m = MODULOS[archivo]; if (!m || !permitidos) return false;
+    if (permitidos.has(m.key)) return true;
+    return Object.entries(MODULOS).some(([, h]) => h.enPanel === archivo && permitidos.has(h.key));
+  };
 })();

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Mis envíos</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{--ac:#2563eb;--bg:#f5f6f8;--card:#fff;--tx:#14181f;--mu:#667085;--bd:#e3e6ea;--ok:#157f3b;--okb:#e6f6ec;--no:#b42318;--nob:#fdecea;--wa:#fff4d6;--wt:#8a5a00}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--tx:#eef0f3;--mu:#9aa3af;--bd:#2a2f38;--okb:#12301d;--nob:#3a1814;--wa:#3a2e0e;--wt:#f3c969;--ok:#5fd68a;--no:#ff8a7d}}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  main{max-width:640px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:14px}
+  header{display:flex;gap:12px;align-items:center}header img{width:44px;height:44px;border-radius:12px;object-fit:cover}
+  header h1{margin:0;font-size:18px;overflow-wrap:anywhere}header p{margin:0;color:var(--mu);font-size:13.5px;overflow-wrap:anywhere}
+  .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;position:sticky;top:0;z-index:5;background:var(--bg);padding:4px 0}
+  .tabs button{border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:12px;padding:10px 4px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;min-height:46px}
+  .tabs button.on{background:var(--ac);border-color:var(--ac);color:#fff}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+  label{font-size:13.5px;font-weight:700;color:var(--mu);display:flex;flex-direction:column;gap:4px}
+  input,select,textarea{width:100%;padding:12px;border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--tx);font:inherit;min-height:46px}
+  textarea{min-height:70px;resize:vertical}
+  .dos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .opc{display:grid;grid-template-columns:1fr 1fr;gap:8px}.opc button{padding:11px;border-radius:12px;border:2px solid var(--bd);background:var(--card);color:var(--tx);font:inherit;font-weight:700;cursor:pointer;min-height:46px}
+  .opc button.on{border-color:var(--ac);color:var(--ac)}
+  .big{width:100%;padding:15px;border:0;border-radius:14px;background:var(--ac);color:#fff;font:inherit;font-weight:800;font-size:17px;cursor:pointer;min-height:52px}
+  .big:disabled{opacity:.5}.sec{background:transparent;color:var(--ac);border:2px solid var(--ac)}
+  .tarifa{border-radius:12px;padding:12px;background:var(--okb);color:var(--ok);font-weight:700;font-size:14.5px}
+  .aviso{border-radius:12px;padding:12px;font-size:14.5px;background:var(--wa);color:var(--wt);font-weight:600}.aviso.ok{background:var(--okb);color:var(--ok)}
+  .env{border:1px solid var(--bd);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:4px;background:var(--card)}
+  .env .t{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}.env b{overflow-wrap:anywhere}
+  .num{font-family:ui-monospace,Menlo,monospace;font-weight:800}.mu{color:var(--mu);font-size:13.5px;overflow-wrap:anywhere}
+  .chip{font-size:12px;font-weight:800;border-radius:999px;padding:2px 10px;background:var(--bd);white-space:nowrap}
+  .chip.ok{background:var(--okb);color:var(--ok)}.chip.no{background:var(--nob);color:var(--no)}.chip.wa{background:var(--wa);color:var(--wt)}
+  .fila{display:flex;justify-content:space-between;gap:10px;font-size:15px}.fila.g{font-size:19px;font-weight:800;border-top:1px solid var(--bd);padding-top:8px}
+  .acc{display:flex;gap:8px;flex-wrap:wrap}.acc a,.acc button{font:inherit;font-size:13.5px;font-weight:700;color:var(--ac);background:transparent;border:1px solid var(--bd);border-radius:10px;padding:7px 10px;text-decoration:none;cursor:pointer}
+  .centro{text-align:center;padding:40px 12px;display:flex;flex-direction:column;gap:10px;align-items:center}.centro .i{font-size:48px}
+  :focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+  @media (max-width:380px){.dos{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main id="app"><div class="centro"><div class="i">⏳</div><p class="mu">Cargando…</p></div></main>
+<script>
+'use strict';
+const sb = window.supabase.createClient('https://zvlincmqmmoclqhykejv.supabase.co', 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t', { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+const app = document.getElementById('app');
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+let D = null, TAB = 'nuevo', OCUPADO = false, F = { paga: 'comercio', tam: 'pequeno', urg: false };
+const fmt = v => { const n = Number(v || 0); const s = { NIO: 'C$', USD: '$', CRC: '₡' }[(D && D.moneda) || 'NIO'] || ''; return s + ' ' + n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+const fecha = d => d ? new Date(d).toLocaleString('es-NI', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+const EST = { por_recoger: ['📍 Por recoger', 'wa'], en_bodega: ['🏬 En bodega', ''], asignado: ['🧑 Asignado', ''], en_ruta: ['🛵 En camino', ''], entregado: ['✅ Entregado', 'ok'],
+  no_entregado: ['⚠️ No entregado', 'no'], devuelto: ['↩️ Devuelto', 'no'], cancelado: ['✖️ Cancelado', 'no'] };
+const MOT = { destinatario: 'Escribe a quién va el envío.', direccion: 'Escribe la dirección de entrega.', zona: 'Elige la zona.', valor: 'Revisa los números.', limite: 'Llegaste al máximo de envíos por día desde aquí. Escríbenos por WhatsApp.', invalido: 'Este enlace ya no sirve. Pide uno nuevo.' };
+const token = () => { const m = (location.hash || '').match(/[#&]t=([0-9a-f]{40})/); return m ? m[1] : ''; };
+const rastreo = t => new URL('rastreo.html#t=' + t, location.href).href;
+
+function nada() { app.innerHTML = '<div class="centro"><div class="i">🔒</div><h1>Este enlace no sirve</h1><p class="mu">Puede que lo hayan cambiado. Pide uno nuevo a tu empresa de envíos.</p></div>'; }
+async function cargar() {
+  const t = token(); if (!t) { nada(); return; }
+  try { const r = await sb.rpc('msj_portal_ver', { p_token: t }); if (r.error) throw r.error; D = r.data; }
+  catch (e) { app.innerHTML = '<div class="centro"><div class="i">📶</div><h1>No se pudo cargar</h1><p class="mu">Revisa tu conexión.</p><button class="big" style="max-width:240px" onclick="cargar()">Reintentar</button></div>'; return; }
+  if (!D || !D.ok) { nada(); return; }
+  if (D.color && /^#[0-9a-f]{3,8}$/i.test(D.color)) document.documentElement.style.setProperty('--ac', D.color);
+  document.title = `${D.comercio} · ${D.negocio}`;
+  pintar();
+}
+function pintar() {
+  const pend = D.envios.filter(e => ['por_recoger', 'en_bodega', 'asignado', 'en_ruta', 'no_entregado'].includes(e.estado)).length;
+  app.innerHTML = `<header>${D.logo ? `<img src="${esc(D.logo)}" alt="">` : ''}<div><h1>${esc(D.comercio)}</h1><p>Tus envíos con ${esc(D.negocio)}</p></div></header>
+    <nav class="tabs" role="tablist"><button role="tab" class="${TAB === 'nuevo' ? 'on' : ''}" onclick="ir('nuevo')">➕ Pedir</button>
+      <button role="tab" class="${TAB === 'envios' ? 'on' : ''}" onclick="ir('envios')">📦 Envíos${pend ? ' (' + pend + ')' : ''}</button>
+      <button role="tab" class="${TAB === 'cuenta' ? 'on' : ''}" onclick="ir('cuenta')">💵 Mi cuenta</button></nav>
+    <div id="vista"></div>`;
+  ({ nuevo: vNuevo, envios: vEnvios, cuenta: vCuenta })[TAB]();
+}
+function ir(t) { TAB = t; pintar(); window.scrollTo(0, 0); }
+function tarifa() {
+  const z = D.zonas.find(x => x.id === (document.getElementById('p-zona') || {}).value);
+  if (!z) return null;
+  return Number(z.tarifa) + (F.urg ? Number(D.recargo_urgente || 0) : 0) + (F.tam === 'grande' ? Number(D.recargo_grande || 0) : 0);
+}
+function verTarifa() {
+  const t = tarifa(), c = Number((document.getElementById('p-cobrar') || {}).value || 0), el = document.getElementById('p-tar'); if (!el) return;
+  if (t == null) { el.className = 'aviso'; el.textContent = 'Elige la zona para ver el precio del envío.'; return; }
+  el.className = 'tarifa'; el.textContent = `Envío: ${fmt(t)}` + (F.paga === 'destinatario' ? ` · quien recibe paga ${fmt(c + t)}` : c > 0 ? ` · cobramos ${fmt(c)} a quien recibe y te lo entregamos` : '');
+}
+function opc(nombre, valor) { F[nombre] = valor; pintarOpciones(); verTarifa(); }
+function pintarOpciones() {
+  document.querySelectorAll('[data-o]').forEach(b => { const [k, v] = b.dataset.o.split(':'); b.classList.toggle('on', String(F[k]) === v); b.setAttribute('aria-pressed', String(F[k]) === v ? 'true' : 'false'); });
+}
+function vNuevo() {
+  document.getElementById('vista').innerHTML = `<form class="card" id="p-form" novalidate onsubmit="return enviar(event)" oninput="document.getElementById('p-av').innerHTML=''">
+    <b>¿A quién se lo llevamos?</b>
+    <label>Nombre de quien recibe *<input id="p-des" maxlength="160" autocomplete="off" required></label>
+    <label>Teléfono de quien recibe<input id="p-tel" type="tel" inputmode="tel" maxlength="30" autocomplete="off"></label>
+    <label>Dirección de entrega *<input id="p-dir" maxlength="400" autocomplete="off" required></label>
+    <label>Punto de referencia<input id="p-ref" maxlength="400" autocomplete="off" placeholder="Ej. portón negro, frente a la pulpería"></label>
+    <label>Zona *<select id="p-zona" onchange="verTarifa()" required><option value="">Elige la zona…</option>${D.zonas.map(z => `<option value="${z.id}">${esc(z.nombre)} · ${esc(fmt(z.tarifa))}</option>`).join('')}</select></label>
+    <b>El paquete</b>
+    <label>¿Qué lleva?<input id="p-desc" maxlength="400" autocomplete="off"></label>
+    <div class="dos"><label>Paquetes<input id="p-paq" type="number" inputmode="numeric" min="1" max="999" value="1"></label>
+      <label>Cobrar a quien recibe (producto)<input id="p-cobrar" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="verTarifa()"></label></div>
+    <div class="opc"><button type="button" data-o="tam:pequeno" onclick="opc('tam','pequeno')">📦 Pequeño/mediano</button><button type="button" data-o="tam:grande" onclick="opc('tam','grande')">📦📦 Grande</button></div>
+    <span class="mu">¿Quién paga el envío?</span>
+    <div class="opc"><button type="button" data-o="paga:comercio" onclick="opc('paga','comercio')">🏪 Yo (el comercio)</button><button type="button" data-o="paga:destinatario" onclick="opc('paga','destinatario')">🙋 Quien recibe</button></div>
+    <div class="opc"><button type="button" data-o="urg:false" onclick="opc('urg',false)">🕒 Normal</button><button type="button" data-o="urg:true" onclick="opc('urg',true)">🚨 Urgente</button></div>
+    <label>¿Dónde lo recogemos? <span class="mu">(si no es tu dirección de siempre)</span><input id="p-rec" maxlength="400" autocomplete="off"></label>
+    <label>Notas para el repartidor<textarea id="p-notas" maxlength="600"></textarea></label>
+    <div id="p-tar" class="aviso">Elige la zona para ver el precio del envío.</div><div id="p-av"></div>
+    <button class="big" id="p-ok">Pedir envío</button></form>`;
+  pintarOpciones();
+}
+async function enviar(ev) {
+  ev.preventDefault(); if (OCUPADO) return false;
+  const g = id => document.getElementById(id).value.trim(), av = document.getElementById('p-av');
+  if (g('p-des').length < 2) { av.innerHTML = `<div class="aviso">${MOT.destinatario}</div>`; return false; }
+  if (g('p-dir').length < 3) { av.innerHTML = `<div class="aviso">${MOT.direccion}</div>`; return false; }
+  if (!g('p-zona')) { av.innerHTML = `<div class="aviso">${MOT.zona}</div>`; return false; }
+  const c = g('p-cobrar') === '' ? 0 : Number(g('p-cobrar')); if (!(c >= 0)) { av.innerHTML = `<div class="aviso">${MOT.valor}</div>`; return false; }
+  OCUPADO = true; const b = document.getElementById('p-ok'); b.disabled = true; b.textContent = 'Enviando…';
+  let r;
+  try { const x = await sb.rpc('msj_portal_crear', { p_token: token(), p: { destinatario_nombre: g('p-des'), destinatario_telefono: g('p-tel'), direccion: g('p-dir'), referencia: g('p-ref'),
+    zona_id: g('p-zona'), descripcion: g('p-desc'), paquetes: Number(g('p-paq') || 1), monto_cobrar: c, tamano: F.tam, urgente: F.urg, envio_lo_paga: F.paga, recoger_direccion: g('p-rec'), notas: g('p-notas') } });
+    r = x.data; if (x.error) throw x.error; } catch (e) { r = null; }
+  OCUPADO = false; b.disabled = false; b.textContent = 'Pedir envío';
+  if (!r || !r.ok) { av.innerHTML = `<div class="aviso">${esc((r && MOT[r.motivo]) || 'No se pudo pedir el envío. Revisa tu conexión e intenta de nuevo.')}</div>`; return false; }
+  const link = rastreo(r.rastreo_token), tel = g('p-tel').replace(/\D/g, '');
+  const wa = tel ? 'https://wa.me/' + (tel.length === 8 ? '505' : '') + tel + '?text=' + encodeURIComponent(`Hola ${g('p-des')}, tu pedido va con ${D.negocio}. Síguelo aquí: ${link}`) : '';
+  document.getElementById('vista').innerHTML = `<div class="card"><div class="aviso ok">✅ Envío <span class="num">${esc(r.numero)}</span> pedido · envío ${esc(fmt(r.tarifa))}</div>
+    <p class="mu">Pronto lo recogemos. Puedes mandarle a tu cliente el enlace para que lo siga.</p>
+    <div class="acc"><button type="button" onclick="copiar('${esc(link)}')">📋 Copiar enlace de rastreo</button>${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener">💬 Mandar a mi cliente</a>` : ''}</div>
+    <button class="big" onclick="vNuevo()">➕ Pedir otro</button><button class="big sec" onclick="cargar().then(()=>ir('envios'))">Ver mis envíos</button></div>`;
+  F = { paga: F.paga, tam: 'pequeno', urg: false };
+  return false;
+}
+async function copiar(t) { try { await navigator.clipboard.writeText(t); alert('Enlace copiado'); } catch (_) { prompt('Copia el enlace:', t); } }
+function vEnvios() {
+  document.getElementById('vista').innerHTML = D.envios.length ? `<div style="display:flex;flex-direction:column;gap:10px">${D.envios.map(e => {
+    const [t, c] = EST[e.estado] || [e.estado, ''];
+    return `<div class="env"><div class="t"><span class="num">${esc(e.numero)}</span><span class="chip ${c}">${t}</span></div>
+      <b>${esc(e.destinatario)}</b><span class="mu">${esc(e.direccion)}${e.zona ? ' · ' + esc(e.zona) : ''}</span>
+      <span class="mu">${esc(fecha(e.creado_at))}${Number(e.monto_cobrar) > 0 ? ' · cobrar ' + esc(fmt(e.monto_cobrar)) : ''} · envío ${esc(fmt(e.tarifa))} (${e.envio_lo_paga === 'destinatario' ? 'paga quien recibe' : 'pagas tú'})</span>
+      ${e.estado === 'entregado' ? `<span class="mu">✅ Recibió ${esc(e.recibio || '')} · ${esc(fecha(e.entregado_at))}${e.liquidado ? ' · liquidado' : ''}</span>` : ''}
+      ${e.motivo && ['no_entregado', 'devuelto', 'cancelado'].includes(e.estado) ? `<span class="mu">⚠️ ${esc(e.motivo)}</span>` : ''}
+      <div class="acc"><a href="${esc(rastreo(e.rastreo))}" target="_blank" rel="noopener">🔗 Seguir</a><button type="button" onclick="copiar('${esc(rastreo(e.rastreo))}')">📋 Copiar enlace</button></div></div>`;
+  }).join('')}</div>` : '<div class="card"><p class="mu">Todavía no tienes envíos en los últimos 60 días.</p><button class="big" onclick="ir(\'nuevo\')">➕ Pedir el primero</button></div>';
+}
+function vCuenta() {
+  const p = D.por_liquidar, neto = Number(p.cod) - Number(p.tarifas);
+  const wa = D.whatsapp ? 'https://wa.me/' + (String(D.whatsapp).replace(/\D/g, '').length === 8 ? '505' : '') + String(D.whatsapp).replace(/\D/g, '') + '?text=' + encodeURIComponent(`Hola, soy ${D.comercio}. Consulto por mi cuenta.`) : '';
+  document.getElementById('vista').innerHTML = `<div class="card"><b>Pendiente de liquidar</b>
+      <span class="mu">${p.envios} envío${Number(p.envios) === 1 ? '' : 's'} ya entregados y cuadrados con el repartidor.</span>
+      <div class="fila"><span>Cobrado a tu nombre</span><b>${esc(fmt(p.cod))}</b></div>
+      <div class="fila"><span>Menos envíos</span><b>− ${esc(fmt(p.tarifas))}</b></div>
+      <div class="fila g"><span>${neto >= 0 ? 'Te entregamos' : 'Nos debes'}</span><b>${esc(fmt(Math.abs(neto)))}</b></div>
+      <span class="mu">Lo que aún está en camino o con el repartidor aparece aquí cuando se cuadra.</span></div>
+    <div class="card"><b>Liquidaciones anteriores</b>${D.liquidaciones.length ? D.liquidaciones.map(q => `<div class="fila" style="font-size:14px"><span><span class="num">${esc(q.numero)}</span> · ${esc(fecha(q.fecha))}<br><span class="mu">${q.envios} envíos · cobrado ${esc(fmt(q.cod))} · envíos ${esc(fmt(q.tarifas))}</span></span><b>${esc(fmt(Math.abs(q.neto)))}</b></div>`).join('') : '<span class="mu">Aún no hay liquidaciones.</span>'}</div>
+    ${wa ? `<a class="big" style="display:block;text-align:center;text-decoration:none;background:#16a34a" href="${esc(wa)}" target="_blank" rel="noopener">💬 Escribir a ${esc(D.negocio)}</a>` : ''}`;
+}
+cargar();
+window.addEventListener('hashchange', cargar);
+</script>
+</body>
+</html>

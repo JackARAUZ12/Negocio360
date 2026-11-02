@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Aprobar presupuesto</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{--ac:#2563eb;--bg:#f5f6f8;--card:#fff;--tx:#14181f;--mu:#667085;--bd:#e3e6ea;--ok:#157f3b;--okb:#e6f6ec;--no:#b42318;--nob:#fdecea;--wa:#fff4d6;--wt:#8a5a00}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--tx:#eef0f3;--mu:#9aa3af;--bd:#2a2f38;--okb:#12301d;--nob:#3a1814;--wa:#3a2e0e;--wt:#f3c969;--ok:#5fd68a;--no:#ff8a7d}}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  main{max-width:640px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:14px}
+  header{padding:6px 2px}header h1{margin:0;font-size:20px}header p{margin:2px 0 0;color:var(--mu);font-size:14px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .veh b{font-size:17px}.mu{color:var(--mu);font-size:14px}
+  .lin{border:1px solid var(--bd);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .lin .t{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.lin .t b{font-size:15.5px;min-width:0;overflow-wrap:anywhere}.lin .m{white-space:nowrap;font-weight:700}
+  .tag{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px}
+  .tag.ok{background:var(--okb);color:var(--ok)}.tag.no{background:var(--nob);color:var(--no)}.tag.ad{background:var(--wa);color:var(--wt)}
+  .lin.dec-no .t b{text-decoration:line-through;opacity:.65}
+  .opc{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .opc button{padding:12px;border-radius:12px;border:2px solid var(--bd);background:var(--card);color:var(--tx);font:inherit;font-weight:700;cursor:pointer;min-height:48px}
+  .opc button.sel-ok{border-color:var(--ok);background:var(--okb);color:var(--ok)}.opc button.sel-no{border-color:var(--no);background:var(--nob);color:var(--no)}
+  .tot{display:flex;flex-direction:column;gap:3px}.tot div{display:flex;justify-content:space-between}.tot .g{font-size:19px;font-weight:800;border-top:1px solid var(--bd);padding-top:6px;margin-top:3px}
+  input[type=text]{width:100%;padding:13px;border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--tx);font:inherit;min-height:48px}
+  .big{width:100%;padding:15px;border:0;border-radius:14px;background:var(--ac);color:#fff;font:inherit;font-weight:800;font-size:17px;cursor:pointer;min-height:52px}
+  .big:disabled{opacity:.5;cursor:not-allowed}.ghost{background:transparent;color:var(--ac);border:2px solid var(--ac)}
+  .aviso{border-radius:12px;padding:12px;font-size:14.5px;background:var(--wa);color:var(--wt);font-weight:600}.aviso.ok{background:var(--okb);color:var(--ok)}.aviso.no{background:var(--nob);color:var(--no)}
+  .centro{text-align:center;padding:40px 12px;display:flex;flex-direction:column;gap:10px;align-items:center}.centro .i{font-size:48px}
+  a.tel{color:var(--ac);font-weight:700}
+  :focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+</style>
+</head>
+<body>
+<main id="app"><div class="centro"><div class="i">⏳</div><p class="mu">Cargando tu presupuesto…</p></div></main>
+<script>
+'use strict';
+const sb = window.supabase.createClient('https://zvlincmqmmoclqhykejv.supabase.co', 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t', { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+const app = document.getElementById('app');
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const n = v => Number(v || 0);
+let TOKEN = '', D = null, ELEC = {}, ENVIANDO = false, MONEDA = 'NIO';
+const fmt = v => { try { return new Intl.NumberFormat('es-NI', { style: 'currency', currency: MONEDA }).format(n(v)); } catch (_) { return n(v).toFixed(2); } };
+const TIPOS = { mano_obra: 'Mano de obra', repuesto: 'Repuesto', externo: 'Trabajo externo', otro: 'Otro' };
+const MSG = {
+  invalido: ['🔒', 'Este link no es válido', 'Pídele al taller que te envíe uno nuevo.'],
+  vencido: ['⌛', 'Este link venció', 'Pídele al taller que te envíe uno nuevo.'],
+  cerrada: ['✅', 'Esta orden ya fue cerrada', 'Ya no hay nada pendiente por aprobar.'],
+};
+function pantallaMsg(m) {
+  const [i, t, d] = MSG[m] || ['⚠️', 'No se pudo abrir', 'Revisa tu conexión e intenta de nuevo.'];
+  app.innerHTML = `<div class="centro"><div class="i">${i}</div><h1>${t}</h1><p class="mu">${d}</p></div>`;
+}
+async function cargar(conservar) {
+  const h = location.hash || ''; const mm = h.match(/[#&]t=([A-Za-z0-9]{20,100})/);
+  TOKEN = mm ? mm[1] : '';
+  if (!TOKEN) { pantallaMsg('invalido'); return; }
+  try {
+    const { data, error } = await sb.rpc('taller_link_ver', { p_token: TOKEN });
+    if (error) throw error;
+    if (!data || data.ok !== true) { pantallaMsg(data && data.motivo); return; }
+    D = data; MONEDA = (D.negocio && D.negocio.moneda) || 'NIO';
+    if (D.negocio && /^#[0-9a-fA-F]{3,8}$/.test(D.negocio.color || '')) document.documentElement.style.setProperty('--ac', D.negocio.color);
+    document.title = 'Presupuesto · ' + (D.negocio.nombre || 'Taller');
+    if (!conservar) ELEC = {};
+    pintar();
+  } catch (e) { console.warn(e); pantallaMsg('red'); }
+}
+function pintar() {
+  const v = D.vehiculo, o = D.orden, t = D.totales;
+  const pend = D.lineas.filter(l => l.aprobacion === 'pendiente');
+  const veh = [v.marca, v.modelo, v.anio].filter(Boolean).join(' ') || 'Vehículo';
+  const lineas = D.lineas.map(l => {
+    const dec = l.aprobacion !== 'pendiente';
+    const cuerpo = dec ? '' : `<div class="opc" role="group" aria-label="Decisión para ${esc(l.descripcion)}">
+        <button type="button" class="${ELEC[l.id] === 'aprobada' ? 'sel-ok' : ''}" onclick="elegir('${l.id}','aprobada')" aria-pressed="${ELEC[l.id] === 'aprobada'}">✔ Aprobar</button>
+        <button type="button" class="${ELEC[l.id] === 'rechazada' ? 'sel-no' : ''}" onclick="elegir('${l.id}','rechazada')" aria-pressed="${ELEC[l.id] === 'rechazada'}">✖ Rechazar</button></div>`;
+    return `<div class="lin ${l.aprobacion === 'rechazada' ? 'dec-no' : ''}"><div class="t"><b>${esc(l.descripcion)}</b><span class="m">${fmt(l.subtotal)}</span></div>
+      <div class="mu">${esc(TIPOS[l.tipo] || '')} · ${n(l.cantidad)} × ${fmt(l.precio_unitario)}${n(l.descuento) ? ' · desc. ' + fmt(l.descuento) : ''}</div>
+      <div>${l.adicional ? '<span class="tag ad">Trabajo adicional</span> ' : ''}${l.aprobacion === 'aprobada' ? '<span class="tag ok">Aprobado</span>' : l.aprobacion === 'rechazada' ? '<span class="tag no">Rechazado</span>' : ''}</div>${cuerpo}</div>`;
+  }).join('');
+  const elegidas = pend.filter(l => ELEC[l.id]).length;
+  app.innerHTML = `<header><h1>${esc(D.negocio.nombre || 'Taller')}</h1><p>Orden ${esc(o.numero)} · Presupuesto para tu aprobación</p></header>
+    <section class="card veh"><b>${esc(veh)}</b><span class="mu">${v.placa ? 'Placa ' + esc(v.placa) : ''}${v.color ? ' · ' + esc(v.color) : ''}</span>
+      ${o.falla ? `<div><span class="mu">Falla reportada</span><br>${esc(o.falla)}</div>` : ''}${o.diagnostico ? `<div><span class="mu">Diagnóstico</span><br>${esc(o.diagnostico)}</div>` : ''}</section>
+    <section class="card"><b>Trabajos y repuestos</b>${lineas || '<p class="mu">Aún no hay trabajos en el presupuesto.</p>'}
+      <div class="tot"><div><span>Aprobado hasta ahora</span><span>${fmt(t.subtotal - t.descuento)}</span></div>${t.iva_activo ? `<div><span>IVA ${n(t.iva_porcentaje)}%</span><span>${fmt(t.impuesto)}</span></div>` : ''}
+      <div class="g"><span>Total a pagar</span><span>${fmt(t.total)}</span></div>${n(t.total_estimado) !== n(t.total) ? `<div class="mu"><span>Si apruebas todo lo pendiente</span><span>${fmt(t.total_estimado)}</span></div>` : ''}</div></section>
+    ${pend.length ? `<section class="card"><b>Tu decisión</b><p class="mu" style="margin:0">Elige en cada trabajo. Solo se hará y cobrará lo que apruebes.</p>
+      <button type="button" class="big ghost" onclick="aprobarTodo()">✔ Aprobar todo lo pendiente</button>
+      <label class="mu" for="nom">Tu nombre (para dejar constancia)</label><input type="text" id="nom" maxlength="80" autocomplete="name" placeholder="Ej. María López" value="${esc(window.__nom || '')}" oninput="window.__nom=this.value">
+      <div id="av"></div><button type="button" class="big" id="env" onclick="enviar()" ${elegidas ? '' : 'disabled'}>Enviar mi decisión${elegidas ? ' (' + elegidas + ')' : ''}</button></section>`
+      : '<div class="aviso ok">Ya no hay nada pendiente por decidir. ¡Gracias! El taller continuará con lo aprobado.</div>'}
+    ${D.negocio.telefono ? `<p class="mu" style="text-align:center">¿Dudas? Llama al taller: <a class="tel" href="tel:${esc(String(D.negocio.telefono).replace(/[^\d+]/g, ''))}">${esc(D.negocio.telefono)}</a></p>` : ''}`;
+}
+function elegir(id, d) { ELEC[id] = ELEC[id] === d ? null : d; pintar(); }
+function aprobarTodo() { D.lineas.filter(l => l.aprobacion === 'pendiente').forEach(l => { ELEC[l.id] = 'aprobada'; }); pintar(); }
+async function enviar() {
+  if (ENVIANDO) return;
+  const nom = (document.getElementById('nom').value || '').trim(), av = document.getElementById('av');
+  if (nom.length < 2) { av.innerHTML = '<div class="aviso no">Escribe tu nombre para dejar constancia.</div>'; document.getElementById('nom').focus(); return; }
+  const ap = Object.keys(ELEC).filter(k => ELEC[k] === 'aprobada'), re = Object.keys(ELEC).filter(k => ELEC[k] === 'rechazada');
+  if (!ap.length && !re.length) return;
+  ENVIANDO = true; const b = document.getElementById('env'); b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    for (const [ids, dec] of [[ap, 'aprobada'], [re, 'rechazada']]) {
+      if (!ids.length) continue;
+      const { data, error } = await sb.rpc('taller_link_decidir', { p_token: TOKEN, p_linea_ids: ids, p_decision: dec, p_nombre: nom });
+      if (error) throw error;
+      if (!data || data.ok !== true) { if (data && (data.motivo === 'ya_decididas')) continue; if (data && MSG[data.motivo]) { pantallaMsg(data.motivo); ENVIANDO = false; return; } throw new Error('rechazado'); }
+    }
+    ELEC = {}; await cargar(false);
+    const top = document.createElement('div'); top.className = 'aviso ok'; top.setAttribute('role', 'status'); top.textContent = '✅ Recibimos tu decisión. ¡Gracias!'; app.insertBefore(top, app.children[1]); window.scrollTo(0, 0);
+  } catch (e) { console.warn(e); await cargar(true); const a2 = document.getElementById('av'); if (a2) a2.innerHTML = '<div class="aviso no">No se pudo enviar. Revisa tu conexión e intenta de nuevo.</div>'; }
+  ENVIANDO = false;
+}
+window.addEventListener('hashchange', () => cargar(false));
+cargar(false);
+</script>
+</body>
+</html>

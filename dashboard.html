@@ -13,7 +13,12 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
+  <script src="cierre-pendiente.js?v=20261028a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Chart.js -->
@@ -1793,6 +1798,7 @@ function ymd(d) {
 }
 function todayISO() { return ymd(new Date()); }
 function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   // día de cierre del negocio (opcional)
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }
@@ -2267,8 +2273,9 @@ async function loadKPIs(userId) {
 ===================================================== */
 async function loadGastos(userId) {
   try {
+    // Solo gastos vigentes: un gasto cancelado/anulado ya no cuenta en el resumen del mes.
     const { data } = await sbClient.from('gastos').select('monto')
-      .eq('auth_user_id', userId).gte('fecha', startOfMonthISO());
+      .eq('auth_user_id', userId).eq('estado', 'activo').gte('fecha', startOfMonthISO());
     dashData.gastosM = data ? data.reduce((s, r) => s + (r.monto || 0), 0) : 0;
   } catch(e) { dashData.gastosM = 0; }
 }
@@ -2850,9 +2857,7 @@ async function initDashboard() {
 
     // Load empresa config first — this also applies tema from personalizacion
     const resultConfig = await loadEmpresaConfig(userId);
-    if (resultConfig.ok && resultConfig.data && resultConfig.data.catalogo360_regalo_mostrado === false) {
-      mostrarRegaloFidelidadCatalogo360();
-    }
+    // La ventana del regalo de Catálogo360 ya no se muestra (pedido de Jack: estorbaba).
 
     const profile = await loadUserProfile(userId);
     if (profile) {
@@ -2891,6 +2896,24 @@ async function initDashboard() {
         }
       }
     } catch (e) { /* el resumen del embudo nunca debe afectar al Dashboard */ }
+    // CRM: "Hoy tienes N seguimientos" (si no hay, no se muestra nada)
+    try {
+      if (window.N360CRM) {
+        const grid = document.querySelector('.kpi-grid');
+        if (grid && !document.getElementById('dash-crm')) {
+          const box = document.createElement('div'); box.id = 'dash-crm';
+          grid.insertAdjacentElement('beforebegin', box);
+          N360CRM.init({ sb: sbClient, userId, negocio: resultConfig?.data?.nombre_comercial || null });
+          N360CRM.montarAvisoPanel(box);
+          if (window.N360Campanas) {
+            const cumple = document.createElement('div'); cumple.id = 'dash-cumple';
+            box.insertAdjacentElement('afterend', cumple);
+            N360Campanas.init({ sb: sbClient, userId });
+            N360Campanas.montarAvisoPanel(cumple);
+          }
+        }
+      }
+    } catch (e) { /* el aviso nunca debe afectar al Dashboard */ }
     document.getElementById('app').style.display = 'flex';
 
     verificarAnuncioSistema(userId);
@@ -3096,10 +3119,15 @@ document.addEventListener('DOMContentLoaded', () => {
 <script src="bienvenida-negocio360.js?v=10"></script>
 <script src="ventas-config.js?v=20261021a"></script>
 <script src="embudo-ventas.js?v=20261010a"></script>
+<script src="crm-seguimiento.js?v=20261030a"></script>
+<script src="crm-campanas.js?v=20261028a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="selector-cuenta-grupo.js?v=20261029e"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 
 <!-- =====================================================
      ANUNCIO DEL SISTEMA (novedades, una vez por usuario)

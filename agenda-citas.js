@@ -62,7 +62,118 @@
     C.servicios = sv.data || [];
     C.empleados = (em.data || []).filter(e => e.estado !== 'inactivo');
     if (cf.data) C.config = { hora_inicio: String(cf.data.hora_inicio).slice(0, 5), hora_fin: String(cf.data.hora_fin).slice(0, 5), intervalo_min: cf.data.intervalo_min || 15 };
+    // Con Clínica, cada médico ya está ligado a su usuario: sirve para que cada uno cambie su propia foto.
+    C.perfilDeProf = {};
+    if (STATE.empresaConfig?.usa_modulo_clinica === true) {
+      try { const { data: cp } = await sb.from('clinica_personal').select('perfil_id, agenda_profesional_id').eq('auth_user_id', uid);
+        (cp || []).forEach(x => { if (x.perfil_id && x.agenda_profesional_id) C.perfilDeProf[x.agenda_profesional_id] = x.perfil_id; }); } catch (_) {}
+    }
     C.cargado = true;
+  }
+
+  /* ---------------- FOTOS DE LOS PROFESIONALES ----------------
+     El administrador pone o cambia la foto de cualquiera; cada usuario, solo la de su propio profesional
+     (el que tiene ligado en "Profesionales", o su médico en Clínica). La foto se achica y recorta en
+     cuadrado en el equipo (400 px, liviana) y se guarda en la carpeta de la cuenta. */
+  const perfilSesion = () => { try { return JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null'); } catch (_) { return null; } };
+  const esAdministrador = () => { const p = perfilSesion(); return !p || p.tipo === 'admin'; };
+  const perfilDe = p => p.perfil_id || (C.perfilDeProf || {})[p.id] || null;
+  function puedeCambiarFoto(p) {
+    if (!p || p.id === '_sin' || p.id === '_gen') return false;
+    if (esAdministrador()) return true;
+    const yo = perfilSesion(); return !!yo && perfilDe(p) === yo.id;
+  }
+  function avatarHTML(p) {
+    const foto = p.foto_url && /^https:\/\//.test(p.foto_url) ? p.foto_url : '';
+    const inicial = `<span class="ac-avatar" style="background:${esc(p.color || '#94a3b8')}${foto ? ';display:none' : ''}">${esc((p.nombre || '?').trim()[0] || '?').toUpperCase()}</span>`;
+    // Si la foto no carga (sin internet, borrada), se ve la inicial de siempre en vez de una imagen rota.
+    return foto ? `<img class="ac-avatar ac-avatar-foto" src="${esc(foto)}" alt="${esc(p.nombre)}" loading="lazy" onerror="this.style.display='none';if(this.nextElementSibling)this.nextElementSibling.style.display='flex'"/>${inicial}` : inicial;
+  }
+  function estilosFotos() {
+    if (document.getElementById('ac-fotos-css')) return;
+    const st = document.createElement('style'); st.id = 'ac-fotos-css';
+    st.textContent = `.ac-avatar-foto{object-fit:cover;background:var(--bg-hover,#e5e7eb);display:block}
+      .ac-avatar-btn{position:relative;border:none;background:none;padding:0;cursor:pointer;border-radius:50%;line-height:0}
+      .ac-avatar-btn:focus-visible{outline:2px solid var(--accent,#4f46e5);outline-offset:2px}
+      .ac-avatar-btn .ac-cam{position:absolute;right:-4px;bottom:-4px;width:18px;height:18px;border-radius:50%;background:var(--bg-surface,#fff);border:1px solid var(--border,#e5e7eb);font-size:10px;line-height:16px;text-align:center}
+      .ac-col-cab .ac-avatar{width:40px;height:40px}
+      .ac-prof-foto{display:flex;align-items:center;gap:6px;grid-column:1/-1;flex-wrap:wrap;min-width:0}
+      .ac-prof-foto .ac-avatar{width:44px;height:44px;flex-shrink:0}
+      .ac-prof-foto select{max-width:100%;min-width:0;flex:1 1 160px}
+      #modal-ac-prof .form-row>div{min-width:0} #modal-ac-prof .form-row input,#modal-ac-prof .form-row select{width:100%;min-width:0;box-sizing:border-box}`;
+    document.head.appendChild(st);
+  }
+  function comprimirFoto(archivo) {
+    return new Promise((resolve, reject) => {
+      const img = new Image(), url = URL.createObjectURL(archivo);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const lado = Math.min(img.width, img.height), sx = (img.width - lado) / 2, sy = (img.height - lado) / 2, T = 400;
+        const c = document.createElement('canvas'); c.width = T; c.height = T;
+        c.getContext('2d').drawImage(img, sx, sy, lado, lado, 0, 0, T, T);
+        c.toBlob(b => b ? resolve(b) : reject(new Error('No se pudo procesar la foto')), 'image/webp', 0.85);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la foto')); };
+      img.src = url;
+    });
+  }
+  const rutaFoto = url => { const m = String(url || '').match(/\/inventario_fotos\/(.+)$/); const r = m ? decodeURIComponent(m[1]) : '';
+    return r.startsWith(STATE.userId + '/agenda/profesionales/') ? r : null; };
+  function cambiarFoto(profId) {
+    const p = profPorId(profId);
+    if (!puedeCambiarFoto(p)) { showToast('Solo el administrador o el propio profesional pueden cambiar esta foto.', 'error'); return; }
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/jpeg,image/png,image/webp';
+    inp.addEventListener('change', async () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { showToast('Elige una foto (JPG, PNG o WEBP).', 'error'); return; }
+      if (f.size > 15 * 1024 * 1024) { showToast('La foto es muy pesada (máximo 15 MB).', 'error'); return; }
+      showToast('Subiendo la foto…');
+      try {
+        const blob = await comprimirFoto(f);
+        const ruta = `${STATE.userId}/agenda/profesionales/${profId}_${Date.now()}.webp`;
+        const { error: eUp } = await sb.storage.from('inventario_fotos').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
+        if (eUp) throw eUp;
+        const url = sb.storage.from('inventario_fotos').getPublicUrl(ruta).data.publicUrl;
+        const anterior = rutaFoto(p.foto_url);
+        const { error } = await sb.from('agenda_profesionales').update({ foto_url: url, updated_at: new Date().toISOString() }).eq('id', profId).eq('auth_user_id', STATE.userId);
+        if (error) throw error;
+        if (anterior) { try { await sb.storage.from('inventario_fotos').remove([anterior]); } catch (_) {} }
+        p.foto_url = url;
+        showToast('Foto actualizada.');
+        repintarFotos();
+      } catch (e) { console.error('cambiarFoto:', e); showToast('No se pudo subir la foto. Intenta de nuevo.', 'error'); }
+    });
+    inp.click();
+  }
+  async function quitarFoto(profId) {
+    const p = profPorId(profId);
+    if (!p || !p.foto_url || !puedeCambiarFoto(p)) return;
+    if (!confirm(`¿Quitar la foto de ${p.nombre}?`)) return;
+    try {
+      const anterior = rutaFoto(p.foto_url);
+      const { error } = await sb.from('agenda_profesionales').update({ foto_url: null, updated_at: new Date().toISOString() }).eq('id', profId).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+      if (anterior) { try { await sb.storage.from('inventario_fotos').remove([anterior]); } catch (_) {} }
+      p.foto_url = null; showToast('Foto quitada.'); repintarFotos();
+    } catch (e) { console.error('quitarFoto:', e); showToast('No se pudo quitar la foto.', 'error'); }
+  }
+  function repintarFotos() {
+    const dia = document.getElementById('calendario-contenedor');
+    if (C.diaIso && dia && dia.querySelector('.ac-col-cab')) pintarDia(dia);
+    const modal = document.getElementById('modal-ac-prof');
+    if (modal && modal.classList.contains('modal-open')) {
+      document.querySelectorAll('#acp-lista .ac-prof-fila').forEach(f => { const p = profPorId(f.dataset.id); const a = f.querySelector('.ac-prof-avatar'); if (p && a) a.innerHTML = avatarHTML(p); });
+      document.querySelectorAll('#acp-lista [data-quitar-foto]').forEach(b => { const p = profPorId(b.dataset.quitarFoto); b.style.display = p && p.foto_url ? '' : 'none'; });
+    }
+  }
+  async function cargarPerfiles() {
+    if (C.perfiles) return C.perfiles;
+    try {
+      let { data, error } = await sb.rpc('listar_perfiles_del_grupo_v2');
+      if (error) ({ data, error } = await sb.rpc('listar_perfiles_del_grupo'));
+      C.perfiles = error ? [] : (data || []).filter(u => u.activo !== false).map(u => ({ id: u.id, nombre: u.nombre, tipo: u.tipo }));
+    } catch (_) { C.perfiles = []; }
+    return C.perfiles;
   }
   const profesionalesActivos = () => C.profesionales.filter(p => p.activo);
 
@@ -201,9 +312,11 @@
     let lineas = '';
     for (let m = ini; m <= fin; m += 15) lineas += `<div class="ac-linea ${m % 60 === 0 ? 'ac-linea-hora' : ''}" style="top:${(m - ini) * PX_MIN}px"></div>`;
 
-    const cabeceras = columnas.map(c => `<div class="ac-col-cab" style="--c:${c.color}">
-        <span class="ac-avatar" style="background:${c.color}">${esc((c.nombre || '?').trim()[0] || '?').toUpperCase()}</span>
-        <span class="ac-col-nombre">${esc(c.nombre)}</span></div>`).join('');
+    estilosFotos();
+    const cabeceras = columnas.map(c => { const p = profPorId(c.id) || c; const puede = puedeCambiarFoto(profPorId(c.id));
+      return `<div class="ac-col-cab" style="--c:${c.color}">
+        ${puede ? `<button type="button" class="ac-avatar-btn" onclick="event.stopPropagation();N360Citas.cambiarFoto('${c.id}')" title="Cambiar la foto de ${esc(c.nombre)}" aria-label="Cambiar la foto de ${esc(c.nombre)}">${avatarHTML(p)}<span class="ac-cam" aria-hidden="true">📷</span></button>` : avatarHTML(p)}
+        <span class="ac-col-nombre">${esc(c.nombre)}</span></div>`; }).join('');
 
     const cuerpos = columnas.map(col => {
       let dentro = lineas;
@@ -291,9 +404,11 @@
             <label>Cliente *</label>
             <select id="ct-cliente"><option value="">— Escribir nombre (cliente nuevo o de paso) —</option></select>
             <div class="form-row" id="ct-libre-wrap" style="margin-top:6px">
-              <div><input type="text" id="ct-cliente-nombre" placeholder="Nombre del cliente"/></div>
+              <div id="ct-nombre-wrap"><input type="text" id="ct-cliente-nombre" placeholder="Nombre del cliente"/></div>
               <div><input type="tel" id="ct-cliente-tel" placeholder="Teléfono (opcional)"/></div>
             </div>
+            <label id="ct-guardar-cliente-wrap" style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;cursor:pointer">
+              <input type="checkbox" id="ct-guardar-cliente" style="width:18px;height:18px;flex:none;margin:0"/> <span style="flex:1;min-width:0">Guardar como cliente nuevo (aparece en Clientes y en las próximas citas)</span></label>
           </div>
           <div class="form-group">
             <label style="display:flex;align-items:center;justify-content:space-between">Servicios *
@@ -320,7 +435,7 @@
         <div class="modal-header"><span class="modal-title">Profesionales y horario de la agenda</span>
           <button class="modal-close" onclick="closeModal('modal-ac-prof')">✕</button></div>
         <div class="modal-body">
-          <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="form-row" style="grid-template-columns:repeat(auto-fit,minmax(92px,1fr))">
             <div><label>La agenda empieza</label><input type="time" id="acp-ini"/></div>
             <div><label>La agenda termina</label><input type="time" id="acp-fin"/></div>
             <div><label>Saltos al tocar</label><select id="acp-int">${[5, 10, 15, 20, 30, 60].map(n => `<option value="${n}">${n} min</option>`).join('')}</select></div>
@@ -372,17 +487,75 @@
     $('ct-cliente').addEventListener('change', alCambiarCliente);
   }
 
-  function llenarClientes() {
+  // Con el Módulo de Clínica: los pacientes que todavía no son clientes también se pueden agendar
+  // (al guardar la cita se les crea su cliente y quedan ligados a su expediente).
+  const usaClinica = () => STATE.empresaConfig?.usa_modulo_clinica === true;
+  async function pacientesSinCliente() {
+    if (!usaClinica()) return [];
+    try {
+      const { data, error } = await sb.from('clinica_pacientes').select('id, nombres, apellidos, telefono, numero_expediente, cliente_id')
+        .eq('auth_user_id', STATE.userId).eq('activo', true).is('cliente_id', null).order('nombres').limit(5000);
+      if (error) throw error;
+      return data || [];
+    } catch (e) { console.warn('pacientes para la agenda:', e); return []; }
+  }
+  async function llenarClientes() {
     const sel = $('ct-cliente');
     if (sel.dataset.lleno === '1') return;
+    C.pacientes = await pacientesSinCliente();
+    const nombrePac = p => [p.nombres, p.apellidos].filter(Boolean).join(' ');
     sel.innerHTML = '<option value="">— Escribir nombre (cliente nuevo o de paso) —</option>' +
-      (STATE.clientes || []).map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+      (STATE.clientes || []).map(c => `<option value="${c.id}"${c.telefono ? ` data-buscar="${esc(c.telefono)}"` : ''}>${esc(c.nombre)}</option>`).join('') +
+      C.pacientes.map(p => `<option value="pac:${p.id}">🩺 ${esc(nombrePac(p))} (paciente${p.numero_expediente ? ' ' + esc(p.numero_expediente) : ''})</option>`).join('');
     sel.dataset.lleno = '1';
-    if (window.N360SelectBuscable) N360SelectBuscable.mejorar(sel, { placeholder: 'Escribe el nombre del cliente…', incluirVacio: true, anchoCompleto: true });
+    // Un solo campo: se busca el cliente (o paciente) y, si no está, lo escrito queda como persona nueva.
+    if (window.N360SelectBuscable) {
+      N360SelectBuscable.mejorar(sel, { placeholder: 'Busca el cliente o escribe el nombre de una persona nueva…', anchoCompleto: true,
+        textoLibre: { leer: () => $('ct-cliente-nombre').value, escribir: t => { $('ct-cliente-nombre').value = t; } } });
+      $('ct-nombre-wrap').style.display = 'none'; $('ct-libre-wrap').style.gridTemplateColumns = '1fr';
+    }
   }
+  // Vuelve a mostrar en el buscador el cliente elegido o el nombre escrito.
+  function refrescarBuscador() { const s = $('ct-cliente'); s.value = s.value; }
   function alCambiarCliente() {
     const id = $('ct-cliente').value;
     $('ct-libre-wrap').style.display = id ? 'none' : '';
+    $('ct-guardar-cliente-wrap').style.display = id ? 'none' : 'flex';
+  }
+  // Antes de guardar: si se eligió un paciente de la Clínica o se pidió guardar a la persona nueva como
+  // cliente, se crea ese cliente (y se liga al expediente). Queda elegido en la lista, así un segundo
+  // intento (p. ej. "Guardar de todas formas" por un cruce de horario) no lo vuelve a crear.
+  async function asegurarCliente() {
+    const sel = $('ct-cliente'), val = sel.value;
+    let nuevo = null, pac = null;
+    if (val.startsWith('pac:')) {
+      pac = (C.pacientes || []).find(p => p.id === val.slice(4));
+      if (!pac) throw new Error('No se encontró el paciente.');
+      const { data: actual } = await sb.from('clinica_pacientes').select('cliente_id').eq('id', pac.id).eq('auth_user_id', STATE.userId).maybeSingle();
+      if (actual?.cliente_id) { const { data: c } = await sb.from('clientes').select('id, nombre').eq('id', actual.cliente_id).eq('auth_user_id', STATE.userId).maybeSingle(); nuevo = c; }
+      if (!nuevo) nuevo = { nombre: [pac.nombres, pac.apellidos].filter(Boolean).join(' ').slice(0, 100), apellido: null, telefono: pac.telefono || null };
+    } else if (!val && $('ct-guardar-cliente').checked) {
+      const nombre = $('ct-cliente-nombre').value.trim();
+      if (!nombre) return;
+      const igual = (STATE.clientes || []).find(c => String(c.nombre || '').trim().toLowerCase() === nombre.toLowerCase());
+      if (igual) throw new Error(`Ya tienes un cliente llamado "${igual.nombre}": elígelo en la lista o quita la casilla para agendarlo solo de paso.`);
+      nuevo = { nombre: nombre.slice(0, 100), apellido: null, telefono: $('ct-cliente-tel').value.trim() || null };
+    } else return;
+    if (!nuevo.id) {
+      const { data, error } = await sb.from('clientes').insert({ auth_user_id: STATE.userId, nombre: nuevo.nombre, apellido: nuevo.apellido, telefono: nuevo.telefono }).select('id, nombre').single();
+      if (error) throw error;
+      nuevo = { ...nuevo, ...data };
+    }
+    if (pac) {
+      const { error } = await sb.from('clinica_pacientes').update({ cliente_id: nuevo.id }).eq('id', pac.id).eq('auth_user_id', STATE.userId);
+      if (error) console.warn('ligar paciente con su cliente:', error);
+      C.pacientes = C.pacientes.filter(p => p.id !== pac.id);
+      sel.querySelector(`option[value="pac:${pac.id}"]`)?.remove();
+    }
+    STATE.clientes = [...(STATE.clientes || []), { id: nuevo.id, nombre: nuevo.nombre }];
+    if (!sel.querySelector(`option[value="${nuevo.id}"]`)) sel.insertAdjacentHTML('beforeend', `<option value="${nuevo.id}">${esc(nuevo.nombre)}</option>`);
+    sel.value = nuevo.id; sel.dispatchEvent(new Event('change'));
+    if (!C.edit) C.telNuevo = nuevo.telefono || '';
   }
 
   function opcionesServicio(sel) {
@@ -449,13 +622,14 @@
   }
 
   async function nuevaCita(pre = {}) {
-    await cargarBase(); asegurarModales(); llenarClientes();
-    C.edit = null;
+    await cargarBase(); asegurarModales(); await llenarClientes();
+    C.edit = null; C.telNuevo = '';
+    $('ct-guardar-cliente').checked = usaClinica();
     $('ct-titulo').textContent = 'Nueva cita';
     $('ct-fecha').value = pre.fecha || (STATE.calVista === 'dia' ? ymdLocal(STATE.calFecha) : todayLocalISO());
     $('ct-estado').value = 'reservada';
     $('ct-cliente').value = ''; alCambiarCliente();
-    $('ct-cliente-nombre').value = ''; $('ct-cliente-tel').value = '';
+    $('ct-cliente-nombre').value = ''; $('ct-cliente-tel').value = ''; refrescarBuscador();
     $('ct-notas').value = '';
     $('ct-lineas').innerHTML = lineaHTML({ hora_inicio: pre.hora || C.config.hora_inicio, duracion_min: 60, precio: 0, profesional_id: pre.profesional_id || '' }, 0, false);
     prepararModal(false);
@@ -463,7 +637,8 @@
   }
 
   async function abrirCita(id) {
-    await cargarBase(); asegurarModales(); llenarClientes();
+    await cargarBase(); asegurarModales(); await llenarClientes();
+    $('ct-guardar-cliente').checked = false; C.telNuevo = '';
     const { data: c, error } = await sb.from('agenda_citas').select('*, agenda_citas_servicios(*)').eq('id', id).eq('auth_user_id', STATE.userId).maybeSingle();
     if (error || !c) { showToast('No se encontró la cita', 'error'); return; }
     if (c.venta_id && !C.ventasEstado[c.venta_id]) {
@@ -477,7 +652,7 @@
     $('ct-fecha').value = c.fecha;
     $('ct-estado').value = c.estado;
     $('ct-cliente').value = c.cliente_id || ''; alCambiarCliente();
-    $('ct-cliente-nombre').value = c.cliente_id ? '' : c.cliente_nombre;
+    $('ct-cliente-nombre').value = c.cliente_id ? '' : c.cliente_nombre; refrescarBuscador();
     $('ct-cliente-tel').value = c.cliente_telefono || '';
     $('ct-notas').value = c.notas || '';
     $('ct-lineas').innerHTML = lin.map((l, i) => lineaHTML(l, i, cobrada)).join('');
@@ -492,6 +667,7 @@
     $('ct-btn-cobrar').style.display = existe && !cobrada && c?.estado !== 'cancelada' ? '' : 'none';
     $('ct-btn-agregar').style.display = cobrada ? 'none' : '';
     ['ct-fecha', 'ct-cliente', 'ct-cliente-nombre', 'ct-cliente-tel'].forEach(id => { $(id).disabled = !!cobrada; });
+    const buscador = $('ct-cliente').parentElement.querySelector('.sb-input'); if (buscador) buscador.disabled = !!cobrada;
     const nota = $('ct-pagada');
     if (existe && c?.venta_id) {
       const num = C.ventasEstado['n_' + c.venta_id] || '';
@@ -504,13 +680,15 @@
   }
 
   function datosFormulario() {
-    const clienteId = $('ct-cliente').value || null;
+    const valor = $('ct-cliente').value || null;
+    const pac = valor && valor.startsWith('pac:') ? (C.pacientes || []).find(p => p.id === valor.slice(4)) : null;   // se vuelve cliente al guardar
+    const clienteId = pac ? null : valor;
     const cli = clienteId ? (STATE.clientes || []).find(x => x.id === clienteId) : null;
     return {
       fecha: $('ct-fecha').value,
       cliente_id: clienteId,
-      cliente_nombre: cli ? cli.nombre : $('ct-cliente-nombre').value.trim(),
-      cliente_telefono: clienteId ? (C.edit?.cliente_telefono || '') : $('ct-cliente-tel').value.trim(),
+      cliente_nombre: pac ? [pac.nombres, pac.apellidos].filter(Boolean).join(' ') : cli ? cli.nombre : $('ct-cliente-nombre').value.trim(),
+      cliente_telefono: clienteId ? (C.edit?.cliente_telefono || C.telNuevo || '') : $('ct-cliente-tel').value.trim(),
       estado: $('ct-estado').value,
       notas: $('ct-notas').value.trim(),
       creado_por: C.edit?.creado_por || perfilActivo(),
@@ -519,7 +697,7 @@
 
   async function guardar(permitirCruce) {
     const err = $('ct-error'); err.textContent = '';
-    const datos = datosFormulario();
+    let datos = datosFormulario();
     const lineas = leerLineas();
     if (!datos.fecha) { err.textContent = 'Elige la fecha.'; return; }
     if (!datos.cliente_nombre) { err.textContent = 'Elige un cliente o escribe su nombre.'; return; }
@@ -530,6 +708,10 @@
     }
     const btn = $('ct-btn-guardar'); btn.disabled = true;
     try {
+      if ($('ct-cliente').value.startsWith('pac:') || (!$('ct-cliente').value && $('ct-guardar-cliente').checked)) {
+        try { await asegurarCliente(); } catch (e) { err.textContent = e?.message || 'No se pudo guardar el cliente.'; return; }
+        datos = datosFormulario();
+      }
       const { data, error } = await sb.rpc('agenda_cita_guardar', { p_cita_id: C.edit?.id || null, p_datos: datos, p_servicios: lineas, p_permitir_cruce: !!permitirCruce });
       if (error) throw error;
       if (!data?.ok) {
@@ -564,6 +746,18 @@
   // Cobrar: se arma la venta con cliente y servicios (mismo camino que la veterinaria).
   async function cobrar() {
     const c = C.edit; if (!c) return;
+    // Clínica: se cobra con la pantalla de cobro de la Clínica (con el seguro del paciente, si tiene), sin salir
+    // de la Agenda. La venta se registra con el mismo motor de Ventas. Si no se pudo cargar, sigue como antes.
+    if (STATE.empresaConfig?.usa_modulo_clinica === true && await cargarCobroClinica()) {
+      try {
+        const seg = await ClinicaCitas.seguroDeCita(c.id, c.cliente_id);
+        const r = await ClinicaCitas.cobrar({ id: c.id, paciente_id: seg.paciente?.id || null }, { convenio: seg.convenio, convenioDisponible: seg.convenio,
+          alCerrar: async cobrado => { if (cobrado) showToast('✅ Cita cobrada y registrada en Ventas.'); await refrescar(); } });
+        if (!r.ok) { showToast(r.motivo || 'No se pudo preparar el cobro.', 'error'); return; }
+        if (r.dentro) closeModal('modal-cita');
+        return;
+      } catch (e) { console.error('cobrar (clínica):', e); showToast('No se pudo preparar el cobro. Intenta de nuevo.', 'error'); return; }
+    }
     const lin = c.agenda_citas_servicios || [];
     const conCatalogo = lin.filter(l => l.producto_id);
     const sinCatalogo = lin.filter(l => !l.producto_id);
@@ -576,11 +770,44 @@
       if (ya) { ya.cantidad += 1; ya.total = Math.round((ya.total + Number(l.precio || 0)) * 100) / 100; }
       else items.push({ producto_id: l.producto_id, cantidad: 1, total: Number(l.precio || 0) });
     });
+    // Clínica (solo si la cuenta la usa): lo que el médico agregó a la cuenta de la visita
+    // (p. ej. medicamentos de la receta) se cobra junto con la cita, al precio del catálogo.
+    if (STATE.empresaConfig?.usa_modulo_clinica === true) {
+      try {
+        const { data: cargos } = await sb.from('clinica_cita_cargos').select('producto_id, descripcion, cantidad, productos(precio)')
+          .eq('auth_user_id', STATE.userId).eq('agenda_cita_id', c.id);
+        (cargos || []).forEach(x => {
+          if (!x.producto_id || !x.productos) return;          // el producto ya no existe en el catálogo
+          const cant = Number(x.cantidad) || 1, monto = Math.round(cant * Number(x.productos.precio || 0) * 100) / 100;
+          const ya = items.find(i => i.producto_id === x.producto_id);
+          if (ya) { ya.cantidad += cant; ya.total = Math.round((ya.total + monto) * 100) / 100; }
+          else items.push({ producto_id: x.producto_id, cantidad: cant, total: monto });
+        });
+        // Desde la Agenda se cobra el total al paciente: se borra un reparto con seguro que se haya preparado antes.
+        await sb.from('clinica_cita_info').update({ convenio_id: null, cobertura_pct: null, monto_cubierto: null, cubierto_servicios: null })
+          .eq('auth_user_id', STATE.userId).eq('agenda_cita_id', c.id);
+      } catch (e) { console.warn('cuenta de la clínica:', e); }
+    }
     sessionStorage.setItem('n360_agenda_cobro', JSON.stringify({
       citaId: c.id, clienteId: c.cliente_id || null, cliente: c.cliente_nombre, items,
       sinCatalogo: sinCatalogo.map(l => `${l.servicio_nombre} (${fmt(l.precio)})`),
     }));
     window.location.href = 'ventas.html';
+  }
+  // La pantalla de cobro de la Clínica vive en sus archivos: se cargan solo cuando hace falta (en orden).
+  const VER_CLINICA = '20261028a';
+  function cargarScript(src, listo) {
+    if (listo()) return Promise.resolve(true);
+    return new Promise(res => {
+      const sc = document.createElement('script'); sc.src = src;
+      sc.onload = () => res(listo()); sc.onerror = () => res(false);
+      document.head.appendChild(sc);
+    });
+  }
+  async function cargarCobroClinica() {
+    return await cargarScript('vet-comun.js?v=20261004b', () => typeof vetHoy === 'function')
+      && await cargarScript('clinica-comun.js?v=' + VER_CLINICA, () => typeof clinicaAbrirCobro === 'function')
+      && await cargarScript('clinica-citas.js?v=' + VER_CLINICA, () => typeof ClinicaCitas !== 'undefined');
   }
 
   async function refrescar() {
@@ -589,7 +816,8 @@
 
   /* ---------------- PROFESIONALES ---------------- */
   async function abrirProfesionales() {
-    await cargarBase(true); asegurarModales();
+    await cargarBase(true); asegurarModales(); estilosFotos();
+    if (esAdministrador()) await cargarPerfiles();
     $('acp-ini').value = C.config.hora_inicio; $('acp-fin').value = C.config.hora_fin; $('acp-int').value = String(C.config.intervalo_min);
     llenarEmpleadosSel();
     pintarProfesionales();
@@ -607,6 +835,11 @@
     if (!C.profesionales.length) { cont.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted)">Todavía no hay profesionales.</p>'; return; }
     cont.innerHTML = C.profesionales.map((p, i) => `
       <div class="ac-prof-fila" data-id="${p.id}">
+        <div class="ac-prof-foto"><span class="ac-prof-avatar">${avatarHTML(p)}</span>
+          ${puedeCambiarFoto(p) ? `<button type="button" class="btn-secondary btn-sm" onclick="N360Citas.cambiarFoto('${p.id}')">📷 ${p.foto_url ? 'Cambiar foto' : 'Poner foto'}</button>
+            <button type="button" class="btn-ghost btn-sm" data-quitar-foto="${p.id}" style="${p.foto_url ? '' : 'display:none'}" onclick="N360Citas.quitarFoto('${p.id}')" title="Quitar foto">✕</button>` : ''}
+          ${esAdministrador() && (C.perfiles || []).length ? `<select class="pf-perfil" title="Usuario del sistema que es este profesional (puede cambiar su propia foto)" aria-label="Usuario del sistema">
+            <option value="">— Usuario del sistema —</option>${C.perfiles.map(u => `<option value="${esc(u.id)}" ${p.perfil_id === u.id ? 'selected' : ''}>${esc(u.nombre)}${u.tipo === 'admin' ? ' (administrador)' : ''}</option>`).join('')}</select>` : ''}</div>
         <input type="color" class="pf-color" value="${esc(p.color || '#a855f7')}" title="Color"/>
         <input type="text" class="pf-nombre" value="${esc(p.nombre)}"/>
         <input type="number" class="pf-orden" value="${p.orden || i}" title="Orden en la agenda" style="width:60px"/>
@@ -650,6 +883,7 @@
           nombre, color: f.querySelector('.pf-color').value, orden: parseInt(f.querySelector('.pf-orden').value, 10) || 0,
           activo: f.querySelector('.pf-activo').checked,
           servicios: [...f.querySelectorAll('.pf-serv:checked')].map(x => x.value),
+          ...(f.querySelector('.pf-perfil') ? { perfil_id: f.querySelector('.pf-perfil').value || null } : {}),
           updated_at: new Date().toISOString(),
         }).eq('id', f.dataset.id).eq('auth_user_id', STATE.userId);
         if (error) throw error;
@@ -746,7 +980,7 @@
   window.N360Citas = {
     itemsParaCalendario, renderDia, filtrar, clicEnColumna,
     nuevaCita, abrirCita, guardar, cambiarEstado, cobrar, total, agregarLinea, quitarLinea, alCambiarServicio,
-    abrirProfesionales, agregarProfesional, guardarProfesionales,
+    abrirProfesionales, agregarProfesional, guardarProfesionales, cambiarFoto, quitarFoto,
     abrirBloqueo, verBloqueo, guardarBloqueo, quitarBloqueo, abrirBuscarHora, buscarHora,
     _C: C,
   };

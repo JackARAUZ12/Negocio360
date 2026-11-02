@@ -146,9 +146,9 @@ async function cargarRotacion() {
     const desdeISO = desde.toISOString().slice(0, 10);
 
     // Ventas del rango, agrupadas por producto.
-    const { data: detalles, error } = await sb.from('venta_detalles')
+    const { data: detalles, error } = await N360Leer.todo(() => sb.from('venta_detalles')
       .select('producto_id, producto_nombre, cantidad, subtotal, ventas!inner(fecha, auth_user_id)')
-      .eq('ventas.auth_user_id', STATE.userId).gte('ventas.fecha', desdeISO);
+      .eq('ventas.auth_user_id', STATE.userId).gte('ventas.fecha', desdeISO), 'ventas');
     if (error) throw error;
 
     const porProducto = {};
@@ -161,8 +161,8 @@ async function cargarRotacion() {
 
     // Todos los productos activos (tipo 'producto') -- los que no
     // vendieron nada en el rango tambien aparecen, como "sin movimiento".
-    const { data: productos } = await sb.from('productos')
-      .select('id, nombre, costo, precio, stock_actual, stock_minimo, stock_maximo').eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true);
+    const { data: productos } = await N360Leer.todo(() => sb.from('productos')
+      .select('id, nombre, costo, precio, stock_actual, stock_minimo, stock_maximo').eq('auth_user_id', STATE.userId).eq('tipo', 'producto').eq('activo', true), 'productos');
 
     const lista = (productos || []).map(p => {
       const v = porProducto[p.id];
@@ -235,7 +235,7 @@ function renderRotacion() {
   if (wrapReponer) wrapReponer.style.display = paraReponer.length ? '' : 'none';
   if (contReponer) {
     contReponer.innerHTML = paraReponer.map(r => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app,#fff7ed);border-radius:8px;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app,var(--bg-surface-2,#fff7ed));border-radius:8px;margin-bottom:6px">
         <div>
           <strong style="font-size:13px">${esc(r.nombre)}</strong> ${ROTACION_LABEL[r.rotacion] || ''}
           <div style="font-size:11.5px;color:var(--text-muted)">Stock actual: ${r.stockActual} (mínimo: ${r.stockMinimo})</div>

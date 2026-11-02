@@ -9,7 +9,11 @@
 
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -256,6 +260,7 @@
     .estado-completada{background:var(--success-soft);color:var(--success)}
     .estado-anulada   {background:var(--bg-hover);color:var(--text-muted)}
     .estado-devuelta  {background:var(--warning-soft);color:var(--warning)}
+    .estado-credito-pendiente{background:var(--warning-soft);color:var(--warning)}
 
     /* TIPO ITEM BADGE */
     .tipo-item-badge{font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:4px;white-space:nowrap}
@@ -268,6 +273,13 @@
     .btn-icon-sm:hover{background:var(--bg-hover);color:var(--text-primary)}
     .btn-icon-sm.del:hover{background:var(--danger-soft);color:var(--danger)}
     .td-actions{white-space:nowrap}
+    /* Botones visibles por cliente: Historial y Seguimiento (CRM) */
+    .cli-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+    .cli-pill{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border-radius:999px;font:inherit;font-size:12px;font-weight:700;line-height:1.2;cursor:pointer;text-decoration:none;white-space:nowrap;border:1.5px solid transparent;transition:all var(--transition)}
+    .cli-pill-hist{background:var(--accent);border-color:var(--accent);color:#fff}
+    .cli-pill-hist:hover{filter:brightness(1.1)}
+    .cli-pill-seg{background:var(--accent-soft);border-color:var(--accent);color:var(--text-primary)}
+    .cli-pill-seg:hover{background:var(--accent);color:#fff}
 
     /* PAGINACIÓN */
     .paginacion-row{display:flex;align-items:center;justify-content:space-between;
@@ -717,6 +729,10 @@
           <p>CRM de tu negocio. Centraliza, analiza y administra cada relación con tus clientes.</p>
         </div>
         <div class="greeting-actions">
+          <button class="btn-secondary" id="btn-exportar-clientes" onclick="abrirExportarClientes()" title="Exportar clientes a Excel o PDF con filtros, saldos y antigüedad">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar
+          </button>
           <button class="btn-secondary" onclick="abrirModalImportarClientes()" title="Importar clientes desde Excel">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Importar Excel
@@ -814,6 +830,18 @@
         </div>
         <div class="section-tab" data-tab="inactivos" onclick="cambiarTab('inactivos')">
           💤 Inactivos
+        </div>
+        <div class="section-tab" data-tab="campanas" onclick="cambiarTab('campanas')">
+          📣 Campañas
+        </div>
+        <div class="section-tab" data-tab="grupos" onclick="cambiarTab('grupos')">
+          🧩 Grupos
+        </div>
+        <div class="section-tab" data-tab="oportunidades" onclick="cambiarTab('oportunidades')">
+          🎯 Oportunidades
+        </div>
+        <div class="section-tab" data-tab="seguimientos" onclick="cambiarTab('seguimientos')">
+          ⏰ Seguimientos <span id="crm-tab-cuenta" style="display:none;margin-left:4px;background:var(--danger,#dc2626);color:#fff;border-radius:999px;padding:0 6px;font-size:11px"></span>
         </div>
       </div>
 
@@ -939,6 +967,38 @@
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- ======= PANEL: CAMPAÑAS (CRM) ======= -->
+      <div id="panel-campanas" style="display:none">
+        <div class="panel-card fade-in">
+          <div class="panel-header"><div class="panel-title">📣 Campañas por WhatsApp</div></div>
+          <div id="crm-campanas" style="padding:4px 16px 16px"></div>
+        </div>
+      </div>
+
+      <!-- ======= PANEL: GRUPOS (CRM) ======= -->
+      <div id="panel-grupos" style="display:none">
+        <div class="panel-card fade-in">
+          <div class="panel-header"><div class="panel-title">🧩 Grupos de clientes</div></div>
+          <div id="crm-grupos" style="padding:4px 16px 16px"></div>
+        </div>
+      </div>
+
+      <!-- ======= PANEL: OPORTUNIDADES (CRM) ======= -->
+      <div id="panel-oportunidades" style="display:none">
+        <div class="panel-card fade-in">
+          <div class="panel-header"><div class="panel-title">🎯 Oportunidades de venta</div></div>
+          <div id="crm-oportunidades" style="padding:4px 16px 16px"></div>
+        </div>
+      </div>
+
+      <!-- ======= PANEL: SEGUIMIENTOS (CRM) ======= -->
+      <div id="panel-seguimientos" style="display:none">
+        <div class="panel-card fade-in">
+          <div class="panel-header"><div class="panel-title">⏰ Seguimientos</div></div>
+          <div id="crm-seguimientos" style="padding:4px 16px 16px"></div>
         </div>
       </div>
 
@@ -1076,8 +1136,18 @@
         <!-- ============================================
              DATOS DE FACTURACIÓN Y CONTACTO (opcionales)
              ============================================ -->
+        <div class="form-group" id="fc-tipo-id-wrap" style="display:none">
+          <label>Tipo de identificación</label>
+          <select id="fc-tipo-id">
+            <option value="">Selecciona…</option>
+            <option value="01">Cédula física</option>
+            <option value="02">Cédula jurídica</option>
+            <option value="03">DIMEX</option>
+            <option value="04">NITE</option>
+          </select>
+        </div>
         <div class="form-group">
-          <label>RUC</label>
+          <label id="fc-ruc-label">RUC</label>
           <input type="text" id="fc-ruc" placeholder="Ej: J0310000000000 (opcional)"/>
         </div>
         <div class="form-group">
@@ -1327,7 +1397,7 @@
           <div class="info-value" id="perfil-creado">—</div>
         </div>
         <div class="info-item">
-          <div class="info-label">RUC</div>
+          <div class="info-label" id="perfil-ruc-label">RUC</div>
           <div class="info-value" id="perfil-ruc">—</div>
         </div>
         <div class="info-item">
@@ -1362,6 +1432,9 @@
           </span>
           <button class="btn-primary btn-sm" onclick="abrirModalInteraccion()">+ Registrar interacción</button>
         </div>
+        <div id="perfil-grupo" style="margin-top:10px"></div>
+        <div id="perfil-crm" style="margin-top:4px"></div>
+        <div id="perfil-opor" style="margin-top:6px"></div>
         <div id="interacciones-lista" style="display:flex;flex-direction:column;gap:0;margin-top:10px">
           <div style="font-size:12.5px;color:var(--text-muted);font-style:italic;padding:8px 0">Cargando…</div>
         </div>
@@ -1488,11 +1561,22 @@
 </div>
 <input type="file" id="inputImportarClientesExcel" accept=".xlsx" style="display:none" onchange="ciOnArchivoSeleccionado(event)" />
 
-<script src="clientes.js?v=20261021a"></script>
+<script src="crm-seguimiento.js?v=20261030a"></script>
+<script src="crm-oportunidades.js?v=20261030a"></script>
+<script src="crm-grupos.js?v=20261028b"></script>
+<script src="crm-campanas.js?v=20261028a"></script>
+<script src="paginar-lectura.js?v=20261029d"></script>
+<script src="clientes.js?v=20261101a"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="exportar-modulo.js?v=20261029b"></script>
+<script src="exportar-clientes.js?v=20261101a"></script>
 <script src="clientes-importar.js"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

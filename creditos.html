@@ -10,9 +10,13 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1202,6 +1206,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             Registrar pago
           </button>
+          <button class="btn-ghost" onclick="abrirExportarCartera()" title="Exportar clientes con saldo y facturas pendientes (Excel / PDF)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar cartera
+          </button>
           <button class="btn-primary" onclick="abrirNuevoCredito()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nuevo crédito
@@ -1443,6 +1451,7 @@
           <div><label>Subtotal</label><div class="stat-readonly" id="nc-subtotal">—</div></div>
           <div>
             <label><input type="checkbox" id="nc-iva-activo" style="width:auto;display:inline-block;margin-right:6px" onchange="recalcularCredito()" />Aplicar IVA</label>
+            <div id="nc-iva-cr-wrap" style="display:none;margin-top:6px"><select id="nc-iva-cr-tarifa" onchange="recalcularCredito()" title="Tarifa de IVA de este crédito"><option value="13">IVA 13 % (general)</option><option value="4">IVA 4 %</option><option value="2">IVA 2 %</option><option value="1">IVA 1 %</option><option value="0">IVA 0 % (exento)</option></select></div>
             <div class="stat-readonly" id="nc-iva-monto">—</div>
           </div>
         </div>
@@ -2027,17 +2036,21 @@
 <script src="reporte-grupo-shim.js"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="cantidad-inteligente.js?v=20261009a"></script>
-<script src="comprobante-carta.js?v=20261023h"></script>
-<script src="select-buscable.js?v=20261015b"></script>
+<script src="comprobante-carta.js?v=20261101c"></script>
+<script src="select-buscable.js?v=20261025e"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
 <script src="moneda-alterna.js?v=20261021b"></script>
 <script src="rawbt-print.js?v=20261023a"></script>
 <script src="ticket-prueba-ancho.js?v=20261022a"></script>
-<script src="creditos.js?v=20261022d"></script>
+<script src="paginar-lectura.js?v=20261029d"></script>
+<script src="creditos.js?v=20261101d"></script>
+<script src="creditos-exportar.js?v=20261029c"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

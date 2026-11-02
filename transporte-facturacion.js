@@ -64,7 +64,7 @@ function renderVista() {
       return `<div class="tx-doc"><div class="tx-doc-info"><b>📋 ${esc(o.numero)} · ${esc(o.cliente_nombre || 'Sin cliente')} · ${esc(money(o.total))}</b>
         <small>${esc(o.origen || '—')} → ${esc(o.destino || '—')} · entregada ${esc(TX.fmtFecha(o.entrega_real))}${anul ? ' · ⚠️ la venta anterior fue anulada' : ''}</small>
         ${o.subcontratada ? '<small>🤝 Viaje subcontratado</small>' : ''}</div>
-        <div class="tx-fila-chips"><button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-fc-facturar="${esc(o.id)}">🧾 Facturar</button></div></div>`;
+        <div class="tx-fila-chips"><button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-fc-facturar="${esc(o.id)}">💳 Cobrar viaje</button></div></div>`;
     }).join('') : '<div class="tx-vacio"><div class="tx-vacio-i">✅</div><b>Nada por facturar</b><p>Cuando entregues una orden aparecerá aquí lista para convertirla en venta.</p></div>';
     return;
   }
@@ -74,7 +74,7 @@ function renderVista() {
     return `<div class="tx-doc"><div class="tx-doc-info"><b>🧾 ${esc(v.numero_venta || 'Venta')} · ${esc(o.numero)} · ${esc(o.cliente_nombre || v.cliente_nombre || '')}</b>
       <small>${esc(TX.fmtFecha(v.fecha_venta || v.created_at))} · total ${esc(money(v.total))}${Number(v.retencion_ir_monto) > 0 ? ' · retención IR ' + esc(money(v.retencion_ir_monto)) : ''}</small>
       <div class="tx-fila-chips"><span class="tx-chip ${e.clase}">${esc(e.t)}</span></div></div>
-      <div class="tx-fila-chips"><a class="tx-btn tx-btn-sm" href="ventas.html">Ver en Ventas</a>${e.saldo > 0 && FC.creditos[v.id] ? `<button type="button" class="tx-btn tx-btn-sm tx-btn-primary" data-fc-cobrar="${esc(FC.creditos[v.id].id)}">💵 Cobrar</button>` : ''}</div></div>`;
+      <div class="tx-fila-chips"><a class="tx-btn tx-btn-sm" href="ventas.html" title="La venta de este viaje en el módulo Ventas">Ver la venta</a>${e.saldo > 0 && FC.creditos[v.id] ? `<button type="button" class="tx-btn tx-btn-sm tx-btn-primary" data-fc-cobrar="${esc(FC.creditos[v.id].id)}">💵 Cobrar</button>` : ''}</div></div>`;
   }).join('') : '<div class="tx-vacio">Aún no has facturado ningún viaje.</div>';
 }
 function renderTodo() { renderKpis(); renderVista(); }
@@ -102,6 +102,8 @@ function observacionesOrden(o) {
 // viaje cargados y parada en "Método de pago".
 async function facturar(id) {
   const local = FC.ordenes.find(x => x.id === id); if (!local) return;
+  // Se cobra en la pantalla de cobro de Transporte (no lleva a Ventas; la venta se registra con el motor de Ventas).
+  if (window.TXCobro) { TXCobro.abrir(id, { alCerrar: async () => { try { await cargarTodo(); renderTodo(); } catch (e) { console.error(e); } } }); return; }
   try {
     // Se relee la orden: si otra pestaña ya la facturó, no se deja duplicar
     const { data: o, error } = await sb.from('transporte_ordenes').select('*').eq('id', id).eq('auth_user_id', TX.userId).maybeSingle();

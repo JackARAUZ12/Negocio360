@@ -87,6 +87,12 @@ function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 // elegir cualquier otro destino) — nunca tiene menú propio para saltar
 // directo a otra sucursal.
 function abrirVolverDesdeBodega() {
+  // Si el selector de cuentas del grupo está disponible, deja elegir a dónde ir
+  // (Central, sucursales u otras bodegas). Si no, queda el comportamiento de siempre.
+  if (window.N360SelectorCuenta && window.N360SelectorCuenta.listo && window.N360SelectorCuenta.listo()) {
+    window.N360SelectorCuenta.abrir();
+    return;
+  }
   if (window.PerfilesGuardConfig?.volverACentral) {
     window.PerfilesGuardConfig.volverACentral('esta bodega');
   } else {
@@ -217,6 +223,14 @@ function initSidebar() {
 // ============================================================
 // TOASTS
 // ============================================================
+// Los avisos se muestran como texto: nombres de productos o códigos escaneados nunca se interpretan como HTML.
+// Solo se respeta el salto de línea <br> que algunos avisos usan a propósito.
+function _escToast(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    .replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+}
+
 function showToast(tipo, titulo, mensaje, duracion = 3500) {
   const container = $('toastContainer');
   if (!container) return;
@@ -226,8 +240,8 @@ function showToast(tipo, titulo, mensaje, duracion = 3500) {
   toast.innerHTML = `
     <span class="toast-icon">${icons[tipo] || 'ℹ️'}</span>
     <div class="toast-body">
-      <div class="toast-title">${titulo}</div>
-      ${mensaje ? `<div class="toast-msg">${mensaje}</div>` : ''}
+      <div class="toast-title">${_escToast(titulo)}</div>
+      ${mensaje ? `<div class="toast-msg">${_escToast(mensaje)}</div>` : ''}
     </div>
     <button class="toast-close" onclick="removeToast(this.parentElement)">✕</button>
   `;
@@ -431,11 +445,11 @@ async function cargarProveedores() {
 // ============================================================
 async function cargarEscalas() {
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await N360Leer.todo(() => supabaseClient
       .from('precios_escala')
       .select('id,producto_id,nombre,precio,orden')
       .eq('auth_user_id', STATE.user.id)
-      .order('orden');
+      .order('orden'), 'escalas de precio');
     if (error) throw error;
     const map = {};
     (data || []).forEach(e => {

@@ -10,7 +10,11 @@
   <!-- Supabase CDN -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- Lucide Icons -->
@@ -1248,6 +1252,13 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Personalizar
           </button>
+          <button class="btn-secondary" id="btn-series-garantias" style="display:none" onclick="window.N360Series&&N360Series.abrirPanel({sb:sbClient,userId:STATE.userId,empresaConfig:STATE.empresaConfig})" title="Series de productos, garantía del proveedor y reclamos">
+            🛡️ Series y garantías
+          </button>
+          <button class="btn-secondary" id="btn-exportar-compras" onclick="abrirExportarCompras()" title="Exportar compras a Excel o PDF con filtros, subtotales y totales">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar
+          </button>
           <button class="btn-secondary" onclick="mostrarSeccionOrdenes()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             Órdenes de Compra
@@ -2347,7 +2358,18 @@
 <script src="unidades-medida.js?v=20261008a"></script>
 <script src="aviso-efectivo.js?v=20261013a"></script>
 <script src="comision-pago-tarjeta.js?v=20261023a"></script>
-<script src="compras.js?v=20261023a"></script>
+<script src="paginar-lectura.js?v=20261029d"></script>
+<script src="compras.js?v=20261031a"></script>
+<script src="exportar-modulo.js?v=20261029b"></script>
+<script src="exportar-compras.js?v=20261031a"></script>
+<script src="series-proveedor.js?v=20261031a"></script>
+<script>N360Series.iniciarBoton("btn-series-garantias",function(){return {empresaConfig:STATE.empresaConfig}});</script>
+<script>
+// Entrada "Garantías de proveedor" del menú: abre el panel de series y garantías
+(function(){ if (!/[?&]garantias=1/.test(location.search)) return; var n=0, t=setInterval(function(){ n++;
+  try { if (STATE && STATE.empresaConfig && STATE.empresaConfig.usa_numero_serie===true && STATE.userId && window.N360Series) { clearInterval(t); N360Series.abrirPanel({sb:sbClient,userId:STATE.userId,empresaConfig:STATE.empresaConfig}); } } catch(e){}
+  if (n>40) clearInterval(t); }, 500); })();
+</script>
 <script>
   // Actualizar resumen-total-final en paso 7 cuando cambia el resumen
   const _nc7Sync = setInterval(() => {
@@ -2393,8 +2415,10 @@
 </script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

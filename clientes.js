@@ -106,6 +106,7 @@ function diasDesde(iso) {
 }
 
 function startOfMonthISO() {
+  const _pm = window.N360PeriodoMes && N360PeriodoMes.inicioISO(); if (_pm) return _pm;   // día de cierre del negocio (opcional)
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
 }
@@ -520,9 +521,9 @@ async function loadKPIs() {
     }
 
     // Fallback: calcular directamente desde clientes
-    const { data: clientes } = await sb.from('clientes')
+    const { data: clientes } = await N360Leer.todo(() => sb.from('clientes')
       .select('id,nombre,total_compras,num_compras,ultima_compra,estado,created_at')
-      .eq('auth_user_id', CS.userId).eq('activo', true);
+      .eq('auth_user_id', CS.userId).eq('activo', true), 'clientes');
 
     const mesStart = startOfMonthISO();
     const ahora    = new Date();
@@ -661,6 +662,10 @@ function renderTablaClientes() {
               ${c.tipo_cliente === 'recurrente' ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;background:var(--accent-soft);color:var(--accent)">RECURRENTE</span>` : ''}
             </div>
             ${c.empresa ? `<div style="font-size:11.5px;color:var(--text-muted)">${esc(c.empresa)}</div>` : ''}
+            <div class="cli-pills" onclick="event.stopPropagation()">
+              <a class="cli-pill cli-pill-hist" href="cliente-historial.html?id=${encodeURIComponent(c.id)}" title="Todo sobre este cliente: compras, créditos, pagos, notas y seguimiento">📊 Historial</a>
+              <button type="button" class="cli-pill cli-pill-seg" onclick="abrirSeguimientoCliente('${c.id}')" title="Registrar llamada, WhatsApp, nota, visita, recordatorio u oportunidad">📝 Seguimiento</button>
+            </div>
           </div>
         </div>
       </td>
@@ -795,13 +800,25 @@ function escAttr(s) {
   return String(s ?? '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Costa Rica (colones): el cliente tiene tipo de identificación (cédula física, jurídica, DIMEX, NITE). En otras cuentas no se muestra.
+const TIPOS_ID_CR = { '01': 'Cédula física', '02': 'Cédula jurídica', '03': 'DIMEX', '04': 'NITE' };
+function crClientes() { try { return !!(window.N360CR && window.N360CR.activo()); } catch (_) { return false; } }
+function aplicarCamposCR() {
+  const cr = crClientes();
+  const w = document.getElementById('fc-tipo-id-wrap'); if (w) w.style.display = cr ? '' : 'none';
+  const l = document.getElementById('fc-ruc-label'); if (l) l.textContent = cr ? 'Número de cédula / ID fiscal' : 'RUC';
+  const pl = document.getElementById('perfil-ruc-label'); if (pl) pl.textContent = cr ? 'Cédula / ID fiscal' : 'RUC';
+}
+if (window.N360CR && window.N360CR.listo) window.N360CR.listo.then(aplicarCamposCR);
+
 function limpiarFormCliente() {
   ['fc-nombre','fc-telefono','fc-correo','fc-empresa','fc-direccion','fc-observaciones',
    'fc-monto-recurrente','fc-dia-mes',
-   'fc-ruc','fc-direccion-factura','fc-fecha-aniversario'].forEach(id => {
+   'fc-ruc','fc-tipo-id','fc-direccion-factura','fc-fecha-aniversario'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  aplicarCamposCR();
   CONTACTOS_CLIENTE = [];
   renderContactosCliente();
   const est = document.getElementById('fc-estado');
@@ -835,6 +852,8 @@ function rellenarFormCliente(c) {
   set('fc-direccion',    c.direccion);
   set('fc-observaciones',c.observaciones);
   set('fc-ruc',                c.ruc);
+  set('fc-tipo-id',            c.tipo_identificacion);
+  aplicarCamposCR();
   set('fc-direccion-factura',  c.direccion_factura);
   set('fc-fecha-aniversario',  c.fecha_aniversario);
   CONTACTOS_CLIENTE = Array.isArray(c.contactos) ? [...c.contactos] : [];
@@ -894,6 +913,7 @@ async function guardarCliente() {
     direccion:     document.getElementById('fc-direccion')?.value.trim()|| null,
     observaciones: document.getElementById('fc-observaciones')?.value.trim() || null,
     ruc:               document.getElementById('fc-ruc')?.value.trim() || null,
+    ...(crClientes() ? { tipo_identificacion: document.getElementById('fc-tipo-id')?.value || null } : {}),
     direccion_factura: document.getElementById('fc-direccion-factura')?.value.trim() || null,
     fecha_aniversario: document.getElementById('fc-fecha-aniversario')?.value || null,
     contactos:         (CONTACTOS_CLIENTE || []).filter(c => (c.nombre || '').trim()),
@@ -1235,7 +1255,8 @@ async function abrirPerfil(clienteId) {
   setPerfilField('perfil-empresa-val', cl.empresa);
   setPerfilField('perfil-observaciones', cl.observaciones);
   setPerfilField('perfil-creado',   fmtFecha(cl.created_at));
-  setPerfilField('perfil-ruc', cl.ruc);
+  setPerfilField('perfil-ruc', cl.ruc ? ((crClientes() && TIPOS_ID_CR[cl.tipo_identificacion]) ? TIPOS_ID_CR[cl.tipo_identificacion] + ' · ' : '') + cl.ruc : cl.ruc);
+  aplicarCamposCR();
   setPerfilField('perfil-aniversario', cl.fecha_aniversario ? fmtFecha(cl.fecha_aniversario) : null);
   setPerfilField('perfil-direccion-factura', cl.direccion_factura);
   const contactos = Array.isArray(cl.contactos) ? cl.contactos.filter(c => (c.nombre||'').trim()) : [];
@@ -1252,6 +1273,7 @@ async function abrirPerfil(clienteId) {
   // Historial de ventas
   await cargarHistorialVentas(cl.id);
   await cargarInteraccionesCliente(cl.id);
+  montarCrmFicha(cl);
 
   openModal('modal-perfil');
 }
@@ -1446,6 +1468,41 @@ function escHtmlCli(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+/* Estado que ve el usuario en el historial del cliente (29-oct-2026).
+   Una venta a crédito queda "completada" en cuanto se registra, aunque el cliente no
+   haya pagado nada; por eso aquí se muestra el estado de SU crédito. Solo lectura. */
+function esVentaCredito(v) {
+  return v && (v.estado_pago === 'credito' || v.metodo_pago === 'credito' || v.metodo_pago === 'fiado');
+}
+async function cargarCreditosDeVentas(ventas) {
+  const ids = (ventas || []).filter(esVentaCredito).map(v => v.id);
+  if (!ids.length) return;
+  try {
+    const { data } = await sb.from('creditos')
+      .select('venta_id,numero_credito,estado,saldo_pendiente')
+      .eq('auth_user_id', CS.userId).in('venta_id', ids);
+    const porVenta = new Map((data || []).map(c => [c.venta_id, c]));
+    ventas.forEach(v => { if (esVentaCredito(v)) v._credito = porVenta.get(v.id) || null; });
+  } catch (_) { /* sin red: se muestra "A crédito" sin el detalle */ }
+}
+function metodoVentaCliente(v) {
+  if (esVentaCredito(v)) return v.metodo_pago === 'fiado' ? 'Fiado' : 'Crédito';
+  return v.metodo_pago_nombre || '—';
+}
+function estadoVentaCliente(v) {
+  if (v.estado === 'anulada') return { cls: 'estado-anulada', texto: 'anulada' };
+  if (v.estado === 'devuelta') return { cls: 'estado-devuelta', texto: 'devuelta' };
+  if (esVentaCredito(v)) {
+    const c = v._credito;
+    if (c && c.estado !== 'cancelado' && c.estado !== 'anulado' && Number(c.saldo_pendiente) > 0.004)
+      return { cls: 'estado-credito-pendiente', texto: `Crédito pendiente · saldo ${fmt(c.saldo_pendiente)}` };
+    if (c && c.estado === 'cancelado' && Number(c.saldo_pendiente) <= 0.004)
+      return { cls: 'estado-completada', texto: 'Crédito pagado' };
+    return { cls: 'estado-credito-pendiente', texto: 'A crédito' };
+  }
+  return { cls: 'estado-completada', texto: v.estado || 'completada' };
+}
+
 async function cargarHistorialVentas(clienteId) {
   CS.ventasCliente = [];
   const tbody = document.getElementById('historial-tbody');
@@ -1453,13 +1510,16 @@ async function cargarHistorialVentas(clienteId) {
 
   try {
     const { data } = await sb.from('ventas')
-      .select('id,numero_venta,fecha,metodo_pago_nombre,total,estado')
+      .select('id,numero_venta,fecha,metodo_pago,metodo_pago_nombre,estado_pago,total,estado')
       .eq('cliente_id', clienteId)
       .eq('auth_user_id', CS.userId)
       .order('fecha', { ascending: false })
       .limit(50);
 
     CS.ventasCliente = data || [];
+    // Ventas a crédito: "completada" solo dice que la venta quedó registrada; lo que importa
+    // es si el crédito ya se pagó. Se lee el crédito de cada una (solo lectura).
+    await cargarCreditosDeVentas(CS.ventasCliente);
 
     if (!tbody) return;
 
@@ -1472,16 +1532,14 @@ async function cargarHistorialVentas(clienteId) {
     }
 
     tbody.innerHTML = CS.ventasCliente.map(v => {
-      const estadoCls = {
-        completada:'estado-completada', anulada:'estado-anulada', devuelta:'estado-devuelta'
-      }[v.estado] || 'estado-completada';
+      const e = estadoVentaCliente(v);
       return `
       <tr style="cursor:pointer" onclick="verDetalleVentaPerfil('${v.id}')">
         <td><span style="font-family:var(--font-mono);font-weight:700;color:var(--accent);font-size:12px">${esc(v.numero_venta)}</span></td>
         <td style="color:var(--text-secondary);font-size:12.5px">${fmtFecha(v.fecha)}</td>
-        <td style="color:var(--text-secondary);font-size:12.5px">${esc(v.metodo_pago_nombre || '—')}</td>
+        <td style="color:var(--text-secondary);font-size:12.5px">${esc(metodoVentaCliente(v))}</td>
         <td style="font-family:var(--font-mono);font-weight:700">${fmt(v.total)}</td>
-        <td><span class="estado-badge ${estadoCls}">${v.estado}</span></td>
+        <td><span class="estado-badge ${e.cls}">${esc(e.texto)}</span></td>
       </tr>`;
     }).join('');
 
@@ -1517,9 +1575,9 @@ async function verDetalleVentaPerfil(ventaId) {
 
     const v = ventaFull.data;
     const its = items.data || [];
-    const estadoCls = {
-      completada:'estado-completada', anulada:'estado-anulada', devuelta:'estado-devuelta'
-    }[v.estado] || 'estado-completada';
+    if (venta._credito !== undefined) v._credito = venta._credito;
+    const eVenta = estadoVentaCliente(v);
+    const estadoCls = eVenta.cls;
 
     body.innerHTML = `
       <div class="detalle-grid">
@@ -1529,7 +1587,7 @@ async function verDetalleVentaPerfil(ventaId) {
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Estado</div>
-          <div class="detalle-value"><span class="estado-badge ${estadoCls}">${v.estado}</span></div>
+          <div class="detalle-value"><span class="estado-badge ${estadoCls}">${esc(eVenta.texto)}</span></div>
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Fecha</div>
@@ -1537,7 +1595,7 @@ async function verDetalleVentaPerfil(ventaId) {
         </div>
         <div class="detalle-item">
           <div class="detalle-label">Método de pago</div>
-          <div class="detalle-value">${esc(v.metodo_pago_nombre || '—')}</div>
+          <div class="detalle-value">${esc(metodoVentaCliente(v))}</div>
         </div>
         ${v.observaciones ? `
         <div class="detalle-item full">
@@ -1599,7 +1657,7 @@ function cambiarTab(tab) {
   document.querySelectorAll('.section-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tab));
 
-  const paneles = { lista:'panel-lista', top:'panel-top', frecuentes:'panel-frecuentes', inactivos:'panel-inactivos' };
+  const paneles = { lista:'panel-lista', top:'panel-top', frecuentes:'panel-frecuentes', inactivos:'panel-inactivos', seguimientos:'panel-seguimientos', oportunidades:'panel-oportunidades', grupos:'panel-grupos', campanas:'panel-campanas' };
   Object.entries(paneles).forEach(([k, id]) => {
     const el = document.getElementById(id);
     if (el) el.style.display = k === tab ? '' : 'none';
@@ -1608,6 +1666,54 @@ function cambiarTab(tab) {
   if (tab === 'top')        loadTopClientes();
   if (tab === 'frecuentes') loadFrecuentes();
   if (tab === 'inactivos')  loadInactivos();
+  if (tab === 'seguimientos') cargarSeguimientosCrm();
+  if (tab === 'campanas' && window.N360Campanas) N360Campanas.montar(document.getElementById('crm-campanas'), { tipo: new URLSearchParams(location.search).get('tipo') });
+  if (tab === 'grupos' && window.N360Grupos) N360Grupos.montar(document.getElementById('crm-grupos'), { alAbrirCliente: id => abrirPerfil(id) });
+  if (tab === 'oportunidades' && window.N360Opor) N360Opor.montarTablero(document.getElementById('crm-oportunidades'), { alAbrirCliente: id => abrirPerfil(id) });
+}
+
+/* ---- CRM: seguimientos (crm-seguimiento.js) ---- */
+function iniciarCrm() {
+  if (!window.N360CRM || !CS.userId) return false;
+  N360CRM.init({ sb, userId: CS.userId,
+    usuario: document.getElementById('header-name')?.textContent?.trim() || CS.userEmail || null,
+    negocio: CS.empresaConfig?.nombre_comercial || CS.empresaConfig?.nombre_negocio || null });
+  if (window.N360Grupos) N360Grupos.init({ sb, userId: CS.userId, fmt: n => fmt(n) });
+  if (window.N360Campanas) N360Campanas.init({ sb, userId: CS.userId });
+  if (window.N360Opor) N360Opor.init({ sb, userId: CS.userId, usuario: document.getElementById('header-name')?.textContent?.trim() || null, fmt: n => fmt(n) });
+  return true;
+}
+async function actualizarCuentaCrm() {
+  const el = document.getElementById('crm-tab-cuenta');
+  if (!el || !window.N360CRM) return;
+  try { const n = await N360CRM.contarPendientesHoy(); el.textContent = n; el.style.display = n ? '' : 'none'; }
+  catch (e) { el.style.display = 'none'; }
+}
+function cargarSeguimientosCrm() {
+  if (!window.N360CRM) return;
+  N360CRM.montarSeguimientos(document.getElementById('crm-seguimientos'), {
+    alAbrirCliente: id => abrirPerfil(id), alCambiar: actualizarCuentaCrm });
+}
+// Botón "📝 Seguimiento" de cada cliente: registrar todo sin abrir la ficha completa.
+async function abrirSeguimientoCliente(id) {
+  if (!window.N360CRM) return;
+  let c = CS.clientes.find(x => x.id === id);
+  if (!c) { const { data } = await sb.from('clientes').select('*').eq('id', id).eq('auth_user_id', CS.userId).maybeSingle(); c = data; }
+  if (!c) return;
+  N360CRM.abrirPanelCliente({ ...c, nombre: [c.nombre, c.apellido].filter(Boolean).join(' ') || c.nombre }, {
+    historial: 'cliente-historial.html?id=' + encodeURIComponent(c.id), alCambiar: actualizarCuentaCrm });
+}
+function montarCrmFicha(cl) {
+  if (!window.N360CRM) return;
+  const cli = { ...cl, nombre: [cl.nombre, cl.apellido].filter(Boolean).join(' ') || cl.nombre };
+  N360CRM.montarFicha(document.getElementById('perfil-crm'), cli, {
+    alCambiar: () => { cargarInteraccionesCliente(cl.id); actualizarCuentaCrm(); if (tabActiva === 'seguimientos') cargarSeguimientosCrm(); montarOporFicha(cli); } });
+  if (window.N360Grupos) N360Grupos.insignia(document.getElementById('perfil-grupo'), cl.id);
+  montarOporFicha(cli);
+}
+function montarOporFicha(cli) {
+  if (window.N360Opor) N360Opor.montarDeCliente(document.getElementById('perfil-opor'), cli, {
+    alCambiar: () => { if (tabActiva === 'oportunidades') cambiarTab('oportunidades'); } });
 }
 
 /* ---- TOP 10 CLIENTES ---- */
@@ -1658,11 +1764,11 @@ async function loadFrecuentes() {
   if (tbody) tbody.innerHTML = '<tr class="loading-row"><td colspan="5">Cargando…</td></tr>';
 
   try {
-    const { data } = await sb.from('clientes')
+    const { data } = await N360Leer.todo(() => sb.from('clientes')
       .select('id,nombre,telefono,num_compras,total_compras,ultima_compra')
       .eq('auth_user_id', CS.userId).eq('activo', true)
       .gte('num_compras', 5)
-      .order('num_compras', { ascending: false });
+      .order('num_compras', { ascending: false }), 'clientes');
 
     if (!tbody) return;
 
@@ -1700,12 +1806,12 @@ async function loadInactivos() {
   const corte = ymd(new Date(Date.now() - dias * 86400000));
 
   try {
-    const { data } = await sb.from('clientes')
+    const { data } = await N360Leer.todo(() => sb.from('clientes')
       .select('id,nombre,telefono,num_compras,total_compras,ultima_compra')
       .eq('auth_user_id', CS.userId).eq('activo', true)
       .gt('num_compras', 0)
       .lt('ultima_compra', corte)
-      .order('ultima_compra', { ascending: true });
+      .order('ultima_compra', { ascending: true }), 'clientes');
 
     if (!tbody) return;
 
@@ -1795,8 +1901,8 @@ async function sincronizarStats() {
     await Promise.allSettled([loadClientes(), loadKPIs()]);
   } catch(e) {
     // Sincronización manual como fallback
-    const { data: clientes } = await sb.from('clientes')
-      .select('id').eq('auth_user_id', CS.userId).eq('activo', true);
+    const { data: clientes } = await N360Leer.todo(() => sb.from('clientes')
+      .select('id').eq('auth_user_id', CS.userId).eq('activo', true), 'clientes');
 
     for (const c of (clientes || [])) {
       await cargarStatsCliente(c.id);
@@ -1873,6 +1979,10 @@ async function initClientes() {
     document.getElementById('app').style.display = 'flex';
 
     await Promise.allSettled([loadKPIs(), loadClientes()]);
+    if (iniciarCrm()) {
+      actualizarCuentaCrm();
+      { const t = new URLSearchParams(location.search).get('tab'); if (['seguimientos', 'oportunidades', 'grupos', 'campanas'].includes(t)) cambiarTab(t); }
+    }
 
     if (window.Negocio360Tutorial) {
       const pasosClientes = [

@@ -1,9 +1,11 @@
 /* =====================================================
    CLINICA-EQUIPO.JS — NEGOCIO360 · Módulo Clínica
-   Equipo y seguridad: personal (médicos, recepción,
-   administración) con su PIN, consultorios, especialidades
-   de la clínica y bitácora de accesos al expediente.
-   Administrar personal y ver la bitácora exige el código de
+   Médicos y seguridad: qué USUARIOS del sistema
+   (multiusuario) son médicos — entran al expediente con su
+   mismo código de usuario —, su columna en la Agenda y sus
+   honorarios; consultorios, especialidades de la clínica y
+   bitácora de accesos al expediente.
+   Marcar médicos y ver la bitácora exige el código de
    administrador de la cuenta (o una sesión médica de rol
    administración): lo verifica el servidor.
 ===================================================== */
@@ -72,9 +74,9 @@ function renderUserInfo(profile, email) {
 /* =====================================================
    ESTADO
 ===================================================== */
-const EQ = { personal: [], consultorios: [], editId: null, editConsultorio: null, codigoAdmin: null, codigoHasta: 0, pidiendo: null };
+const EQ = { personal: [], consultorios: [], usuarios: [], profesionales: [], empleados: [], editId: null, editConsultorio: null, codigoAdmin: null, codigoHasta: 0, pidiendo: null };
 const $e = id => document.getElementById(id);
-const ROLES = { medico: { n: 'Médico', clase: 'azul' }, recepcion: { n: 'Recepción', clase: 'gris' }, admin: { n: 'Administración clínica', clase: 'morado' } };
+const ROLES = { medico: { n: 'Médico', clase: 'azul' }, admin: { n: 'Administración clínica', clase: 'morado' }, enfermeria: { n: 'Enfermería', clase: 'verde' }, recepcion: { n: 'Recepción (ya no se usa)', clase: 'gris' } };
 
 async function init() {
   applyTheme(localStorage.getItem('n360_theme') || 'light');
@@ -103,20 +105,32 @@ async function init() {
 document.addEventListener('DOMContentLoaded', () => { init(); if (window.lucide) lucide.createIcons(); });
 
 function cambiarTab(tab) {
-  ['personal', 'consultorios', 'especialidades', 'bitacora', 'pin'].forEach(t => { $e('eq-tab-' + t).classList.toggle('activa', t === tab); $e('eq-panel-' + t).style.display = t === tab ? '' : 'none'; });
+  ['personal', 'consultorios', 'especialidades', 'bitacora'].forEach(t => { $e('eq-tab-' + t).classList.toggle('activa', t === tab); $e('eq-panel-' + t).style.display = t === tab ? '' : 'none'; });
   if (tab === 'especialidades') pintarEspecialidades();
-  if (tab === 'pin') pintarMiPin();
 }
 
+// Usuarios del sistema (multiusuario): la misma lista que el menú de usuarios.
+async function cargarUsuarios() {
+  let { data, error } = await sb.rpc('listar_perfiles_del_grupo_v2');
+  if (error) ({ data, error } = await sb.rpc('listar_perfiles_del_grupo'));
+  if (error) throw error;
+  return (data || []).filter(u => u.activo !== false).map(u => ({ id: u.id, nombre: u.nombre, tipo: u.tipo, es_principal: !!u.es_principal }));
+}
 async function cargar() {
-  const [p, k] = await Promise.all([
-    sb.from('clinica_personal').select('*').eq('auth_user_id', STATE.userId).order('activo', { ascending: false }).order('nombre'),
+  EQ.demo = await ClinicaSesion.esDemo();
+  let qp = sb.from('clinica_personal').select('*').eq('auth_user_id', STATE.userId);
+  if (!EQ.demo) qp = qp.not('perfil_id', 'is', null);
+  const [p, k, u, pr, em] = await Promise.all([
+    qp.order('activo', { ascending: false }).order('nombre'),
     sb.from('clinica_consultorios').select('*').eq('auth_user_id', STATE.userId).order('activo', { ascending: false }).order('nombre'),
+    cargarUsuarios().catch(e => { console.error('usuarios:', e); return []; }),
+    sb.from('agenda_profesionales').select('id, nombre, activo, empleado_id').eq('auth_user_id', STATE.userId).order('orden').order('nombre'),
+    sb.from('empleados').select('id, nombre, estado').eq('auth_user_id', STATE.userId).order('nombre'),
   ]);
-  EQ.personal = p.data || []; EQ.consultorios = k.data || [];
-  try { const { data: em } = await sb.from('empleados').select('id, nombre, estado').eq('auth_user_id', STATE.userId).order('nombre'); EQ.empleados = em || []; }
-  catch (_) { EQ.empleados = []; }
+  EQ.personal = p.data || []; EQ.consultorios = k.data || []; EQ.usuarios = u; EQ.profesionales = pr.data || []; EQ.empleados = em.data || [];
   pintarPersonal(); pintarConsultorios();
+  const aviso = document.getElementById('eq-demo');
+  if (aviso) aviso.style.display = EQ.demo ? '' : 'none';
 }
 
 /* ---------- Autorización de administrador ---------- */
@@ -141,40 +155,49 @@ function respuestaAdmin(ok) {
 // Si el servidor rechazó el código, se olvida para volver a pedirlo.
 function revisarRechazo(r) { if (r && (r.motivo === 'incorrecto' || r.motivo === 'bloqueado' || r.motivo === 'formato' || r.motivo === 'sin_permiso')) { EQ.codigoAdmin = null; } }
 
-/* ---------- Personal ---------- */
+/* ---------- Médicos (usuarios del sistema marcados como médicos) ---------- */
 function pintarPersonal() {
   const cont = $e('eq-personal-lista');
-  if (!EQ.personal.length) { cont.innerHTML = '<div class="cl-info" style="grid-column:1/-1">Todavía no hay personal. Agrega a los médicos con "+ Agregar persona". Cada médico tendrá su PIN para abrir expedientes.</div>'; return; }
+  if (!EQ.personal.length) { cont.innerHTML = '<div class="cl-info" style="grid-column:1/-1">Todavía no hay médicos. Toca "➕ Nuevo médico" (o "Usar un usuario que ya existe" si ya tiene su usuario en el sistema).</div>'; return; }
   const cons = id => EQ.consultorios.find(k => k.id === id)?.nombre;
-  cont.innerHTML = EQ.personal.map(p => { const r = ROLES[p.rol] || ROLES.recepcion;
+  const prof = id => EQ.profesionales.find(x => x.id === id)?.nombre;
+  cont.innerHTML = EQ.personal.map(p => { const r = ROLES[p.rol] || ROLES.medico; const u = EQ.usuarios.find(x => x.id === p.perfil_id);
     return `<div class="cl-card" tabindex="0" role="button" onclick="abrirPersona('${p.id}')" onkeydown="if(event.key==='Enter')abrirPersona('${p.id}')" style="${p.activo ? '' : 'opacity:.6'}">
-      <div class="cl-fila"><div class="cl-avatar">${esc((p.nombre || '?').trim().charAt(0).toUpperCase())}</div>
-        <div style="min-width:0"><div class="cl-nombre">${esc(p.nombre)}</div>
-          <div><span class="cl-badge cl-badge-${r.clase}">${esc(r.n)}</span>${p.activo ? '' : ' <span class="cl-badge cl-badge-gris">Inactivo</span>'}${p.rol !== 'recepcion' ? (p.pin_configurado ? ' <span class="cl-badge cl-badge-verde">🔑 PIN</span>' : ' <span class="cl-badge cl-badge-rojo">Sin PIN</span>') : ''}</div>
+      <div class="cl-fila"><div class="cl-avatar">${esc(((u?.nombre || p.nombre) || '?').trim().charAt(0).toUpperCase())}</div>
+        <div style="min-width:0"><div class="cl-nombre">${esc(u?.nombre || p.nombre)}</div>
+          <div><span class="cl-badge cl-badge-${r.clase}">${esc(r.n)}</span>${p.activo ? '' : ' <span class="cl-badge cl-badge-gris">Sin acceso clínico</span>'}${u ? '' : EQ.demo && !p.perfil_id ? ' <span class="cl-badge cl-badge-azul">Médico de ejemplo (demo)</span>' : ' <span class="cl-badge cl-badge-rojo">El usuario ya no existe</span>'}</div>
           <div class="cl-sub">${[p.especialidad, p.registro_profesional && 'Cód. ' + p.registro_profesional,
-            p.honorario_tipo === 'porcentaje' && `Honorario ${Number(p.honorario_valor)}%`, p.honorario_tipo === 'monto' && `Honorario fijo ${Number(p.honorario_valor)}`, cons(p.consultorio_id) && '🚪 ' + cons(p.consultorio_id), p.atiende ? 'Atiende pacientes' : ''].filter(Boolean).map(esc).join(' · ')}</div></div></div></div>`; }).join('');
+            prof(p.agenda_profesional_id) ? '📅 Agenda: ' + prof(p.agenda_profesional_id) : 'Sin columna en la Agenda',
+            p.honorario_tipo === 'porcentaje' && `Honorario ${Number(p.honorario_valor)}%`, p.honorario_tipo === 'monto' && `Honorario fijo ${Number(p.honorario_valor)}`, cons(p.consultorio_id) && '🚪 ' + cons(p.consultorio_id)].filter(Boolean).map(esc).join(' · ')}</div></div></div></div>`; }).join('');
 }
 function abrirPersona(id) {
   const p = id ? EQ.personal.find(x => x.id === id) : null;
+  EQ.modoNuevo = false;
+  $e('pe-nuevo-wrap').style.display = 'none'; $e('pe-usuario-wrap').style.display = ''; $e('pe-profesional-wrap').style.display = '';
   EQ.editId = p ? p.id : null;
-  $e('pe-titulo').textContent = p ? '✏️ Editar persona' : '👤 Agregar persona';
-  $e('pe-nombre').value = p?.nombre || ''; $e('pe-rol').value = p?.rol || 'medico';
-  $e('pe-atiende').checked = p ? !!p.atiende : true;
+  $e('pe-titulo').textContent = p ? '✏️ Editar médico' : '🩺 Marcar un usuario como médico';
+  const libres = EQ.usuarios.filter(u => !EQ.personal.some(x => x.perfil_id === u.id));
+  $e('pe-usuario').innerHTML = p ? `<option value="${esc(p.perfil_id)}">${esc(EQ.usuarios.find(u => u.id === p.perfil_id)?.nombre || p.nombre)}</option>`
+    : (libres.length ? '<option value="">— Elige el usuario —</option>' : '<option value="">No hay usuarios libres</option>') + libres.map(u => `<option value="${esc(u.id)}">${esc(u.nombre)}${u.tipo === 'admin' ? ' (administrador)' : ''}</option>`).join('');
+  $e('pe-usuario').disabled = !!p;
+  $e('pe-usuario-ayuda').style.display = p ? 'none' : '';
+  $e('pe-rol').value = ['admin', 'enfermeria'].includes(p?.rol) ? p.rol : 'medico';
   const selE = $e('pe-especialidad');
   if (selE.options.length <= 1) Object.entries(CLINICA_ESPECIALIDADES).forEach(([k, v]) => selE.add(new Option(`${v.e} ${v.n}`, v.n)));
   selE.value = p?.especialidad && [...selE.options].some(o => o.value === p.especialidad) ? p.especialidad : '';
-  $e('pe-registro').value = p?.registro_profesional || ''; $e('pe-telefono').value = p?.telefono || '';
+  $e('pe-registro').value = p?.registro_profesional || '';
+  const usados = new Set(EQ.personal.filter(x => x.id !== p?.id).map(x => x.agenda_profesional_id).filter(Boolean));
+  $e('pe-profesional').innerHTML = '<option value="">— Ninguna —</option>' + EQ.profesionales.filter(x => !usados.has(x.id) && (x.activo || x.id === p?.agenda_profesional_id))
+    .map(x => `<option value="${esc(x.id)}">${esc(x.nombre)}</option>`).join('');
+  $e('pe-profesional').value = p?.agenda_profesional_id || '';
   $e('pe-consultorio').innerHTML = '<option value="">— Ninguno —</option>' + EQ.consultorios.filter(k => k.activo || k.id === p?.consultorio_id).map(k => `<option value="${esc(k.id)}">${esc(k.nombre)}</option>`).join('');
   $e('pe-consultorio').value = p?.consultorio_id || '';
-  $e('pe-pin').value = ''; $e('pe-pin2').value = '';
-  $e('pe-pin-ayuda').textContent = p?.pin_configurado ? 'Déjalo vacío para no cambiarlo. Si lo cambias, se cierran sus sesiones abiertas.' : 'De 4 a 8 números. Solo esta persona debe conocerlo.';
   $e('pe-activo').checked = p ? !!p.activo : true; $e('pe-activo-wrap').style.display = p ? '' : 'none';
   $e('pe-hon-tipo').value = p?.honorario_tipo || 'ninguno'; $e('pe-hon-valor').value = p && p.honorario_tipo !== 'ninguno' ? Number(p.honorario_valor || 0) : '';
-  $e('pe-empleado').innerHTML = '<option value="">— Ninguno —</option>' + (EQ.empleados || []).filter(x => x.estado !== 'inactivo' || x.id === p?.empleado_id).map(x => `<option value="${esc(x.id)}">${esc(x.nombre)}</option>`).join('');
+  $e('pe-empleado').innerHTML = '<option value="">— El del profesional de la Agenda —</option>' + EQ.empleados.filter(x => x.estado !== 'inactivo' || x.id === p?.empleado_id).map(x => `<option value="${esc(x.id)}">${esc(x.nombre)}</option>`).join('');
   $e('pe-empleado').value = p?.empleado_id || '';
-  alCambiarHonorario();
+  alCambiarHonorario(); alCambiarRol();
   $e('pe-error').textContent = '';
-  alCambiarRol();
   openModal('modal-persona');
 }
 function alCambiarHonorario() {
@@ -185,30 +208,69 @@ function alCambiarHonorario() {
 }
 function alCambiarRol() {
   const rol = $e('pe-rol').value;
-  $e('pe-hon-wrap').style.display = rol === 'recepcion' ? 'none' : '';
-  $e('pe-pin-wrap').style.display = rol === 'recepcion' ? 'none' : '';
-  $e('pe-rol-ayuda').textContent = rol === 'medico' ? 'Ve y escribe expedientes con su PIN.'
-    : rol === 'admin' ? 'Todo lo del médico, más anular notas de otros, administrar el equipo y ver la bitácora.'
-    : 'Agenda, sala de espera y cobro. No puede ver expedientes ni notas clínicas.';
-  if (!EQ.editId) $e('pe-atiende').checked = rol === 'medico';
+  $e('pe-rol-ayuda').textContent = rol === 'medico' ? 'Ve y escribe expedientes con su código de usuario.'
+    : rol === 'enfermeria' ? 'Con su código escribe notas de enfermería y signos de los pacientes en observación u hospitalización, y ve sus alergias. No abre expedientes ni consultas.'
+    : 'Todo lo del médico, más anular notas de otros, administrar médicos y ver la bitácora.';
+  // Enfermería no tiene columna en la Agenda ni honorarios por consulta.
+  document.querySelectorAll('.pe-solo-medico').forEach(el => { el.style.display = rol === 'enfermeria' ? 'none' : ''; });
+  if (EQ.modoNuevo) $e('pe-profesional-wrap').style.display = 'none';      // en "Nuevo médico" la columna se crea sola
+  if (rol === 'enfermeria') { $e('pe-profesional').value = ''; $e('pe-hon-tipo').value = 'ninguno'; alCambiarHonorario(); }
+}
+/* ---------- ➕ Nuevo médico: crea su usuario, su columna en la Agenda y su ficha, en una sola operación ----------
+   (clinica_personal_nuevo: todo o nada). En una cuenta demo no se crea usuario ni se pide código. */
+function abrirNuevoMedico() {
+  abrirPersona(null);
+  EQ.modoNuevo = true;
+  $e('pe-titulo').textContent = '➕ Nuevo médico';
+  $e('pe-nuevo-wrap').style.display = ''; $e('pe-usuario-wrap').style.display = 'none'; $e('pe-profesional-wrap').style.display = 'none';
+  $e('pe-nombre').value = ''; $e('pe-codigo').value = ''; $e('pe-codigo2').value = ''; $e('pe-crear-col').checked = true;
+  $e('pe-codigo-wrap').style.display = EQ.demo ? 'none' : ''; $e('pe-codigo-ayuda').textContent = EQ.demo
+    ? 'Cuenta demo: queda como médico de ejemplo (para abrir expedientes se elige de la lista, sin código).'
+    : 'Se crea su usuario del sistema: con este código abre expedientes y entra a sus pantallas de Clínica y la Agenda (si el multiusuario está activo).';
+  alCambiarRol();
+  setTimeout(() => $e('pe-nombre').focus(), 50);
+}
+const MOTIVOS_NUEVO = {
+  nombre: 'Escribe el nombre completo (de 3 a 80 letras).', codigo: 'El código debe tener de 4 a 12 números.',
+  nombre_repetido: 'Ya existe un usuario del sistema con ese nombre. Usa "Usar un usuario que ya existe" o cambia el nombre.',
+  limite_perfiles: 'Llegaste al límite de usuarios de tu plan. Desactiva uno que ya no use o amplía tu plan.',
+  honorario: 'Revisa los honorarios (el porcentaje no puede pasar de 100).', consultorio: 'Ese consultorio ya no existe.',
+};
+async function guardarNuevoMedico() {
+  const err = $e('pe-error'); err.textContent = '';
+  const nombre = $e('pe-nombre').value.trim(), rol = $e('pe-rol').value, c1 = $e('pe-codigo').value.trim(), c2 = $e('pe-codigo2').value.trim();
+  if (nombre.length < 3) { err.textContent = MOTIVOS_NUEVO.nombre; $e('pe-nombre').focus(); return; }
+  if (!EQ.demo) {
+    if (!/^[0-9]{4,12}$/.test(c1)) { err.textContent = MOTIVOS_NUEVO.codigo; $e('pe-codigo').focus(); return; }
+    if (c1 !== c2) { err.textContent = 'Los dos códigos no son iguales.'; $e('pe-codigo2').focus(); return; }
+  }
+  const htipo = $e('pe-hon-tipo').value, hval = Number($e('pe-hon-valor').value || 0);
+  if (rol !== 'enfermeria' && htipo !== 'ninguno' && !(hval > 0)) return (err.textContent = 'Escribe el valor del honorario (mayor que 0).');
+  if (htipo === 'porcentaje' && hval > 100) return (err.textContent = 'El porcentaje no puede pasar de 100.');
+  const datos = { rol, especialidad: $e('pe-especialidad').value || null, registro_profesional: $e('pe-registro').value.trim() || null,
+    consultorio_id: $e('pe-consultorio').value || null, honorario_tipo: htipo, honorario_valor: htipo === 'ninguno' ? 0 : hval, empleado_id: $e('pe-empleado').value || null };
+  const auth = EQ.demo ? {} : await autorizacion();
+  if (!auth) return;
+  const btn = $e('pe-btn-guardar'); btn.disabled = true;
+  try {
+    const { data: r, error } = await sb.rpc('clinica_personal_nuevo', { p_auth: auth, p_nombre: nombre, p_codigo: EQ.demo ? null : c1, p_datos: datos, p_columna_agenda: rol !== 'enfermeria' && $e('pe-crear-col').checked });
+    if (error) throw error;
+    if (!r || !r.ok) { revisarRechazo(r); err.textContent = MOTIVOS_NUEVO[r && r.motivo] || clinicaTextoMotivo(r); return; }
+    showToast(r.agenda_profesional_id ? `Listo: ${nombre} ya está en el equipo y tiene su columna en la Agenda.` : `Listo: ${nombre} ya está en el equipo.`);
+    closeModal('modal-persona'); await cargar();
+  } catch (e) { console.error('guardarNuevoMedico:', e); err.textContent = 'No se pudo crear. Intenta de nuevo.'; }
+  finally { btn.disabled = false; }
 }
 async function guardarPersona() {
+  if (EQ.modoNuevo) return guardarNuevoMedico();
   const err = $e('pe-error'); err.textContent = '';
-  const rol = $e('pe-rol').value, pin = $e('pe-pin').value.trim(), pin2 = $e('pe-pin2').value.trim();
-  const nombre = $e('pe-nombre').value.trim();
-  const previo = EQ.editId ? EQ.personal.find(x => x.id === EQ.editId) : null;
-  if (!nombre) return (err.textContent = 'Escribe el nombre.');
-  if (rol !== 'recepcion') {
-    if (pin || !previo?.pin_configurado) {
-      if (!/^[0-9]{4,8}$/.test(pin)) return (err.textContent = 'El PIN debe tener de 4 a 8 números.');
-      if (pin !== pin2) return (err.textContent = 'Los dos PIN no coinciden.');
-      if (/^(\d)\1+$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) return (err.textContent = 'Ese PIN es muy fácil de adivinar. Elige otro.');
-    }
-  }
-  const datos = { nombre, rol, atiende: $e('pe-atiende').checked, especialidad: $e('pe-especialidad').value || null, registro_profesional: $e('pe-registro').value.trim() || null,
-    telefono: $e('pe-telefono').value.trim() || null, consultorio_id: $e('pe-consultorio').value || null, pin: rol !== 'recepcion' && pin ? pin : null };
+  const perfil = $e('pe-usuario').value, rol = $e('pe-rol').value;
+  if (!EQ.editId && !perfil) return (err.textContent = 'Elige el usuario del sistema.');
+  const datos = { rol, especialidad: $e('pe-especialidad').value || null, registro_profesional: $e('pe-registro').value.trim() || null,
+    consultorio_id: $e('pe-consultorio').value || null, agenda_profesional_id: $e('pe-profesional').value || null };
+  if (!EQ.editId) datos.perfil_id = perfil;
   if (EQ.editId) datos.activo = $e('pe-activo').checked;
-  const htipo = rol === 'recepcion' ? 'ninguno' : $e('pe-hon-tipo').value, hval = Number($e('pe-hon-valor').value || 0);
+  const htipo = $e('pe-hon-tipo').value, hval = Number($e('pe-hon-valor').value || 0);
   if (htipo !== 'ninguno' && !(hval > 0)) return (err.textContent = 'Escribe el valor del honorario (mayor que 0).');
   if (htipo === 'porcentaje' && hval > 100) return (err.textContent = 'El porcentaje no puede pasar de 100.');
   Object.assign(datos, { honorario_tipo: htipo, honorario_valor: htipo === 'ninguno' ? 0 : hval, empleado_id: $e('pe-empleado').value || null });
@@ -219,7 +281,7 @@ async function guardarPersona() {
     const { data: r, error } = await sb.rpc('clinica_personal_guardar', { p_auth: auth, p_id: EQ.editId, p_datos: datos });
     if (error) throw error;
     if (!r || !r.ok) { revisarRechazo(r); err.textContent = clinicaTextoMotivo(r); return; }
-    showToast(EQ.editId ? 'Datos actualizados.' : 'Persona agregada.'); closeModal('modal-persona'); await cargar();
+    showToast(EQ.editId ? 'Datos actualizados.' : 'Listo: ese usuario ya es médico.'); closeModal('modal-persona'); await cargar();
   } catch (e) { console.error('guardarPersona:', e); err.textContent = 'No se pudo guardar. Intenta de nuevo.'; }
   finally { btn.disabled = false; }
 }
@@ -266,10 +328,69 @@ function pintarEspecialidades() {
   $e('es-lista').innerHTML = Object.entries(CLINICA_ESPECIALIDADES).map(([k, v]) =>
     `<label class="cl-check"><input type="checkbox" data-esp="${esc(k)}" ${todas || cfg.includes(k) ? 'checked' : ''} ${todas ? 'disabled' : ''}/> ${v.e} ${esc(v.n)}</label>`).join('');
   $e('es-error').textContent = '';
+  document.querySelectorAll('#es-lista [data-esp]').forEach(el => el.addEventListener('change', pintarServiciosSugeridos));
+  pintarServiciosSugeridos();
 }
 function alMarcarTodas() {
   const t = $e('es-todas').checked;
   document.querySelectorAll('#es-lista [data-esp]').forEach(el => { el.disabled = t; if (t) el.checked = true; });
+  pintarServiciosSugeridos();
+}
+
+/* ---------- Servicios sugeridos por especialidad ----------
+   Agrega al catálogo (productos, tipo servicio) los servicios típicos de las especialidades marcadas, con
+   el precio que se escriba. Nunca cambia ni duplica lo que ya existe (se compara el nombre). */
+const _sinAcentoEq = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+async function pintarServiciosSugeridos() {
+  const cont = $e('es-servicios'); if (!cont) return;
+  const marcadas = $e('es-todas').checked ? Object.keys(CLINICA_ESPECIALIDADES)
+    : [...document.querySelectorAll('#es-lista [data-esp]')].filter(el => el.checked).map(el => el.dataset.esp);
+  const grupos = marcadas.map(k => ({ k, lista: clinicaServiciosSugeridos(k) })).filter(g => g.lista.length);
+  if (!grupos.length) { cont.innerHTML = '<p class="cl-sub">Marca una especialidad para ver sus servicios típicos.</p>'; $e('es-serv-btn').style.display = 'none'; return; }
+  try {
+    if (!EQ.catalogoServicios) {
+      const { data, error } = await sb.from('productos').select('id, nombre').eq('auth_user_id', STATE.userId).eq('tipo', 'servicio');
+      if (error) throw error;
+      EQ.catalogoServicios = new Set((data || []).map(x => _sinAcentoEq(x.nombre)));
+    }
+  } catch (e) { console.error('servicios del catálogo:', e); cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudo revisar tu catálogo.</p>'; return; }
+  const vistos = new Set(); let nuevos = 0;
+  cont.innerHTML = grupos.map(g => {
+    const esp = CLINICA_ESPECIALIDADES[g.k];
+    const filas = g.lista.filter(x => !vistos.has(_sinAcentoEq(x.n)) && vistos.add(_sinAcentoEq(x.n))).map(x => {
+      const ya = EQ.catalogoServicios.has(_sinAcentoEq(x.n)); if (!ya) nuevos++;
+      return `<div class="es-serv" style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border,#e5e7eb)">
+        <label class="cl-check" style="flex:1;min-width:0;margin:0"><input type="checkbox" data-serv="${esc(x.n)}" ${ya ? 'disabled' : 'checked'}/> <span style="overflow-wrap:anywhere">${esc(x.n)}</span></label>
+        ${ya ? '<span class="cl-badge cl-badge-verde" style="flex-shrink:0">✔ Ya está</span>'
+          : `<input type="number" class="cl-in" data-precio="${esc(x.n)}" min="0" step="any" value="${esc(String(x.p))}" aria-label="Precio de ${esc(x.n)}" style="width:96px;flex-shrink:0"/>`}</div>`;
+    }).join('');
+    return filas ? `<div style="margin-bottom:10px"><div style="font-weight:800;font-size:13px;margin:6px 0">${esp.e} ${esc(esp.n)}</div>${filas}</div>` : '';
+  }).join('');
+  $e('es-serv-btn').style.display = nuevos ? '' : 'none';
+  $e('es-serv-error').textContent = '';
+}
+async function agregarServiciosSugeridos() {
+  const err = $e('es-serv-error'); err.textContent = '';
+  const elegidos = [...document.querySelectorAll('#es-servicios [data-serv]')].filter(el => el.checked && !el.disabled).map(el => {
+    const nombre = el.dataset.serv, inp = [...document.querySelectorAll('#es-servicios [data-precio]')].find(x => x.dataset.precio === nombre);
+    return { nombre, precio: Number(inp && inp.value) };
+  });
+  if (!elegidos.length) { err.textContent = 'Marca al menos un servicio.'; return; }
+  const malo = elegidos.find(x => !(x.precio >= 0) || x.precio > 10000000);
+  if (malo) { err.textContent = `Revisa el precio de "${malo.nombre}".`; return; }
+  const btn = $e('es-serv-btn'); btn.disabled = true;
+  try {
+    EQ.catalogoServicios = null;
+    const { data, error: e1 } = await sb.from('productos').select('nombre').eq('auth_user_id', STATE.userId).eq('tipo', 'servicio');
+    if (e1) throw e1;
+    const ya = new Set((data || []).map(x => _sinAcentoEq(x.nombre)));
+    const filas = elegidos.filter(x => !ya.has(_sinAcentoEq(x.nombre)))
+      .map(x => ({ auth_user_id: STATE.userId, nombre: x.nombre.slice(0, 150), tipo: 'servicio', precio: Math.round(x.precio * 100) / 100, costo: 0, activo: true }));
+    if (filas.length) { const { error } = await sb.from('productos').insert(filas); if (error) throw error; }
+    showToast(filas.length ? `${filas.length} servicio${filas.length === 1 ? '' : 's'} agregado${filas.length === 1 ? '' : 's'} al catálogo.` : 'Esos servicios ya estaban en tu catálogo.');
+    await pintarServiciosSugeridos();
+  } catch (e) { console.error('agregarServiciosSugeridos:', e); err.textContent = 'No se pudieron agregar. Intenta de nuevo.'; }
+  finally { btn.disabled = false; }
 }
 async function guardarEspecialidades() {
   const todas = $e('es-todas').checked;
@@ -305,28 +426,4 @@ async function verBitacora() {
       + (filas.length >= 500 ? '<p class="cl-sub">Se muestran los 500 más recientes: acorta las fechas para ver el resto.</p>' : '')
       : '<p class="cl-sub">No hay movimientos en esas fechas.</p>';
   } catch (e) { console.error('verBitacora:', e); cont.innerHTML = '<p style="color:var(--danger,#dc2626)">No se pudo cargar la bitácora.</p>'; }
-}
-
-/* ---------- Mi PIN ---------- */
-function pintarMiPin() {
-  const sel = $e('mp-persona');
-  const conPin = EQ.personal.filter(p => p.activo && p.rol !== 'recepcion' && p.pin_configurado);
-  sel.innerHTML = '<option value="">— Elige tu nombre —</option>' + conPin.map(p => `<option value="${esc(p.id)}">${esc(p.nombre)}</option>`).join('');
-  const s = ClinicaSesion.leer(); if (s && conPin.some(p => p.id === s.personal_id)) sel.value = s.personal_id;
-  ['mp-actual', 'mp-nuevo', 'mp-nuevo2'].forEach(i => { $e(i).value = ''; }); $e('mp-error').textContent = '';
-}
-async function cambiarMiPin() {
-  const err = $e('mp-error'); err.textContent = '';
-  const pid = $e('mp-persona').value, a = $e('mp-actual').value.trim(), n = $e('mp-nuevo').value.trim(), n2 = $e('mp-nuevo2').value.trim();
-  if (!pid) return (err.textContent = 'Elige tu nombre.');
-  if (!/^[0-9]{4,8}$/.test(n)) return (err.textContent = 'El PIN nuevo debe tener de 4 a 8 números.');
-  if (n !== n2) return (err.textContent = 'Los dos PIN nuevos no coinciden.');
-  if (/^(\d)\1+$/.test(n) || '0123456789'.includes(n) || '9876543210'.includes(n)) return (err.textContent = 'Ese PIN es muy fácil de adivinar. Elige otro.');
-  try {
-    const { data: r, error } = await sb.rpc('clinica_cambiar_pin', { p_personal_id: pid, p_pin_actual: a, p_pin_nuevo: n });
-    if (error) throw error;
-    if (!r || !r.ok) { err.textContent = clinicaTextoMotivo(r); return; }
-    if (ClinicaSesion.leer()?.personal_id === pid) await ClinicaSesion.bloquear();
-    showToast('PIN cambiado. Úsalo la próxima vez que entres.'); pintarMiPin();
-  } catch (e) { console.error('cambiarMiPin:', e); err.textContent = 'No se pudo cambiar. Intenta de nuevo.'; }
 }

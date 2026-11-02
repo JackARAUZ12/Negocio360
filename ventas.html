@@ -9,7 +9,12 @@
 
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="modulos-registro.js?v=20261024b"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261031a"></script>
+  <script src="periodo-mes.js?v=20261024a"></script>
+  <script src="cierre-pendiente.js?v=20261028a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261013a"></script>
   <!-- jsPDF: usado para generar el recibo PDF de cada venta -->
@@ -854,6 +859,10 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Configuración del módulo
           </button>
+          <button class="btn-secondary" id="btn-exportar-ventas" onclick="abrirExportarVentas()" title="Exportar ventas a Excel o PDF con filtros, subtotales y totales">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Exportar
+          </button>
           <button class="btn-secondary" id="btn-venta-rapida" onclick="abrirVentaRapida()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/>
@@ -1225,10 +1234,11 @@
         <!-- BLOQUE IVA -->
         <div class="iva-block">
           <div class="iva-left">
-            <div class="iva-switch" id="iva-switch" onclick="toggleIva()"></div>
+            <div class="iva-switch" id="iva-switch" onclick="toggleIvaUI()"></div>
             <div>
               <div class="iva-label">Cobrar impuesto (IVA)</div>
               <div class="iva-sub">Se suma al total y se acumula en Impuestos</div>
+              <button type="button" id="iva-cr-btn" onclick="abrirPanelIvaCR()" style="display:none;margin-top:5px;padding:3px 10px;border:1px solid var(--accent);border-radius:7px;background:transparent;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">Elegir tarifa de IVA</button>
             </div>
           </div>
           <div class="iva-right">
@@ -1250,6 +1260,7 @@
             <span class="label">Descuento total</span>
             <span class="value" id="res-descuento">—</span>
           </div>
+          <div id="res-dg"></div>
           <div id="res-promociones-aviso" style="margin-bottom:8px"></div>
           <div class="resumen-row">
             <span class="label" id="res-impuestos-label">Impuestos (IVA)</span>
@@ -1419,6 +1430,14 @@
           <input type="number" id="vrc-iva-porcentaje" value="15" min="0" max="100" step="0.01" disabled/>
           <span>%</span>
         </div>
+      </div>
+      <div id="vrc-iva-cr" style="display:none;margin-top:10px">
+        <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:5px">Tarifa de IVA</label>
+        <select id="vrc-iva-cr-tarifa" class="form-input" disabled></select>
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-top:9px;font-size:13px;line-height:1.35">
+          <input type="checkbox" id="vrc-iva-cr-prod" disabled style="margin-top:3px"/>
+          <span>Usar la tarifa guardada en cada producto <span style="color:var(--text-muted)">(los productos sin tarifa usan la de arriba)</span></span>
+        </label>
       </div>
       </div>
 
@@ -1773,6 +1792,26 @@
      de precios" configurada en Productos. Los productos de
      precio fijo nunca muestran este modal.
 ===================================================== -->
+<!-- IVA DE COSTA RICA: elegir la tarifa (una para toda la venta o una por producto). Solo se abre en cuentas de Costa Rica. -->
+<div class="modal-overlay" id="modal-iva-cr" onclick="if(event.target===this)cerrarPanelIvaCR()">
+  <div class="modal-box modal-sm">
+    <div class="modal-header">
+      <div>
+        <span class="modal-title">IVA a cobrar</span>
+        <div class="modal-subtitle">Elige la tarifa de esta venta</div>
+      </div>
+      <button class="modal-close" onclick="cerrarPanelIvaCR()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="iva-cr-lista" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="cerrarPanelIvaCR()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmarPanelIvaCR()">Aceptar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-escala-precio" onclick="if(event.target===this)cerrarSelectorEscala()">
   <div class="modal-box modal-sm">
     <div class="modal-header">
@@ -2027,7 +2066,7 @@
 </div>
 
 <script src="reporte-grupo-shim.js"></script>
-<script src="comprobante-carta.js?v=20261023h"></script>
+<script src="comprobante-carta.js?v=20261101c"></script>
 <script src="escpos-usb.js?v=20261011a"></script>
 <script src="escpos-ble.js?v=20261012a"></script>
 <script src="unidades-medida.js?v=20261008a"></script>
@@ -2036,18 +2075,25 @@
 <script src="cliente-repetido.js?v=20261016a"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
 <script src="moneda-alterna.js?v=20261021b"></script>
-<script src="ventas-config.js?v=20261021a"></script>
+<script src="ventas-config.js?v=20261028a"></script>
 <script src="rawbt-print.js?v=20261023a"></script>
 <script src="ticket-prueba-ancho.js?v=20261022a"></script>
-<script src="ventas.js?v=20261024a"></script>
+<script src="paginar-lectura.js?v=20261029d"></script>
+<script src="iva-lineas.js?v=20261101a"></script>
+<script src="ventas.js?v=20261101e"></script>
+<script src="exportar-modulo.js?v=20261029b"></script>
+<script src="exportar-ventas.js?v=20261101c"></script>
 <script src="certificados-venta.js?v=20261023i"></script>
-<script src="select-buscable.js?v=20261015b"></script>
+<script src="select-buscable.js?v=20261025e"></script>
+<script src="series-proveedor.js?v=20261031a"></script>
 <script src="ventas-correcciones.js?v=20261016a"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>
 <script src="ventas-devoluciones.js?v=20261016a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="perfiles-guard.js?v=20261021c"></script>
-<script src="modulos-guard.js?v=20261024a"></script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+<script src="modulos-guard.js?v=20261031a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
 <div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">

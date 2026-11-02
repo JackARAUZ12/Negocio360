@@ -13,6 +13,9 @@
    actualiza solo.
 
    Uso: N360SelectBuscable.mejorar(selectElement, { placeholder })
+   Opcional textoLibre: { leer(), escribir(texto) } -- lo escrito que no
+   es de la lista se conserva como "persona nueva" (un solo campo para
+   buscar o escribir). Solo lo usa quien lo pide; los demás, igual.
    ============================================================ */
 (function () {
   'use strict';
@@ -77,7 +80,8 @@
       var it = items.find(function (x) { return x.value === v; });
       return it ? it.texto : '';
     }
-    function mostrarSeleccion() { input.value = etiquetaActual(); }
+    var libre = opciones.textoLibre || null;
+    function mostrarSeleccion() { input.value = etiquetaActual() || (libre && !descValor.get.call(sel) ? (libre.leer() || '') : ''); }
 
     function posicionar() {
       var r = input.getBoundingClientRect();
@@ -87,9 +91,14 @@
       if (abajo < 220 && arriba > abajo) { lista.style.top = ''; lista.style.bottom = (window.innerHeight - r.top + 4) + 'px'; }
       else { lista.style.bottom = ''; lista.style.top = (r.bottom + 4) + 'px'; }
     }
+    function opcionLibre() {
+      var t = input.value.trim();
+      if (!libre || !t || filtrados.some(function (it) { return norm(it.texto) === norm(t); })) return '';
+      return '<div class="sb-op sb-libre" role="option" data-libre="1" style="padding:8px 12px;border-radius:7px;cursor:pointer;font-size:13.5px;font-weight:700;color:var(--accent,#6C63FF)">➕ Persona nueva: «' + esc(t) + '»</div>';
+    }
     function pintar() {
       if (!filtrados.length) {
-        lista.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--text-muted,#888)">Sin resultados</div>';
+        lista.innerHTML = opcionLibre() || '<div style="padding:10px 12px;font-size:13px;color:var(--text-muted,#888)">Sin resultados</div>';
         return;
       }
       var v = descValor.get.call(sel);
@@ -101,7 +110,7 @@
       if (filtrados.length > MAX_VISIBLES) {
         html += '<div style="padding:6px 12px;font-size:12px;color:var(--text-muted,#888)">… y ' + (filtrados.length - MAX_VISIBLES) + ' más. Sigue escribiendo para encontrarlo.</div>';
       }
-      lista.innerHTML = html;
+      lista.innerHTML = html + opcionLibre();
       var m = lista.querySelector('[data-i="' + activo + '"]');
       if (m) m.scrollIntoView({ block: 'nearest' });
     }
@@ -125,8 +134,18 @@
       lista.style.display = 'none';
       input.setAttribute('aria-expanded', 'false');
     }
+    // Texto libre: queda sin elegir de la lista y lo escrito se guarda como persona nueva.
+    function elegirLibre() {
+      var t = input.value.trim(), antes = descValor.get.call(sel);
+      descValor.set.call(sel, '');
+      libre.escribir(t);
+      input.value = t;
+      cerrar();
+      if (antes !== '') sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
     function elegir(it) {
       var antes = descValor.get.call(sel);
+      if (libre && it) libre.escribir('');
       descValor.set.call(sel, it ? it.value : '');
       mostrarSeleccion();
       cerrar();
@@ -148,6 +167,7 @@
         if (lista.style.display === 'block') {
           e.preventDefault();
           if (activo >= 0 && filtrados[activo]) elegir(filtrados[activo]);
+          else if (libre && input.value.trim()) elegirLibre();
         }
       } else if (e.key === 'Escape') {
         if (lista.style.display === 'block') { e.preventDefault(); e.stopPropagation(); mostrarSeleccion(); cerrar(); }
@@ -159,12 +179,16 @@
     lista.addEventListener('mousedown', function (e) {
       var op = e.target.closest('.sb-op');
       e.preventDefault();
-      if (op) elegir(filtrados[Number(op.getAttribute('data-i'))]);
+      if (op && op.getAttribute('data-libre')) elegirLibre();
+      else if (op) elegir(filtrados[Number(op.getAttribute('data-i'))]);
     });
     input.addEventListener('blur', function () {
       setTimeout(function () {
         if (document.activeElement === input) return;
         // Si borró todo el texto, se quita la selección; si escribió algo sin elegir, se vuelve a lo elegido.
+        // Con texto libre: lo escrito sin elegir queda como persona nueva.
+        if (libre && input.value.trim() && input.value !== etiquetaActual()) { elegirLibre(); return; }
+        if (libre && !input.value.trim()) { libre.escribir(''); if (descValor.get.call(sel)) elegir(null); else cerrar(); return; }
         if (!input.value.trim() && descValor.get.call(sel)) elegir(null);
         else mostrarSeleccion();
         cerrar();

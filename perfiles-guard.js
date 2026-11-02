@@ -899,14 +899,32 @@
   function primerModuloPermitido(perfil) {
     const permitido = MODULO_ORDEN.find(k => (perfil.modulos || []).includes(k));
     const entry = Object.entries(MODULOS).find(([, v]) => v.key === permitido);
-    return entry ? entry[0] : 'dashboard.html';
+    if (!entry) return 'dashboard.html';
+    // Una pantalla que va dentro de un panel (p. ej. Clínica) se abre desde su panel.
+    const panel = (window.NEGOCIO360_MODULOS || {})[entry[0]]?.enPanel;
+    return panel || entry[0];
+  }
+
+  // La venta OCULTA que usan las pantallas de cobro (mesa del Restaurante, Clínica o Transporte: ventas.html?…&motor=1,
+  // siempre dentro de esa pantalla) se permite a quien tiene la pantalla que cobra, aunque no tenga Ventas.
+  function motorDeCobroPermitido(perfil, file) {
+    if (file !== 'ventas.html' || window.self === window.top) return false;
+    const q = new URLSearchParams(location.search);
+    if (q.get('motor') !== '1') return false;
+    const p = new Set(perfil.modulos || []);
+    if (q.get('rest_cobro') === '1') return p.has('restaurante_comandas');
+    if (q.get('clinica_cobro') === '1') return p.has('agenda') || [...p].some(k => String(k).startsWith('clinica_'));
+    if (q.get('tx_cobro') === '1') return p.has('transporte_facturacion') || p.has('transporte_ordenes');
+    return false;
   }
 
   function redirigirSiHaceFalta(perfil) {
     if (perfil.tipo === 'admin') return;
     const file = currentFile();
+    if (motorDeCobroPermitido(perfil, file)) return;
     const mod  = MODULOS[file];
-    if (mod && mod.key !== 'chat' && !(perfil.modulos || []).includes(mod.key)) {
+    const panelOk = window.NEGOCIO360_PANEL_PERMITIDO && window.NEGOCIO360_PANEL_PERMITIDO(file, new Set(perfil.modulos || []));
+    if (mod && mod.key !== 'chat' && !(perfil.modulos || []).includes(mod.key) && !panelOk) {
       location.href = primerModuloPermitido(perfil);
     }
   }
@@ -947,7 +965,8 @@
       const mod  = MODULOS[file];
       const soloAdmin = (window.NEGOCIO360_MODULOS || {})[file]?.soloAdmin === true;
       if (!mod && !soloAdmin) return; // páginas no controladas (login, etc.) se dejan intactas
-      if (soloAdmin || !permitidos.has(mod.key)) { // Configuración y Auditoría son solo del administrador
+      const panelOk = window.NEGOCIO360_PANEL_PERMITIDO && window.NEGOCIO360_PANEL_PERMITIDO(file, permitidos);
+      if (soloAdmin || (!permitidos.has(mod.key) && !panelOk)) { // Configuración y Auditoría son solo del administrador
         const item = el.closest('.nav-item') || el;
         item.style.display = 'none';
         item.classList.add('mg-oculto-modulo'); // el buscador del sidebar nunca lo vuelve a mostrar

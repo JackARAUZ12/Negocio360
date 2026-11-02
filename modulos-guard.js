@@ -55,7 +55,7 @@
   Object.entries(window.NEGOCIO360_MODULOS || {}).forEach(([archivo, m]) => {
     if (!m.obligatorio) {
       TODOS_MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '', flagPropio: m.flagPropio || null,
-        flagsAlternos: m.flagsAlternos || [], etiquetasPorFlag: m.etiquetasPorFlag || null };
+        flagsAlternos: m.flagsAlternos || [], etiquetasPorFlag: m.etiquetasPorFlag || null, enPanel: m.enPanel || null };
     }
   });
   const MODULOS_OPCIONALES = {};
@@ -106,6 +106,24 @@
           .select('usa_modulo_transporte').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_transporte = tr?.usa_modulo_transporte === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_transporte = false; }
+      // Taller mecánico: consulta aparte, mismo criterio.
+      try {
+        const { data: ta } = await client.from('configuracion_empresa')
+          .select('usa_modulo_taller').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_taller = ta?.usa_modulo_taller === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_taller = false; }
+      // Mensajería / Delivery: consulta aparte, mismo criterio.
+      try {
+        const { data: ms } = await client.from('configuracion_empresa')
+          .select('usa_modulo_mensajeria').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_mensajeria = ms?.usa_modulo_mensajeria === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_mensajeria = false; }
+      // Comisiones: consulta aparte, mismo criterio.
+      try {
+        const { data: co } = await client.from('configuracion_empresa')
+          .select('usa_modulo_comisiones').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_modulo_comisiones = co?.usa_modulo_comisiones === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_comisiones = false; }
       // Diseño: consulta aparte, mismo criterio.
       try {
         const { data: di } = await client.from('configuracion_empresa')
@@ -353,7 +371,8 @@
     const porFlag = {};
     Object.values(TODOS_MODULOS_OPCIONALES).forEach(m => {
       if (!m.flagPropio) return;
-      if (permitidosPerfil && !permitidosPerfil.has(m.key)) return;
+      if (m.enPanel) return;                       // va dentro de su panel (p. ej. Clínica): el menú solo muestra el panel
+      if (permitidosPerfil && !permitidosPerfil.has(m.key) && !(window.NEGOCIO360_PANEL_PERMITIDO && window.NEGOCIO360_PANEL_PERMITIDO(m.archivo, permitidosPerfil))) return;
       const flagActivo = [m.flagPropio, ...(m.flagsAlternos || [])].find(f => cfg._flagsPropios && cfg._flagsPropios[f] === true);
       if (!flagActivo) return;
       const yaExiste = document.querySelector(`[onclick*="navigate('${m.archivo}')"], a[href="${m.archivo}"]`);

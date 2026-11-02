@@ -915,9 +915,9 @@ async function calcularMovimientoPorTipo(tiposCuenta, fechaDesde, fechaHasta) {
 // vista adicional consultando la tabla gastos directamente.
 async function calcularGastosPorCategoria(desde, hasta) {
   try {
-    const { data, error } = await sbClient.from('gastos')
+    const { data, error } = await N360Leer.todo(() => sbClient.from('gastos')
       .select('categoria, monto').eq('auth_user_id', STATE.userId).eq('estado', 'activo')
-      .gte('fecha', desde).lte('fecha', hasta);
+      .gte('fecha', desde).lte('fecha', hasta), 'gastos');
     if (error) throw error;
     const porCategoria = {};
     (data || []).forEach(g => {
@@ -2609,9 +2609,13 @@ async function cargarImpuestosContables() {
       if (cuotas > 0) bloqueIva += `<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">ℹ️ El módulo Impuestos incluye ${fmt(cuotas)} de impuestos cobrados en cuotas de créditos financieros. Esos todavía no generan asiento automático, por eso puede haber diferencia.</div>`;
     } catch (e) { console.warn('conciliación IVA:', e); }
     try {
-      let q = sbClient.from('retenciones_ir').select('lado, monto, estado, fecha').eq('auth_user_id', STATE.userId).eq('estado', 'pendiente');
-      if (hasta) q = q.lte('fecha', hasta);
-      const { data: rets } = await q.limit(5000);
+      // Antes: .limit(5000), pero el servidor corta en 1000 filas → ahora se leen todas.
+      const { data: rets, error: errRets } = await N360Leer.todo(() => {
+        let q = sbClient.from('retenciones_ir').select('lado, monto, estado, fecha').eq('auth_user_id', STATE.userId).eq('estado', 'pendiente');
+        if (hasta) q = q.lte('fecha', hasta);
+        return q;
+      }, 'retenciones de IR');
+      if (errRets) throw errRets;
       const sumLado = l => round2((rets || []).filter(r => r.lado === l).reduce((a, r) => a + Number(r.monto || 0), 0));
       const idRP = mapeo.get('retencion_ir')?.cuenta_haber_id, idRF = mapeo.get('retencion_ir_clientes')?.cuenta_debe_id;
       const compartida = idRP && ['impuesto_ventas_otros', 'nomina_deducciones_ley', 'aporte_patronal'].some(t => mapeo.get(t)?.cuenta_haber_id === idRP);

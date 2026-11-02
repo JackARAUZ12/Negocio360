@@ -4,6 +4,9 @@
    ven bien en tema claro y oscuro. Pensados primero para
    celular (360 px) y luego computadora.
 ===================================================== */
+/* El sistema llama a sus fondos --bg-surface (tarjetas) y --bg-base (fondo). Estos nombres
+   cortos los usan las pantallas de Clínica: así siguen al tema claro u oscuro. */
+:root { --bg-card: var(--bg-surface, #fff); --bg-app: var(--bg-base, #f5f5f7); }
 .cl-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
 .cl-barra { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
 .cl-buscador { position:relative; flex:1; min-width:200px; max-width:460px; }
@@ -98,3 +101,44 @@
   .cl-hide-m { display:none !important; }
 }
 @media print { .cl-no-imprimir { display:none !important; } }
+
+/* ---------- Fase 4: plantillas por especialidad y odontograma ---------- */
+.cl-ancho { grid-column:1/-1; }
+.cl-calc { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 2px; }
+.cl-calc .cl-badge { font-size:12px; padding:4px 9px; line-height:1.35; }
+.cl-plantilla { border-left:3px solid var(--accent,#6C63FF); padding:2px 0 2px 10px; margin:6px 0; }
+.odo { margin:4px 0; }
+.odo-tit { font-size:12px; font-weight:800; color:var(--text-muted); margin:6px 0 2px; text-align:center; }
+.odo-arcada { display:flex; flex-direction:column; gap:6px; align-items:center; }
+.odo-arcada .odo-fila + .odo-fila { border-top:2px dashed var(--border,#cbd5e1); padding-top:6px; }
+.odo-fila { display:flex; flex-wrap:wrap; justify-content:center; gap:4px 10px; }
+.odo-q { display:flex; gap:2px; }
+.odo-izq { padding-right:8px; border-right:2px dashed var(--border,#cbd5e1); }
+.odo-d { width:33px; height:44px; border:2px solid #cbd5e1; border-radius:8px 8px 12px 12px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+  padding:2px 0; cursor:pointer; font:inherit; color:#0f172a; position:relative; }
+.odo-d:disabled { cursor:default; opacity:1; }
+.odo-d.odo-sel { outline:3px solid var(--accent,#6C63FF); outline-offset:1px; }
+.odo-n { font-size:10px; font-weight:800; line-height:1.1; }
+.odo-i { font-size:14px; line-height:1.1; font-weight:900; min-height:15px; }
+.odo-s { font-size:8.5px; font-weight:800; letter-spacing:-.3px; line-height:1; }
+.odo-leyenda { display:flex; flex-wrap:wrap; gap:4px 12px; justify-content:center; margin-top:8px; font-size:11.5px; color:var(--text-muted); }
+.odo-leyenda i { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border:2px solid; border-radius:4px; margin-right:4px; font-style:normal; font-size:10px; font-weight:900; vertical-align:middle; }
+.odo-editor { border:1px solid var(--border,#e2e8f0); border-radius:12px; padding:10px 12px; margin-top:10px; background:var(--bg-app,#f8fafc); }
+.odo-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.odo-chip { border:1.5px solid var(--border,#cbd5e1); background:var(--bg-card,#fff); color:inherit; border-radius:999px; padding:5px 10px; font:inherit; font-size:12.5px; cursor:pointer; }
+.odo-chip.activa { background:var(--accent,#6C63FF); color:#fff; border-color:var(--accent,#6C63FF); }
+.odo-chip.activa b { color:#fff !important; }
+@media (max-width:640px) { .odo-fila { flex-direction:column; align-items:center; } .odo-izq { border-right:none; padding-right:0; } }
+@media (max-width:360px) { .odo-d { width:31px; } }
+
+/* ---------- Tema oscuro: etiquetas, avisos e íconos con colores suaves (no cajas blancas) ---------- */
+[data-theme="dark"] .cl-badge-rojo { background:rgba(239,68,68,.18); color:#fca5a5; }
+[data-theme="dark"] .cl-badge-ambar { background:rgba(245,158,11,.18); color:#fcd34d; }
+[data-theme="dark"] .cl-badge-azul { background:rgba(59,130,246,.2); color:#93c5fd; }
+[data-theme="dark"] .cl-badge-verde { background:rgba(34,197,94,.18); color:#86efac; }
+[data-theme="dark"] .cl-badge-morado { background:rgba(139,92,246,.22); color:#c4b5fd; }
+[data-theme="dark"] .cl-alerta { background:rgba(239,68,68,.15); color:#fca5a5; border-color:rgba(239,68,68,.45); }
+[data-theme="dark"] .cl-aviso { background:rgba(245,158,11,.15); color:#fcd34d; }
+[data-theme="dark"] .cl-chip-sesion { background:rgba(34,197,94,.18); color:#86efac; }
+[data-theme="dark"] .kpi-icon { background:var(--bg-hover, #1e1e30) !important; }
+[data-theme="dark"] .cpn-paso.hecho b { background:rgba(34,197,94,.2); color:#86efac; }

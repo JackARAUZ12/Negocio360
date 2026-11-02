@@ -1,0 +1,5491 @@
+/* ============================================================
+   PRODUCTOS.JS — Módulo Productos/Servicios
+   Supabase Auth + RLS + Vanilla JS
+   ============================================================ */
+
+'use strict';
+
+// FIX CRÍTICO DE ZONA HORARIA: toISOString() da la fecha en UTC; en
+// Nicaragua (UTC-6) eso adelanta el "día" a las 6 PM hora local, y los
+// movimientos de caja por compra de inventario quedaban con fecha de
+// mañana. Se usa la fecha calendario LOCAL del dispositivo.
+function ymdLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ============================================================
+// CONFIG SUPABASE
+// ============================================================
+const SUPABASE_URL      = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+
+let supabaseClient = null;
+
+function initSupabase() {
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return supabaseClient;
+}
+
+// ============================================================
+// MONEDAS — Símbolo dinámico según configuración de empresa
+// ============================================================
+const CURRENCY_SYMBOLS = {
+  NIO: 'C$', USD: '$',  GTQ: 'Q',   HNL: 'L',
+  CRC: '₡',  PAB: 'B/', MXN: '$',   COP: '$',
+  PEN: 'S/', CLP: '$',  ARS: '$',   EUR: '€',
+};
+
+// Se cargará desde Supabase en cargarDatosEmpresa() -- NIO como
+// valor por defecto mientras carga (36 de 37 cuentas reales usan
+// cordobas; con USD como default anterior, casi todos los clientes
+// podian toparse con la condicion de carrera de abajo).
+let MONEDA_CODIGO  = 'NIO';
+let MONEDA_SIMBOLO = 'C$';
+let _configEmpresaCargada = false; // true solo cuando MONEDA_CODIGO ya refleja el dato real
+
+// ============================================================
+// ESTADO GLOBAL
+// ============================================================
+const STATE = {
+  user:         null,
+  empresa:      null,
+  productos:    [],
+  filtrados:    [],
+  filtroActivo: 'todos',
+  categoriaActiva: 'productos', // 'productos' | 'servicios' | 'materia_prima' -- pestaña principal, separada del filtro secundario
+  ordenActivo:  'az',    // A-Z por nombre, predeterminado -- coincide con la opción ya marcada en el <select>
+  filtroMarca:  '',      // proveedor_id seleccionado en el filtro secundario "Marca / Proveedor"
+  proveedores:  [],       // catálogo de marcas/proveedores (tabla "proveedores", ya existente para Compras)
+  escalasPorProducto: {}, // { producto_id: [{id,nombre,precio,orden}, ...] } — solo productos tipo_precio='escala'
+  formEscalas:  [],
+  escalasCostoPorProducto: {}, // { producto_id: [{id,nombre,costo,orden}] } — solo productos tipo_costo='escala'
+  formEscalasCosto: [],   // filas de la escala de costos en edición       // filas en edición dentro del modal de producto (antes de guardar)
+  busqueda:     '',
+  comboBusqueda: '',
+  comboOrden:    'reciente',
+  combosFiltrados: [],
+  cargando:     false,
+  modalMode:    null,   // 'crear' | 'editar' | 'ver' | 'duplicar'
+  editTarget:   null,
+  movTarget:    null,
+
+  // ---- COMBOS ----
+  combos:            [],  // filas de la tabla combos
+  comboItemsPorCombo:  {}, // { combo_id: [{id, producto_id, cantidad, producto:{nombre,costo,...}}, ...] }
+  comboEscalasPorCombo: {}, // { combo_id: [{id,nombre,precio,orden}, ...] } — solo tipo_precio='escala'
+  comboFormItems:    [],  // filas en edición dentro del modal de combo (antes de guardar)
+  comboFormEscalas:  [],
+  comboEditId:       null,
+};
+
+// ============================================================
+// DOM HELPERS
+// ============================================================
+const $  = id  => document.getElementById(id);
+const $$ = sel => document.querySelectorAll(sel);
+
+// ============================================================
+// FORMATO MONEDA
+// ============================================================
+// Aritmética de punto flotante en JS puede producir basura de decimales
+// (ej. 3.5 * 28.60 = 100.10000000000001) — se usa antes de guardar
+// cualquier costo/precio calculado, para que quede exacto a los centavos.
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+/* ============================================================
+   MODAL DE MONEDA DE VISUALIZACIÓN
+   ============================================================ */
+async function abrirModalMonedaVis() {
+  // Espera a que la moneda oficial real ya haya cargado desde la base
+  // de datos, para nunca comparar contra el valor por defecto -- esto
+  // es lo que causaba que elegir "USD" no hiciera nada en cuentas
+  // reales cuya moneda oficial es NIO (36 de 37 cuentas reales).
+  let intentos = 0;
+  while (!_configEmpresaCargada && intentos < 30) {
+    await new Promise(r => setTimeout(r, 100));
+    intentos++;
+  }
+  $('mv-moneda-oficial').textContent = MONEDA_CODIGO;
+  $('mv-select-moneda').value = monedaVisualizacionActiva() || '';
+  $('mv-tasa').value = tasaVisualizacionActiva() || '';
+  $('mv-error').textContent = '';
+  onCambiarSelectMonedaVis();
+  $('modalMonedaVis').classList.add('open');
+}
+
+function onCambiarSelectMonedaVis() {
+  const elegida = $('mv-select-moneda').value;
+  $('mv-wrap-tasa').style.display = (elegida && elegida !== MONEDA_CODIGO) ? '' : 'none';
+}
+
+function guardarMonedaVis() {
+  const elegida = $('mv-select-moneda').value;
+  const errEl = $('mv-error');
+  errEl.textContent = '';
+
+  if (!elegida || elegida === MONEDA_CODIGO) {
+    desactivarMonedaVisualizacion();
+  } else {
+    const tasa = parseFloat($('mv-tasa').value);
+    if (!tasa || tasa <= 0) {
+      errEl.textContent = 'Escribe tu tasa de cambio (cuántos córdobas por un dólar).';
+      return;
+    }
+    activarMonedaVisualizacion(elegida, tasa);
+  }
+
+  $('modalMonedaVis').classList.remove('open');
+  const codigoAMostrar = monedaParaMostrar(MONEDA_CODIGO);
+  $('monedaIndicador').textContent = `${CURRENCY_SYMBOLS[codigoAMostrar]||''} (${codigoAMostrar})`;
+  if (typeof renderTabla === 'function') renderTabla();      // re-pinta la tabla principal con los montos ya convertidos
+  if (typeof renderTablaCombos === 'function') renderTablaCombos();
+  if (typeof renderPromociones === 'function') renderPromociones();
+  showToast('success', 'Listo', 'Moneda de visualización actualizada');
+}
+
+function fmtMoney(val) {
+  if (val === null || val === undefined || val === '') return '—';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '—';
+  const montoAMostrar = convertirParaMostrar(n, MONEDA_CODIGO);
+  const codigoAMostrar = monedaParaMostrar(MONEDA_CODIGO);
+  const simboloAMostrar = CURRENCY_SYMBOLS[codigoAMostrar] || MONEDA_SIMBOLO;
+  return simboloAMostrar + montoAMostrar.toLocaleString('es-NI', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function fmtNum(val) {
+  if (val === null || val === undefined) return '—';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '—';
+  return n.toLocaleString('es-NI', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
+// ============================================================
+// CALCULAR MARGEN
+// ============================================================
+function calcMargen(precio, costo) {
+  const p = parseFloat(precio);
+  const c = parseFloat(costo);
+  if (!p || p === 0) return null;
+  return ((p - (isNaN(c) ? 0 : c)) / p) * 100;
+}
+
+function renderMargen(precio, costo) {
+  const m = calcMargen(precio, costo);
+  if (m === null) return '<span class="td-money" style="color:var(--text-muted)">—</span>';
+  const cls = m >= 40 ? 'margin-good' : m >= 20 ? 'margin-mid' : 'margin-low';
+  return `<span class="td-margin ${cls}">${m.toFixed(1)}%</span>`;
+}
+
+// ============================================================
+// FECHA ACTUAL
+// ============================================================
+function fechaActual() {
+  return new Date().toLocaleDateString('es-NI', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+}
+
+function fmtFecha(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('es-NI', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+// Versión corta (sin hora) para las columnas de la tabla — el detalle del
+// producto sigue mostrando fecha+hora completa con fmtFecha().
+function fmtFechaCorta(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('es-NI', {
+    year: 'numeric', month: 'short', day: 'numeric'
+  });
+}
+
+// ============================================================
+// MODO OSCURO
+// ============================================================
+function initTema() {
+  const saved = localStorage.getItem('tema') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+  actualizarIconoTema(saved);
+  const btn = $('btnTema');
+  if (btn) btn.addEventListener('click', toggleTema);
+}
+
+function toggleTema() {
+  const actual = document.documentElement.getAttribute('data-theme');
+  const nuevo  = actual === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', nuevo);
+  localStorage.setItem('tema', nuevo);
+  actualizarIconoTema(nuevo);
+}
+
+function actualizarIconoTema(tema) {
+  const btn = $('btnTema');
+  if (btn) btn.textContent = tema === 'dark' ? '☀️' : '🌙';
+}
+
+// ============================================================
+// SIDEBAR MÓVIL
+// ============================================================
+function initSidebar() {
+  const btn     = $('menuToggle');
+  const overlay = $('sidebarOverlay');
+  const sidebar = $('sidebar');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+    });
+  }
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('active');
+    });
+  }
+}
+
+// ============================================================
+// TOASTS
+// ============================================================
+function showToast(tipo, titulo, mensaje, duracion = 3500) {
+  const container = $('toastContainer');
+  if (!container) return;
+  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+  const toast = document.createElement('div');
+  toast.className = `toast ${tipo}`;
+  toast.innerHTML = `
+    <span class="toast-icon">${icons[tipo] || 'ℹ️'}</span>
+    <div class="toast-body">
+      <div class="toast-title">${titulo}</div>
+      ${mensaje ? `<div class="toast-msg">${mensaje}</div>` : ''}
+    </div>
+    <button class="toast-close" onclick="removeToast(this.parentElement)">✕</button>
+  `;
+  container.appendChild(toast);
+  setTimeout(() => removeToast(toast), duracion);
+}
+
+function removeToast(toast) {
+  if (!toast) return;
+  toast.classList.add('removing');
+  setTimeout(() => toast.remove(), 300);
+}
+
+// ============================================================
+// AUTENTICACIÓN
+// ============================================================
+async function checkAuth() {
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) { window.location.href = 'index.html'; return false; }
+    STATE.user = session.user;
+    return true;
+  } catch (e) {
+    console.error('checkAuth error:', e);
+    window.location.href = 'index.html';
+    return false;
+  }
+}
+
+// ============================================================
+// CARGAR DATOS EMPRESA
+// FIX: Búsqueda robusta de moneda en múltiples fuentes,
+//      incluyendo preferencias jsonb de la tabla usuarios
+// FIX: nombre del negocio también se refleja en el logo del
+//      sidebar (antes decía "BizFlow" fijo)
+// ============================================================
+// Los campos de Farmacia (sustancia controlada, principio activo, concentracion, presentacion) solo se
+// muestran si el negocio usa Farmacia o Veterinaria, o si el producto que se edita YA trae esos datos
+// (para no esconderle informacion existente). En una pulperia, distribuidora, etc. no aparecen.
+function aplicarVisibilidadFarmacia() {
+  const e = STATE.empresa || {};
+  const negocioFarma = e.usa_modulo_farmacia === true || e.usa_farmacia_fase2 === true || e.usa_modulo_veterinaria === true
+    || String(e.tipo_negocio || '').toLowerCase().includes('farmacia');
+  ['', 'Edit'].forEach(suf => {
+    const tieneDatos = ['inputPrincipioActivo', 'inputConcentracion', 'inputPresentacion'].some(id => ($(id + suf)?.value || '').trim() !== '')
+      || $('inputEsSustanciaControlada' + suf)?.checked === true;
+    const mostrar = negocioFarma || tieneDatos;
+    const sc = $('wrapSustanciaControlada' + suf);
+    const df = $('wrapDatosFarma' + suf);
+    if (sc) sc.style.display = mostrar ? '' : 'none';
+    if (df) df.style.display = mostrar ? '' : 'none';
+  });
+}
+
+async function cargarDatosEmpresa() {
+  try {
+    const [resUsuario, resEmpresa] = await Promise.all([
+      supabaseClient
+        .from('usuarios')
+        .select('*')
+        .eq('auth_user_id', STATE.user.id)
+        .maybeSingle(),
+      supabaseClient
+        .from('configuracion_empresa')
+        .select('*')
+        .eq('auth_user_id', STATE.user.id)
+        .maybeSingle(),
+    ]);
+
+    const perfil  = resUsuario.data  || {};
+    const empresa = resEmpresa.data  || {};
+
+    STATE.perfil  = perfil;
+    STATE.empresa = empresa;
+
+    const btnVencer = $('btnProximosVencer');
+    if (btnVencer) btnVencer.style.display = empresa?.maneja_lotes_vencimiento === true ? '' : 'none';
+
+    // Presentaciones de venta: se lee una sola vez aquí, y el resto del
+    // módulo solo consulta STATE.manejaPresentaciones -- si está apagado,
+    // nada de presentaciones se muestra ni se consulta.
+    STATE.manejaPresentaciones = empresa?.maneja_presentaciones === true;
+    if (window.N360Unidades) { try { await window.N360Unidades.cargarPersonalizadas(supabaseClient, STATE.user.id); poblarSelectorUnidad('unidad'); } catch (e) { console.warn(e); } }
+    STATE.usaNumeroSerie = empresa?.usa_numero_serie === true;
+    { const bSer = $('btnSeriesAsistente'); if (bSer) bSer.style.display = STATE.usaNumeroSerie ? '' : 'none'; }
+    STATE.usaModeloProducto = empresa?.usa_modelo_producto === true;
+    STATE.ordenColumnasProductos = Array.isArray(empresa?.orden_columnas_productos) ? empresa.orden_columnas_productos : null;
+    STATE.ordenColumnasServicios = Array.isArray(empresa?.orden_columnas_servicios) ? empresa.orden_columnas_servicios : null;
+
+    // ── FIX MONEDA ────────────────────────────────────────────
+    // Orden de prioridad:
+    // 1. configuracion_empresa.moneda  (fuente principal del onboarding)
+    // 2. usuarios.preferencias.moneda  (jsonb — el schema NO tiene columna moneda directa)
+    // 3. Fallback a 'USD'
+    // NOTA: usuarios NO tiene columna 'moneda', tiene 'preferencias' jsonb
+    const monedaDeEmpresa      = (empresa.moneda || '').trim();
+    const monedaDePreferencias = (perfil.preferencias?.moneda || '').trim();
+
+    const monedaCodigo =
+      monedaDeEmpresa      !== '' ? monedaDeEmpresa      :
+      monedaDePreferencias !== '' ? monedaDePreferencias :
+      'NIO';
+
+    MONEDA_CODIGO  = monedaCodigo;
+    MONEDA_SIMBOLO = CURRENCY_SYMBOLS[monedaCodigo] || monedaCodigo;
+    _configEmpresaCargada = true;
+
+    // Actualizar indicador de moneda en header
+    const monedaEl = $('monedaIndicador');
+    if (monedaEl) monedaEl.textContent = `${MONEDA_SIMBOLO} (${MONEDA_CODIGO})`;
+
+    console.log('[Moneda]', {
+      monedaCodigo,
+      MONEDA_SIMBOLO,
+      empresa_raw:      empresa.moneda,
+      preferencias_raw: perfil.preferencias,
+    });
+    // ─────────────────────────────────────────────────────────
+
+    const nombreNegocio = empresa.nombre || empresa.nombre_comercial || perfil.nombre_negocio || 'Mi Negocio';
+
+    const nombreEl = $('nombreEmpresa');
+    if (nombreEl) nombreEl.textContent = nombreNegocio;
+
+    // FIX: nombre del negocio también en el logo del sidebar (antes "BizFlow" fijo)
+    const logoTextEl = $('sidebarLogoText');
+    if (logoTextEl) logoTextEl.textContent = nombreNegocio;
+
+    // Marca personalizada (Personalización → Editar Perfil): color de acento y logo
+    if (empresa.color_principal || empresa.color_primario) {
+      const col = empresa.color_principal || empresa.color_primario;
+      document.documentElement.style.setProperty('--accent', col);
+      document.documentElement.style.setProperty('--accent-soft', col + '22');
+      document.documentElement.style.setProperty('--border-focus', col);
+    }
+    if (empresa.logo_principal_url || empresa.logo_url) {
+      const li = document.querySelector('.sidebar-logo-icon');
+      if (li) li.innerHTML = `<img src="${empresa.logo_principal_url || empresa.logo_url}" style="width:26px;height:26px;object-fit:contain;border-radius:6px" alt="logo">`;
+    }
+
+    const planEl = $('planBadge');
+    if (planEl) planEl.textContent = empresa.plan || perfil.plan || 'Free';
+
+    const avatarEls = $$('.header-avatar, .sidebar-user-avatar');
+    const inicial = (perfil.nombre || STATE.user.email || 'U').charAt(0).toUpperCase();
+    avatarEls.forEach(el => { el.textContent = inicial; });
+
+    const sidebarName = $('sidebarUserName');
+    if (sidebarName) sidebarName.textContent = perfil.nombre || STATE.user.email;
+
+  } catch (e) {
+    console.warn('cargarDatosEmpresa:', e.message);
+  } finally {
+    _configEmpresaCargada = true;
+  }
+}
+
+// ============================================================
+// CARGAR PRODUCTOS
+// ============================================================
+async function cargarProductos() {
+  try {
+    mostrarSkeletons();
+    const { data, error } = await N360Leer.todo(() => supabaseClient
+      .from('productos')
+      .select('*')
+      .eq('auth_user_id', STATE.user.id)
+      .order('created_at', { ascending: false }), 'productos');
+
+    if (error) throw error;
+
+    STATE.productos = data || [];
+    actualizarContadoresCategorias();
+    aplicarFiltros(); // ya llama a actualizarStats() al final
+
+  } catch (e) {
+    console.error('cargarProductos:', e);
+    showToast('error', 'Error al cargar', e.message);
+    mostrarErrorTabla();
+  }
+}
+
+// ============================================================
+// MARCAS / PROVEEDORES (feature secundaria/opcional)
+// Reutiliza la tabla "proveedores" ya existente para el módulo de
+// Compras. Un proveedor = una "marca" dentro del colectivo.
+// No es obligatorio: un producto puede no tener marca asignada.
+// ============================================================
+async function cargarProveedores() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('proveedores')
+      .select('id,nombre')
+      .eq('auth_user_id', STATE.user.id)
+      .eq('activo', true)
+      .order('nombre');
+
+    if (error) throw error;
+    STATE.proveedores = data || [];
+
+    // Select del formulario (crear/editar producto)
+    const selForm = $('inputMarca');
+    if (selForm) {
+      selForm.innerHTML = '<option value="">Sin marca / proveedor</option>' +
+        STATE.proveedores.map(pr => `<option value="${pr.id}">${escHtml(pr.nombre)}</option>`).join('');
+    }
+
+    // Filtro secundario de la tabla
+    const selFiltro = $('filtroMarca');
+    if (selFiltro) {
+      selFiltro.innerHTML = '<option value="">Todas las marcas</option>' +
+        STATE.proveedores.map(pr => `<option value="${pr.id}">${escHtml(pr.nombre)}</option>`).join('');
+    }
+  } catch (e) {
+    console.error('cargarProveedores:', e);
+    // Falla silenciosa: la marca es una función opcional, no debe
+    // bloquear la carga normal del módulo de productos.
+  }
+}
+
+// ============================================================
+// ESCALA DE PRECIOS (feature opcional por producto)
+// Un producto sigue siendo de precio fijo por defecto. Solo si
+// STATE.formEscalas / producto.tipo_precio = 'escala' se usa esta tabla.
+// ============================================================
+async function cargarEscalas() {
+  try {
+    const { data, error } = await N360Leer.todo(() => supabaseClient
+      .from('precios_escala')
+      .select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', STATE.user.id)
+      .order('orden'), 'escalas de precio');
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(e => {
+      if (!map[e.producto_id]) map[e.producto_id] = [];
+      map[e.producto_id].push(e);
+    });
+    STATE.escalasPorProducto = map;
+  } catch (e) {
+    console.error('cargarEscalas:', e);
+    // Falla silenciosa: no debe bloquear la carga normal de productos.
+  }
+}
+
+// ============================================================
+// ESCALA DE COSTOS (feature opcional por producto, igual que la de precios)
+// Un producto sigue con costo fijo por defecto. Con tipo_costo = 'escala' se
+// guardan varios costos con nombre (p. ej. por proveedor). El PRIMERO se copia
+// a productos.costo, así reportes, ganancia e inventario siguen leyendo el
+// mismo campo de siempre.
+// ============================================================
+async function cargarEscalasCosto() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('costos_escala').select('id,producto_id,nombre,costo,orden')
+      .eq('auth_user_id', STATE.user.id).order('orden');
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(e => { (map[e.producto_id] = map[e.producto_id] || []).push(e); });
+    STATE.escalasCostoPorProducto = map;
+  } catch (e) { console.error('cargarEscalasCosto:', e); }
+}
+function setTipoCosto(tipo) {
+  if ($('inputTipoCosto')) $('inputTipoCosto').value = tipo;
+  $('toggleCostoFijo')?.classList.toggle('active', tipo === 'fijo');
+  $('toggleCostoEscala')?.classList.toggle('active', tipo === 'escala');
+  const wrap = $('wrapEscalaCostos'); if (wrap) wrap.style.display = tipo === 'escala' ? '' : 'none';
+  const inp = $('inputCosto');
+  if (inp) inp.readOnly = tipo === 'escala';
+  if (tipo === 'escala' && !STATE.formEscalasCosto.length) {
+    const actual = parseFloat($('inputCosto')?.value);
+    if (!isNaN(actual) && actual > 0) { STATE.formEscalasCosto.push({ nombre: 'Costo base', costo: actual }); renderEscalasCostoEditor(); }
+    else agregarFilaEscalaCosto();
+  }
+  if (tipo === 'escala') sincronizarCostoBaseDesdeEscala();
+}
+function sincronizarCostoBaseDesdeEscala() {
+  const inp = $('inputCosto'); if (!inp) return;
+  const f = STATE.formEscalasCosto[0];
+  const v = f ? parseFloat(f.costo) : NaN;
+  inp.value = isNaN(v) ? '' : v;
+  if (typeof actualizarMargenPreview === 'function') actualizarMargenPreview();
+}
+function renderEscalasCostoEditor() {
+  const cont = $('escalasCostoEditorBody'); if (!cont) return;
+  cont.innerHTML = STATE.formEscalasCosto.map((fila, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" style="flex:2" placeholder="Ej: Proveedor A"
+             value="${escHtml(fila.nombre || '')}" oninput="actualizarFilaEscalaCosto(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" style="flex:1" placeholder="0.00" min="0" step="0.01"
+             value="${fila.costo ?? ''}" oninput="actualizarFilaEscalaCosto(${i}, 'costo', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar costo"
+              onclick="eliminarFilaEscalaCosto(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>`).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ningún costo.</p>';
+}
+function agregarFilaEscalaCosto() { STATE.formEscalasCosto.push({ nombre: '', costo: '' }); renderEscalasCostoEditor(); }
+function actualizarFilaEscalaCosto(i, campo, valor) {
+  if (!STATE.formEscalasCosto[i]) return;
+  STATE.formEscalasCosto[i][campo] = valor;
+  if (i === 0 && campo === 'costo') sincronizarCostoBaseDesdeEscala();
+}
+function eliminarFilaEscalaCosto(i) { STATE.formEscalasCosto.splice(i, 1); renderEscalasCostoEditor(); sincronizarCostoBaseDesdeEscala(); }
+async function sincronizarEscalasCosto(productoId, filas) {
+  const limpias = (filas || []).filter(f => (f.nombre || '').trim()).map((f, i) => ({
+    auth_user_id: STATE.user.id, producto_id: productoId, nombre: f.nombre.trim(),
+    costo: isNaN(parseFloat(f.costo)) ? 0 : parseFloat(f.costo), orden: i,
+  }));
+  const { error: errDel } = await supabaseClient.from('costos_escala').delete()
+    .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id);
+  if (errDel) throw errDel;
+  if (limpias.length) {
+    const { error: errIns } = await supabaseClient.from('costos_escala').insert(limpias);
+    if (errIns) throw errIns;
+  }
+}
+
+function setTipoPrecio(tipo) {
+  $('inputTipoPrecio').value = tipo;
+  $('toggleTipoFijo')?.classList.toggle('active', tipo === 'fijo');
+  $('toggleTipoEscala')?.classList.toggle('active', tipo === 'escala');
+  const wrapFijo   = $('wrapPrecioFijo');
+  const wrapEscala = $('wrapEscalaPrecios');
+  if (wrapFijo)   wrapFijo.style.display   = tipo === 'fijo'   ? '' : 'none';
+  if (wrapEscala) wrapEscala.style.display = tipo === 'escala' ? '' : 'none';
+  if (tipo === 'escala') {
+    const wrapMargen = $('margenPreviewWrap');
+    if (wrapMargen) wrapMargen.style.display = 'none';
+    if (!STATE.formEscalas.length) {
+      // Si el producto ya tenía un precio fijo cargado, se usa como primera
+      // fila ("Precio base") en vez de partir de una fila vacía — así no se
+      // pierde el precio que ya existía al cambiar de modo.
+      const precioFijoActual = parseFloat($('inputPrecio')?.value);
+      if (!isNaN(precioFijoActual) && precioFijoActual > 0) {
+        STATE.formEscalas.push({ nombre: 'Precio base', precio: precioFijoActual });
+        renderEscalasEditor();
+      } else {
+        agregarFilaEscala();
+      }
+    }
+  }
+}
+
+function renderEscalasEditor() {
+  const cont = $('escalasEditorBody');
+  if (!cont) return;
+  cont.innerHTML = STATE.formEscalas.map((fila, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" style="flex:2" placeholder="Ej: Mayorista"
+             value="${escHtml(fila.nombre || '')}"
+             oninput="actualizarFilaEscala(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" style="flex:1" placeholder="0.00" min="0" step="0.01"
+             value="${fila.precio ?? ''}"
+             oninput="actualizarFilaEscala(${i}, 'precio', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar precio"
+              onclick="eliminarFilaEscala(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>
+  `).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ningún precio.</p>';
+}
+
+function agregarFilaEscala() {
+  STATE.formEscalas.push({ nombre: '', precio: '' });
+  renderEscalasEditor();
+}
+function actualizarFilaEscala(i, campo, valor) {
+  if (!STATE.formEscalas[i]) return;
+  STATE.formEscalas[i][campo] = valor;
+}
+function eliminarFilaEscala(i) {
+  STATE.formEscalas.splice(i, 1);
+  renderEscalasEditor();
+}
+
+/* ============================================================
+   PRESENTACIONES DE VENTA -- sistema APARTE de las escalas de
+   precio. Una escala cambia el precio por volumen pero siempre
+   descuenta 1 unidad por unidad. Una presentacion, en cambio,
+   tiene un FACTOR: vender 1 blister descuenta 10 del inventario.
+   Solo se muestra si el negocio lo activo en Configuracion.
+   ============================================================ */
+function renderPresentacionesEditor() {
+  const cont = $('presentacionesEditorBody');
+  if (!cont) return;
+  const filas = STATE.formPresentaciones || [];
+  cont.innerHTML = filas.map((fila, i) => `
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" placeholder="Ej: Blíster de 10"
+             value="${escHtml(fila.nombre || '')}"
+             oninput="actualizarFilaPresentacion(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" placeholder="Factor" min="0.0001" step="any"
+             title="Cuántas unidades del inventario descuenta"
+             value="${fila.factor ?? ''}"
+             oninput="actualizarFilaPresentacion(${i}, 'factor', this.value)" />
+      <input type="number" class="form-input" placeholder="Precio" min="0" step="0.01"
+             value="${fila.precio ?? ''}"
+             oninput="actualizarFilaPresentacion(${i}, 'precio', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar presentación"
+              onclick="eliminarFilaPresentacion(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>
+  `).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ninguna presentación. Si no agregas ninguna, el producto se vende por unidad como siempre.</p>';
+}
+
+function agregarFilaPresentacion() {
+  if (!STATE.formPresentaciones) STATE.formPresentaciones = [];
+  STATE.formPresentaciones.push({ nombre: '', factor: '', precio: '' });
+  renderPresentacionesEditor();
+}
+function actualizarFilaPresentacion(i, campo, valor) {
+  if (!STATE.formPresentaciones?.[i]) return;
+  STATE.formPresentaciones[i][campo] = valor;
+}
+function eliminarFilaPresentacion(i) {
+  STATE.formPresentaciones.splice(i, 1);
+  renderPresentacionesEditor();
+}
+
+// Muestra u oculta la seccion de presentaciones segun si el negocio
+// la activo en Configuracion. Si esta apagada, la seccion ni aparece
+// -- el formulario se ve exactamente igual que siempre.
+function aplicarVisibilidadPresentaciones() {
+  const wrap = $('wrapPresentaciones');
+  if (wrap) wrap.style.display = STATE.manejaPresentaciones ? '' : 'none';
+}
+
+// Registrar números de serie (y garantía del proveedor) de un producto. Solo si el negocio activó números de serie.
+function abrirSeriesProducto(id) {
+  if (!STATE.usaNumeroSerie || !window.N360Series) return;
+  window.N360Series.abrirInventario({ sb: supabaseClient, userId: STATE.user.id, productoId: id, empresaConfig: STATE.empresa });
+}
+window.abrirSeriesProducto = abrirSeriesProducto;
+function abrirAsistenteSeries() {
+  if (!STATE.usaNumeroSerie || !window.N360Series) return;
+  window.N360Series.abrirAsistente({ sb: supabaseClient, userId: STATE.user.id, empresaConfig: STATE.empresa, alCambiar: () => { try { cargarProductos(); } catch (e) {} } });
+}
+window.abrirAsistenteSeries = abrirAsistenteSeries;
+
+function aplicarVisibilidadNumeroSerie() {
+  const wrap1 = $('wrapNumeroSerie');
+  const wrap2 = $('wrapNumeroSerieEdit');
+  if (wrap1) wrap1.style.display = STATE.usaNumeroSerie ? '' : 'none';
+  if (wrap2) wrap2.style.display = STATE.usaNumeroSerie ? '' : 'none';
+}
+
+function aplicarVisibilidadModelo() {
+  const wrap1 = $('wrapModelo');
+  const wrap2 = $('wrapModeloEdit');
+  if (wrap1) wrap1.style.display = STATE.usaModeloProducto ? '' : 'none';
+  if (wrap2) wrap2.style.display = STATE.usaModeloProducto ? '' : 'none';
+}
+
+async function cargarPresentacionesDeProducto(productoId) {
+  if (!STATE.manejaPresentaciones) return;
+  try {
+    const { data } = await supabaseClient.from('producto_presentaciones')
+      .select('nombre,factor,precio')
+      .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id)
+      .order('orden');
+    STATE.formPresentaciones = (data || []).map(p => ({ nombre: p.nombre, factor: p.factor, precio: p.precio }));
+    renderPresentacionesEditor();
+  } catch (e) {
+    console.warn('cargarPresentacionesDeProducto:', e);
+  }
+}
+
+// Mismo enfoque que sincronizarEscalas: reemplaza el set completo
+// (simple y seguro para listas pequeñas, sin logica de diff).
+async function sincronizarPresentaciones(productoId, filas) {
+  const limpias = (filas || [])
+    .filter(f => (f.nombre || '').trim() && parseFloat(f.factor) > 0)
+    .map((f, i) => ({
+      auth_user_id: STATE.user.id,
+      producto_id:  productoId,
+      nombre:       f.nombre.trim(),
+      factor:       parseFloat(f.factor),
+      precio:       isNaN(parseFloat(f.precio)) ? 0 : parseFloat(f.precio),
+      orden:        i,
+      activo:       true,
+    }));
+
+  const { error: errDel } = await supabaseClient
+    .from('producto_presentaciones').delete()
+    .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id);
+  if (errDel) throw errDel;
+
+  if (limpias.length) {
+    const { error: errIns } = await supabaseClient.from('producto_presentaciones').insert(limpias);
+    if (errIns) throw errIns;
+  }
+}
+
+async function sincronizarEscalas(productoId, filas) {
+  const limpias = (filas || [])
+    .filter(f => (f.nombre || '').trim())
+    .map((f, i) => ({
+      auth_user_id: STATE.user.id,
+      producto_id:  productoId,
+      nombre:       f.nombre.trim(),
+      precio:       isNaN(parseFloat(f.precio)) ? 0 : parseFloat(f.precio),
+      orden:        i,
+    }));
+
+  // Reemplaza el set completo de escalas de este producto (simple y seguro
+  // para listas pequeñas/medianas; evita lógica de diff propensa a errores).
+  const { error: errDel } = await supabaseClient
+    .from('precios_escala').delete()
+    .eq('producto_id', productoId).eq('auth_user_id', STATE.user.id);
+  if (errDel) throw errDel;
+
+  if (limpias.length) {
+    const { error: errIns } = await supabaseClient.from('precios_escala').insert(limpias);
+    if (errIns) throw errIns;
+  }
+}
+
+/* ============================================================
+   COMBOS / KITS
+   ------------------------------------------------------------
+   Un combo agrupa productos existentes bajo un nombre, SKU y
+   código de barras propios. Vive en su propio cuadro, separado
+   de la tabla de Productos/Servicios — no la modifica ni la toca.
+   ============================================================ */
+async function cargarCombos() {
+  const tbody = $('combosTbody');
+  try {
+    const { data: combos, error } = await supabaseClient
+      .from('combos').select('*').eq('auth_user_id', STATE.user.id).order('created_at', { ascending: false });
+    if (error) throw error;
+    STATE.combos = combos || [];
+
+    const ids = STATE.combos.map(c => c.id);
+    STATE.comboItemsPorCombo  = {};
+    STATE.comboEscalasPorCombo = {};
+
+    if (ids.length) {
+      const [{ data: items }, { data: escalas }] = await Promise.all([
+        supabaseClient.from('combo_items')
+          .select('id, combo_id, producto_id, cantidad, precio_unitario, escala_id, escala_nombre, productos(nombre, costo, activo)')
+          .eq('auth_user_id', STATE.user.id).in('combo_id', ids),
+        supabaseClient.from('combo_precios_escala')
+          .select('id, combo_id, nombre, precio, orden')
+          .eq('auth_user_id', STATE.user.id).in('combo_id', ids).order('orden'),
+      ]);
+      (items || []).forEach(it => {
+        if (!STATE.comboItemsPorCombo[it.combo_id]) STATE.comboItemsPorCombo[it.combo_id] = [];
+        STATE.comboItemsPorCombo[it.combo_id].push(it);
+      });
+      (escalas || []).forEach(e => {
+        if (!STATE.comboEscalasPorCombo[e.combo_id]) STATE.comboEscalasPorCombo[e.combo_id] = [];
+        STATE.comboEscalasPorCombo[e.combo_id].push(e);
+      });
+    }
+
+    aplicarFiltrosCombos();
+  } catch (e) {
+    console.error('cargarCombos:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--danger)">No se pudieron cargar los combos.</td></tr>`;
+  }
+}
+
+function costoTotalCombo(comboId) {
+  const items = STATE.comboItemsPorCombo[comboId] || [];
+  return items.reduce((s, it) => s + (Number(it.cantidad) || 0) * Number(it.productos?.costo || 0), 0);
+}
+
+function precioLabelCombo(combo) {
+  if (combo.tipo_precio === 'escala') {
+    const escalas = STATE.comboEscalasPorCombo[combo.id] || [];
+    return fmtRangoEscala(escalas);
+  }
+  return fmtMoney(combo.precio);
+}
+
+function aplicarFiltrosCombos() {
+  let lista = [...STATE.combos];
+  const q = STATE.comboBusqueda.toLowerCase().trim();
+
+  if (q) {
+    lista = lista.filter(c =>
+      (c.nombre        || '').toLowerCase().includes(q) ||
+      (c.sku           || '').toLowerCase().includes(q) ||
+      (c.codigo_barras || '').toLowerCase().includes(q)
+    );
+  }
+
+  lista = ordenarLista(lista, STATE.comboOrden);
+  STATE.combosFiltrados = lista;
+  renderTablaCombos();
+}
+
+function mostrarCatalogoOTablaCombos(mostrarCatalogo) {
+  const tableCard = document.getElementById('tableCardCombos');
+  const grid = document.getElementById('catalogoGridCombos');
+  if (tableCard) tableCard.style.display = mostrarCatalogo ? 'none' : '';
+  if (grid) grid.style.display = mostrarCatalogo ? '' : 'none';
+}
+
+function renderCatalogoGridCombos(items) {
+  const grid = document.getElementById('catalogoGridCombos');
+  if (!grid) return;
+  if (!items.length) {
+    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px 0">Aún no has creado ningún combo.</p>';
+    return;
+  }
+  grid.innerHTML = items.map(c => {
+    const itemsCombo = STATE.comboItemsPorCombo[c.id] || [];
+    const foto = c.imagen_url
+      ? `<img src="${escHtml(c.imagen_url)}" class="catalogo-card-foto" alt="">`
+      : `<div class="catalogo-card-foto-placeholder">📦</div>`;
+    return `
+      <div class="catalogo-card" data-id="${c.id}">
+        <div class="catalogo-card-foto-wrap">
+          <span class="catalogo-card-estado" style="color:${c.activo ? 'var(--success,#16a34a)' : 'var(--text-muted)'}">${c.activo ? '● Activo' : '● Inactivo'}</span>
+          ${foto}
+        </div>
+        <div class="catalogo-card-body">
+          <div class="catalogo-card-nombre">📦 ${escHtml(c.nombre)}</div>
+          ${c.sku || c.codigo_barras ? `<div class="catalogo-card-sku">${escHtml(c.sku || c.codigo_barras)}</div>` : ''}
+          <div class="catalogo-card-categoria">${itemsCombo.length} producto${itemsCombo.length === 1 ? '' : 's'}</div>
+          <div class="catalogo-card-precios">
+            <span style="color:var(--text-muted)">Precio</span>
+            <b>${escHtml(precioLabelCombo(c))}</b>
+          </div>
+          <div class="catalogo-card-acciones">
+            <button class="btn btn-secondary" onclick="verDetalleCombo('${c.id}')">👁 Ver</button>
+            <button class="btn btn-primary" onclick="abrirEditarCombo('${c.id}')">✏️ Editar</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderTablaCombos() {
+  const tbody = $('combosTbody');
+  const countEl = $('combosCount');
+  const lista = STATE.combosFiltrados;
+  if (countEl) countEl.textContent = `${lista.length} combo${lista.length === 1 ? '' : 's'}`;
+
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTablaCombos(true);
+    renderCatalogoGridCombos(lista);
+    return;
+  }
+  mostrarCatalogoOTablaCombos(false);
+  if (!tbody) return;
+
+  if (!lista.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">${STATE.comboBusqueda ? 'Sin resultados para tu búsqueda.' : 'Aún no has creado ningún combo.'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = lista.map(c => {
+    const items = STATE.comboItemsPorCombo[c.id] || [];
+    const costo = costoTotalCombo(c.id);
+    return `
+      <tr>
+        <td style="font-weight:600">📦 ${escHtml(c.nombre)}</td>
+        <td style="font-size:12.5px;color:var(--text-muted)">${escHtml(c.sku || c.codigo_barras || '—')}</td>
+        <td>${items.length} producto${items.length === 1 ? '' : 's'}</td>
+        <td>${fmtMoney(costo)}</td>
+        <td>${escHtml(precioLabelCombo(c))}${c.tipo_precio === 'escala' ? ' <span class="tipo-badge tipo-servicio" style="font-size:10px">📊 escala</span>' : ''}</td>
+        <td><span class="status-badge ${c.activo ? 'status-activo' : 'status-inactivo'}">${c.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td>
+          <button class="row-action-btn" title="Ver detalle" onclick="verDetalleCombo('${c.id}')">👁️</button>
+          <button class="row-action-btn" title="Editar" onclick="abrirEditarCombo('${c.id}')">✏️</button>
+          <button class="row-action-btn" title="Eliminar" onclick="confirmarEliminarCombo('${c.id}')" style="color:var(--danger)">🗑️</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+/* ---------- Modal crear/editar combo ---------- */
+function abrirModalCombo() {
+  STATE.comboEditId = null;
+  STATE.comboFormItems = [];
+  STATE.comboFormEscalas = [];
+  $('modalComboTitle').textContent = '+ Nuevo Combo';
+  $('comboEditId').value = '';
+  $('comboNombre').value = '';
+  $('comboSku').value = '';
+  $('comboCodigoBarras').value = '';
+  $('comboGarantiaMeses').value = '';
+  $('comboInputPrecio').value = '';
+  $('comboActivo').checked = true;
+  $('comboProductoSearch').value = '';
+  $('comboProductoResultados').innerHTML = '';
+  $('errComboNombre').textContent = '';
+  $('errComboEscalas').textContent = '';
+  setComboTipoPrecio('fijo');
+  renderComboItemsBody();
+  STATE.fotoComboBlob = null;
+  STATE.fotoComboEliminar = false;
+  $('fotoComboPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoCombo').style.display = 'none';
+  $('inputFotoCombo').value = '';
+  aplicarVisibilidadFotoCombo();
+  $('modalCombo').classList.add('open');
+}
+
+function abrirEditarCombo(id) {
+  const c = STATE.combos.find(x => x.id === id);
+  if (!c) return;
+  STATE.comboEditId = id;
+  const items = STATE.comboItemsPorCombo[id] || [];
+  STATE.comboFormItems = items.map(it => ({
+    producto_id: it.producto_id,
+    nombre: it.productos?.nombre || 'Producto eliminado',
+    costo: Number(it.productos?.costo || 0),
+    cantidad: Number(it.cantidad) || 1,
+    precio: Number(it.precio_unitario || 0),
+    escalaId: it.escala_id || null,
+    escalaNombre: it.escala_nombre || null,
+  }));
+  const escalas = STATE.comboEscalasPorCombo[id] || [];
+  STATE.comboFormEscalas = escalas.map(e => ({ nombre: e.nombre, precio: e.precio }));
+
+  $('modalComboTitle').textContent = `Editar Combo — ${c.nombre}`;
+  $('comboEditId').value = id;
+  $('comboNombre').value = c.nombre || '';
+  $('comboSku').value = c.sku || '';
+  $('comboCodigoBarras').value = c.codigo_barras || '';
+  $('comboGarantiaMeses').value = c.garantia_meses ?? '';
+  $('comboInputPrecio').value = c.tipo_precio === 'fijo' ? (c.precio ?? '') : '';
+  $('comboActivo').checked = c.activo !== false;
+  $('comboProductoSearch').value = '';
+  $('comboProductoResultados').innerHTML = '';
+  $('errComboNombre').textContent = '';
+  $('errComboEscalas').textContent = '';
+  setComboTipoPrecio(c.tipo_precio === 'escala' ? 'escala' : 'fijo');
+  renderComboItemsBody();
+  STATE.fotoComboBlob = null;
+  STATE.fotoComboEliminar = false;
+  if (c.imagen_url) {
+    $('fotoComboPreviewWrap').innerHTML = `<img src="${escHtml(c.imagen_url)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoCombo').style.display = '';
+  } else {
+    $('fotoComboPreviewWrap').innerHTML = '🖼️';
+    $('btnQuitarFotoCombo').style.display = 'none';
+  }
+  $('inputFotoCombo').value = '';
+  aplicarVisibilidadFotoCombo();
+  $('modalCombo').classList.add('open');
+}
+
+function cerrarModalCombo() {
+  $('modalCombo').classList.remove('open');
+}
+
+function setComboTipoPrecio(tipo) {
+  $('comboInputTipoPrecio').value = tipo;
+  $('comboToggleTipoFijo')?.classList.toggle('active', tipo === 'fijo');
+  $('comboToggleTipoEscala')?.classList.toggle('active', tipo === 'escala');
+  const wrapFijo = $('comboWrapPrecioFijo');
+  const wrapEscala = $('comboWrapEscalaPrecios');
+  if (wrapFijo) wrapFijo.style.display = tipo === 'fijo' ? '' : 'none';
+  if (wrapEscala) wrapEscala.style.display = tipo === 'escala' ? '' : 'none';
+  if (tipo === 'escala' && !STATE.comboFormEscalas.length) {
+    const precioFijoActual = parseFloat($('comboInputPrecio')?.value);
+    if (!isNaN(precioFijoActual) && precioFijoActual > 0) {
+      STATE.comboFormEscalas.push({ nombre: 'Precio base', precio: precioFijoActual });
+    } else {
+      STATE.comboFormEscalas.push({ nombre: '', precio: '' });
+    }
+  }
+  renderEscalasEditorCombo();
+}
+function renderEscalasEditorCombo() {
+  const cont = $('comboEscalasEditorBody');
+  if (!cont) return;
+  cont.innerHTML = STATE.comboFormEscalas.map((fila, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input" style="flex:2" placeholder="Ej: Mayorista"
+             value="${escHtml(fila.nombre || '')}"
+             oninput="actualizarFilaEscalaCombo(${i}, 'nombre', this.value)" />
+      <input type="number" class="form-input" style="flex:1" placeholder="0.00" min="0" step="0.01"
+             value="${fila.precio ?? ''}"
+             oninput="actualizarFilaEscalaCombo(${i}, 'precio', this.value)" />
+      <button type="button" class="row-action-btn" title="Eliminar precio"
+              onclick="eliminarFilaEscalaCombo(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
+    </div>
+  `).join('') || '<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0 8px">Aún no has agregado ningún precio.</p>';
+}
+function agregarFilaEscalaCombo() { STATE.comboFormEscalas.push({ nombre: '', precio: '' }); renderEscalasEditorCombo(); }
+function actualizarFilaEscalaCombo(i, campo, valor) { if (STATE.comboFormEscalas[i]) STATE.comboFormEscalas[i][campo] = valor; }
+function eliminarFilaEscalaCombo(i) { STATE.comboFormEscalas.splice(i, 1); renderEscalasEditorCombo(); }
+
+/* ---------- Buscar y agregar productos dentro del combo ---------- */
+function buscarProductoParaCombo(q) {
+  const cont = $('comboProductoResultados');
+  if (!cont) return;
+  const texto = (q || '').trim().toLowerCase();
+  if (!texto) { cont.innerHTML = ''; return; }
+
+  const yaAgregados = new Set(STATE.comboFormItems.map(i => i.producto_id));
+  const resultados = STATE.productos.filter(p =>
+    p.activo !== false && !yaAgregados.has(p.id) &&
+    ((p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto))
+  ).slice(0, 8);
+
+  if (!resultados.length) { cont.innerHTML = `<p style="color:var(--text-muted);font-size:12.5px;padding:6px 0">Sin resultados</p>`; return; }
+
+  cont.innerHTML = `<div style="position:absolute;z-index:20;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);width:100%;max-height:220px;overflow-y:auto;box-shadow:var(--shadow-md)">
+    ${resultados.map(p => `
+      <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border)" onclick="agregarProductoACombo('${p.id}')" onmouseover="this.style.background='var(--bg-app)'" onmouseout="this.style.background=''">
+        <div style="font-weight:600;font-size:13px">${escHtml(p.nombre)}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${p.sku ? 'SKU: ' + escHtml(p.sku) + ' · ' : ''}Costo: ${fmtMoney(p.costo)} · Stock: ${fmtNum(p.stock_actual)}</div>
+      </div>`).join('')}
+  </div>`;
+}
+let _comboEscalaPendiente = null; // producto mientras el selector de precio está abierto
+
+function agregarProductoACombo(productoId) {
+  const p = STATE.productos.find(x => x.id === productoId);
+  if (!p) return;
+  $('comboProductoSearch').value = '';
+  $('comboProductoResultados').innerHTML = '';
+
+  // Si el producto tiene escala de precios, se pregunta con cuál se
+  // agrega al combo (es solo de referencia — el combo sigue teniendo
+  // su propio precio de venta, fijo o de escala).
+  if (p.tipo_precio === 'escala') {
+    abrirSelectorEscalaComponenteCombo(p);
+    return;
+  }
+  agregarItemComboConPrecio(p, { precio: Number(p.precio || 0), escalaId: null, escalaNombre: null });
+}
+
+function abrirSelectorEscalaComponenteCombo(producto) {
+  const escalas = STATE.escalasPorProducto[producto.id] || [];
+  if (!escalas.length) {
+    // Tiene el modo "escala" activado pero sin ningún precio cargado
+    // todavía: se agrega igual, sin precio individual definido.
+    agregarItemComboConPrecio(producto, { precio: 0, escalaId: null, escalaNombre: null });
+    return;
+  }
+  _comboEscalaPendiente = producto;
+  $('escalaComponenteNombreProducto').textContent = producto.nombre;
+  $('escalaComponenteOpciones').innerHTML = escalas.map((e, i) => `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-md);cursor:pointer;margin-bottom:8px">
+      <input type="radio" name="escalaComponenteRadio" value="${e.id}" ${i===0?'checked':''} style="accent-color:var(--accent);width:16px;height:16px"/>
+      <span style="flex:1;font-size:13.5px;font-weight:500">${escHtml(e.nombre)}</span>
+      <span style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">${fmtMoney(e.precio)}</span>
+    </label>`).join('');
+  $('modalEscalaComponenteCombo').classList.add('open');
+}
+function cerrarModalEscalaComponenteCombo() {
+  $('modalEscalaComponenteCombo').classList.remove('open');
+  _comboEscalaPendiente = null;
+}
+function confirmarEscalaComponenteCombo() {
+  const producto = _comboEscalaPendiente;
+  if (!producto) return;
+  const radio = document.querySelector('input[name="escalaComponenteRadio"]:checked');
+  if (!radio) { showToast('warning', 'Falta elegir', 'Selecciona un precio para continuar.'); return; }
+  const escalas = STATE.escalasPorProducto[producto.id] || [];
+  const elegida = escalas.find(e => e.id === radio.value);
+  if (!elegida) return;
+  agregarItemComboConPrecio(producto, { precio: Number(elegida.precio || 0), escalaId: elegida.id, escalaNombre: elegida.nombre });
+  cerrarModalEscalaComponenteCombo();
+}
+function agregarItemComboConPrecio(p, precioInfo) {
+  STATE.comboFormItems.push({
+    producto_id: p.id, nombre: p.nombre, costo: Number(p.costo || 0), cantidad: 1,
+    precio: precioInfo.precio, escalaId: precioInfo.escalaId, escalaNombre: precioInfo.escalaNombre,
+  });
+  renderComboItemsBody();
+}
+// Mientras se escribe NO se vuelve a dibujar la fila ni se corrige el valor (si no,
+// al teclear "0" antes de "0.5" se forzaba 1 y se perdía el decimal): solo se
+// actualiza el subtotal y el total. La corrección final ocurre al salir del campo.
+function actualizarCantidadComboItem(i, valor) {
+  const it = STATE.comboFormItems[i];
+  if (!it) return;
+  const n = parseFloat(String(valor).replace(',', '.'));
+  if (!isNaN(n) && n > 0) it.cantidad = n;
+  const sub = $('comboItemSub' + i);
+  if (sub) sub.textContent = fmtMoney(it.costo * it.cantidad);
+  actualizarTotalComboPreview();
+}
+function normalizarCantidadComboItem(i, valor) {
+  const it = STATE.comboFormItems[i];
+  if (!it) return;
+  const n = parseFloat(String(valor).replace(',', '.'));
+  it.cantidad = isNaN(n) || n <= 0 ? 1 : Math.round(n * 1000) / 1000;
+  renderComboItemsBody();
+}
+function actualizarTotalComboPreview() {
+  const total = STATE.comboFormItems.reduce((s, it) => s + it.costo * it.cantidad, 0);
+  const previewEl = $('comboCostoTotalPreview');
+  if (previewEl) previewEl.textContent = fmtMoney(total);
+}
+function eliminarComboItem(i) {
+  STATE.comboFormItems.splice(i, 1);
+  renderComboItemsBody();
+}
+function renderComboItemsBody() {
+  const cont = $('comboItemsBody');
+  if (!cont) return;
+  if (!STATE.comboFormItems.length) {
+    cont.innerHTML = `<p style="color:var(--text-muted);font-size:12.5px;margin:4px 0">Aún no has agregado ningún producto a este combo.</p>`;
+  } else {
+    cont.innerHTML = STATE.comboFormItems.map((it, i) => `
+      <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--bg-app);border-radius:var(--radius-sm);margin-bottom:6px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500">${escHtml(it.nombre)}</div>
+          <div style="font-size:11px;color:var(--text-muted)">Costo: ${fmtMoney(it.costo)} c/u · Precio: ${fmtMoney(it.precio)} c/u${it.escalaNombre ? ` <span style="color:var(--accent)">(${escHtml(it.escalaNombre)})</span>` : ''}</div>
+        </div>
+        <input type="number" inputmode="decimal" class="form-input" style="width:80px" min="0.001" step="any" value="${it.cantidad}"
+               oninput="actualizarCantidadComboItem(${i}, this.value)" onchange="normalizarCantidadComboItem(${i}, this.value)" />
+        <div id="comboItemSub${i}" style="font-size:12.5px;font-weight:600;min-width:70px;text-align:right">${fmtMoney(it.costo * it.cantidad)}</div>
+        <button type="button" class="row-action-btn" title="Quitar" onclick="eliminarComboItem(${i})" style="opacity:1;color:var(--danger)">✕</button>
+      </div>`).join('');
+  }
+  const total = STATE.comboFormItems.reduce((s, it) => s + it.costo * it.cantidad, 0);
+  const previewEl = $('comboCostoTotalPreview');
+  if (previewEl) previewEl.textContent = fmtMoney(total);
+}
+
+/* ---------- Guardar combo ---------- */
+async function guardarCombo() {
+  $('errComboNombre').textContent = '';
+  $('errComboEscalas').textContent = '';
+
+  const nombre = $('comboNombre').value.trim();
+  if (!nombre) { $('errComboNombre').textContent = 'El nombre del combo es obligatorio.'; return; }
+  if (!STATE.comboFormItems.length) { showToast('warning', 'Faltan productos', 'Agrega al menos un producto al combo.'); return; }
+
+  let imagenUrlCombo;
+  if (STATE.fotoComboBlob) {
+    try {
+      imagenUrlCombo = await subirFotoInventario(STATE.fotoComboBlob, 'combos');
+    } catch (e) {
+      console.error('guardarCombo, subir foto:', e);
+      const errFoto = $('errFotoCombo');
+      if (errFoto) errFoto.textContent = 'No se pudo subir la foto. Intenta de nuevo.';
+      return;
+    }
+  } else if (STATE.fotoComboEliminar) {
+    imagenUrlCombo = null;
+  }
+
+  const tipoPrecio = $('comboInputTipoPrecio').value;
+  let precioFijo = 0;
+  let escalasValidas = [];
+  if (tipoPrecio === 'fijo') {
+    precioFijo = parseFloat($('comboInputPrecio').value);
+    if (isNaN(precioFijo) || precioFijo <= 0) { showToast('warning', 'Precio inválido', 'Ingresa un precio de venta válido para el combo.'); return; }
+  } else {
+    escalasValidas = STATE.comboFormEscalas.filter(f => (f.nombre || '').trim() && parseFloat(f.precio) > 0);
+    if (!escalasValidas.length) { $('errComboEscalas').textContent = 'Agrega al menos un precio con nombre y valor válidos.'; return; }
+  }
+
+  const costoTotal = round2(STATE.comboFormItems.reduce((s, it) => s + it.costo * it.cantidad, 0));
+  const btn = $('btnGuardarCombo');
+  if (btn) btn.disabled = true;
+
+  try {
+    const payload = {
+      auth_user_id: STATE.user.id,
+      nombre,
+      sku: $('comboSku').value.trim() || null,
+      codigo_barras: $('comboCodigoBarras').value.trim() || null,
+      garantia_meses: (() => { const v = $('comboGarantiaMeses').value; return v !== '' ? parseFloat(v) : null; })(),
+      tipo_precio: tipoPrecio,
+      precio: tipoPrecio === 'fijo' ? precioFijo : 0,
+      costo: costoTotal,
+      activo: $('comboActivo').checked,
+      updated_at: new Date().toISOString(),
+    };
+    if (imagenUrlCombo !== undefined) payload.imagen_url = imagenUrlCombo;
+
+    let comboId = STATE.comboEditId;
+    if (comboId) {
+      const { error } = await supabaseClient.from('combos').update(payload).eq('id', comboId).eq('auth_user_id', STATE.user.id);
+      if (error) throw error;
+    } else {
+      const { data, error } = await supabaseClient.from('combos').insert(payload).select('id').single();
+      if (error) throw error;
+      comboId = data.id;
+    }
+
+    // Reemplaza el set completo de productos del combo (igual patrón que
+    // sincronizarEscalas: simple y seguro para listas pequeñas).
+    await supabaseClient.from('combo_items').delete().eq('combo_id', comboId).eq('auth_user_id', STATE.user.id);
+    await supabaseClient.from('combo_items').insert(
+      STATE.comboFormItems.map(it => ({
+        auth_user_id: STATE.user.id, combo_id: comboId, producto_id: it.producto_id, cantidad: it.cantidad,
+        precio_unitario: it.precio || 0, escala_id: it.escalaId || null, escala_nombre: it.escalaNombre || null,
+      }))
+    );
+
+    await supabaseClient.from('combo_precios_escala').delete().eq('combo_id', comboId).eq('auth_user_id', STATE.user.id);
+    if (tipoPrecio === 'escala' && escalasValidas.length) {
+      await supabaseClient.from('combo_precios_escala').insert(
+        escalasValidas.map((f, i) => ({
+          auth_user_id: STATE.user.id, combo_id: comboId, nombre: f.nombre.trim(), precio: parseFloat(f.precio) || 0, orden: i,
+        }))
+      );
+    }
+
+    showToast('success', 'Combo guardado', `"${nombre}" se guardó correctamente.`);
+    cerrarModalCombo();
+    await cargarCombos();
+  } catch (e) {
+    console.error('guardarCombo:', e);
+    showToast('error', 'Error al guardar', e.message || 'Intenta de nuevo.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ---------- Ver detalle / eliminar ---------- */
+function verDetalleCombo(id) {
+  const c = STATE.combos.find(x => x.id === id);
+  if (!c) return;
+  const items = STATE.comboItemsPorCombo[id] || [];
+  const costo = costoTotalCombo(id);
+  const escalas = STATE.comboEscalasPorCombo[id] || [];
+
+  $('detalleComboBody').innerHTML = `
+    <div class="form-grid" style="margin-bottom:16px">
+      <div><strong>Nombre:</strong> ${escHtml(c.nombre)}</div>
+      <div><strong>SKU:</strong> ${escHtml(c.sku || '—')}</div>
+      <div><strong>Código de barras:</strong> ${escHtml(c.codigo_barras || '—')}</div>
+      <div><strong>Estado:</strong> ${c.activo ? 'Activo' : 'Inactivo'}</div>
+    </div>
+    <div class="form-section-title">Productos incluidos</div>
+    <table class="data-table" style="width:100%;margin-bottom:16px">
+      <thead><tr><th>Producto</th><th>Cantidad</th><th>Costo unitario</th><th>Precio venta individual</th><th>Subtotal costo</th></tr></thead>
+      <tbody>
+        ${items.map(it => `<tr>
+          <td>${escHtml(it.productos?.nombre || 'Producto eliminado')}</td>
+          <td>${fmtNum(it.cantidad)}</td>
+          <td>${fmtMoney(it.productos?.costo)}</td>
+          <td>${fmtMoney(it.precio_unitario)}${it.escala_nombre ? ` <span style="font-size:11px;color:var(--accent)">(${escHtml(it.escala_nombre)})</span>` : ''}</td>
+          <td>${fmtMoney((Number(it.cantidad)||0) * Number(it.productos?.costo || 0))}</td>
+        </tr>`).join('') || '<tr><td colspan="5">Sin productos</td></tr>'}
+      </tbody>
+    </table>
+    <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;margin-bottom:12px">
+      Costo total del combo: <strong>${fmtMoney(costo)}</strong>
+    </div>
+    <div class="form-section-title">Precio de venta</div>
+    ${c.tipo_precio === 'escala'
+      ? `<table class="data-table" style="width:100%"><thead><tr><th>Nombre</th><th>Precio</th></tr></thead>
+         <tbody>${escalas.map(e => `<tr><td>${escHtml(e.nombre)}</td><td>${fmtMoney(e.precio)}</td></tr>`).join('') || '<tr><td colspan="2">Sin precios configurados</td></tr>'}</tbody></table>`
+      : `<div>Precio fijo: <strong>${fmtMoney(c.precio)}</strong></div>`
+    }
+  `;
+  $('modalDetalleCombo').classList.add('open');
+}
+function cerrarModalDetalleCombo() { $('modalDetalleCombo').classList.remove('open'); }
+
+let comboAEliminar = null;
+function confirmarEliminarCombo(id) {
+  comboAEliminar = id;
+  const c = STATE.combos.find(x => x.id === id);
+  if (!c) return;
+  if (!confirm(`¿Eliminar el combo "${c.nombre}"? Esta acción no se puede deshacer (no afecta a los productos que lo componen).`)) return;
+  eliminarComboConfirmado(id);
+}
+async function eliminarComboConfirmado(id) {
+  try {
+    const { error } = await supabaseClient.from('combos').delete().eq('id', id).eq('auth_user_id', STATE.user.id);
+    if (error) throw error;
+    showToast('success', 'Combo eliminado', '');
+    await cargarCombos();
+  } catch (e) {
+    console.error('eliminarComboConfirmado:', e);
+    showToast('error', 'Error al eliminar', e.message || 'Intenta de nuevo.');
+  }
+}
+
+function fmtRangoEscala(lista) {
+  if (!lista || !lista.length) return 'Sin precios configurados';
+  const precios = lista.map(e => Number(e.precio) || 0);
+  const min = Math.min(...precios), max = Math.max(...precios);
+  return min === max ? fmtMoney(min) : `${fmtMoney(min)} – ${fmtMoney(max)}`;
+}
+
+function fmtRangoEscala(lista) {
+  if (!lista || !lista.length) return 'Sin precios configurados';
+  const precios = lista.map(e => Number(e.precio) || 0);
+  const min = Math.min(...precios), max = Math.max(...precios);
+  return min === max ? fmtMoney(min) : `${fmtMoney(min)} – ${fmtMoney(max)}`;
+}
+
+/* ============================================================
+   EXPORTAR INVENTARIO — PDF y Excel
+   Se exporta la lista ya filtrada (STATE.filtrados), respetando
+   cualquier búsqueda/filtro que el usuario tenga activo.
+
+   Regla de precio fijo vs. escala (pedida explícitamente):
+     - tipo_precio === 'escala'  -> "Precio fijo" queda en "-",
+       y se llenan hasta 5 columnas de escala (nombre + precio);
+       las que el producto no tenga quedan en blanco.
+     - cualquier otro caso (precio fijo) -> las 5 columnas de
+       escala quedan en "-", y "Precio fijo" muestra su precio.
+   ============================================================ */
+function filaExportInventario(p) {
+  const esEscala = p.tipo_precio === 'escala';
+  const escalas  = esEscala ? (STATE.escalasPorProducto[p.id] || []).slice(0, 5) : [];
+
+  const fila = {
+    producto: p.nombre || '—',
+    tipo: p.tipo === 'servicio' ? 'Servicio' : 'Producto',
+    sku: p.sku || '—',
+    categoria: p.categoria || '—',
+    stock: p.tipo === 'servicio' ? '—' : Number(p.stock_actual || 0),
+    costo: convertirParaMostrar(Number(p.costo || 0), MONEDA_CODIGO),
+    precioFijo: esEscala ? '-' : convertirParaMostrar(Number(p.precio || 0), MONEDA_CODIGO),
+    escala1: '', escala2: '', escala3: '', escala4: '', escala5: '',
+    estado: p.activo === false ? 'Inactivo' : 'Activo',
+  };
+
+  if (esEscala) {
+    for (let i = 0; i < 5; i++) {
+      const e = escalas[i];
+      // Escalas que el producto SÍ tiene: "Nombre — Precio". Las que
+      // no tiene (si solo configuró 2 o 3) quedan en blanco, tal como
+      // se pidió — nunca con "-", eso es solo para precio fijo.
+      fila[`escala${i+1}`] = e ? `${e.nombre} — ${fmtMoney(e.precio)}` : '';
+    }
+  } else {
+    // Precio fijo: las 5 columnas de escala se marcan con "-"
+    for (let i = 1; i <= 5; i++) fila[`escala${i}`] = '-';
+  }
+
+  return fila;
+}
+
+function abrirModalExportarInventario() {
+  const cant = $('exp-inv-cantidad');
+  if (cant) cant.textContent = (STATE.filtrados || STATE.productos || []).length;
+  $('modalExportarInventario').classList.add('open');
+}
+function cerrarModalExportarInventario() {
+  $('modalExportarInventario').classList.remove('open');
+}
+
+/* ============================================================
+   MOVER PRODUCTOS A OTRA SUCURSAL / BODEGA
+   Reutiliza el mismo mecanismo de "grupo" que ya tiene Sucursales
+   (RPC listar_sucursales_grupo / mover_stock_producto) — nunca toca
+   directo la tabla de otra cuenta, todo pasa por esas funciones ya
+   protegidas en la base de datos.
+   ============================================================ */
+let MP = { productoSel: null, destinos: [] };
+
+async function abrirModalMoverProducto() {
+  MP.productoSel = null;
+  $('mp-buscar-producto').value = '';
+  $('mp-resultados').style.display = 'none';
+  $('mp-seleccionado').style.display = 'none';
+  $('mp-cantidad').value = '';
+  $('mp-error').textContent = '';
+  $('mp-destino').innerHTML = '<option value="">Cargando sucursales y bodegas…</option>';
+  $('modalMoverProducto').classList.add('open');
+
+  try {
+    // ¿Cuál de las filas del grupo soy YO? — para no ofrecerme a mí
+    // mismo como destino. Se determina igual que en Sucursales: si
+    // tengo una fila donde figuro como sucursal/bodega de otra Central,
+    // esa es la mía; si no, soy yo mismo la Central.
+    const { data: miFila } = await supabaseClient.from('sucursales')
+      .select('id').eq('auth_user_id_sucursal', STATE.user.id).eq('es_central', false).maybeSingle();
+    const miPropioId = miFila?.id || null; // null si soy la Central
+
+    const { data, error } = await supabaseClient.rpc('listar_sucursales_grupo');
+    if (error) throw error;
+
+    MP.destinos = (data || []).filter(d => miPropioId ? d.id !== miPropioId : !d.es_central);
+    if (!MP.destinos.length) {
+      $('mp-destino').innerHTML = '<option value="">No tienes otras sucursales o bodegas creadas todavía</option>';
+      return;
+    }
+    $('mp-destino').innerHTML = MP.destinos.map(d =>
+      `<option value="${d.id}">${d.tipo === 'bodega' ? '📦' : (d.es_central ? '🏠' : '🏬')} ${escHtml(d.nombre)}${d.es_central ? ' (Central)' : ''}</option>`
+    ).join('');
+  } catch (e) {
+    console.error('abrirModalMoverProducto:', e);
+    $('mp-destino').innerHTML = '<option value="">No se pudieron cargar — revisa el módulo Sucursales</option>';
+  }
+}
+
+function cerrarModalMoverProducto() {
+  $('modalMoverProducto').classList.remove('open');
+}
+
+function buscarProductoParaMover(q) {
+  const cont = $('mp-resultados');
+  q = (q || '').trim().toLowerCase();
+  if (!q) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+
+  const coincidencias = (STATE.productos || [])
+    .filter(p => p.tipo === 'producto' && p.activo !== false && Number(p.stock_actual) > 0)
+    .filter(p => (p.nombre || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+    .slice(0, 8);
+
+  if (!coincidencias.length) {
+    cont.style.display = 'block';
+    cont.innerHTML = `<div style="padding:10px 12px;font-size:12.5px;color:var(--text-muted)">Sin resultados (solo productos físicos con stock disponible)</div>`;
+    return;
+  }
+  cont.style.display = 'block';
+  cont.innerHTML = coincidencias.map(p => `
+    <div class="sri-item" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onclick="seleccionarProductoParaMover('${p.id}')">
+      <strong>${escHtml(p.nombre)}</strong>
+      <div style="font-size:11.5px;color:var(--text-muted)">${p.sku ? 'SKU: '+escHtml(p.sku)+' · ' : ''}Stock: ${fmtNumeroSimple(p.stock_actual)}</div>
+    </div>`).join('');
+}
+
+function seleccionarProductoParaMover(productoId) {
+  const p = (STATE.productos || []).find(x => x.id === productoId);
+  if (!p) return;
+  MP.productoSel = p;
+  $('mp-buscar-producto').value = '';
+  $('mp-resultados').style.display = 'none';
+  $('mp-seleccionado').style.display = 'block';
+  $('mp-sel-nombre').textContent = p.nombre;
+  $('mp-sel-stock').textContent = fmtNumeroSimple(p.stock_actual);
+  $('mp-cantidad').max = p.stock_actual;
+}
+
+async function confirmarMoverProducto() {
+  const errEl = $('mp-error');
+  errEl.textContent = '';
+
+  if (!MP.productoSel) { errEl.textContent = 'Busca y elige un producto primero.'; return; }
+  const destinoId = $('mp-destino').value;
+  if (!destinoId) { errEl.textContent = 'Elige a dónde enviarlo.'; return; }
+  const cantidad = parseFloat($('mp-cantidad').value);
+  if (!cantidad || cantidad <= 0) { errEl.textContent = 'Escribe una cantidad válida.'; return; }
+  if (cantidad > Number(MP.productoSel.stock_actual)) {
+    errEl.textContent = `No tienes suficiente stock (disponible: ${fmtNumeroSimple(MP.productoSel.stock_actual)}).`; return;
+  }
+
+  const btnMover = $('btnConfirmarMover');
+  if (btnMover) { btnMover.disabled = true; btnMover.classList.add('btn-loading'); }
+  try {
+    const { error } = await supabaseClient.rpc('mover_stock_producto', {
+      p_producto_id: MP.productoSel.id,
+      p_sucursal_destino_id: destinoId,
+      p_cantidad: cantidad,
+    });
+    if (error) throw error;
+
+    const destino = MP.destinos.find(d => d.id === destinoId);
+    showToast('success', 'Producto movido', `${cantidad} de "${MP.productoSel.nombre}" enviado a ${destino?.nombre || 'destino'}`);
+    cerrarModalMoverProducto();
+    await cargarProductos();
+  } catch (e) {
+    console.error('confirmarMoverProducto:', e);
+    errEl.textContent = 'Error al mover: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    if (btnMover) { btnMover.disabled = false; btnMover.classList.remove('btn-loading'); }
+  }
+}
+
+function fmtNumeroSimple(n) {
+  return Number(n || 0).toLocaleString('es-NI', { maximumFractionDigits: 2 });
+}
+
+function datosParaExportarInventario() {
+  const lista = (STATE.filtrados && STATE.filtrados.length) ? STATE.filtrados : STATE.productos;
+  return (lista || []).map(filaExportInventario);
+}
+
+async function exportarInventarioExcel() {
+  try {
+    const filas = datosParaExportarInventario();
+    if (!filas.length) { showToast('warning', 'Sin productos', 'No hay productos para exportar'); return; }
+
+    const simboloVis = monedaParaMostrar(MONEDA_CODIGO);
+    const headers = ['Producto', 'Tipo', 'SKU', 'Categoría', 'Stock', `Costo (${simboloVis})`,
+      `Precio fijo (${simboloVis})`, 'Escala 1', 'Escala 2', 'Escala 3', 'Escala 4', 'Escala 5', 'Estado'];
+    const filasArr = filas.map(f => [
+      f.producto, f.tipo, f.sku, f.categoria, f.stock, f.costo, f.precioFijo,
+      f.escala1, f.escala2, f.escala3, f.escala4, f.escala5, f.estado,
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    const aoa = [headers, ...filasArr];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Formato numérico en columnas de costo/precio fijo/stock (cuando son
+    // números reales; "-" o texto se dejan tal cual, sin forzar formato).
+    filasArr.forEach((row, ri) => {
+      [4, 5, 6].forEach(ci => {
+        const ref = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
+        if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = '#,##0.00';
+      });
+    });
+
+    // Ancho de columna autoajustado según el contenido real
+    ws['!cols'] = headers.map((h, ci) => {
+      const maxLen = filasArr.reduce((m, r) => Math.max(m, String(r[ci] ?? '').length), h.length);
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 34) };
+    });
+    // Encabezado congelado + autofiltro, para que se vea profesional y
+    // se pueda ordenar/filtrar directo en Excel.
+    ws['!freeze'] = { xSplit: '0', ySplit: '1', topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:filasArr.length,c:headers.length-1} }) };
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+    const fecha = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `Inventario_Negocio360_${fecha}.xlsx`);
+
+    cerrarModalExportarInventario();
+    showToast('success', 'Listo', 'Inventario exportado a Excel');
+  } catch (e) {
+    console.error('exportarInventarioExcel:', e);
+    showToast('error', 'Error', 'No se pudo exportar a Excel');
+  }
+}
+
+async function exportarInventarioPDF() {
+  try {
+    if (!window.jspdf) throw new Error('jsPDF no está disponible');
+    const filas = datosParaExportarInventario();
+    if (!filas.length) { showToast('warning', 'Sin productos', 'No hay productos para exportar'); return; }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    const nombreNegocio = ($('nombreEmpresa') && $('nombreEmpresa').textContent.trim()) || 'Negocio360';
+
+    // Encabezado con franja de color (mismo estilo que el resto de los
+    // comprobantes/PDF del sistema)
+    doc.setFillColor(108, 99, 255);
+    doc.rect(0, 0, W, 22, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(15); doc.setFont(undefined, 'bold');
+    doc.text(nombreNegocio, 12, 13);
+    doc.setFontSize(10); doc.setFont(undefined, 'normal');
+    doc.text('Inventario de Productos y Servicios', 12, 19);
+    doc.setFontSize(8.5);
+    doc.text(`Generado: ${new Date().toLocaleDateString('es-NI',{day:'2-digit',month:'short',year:'numeric'})}`, W-12, 13, {align:'right'});
+    doc.text(`${filas.length} ítem${filas.length===1?'':'s'}`, W-12, 19, {align:'right'});
+
+    const cm = CURRENCY_SYMBOLS[monedaParaMostrar(MONEDA_CODIGO)] || MONEDA_SIMBOLO;
+    const head = [['Producto','Tipo','SKU','Categoría','Stock',`Costo (${cm})`,`Precio fijo (${cm})`,'Escala 1','Escala 2','Escala 3','Escala 4','Escala 5','Estado']];
+    const body = filas.map(f => [
+      f.producto, f.tipo, f.sku, f.categoria, f.stock,
+      typeof f.costo === 'number' ? fmtMoney(f.costo).replace(cm,'') : f.costo,
+      typeof f.precioFijo === 'number' ? fmtMoney(f.precioFijo).replace(cm,'') : f.precioFijo,
+      f.escala1||'', f.escala2||'', f.escala3||'', f.escala4||'', f.escala5||'', f.estado,
+    ]);
+
+    doc.autoTable({
+      startY: 28,
+      head, body,
+      theme: 'striped',
+      headStyles: { fillColor: [108,99,255], fontSize: 8 },
+      styles: { fontSize: 7.3, cellPadding: 2.2, overflow: 'linebreak' },
+      columnStyles: {
+        4: { halign:'right' }, 5: { halign:'right' }, 6: { halign:'right' },
+      },
+      margin: { left: 10, right: 10 },
+      didDrawPage: () => {
+        const pageH = doc.internal.pageSize.getHeight();
+        doc.setFontSize(7.5); doc.setTextColor(150,150,170);
+        doc.text('Generado por Negocio360', 10, pageH - 6);
+      },
+    });
+
+    const pages = doc.internal.getNumberOfPages();
+    for (let i=1;i<=pages;i++) {
+      doc.setPage(i);
+      doc.setFontSize(7.5); doc.setTextColor(150,150,170);
+      doc.text(`Página ${i} de ${pages}`, W-10, doc.internal.pageSize.getHeight()-6, {align:'right'});
+    }
+
+    const fecha = new Date().toISOString().slice(0,10);
+    doc.save(`Inventario_Negocio360_${fecha}.pdf`);
+
+    cerrarModalExportarInventario();
+    showToast('success', 'Listo', 'Inventario exportado a PDF');
+  } catch (e) {
+    console.error('exportarInventarioPDF:', e);
+    showToast('error', 'Error', 'No se pudo exportar a PDF');
+  }
+}
+
+// ============================================================
+// HELPER: determinar si un producto tiene stock bajo real
+// FIX: solo aplica cuando stock_minimo > 0 para evitar
+//      falsos positivos cuando ambos valores son 0
+// ============================================================
+function esStockBajo(p) {
+  return (
+    p.tipo === 'producto' &&
+    p.activo === true &&
+    parseFloat(p.stock_minimo ?? 0) > 0 &&
+    parseFloat(p.stock_actual  ?? 0) <= parseFloat(p.stock_minimo ?? 0)
+  );
+}
+
+// ============================================================
+// STATS
+// FIX: usa helper esStockBajo() para evitar falsos positivos
+// ============================================================
+function actualizarStats() {
+  // Los KPIs siguen el filtro de Marca/Proveedor específicamente
+  // (no la búsqueda de texto ni el tipo) — si está en "Todas las
+  // marcas", se comportan exactamente igual que siempre.
+  const base = STATE.filtroMarca
+    ? STATE.productos.filter(p => p.proveedor_id === STATE.filtroMarca)
+    : STATE.productos;
+
+  const todos   = base;
+  const activos = todos.filter(p => p.activo === true);
+  const prods   = activos.filter(p => p.tipo === 'producto');
+  const servs   = activos.filter(p => p.tipo === 'servicio');
+
+  // FIX: solo productos de ESTE usuario (ya filtrado por cargarProductos)
+  // y solo cuando stock_minimo está configurado > 0
+  const stockBajoList = todos.filter(esStockBajo);
+
+  const valorInventario = todos
+    .filter(p => p.tipo === 'producto')
+    .reduce((acc, p) => acc + (parseFloat(p.stock_actual || 0) * parseFloat(p.costo || 0)), 0);
+
+  const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
+
+  set('statProductos',  prods.length);
+  set('statServicios',  servs.length);
+  set('statInventario', fmtMoney(valorInventario));
+  set('statStockBajo',  stockBajoList.length);
+
+  // Badge sidebar — siempre actualizar (mostrar/ocultar)
+  const badge = $('badgeStockBajo');
+  if (badge) {
+    badge.textContent   = stockBajoList.length;
+    badge.style.display = stockBajoList.length > 0 ? 'inline-flex' : 'none';
+  }
+
+  // Card stat-red — cambiar TODA la apariencia según si hay stock bajo o no
+  const cardStockBajo = document.querySelector('.stat-card.stat-red');
+  if (cardStockBajo) {
+    const iconEl     = cardStockBajo.querySelector('.stat-card-icon');
+    const subEl      = cardStockBajo.querySelector('.stat-card-sub');
+    const valueEl    = cardStockBajo.querySelector('.stat-card-value');
+    const labelEl    = cardStockBajo.querySelector('.stat-card-label');
+
+    if (stockBajoList.length > 0) {
+      // HAY stock bajo → apariencia de alerta roja
+      cardStockBajo.style.opacity        = '1';
+      cardStockBajo.style.setProperty('--stat-accent',   'var(--danger)');
+      cardStockBajo.style.setProperty('--stat-icon-bg',  'var(--danger-light)');
+      if (labelEl) labelEl.textContent   = 'Stock bajo';
+      if (iconEl)  iconEl.textContent    = '⚠️';
+      if (subEl)   subEl.textContent     = 'Requieren atención';
+      if (valueEl) valueEl.style.color   = 'var(--danger)';
+    } else {
+      // SIN stock bajo → apariencia neutra/verde
+      cardStockBajo.style.opacity        = '1';
+      cardStockBajo.style.setProperty('--stat-accent',   'var(--success)');
+      cardStockBajo.style.setProperty('--stat-icon-bg',  'var(--success-light)');
+      if (labelEl) labelEl.textContent   = 'Inventario OK';
+      if (iconEl)  iconEl.textContent    = '✅';
+      if (subEl)   subEl.textContent     = 'Todo en orden';
+      if (valueEl) valueEl.style.color   = 'var(--success)';
+    }
+  }
+}
+
+// ============================================================
+// FILTROS Y BÚSQUEDA
+// FIX: caso stock_bajo usa helper esStockBajo()
+// ============================================================
+// Reutilizable tanto para Productos/Servicios como para Combos — las
+// 2 tablas comparten los mismos nombres de campo (precio, created_at,
+// codigo_barras), así que una sola función sirve para ambas listas.
+function ordenarLista(lista, criterio) {
+  const copia = [...lista];
+  switch (criterio) {
+    case 'az':
+      return copia.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+    case 'za':
+      return copia.sort((a, b) => (b.nombre || '').localeCompare(a.nombre || '', 'es', { sensitivity: 'base' }));
+    case 'antiguo':
+      return copia.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    case 'precio_asc':
+      return copia.sort((a, b) => Number(a.precio || 0) - Number(b.precio || 0));
+    case 'precio_desc':
+      return copia.sort((a, b) => Number(b.precio || 0) - Number(a.precio || 0));
+    case 'codigo_barras':
+      // Los que no tienen código quedan al final, no se pierden de la lista.
+      return copia.sort((a, b) => {
+        const ca = (a.codigo_barras || '').trim(), cb = (b.codigo_barras || '').trim();
+        if (!ca && !cb) return 0;
+        if (!ca) return 1;
+        if (!cb) return -1;
+        return ca.localeCompare(cb, 'es', { numeric: true });
+      });
+    case 'reciente':
+      return copia.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    default:
+      return copia.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }));
+  }
+}
+
+// Cambia entre las 3 pestañas de categoria (Productos / Servicios /
+// Materia Prima) -- cada una es una seccion de verdad separada, no
+// un filtro mas. Al entrar a una categoria distinta, el filtro
+// secundario (activos/inactivos/stock bajo) se resetea a "todos",
+// para no arrastrar un filtro que no tenia sentido en la categoria
+// anterior.
+function cambiarCategoriaProductos(cat) {
+  STATE.categoriaActiva = cat;
+  STATE.filtroActivo = 'todos';
+
+  $$('.cat-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+  $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filtro === 'todos'));
+
+  // "Stock bajo" no tiene sentido para Servicios (no manejan
+  // inventario) -- se oculta en esa categoria en vez de mostrar un
+  // filtro que siempre daria vacio.
+  const btnStock = $('btnFiltroStockBajo');
+  if (btnStock) btnStock.style.display = cat === 'servicios' ? 'none' : '';
+
+  aplicarFiltros();
+}
+
+function actualizarContadoresCategorias() {
+  const lista = STATE.productos || [];
+  const nProductos = lista.filter(p => p.tipo === 'producto' && !p.es_materia_prima).length;
+  const nServicios = lista.filter(p => p.tipo === 'servicio').length;
+  const nMateriaPrima = lista.filter(p => p.es_materia_prima === true).length;
+  const elP = $('catCountProductos'); if (elP) elP.textContent = nProductos;
+  const elS = $('catCountServicios'); if (elS) elS.textContent = nServicios;
+  const elM = $('catCountMateriaPrima'); if (elM) elM.textContent = nMateriaPrima;
+}
+
+function aplicarFiltros() {
+  let lista = [...STATE.productos];
+  const q   = STATE.busqueda.toLowerCase().trim();
+
+  if (q) {
+    lista = lista.filter(p =>
+      (p.nombre           || '').toLowerCase().includes(q) ||
+      (p.sku              || '').toLowerCase().includes(q) ||
+      (p.codigo_barras    || '').toLowerCase().includes(q) ||
+      (p.categoria        || '').toLowerCase().includes(q) ||
+      (p.proveedor_nombre || '').toLowerCase().includes(q) ||
+      (p.descripcion      || '').toLowerCase().includes(q)
+    );
+  }
+
+  // 1. Categoria (pestaña principal) -- separa de verdad Productos,
+  // Servicios y Materia Prima en 3 vistas distintas, antes de
+  // aplicar cualquier otro filtro.
+  switch (STATE.categoriaActiva) {
+    case 'servicios':     lista = lista.filter(p => p.tipo === 'servicio'); break;
+    case 'materia_prima': lista = lista.filter(p => p.es_materia_prima === true); break;
+    default:               lista = lista.filter(p => p.tipo === 'producto' && !p.es_materia_prima); break;
+  }
+
+  // 2. Filtro secundario (dentro de la categoria ya seleccionada)
+  switch (STATE.filtroActivo) {
+    case 'activos':    lista = lista.filter(p => p.activo === true);      break;
+    case 'inactivos':  lista = lista.filter(p => p.activo === false);     break;
+    // FIX: usa helper para evitar falsos positivos (0 <= 0)
+    case 'stock_bajo': lista = lista.filter(p => esStockBajo(p)); break;
+    default: break; // "todos": no se filtra mas, ya viene acotado por la categoria
+  }
+
+  // Filtro secundario: Marca / Proveedor (opcional, independiente de filtroActivo)
+  if (STATE.filtroMarca) {
+    lista = lista.filter(p => p.proveedor_id === STATE.filtroMarca);
+  }
+
+  // Orden — no reemplaza el filtrado de arriba, solo reordena lo que
+  // ya quedó después de buscar/filtrar.
+  lista = ordenarLista(lista, STATE.ordenActivo);
+
+  STATE.filtrados = lista;
+  renderTabla();
+  actualizarStats();
+
+  const pieEl = $('tablePie');
+  if (pieEl) pieEl.textContent =
+    `${lista.length} registro${lista.length !== 1 ? 's' : ''} encontrado${lista.length !== 1 ? 's' : ''}`;
+}
+
+// ============================================================
+// RENDER TABLA
+// FIX: usa helper esStockBajo() para bandera por fila
+// ============================================================
+function renderTabla() {
+  const tbody = $('productosTbody');
+  if (!tbody) return;
+
+  const countEl = $('resultadosCount');
+  if (countEl) countEl.textContent =
+    `${STATE.filtrados.length} resultado${STATE.filtrados.length !== 1 ? 's' : ''}`;
+
+  // 3 secciones GENUINAMENTE separadas -- cada una con su propio
+  // <thead> (columnas distintas, solo las que tienen sentido para
+  // esa categoria) y su propia funcion de filas, no una tabla
+  // compartida con una columna "Tipo" de mas.
+  const cat = STATE.categoriaActiva;
+  const theadProductos = $('theadProductos'), theadServicios = $('theadServicios'), theadMP = $('theadMateriaPrima');
+  if (theadProductos) theadProductos.style.display = cat === 'productos' ? '' : 'none';
+  if (theadServicios) theadServicios.style.display = cat === 'servicios' ? '' : 'none';
+  if (theadMP)        theadMP.style.display        = cat === 'materia_prima' ? '' : 'none';
+
+  const thModelo = $('thModelo');
+  if (thModelo) thModelo.style.display = (cat === 'productos' && STATE.usaModeloProducto) ? '' : 'none';
+
+  const btnMP = $('btnNuevaMateriaPrima');
+  if (btnMP) btnMP.style.display = cat === 'materia_prima' ? '' : 'none';
+  const btnNuevoServicio = $('btnNuevoServicio');
+  if (btnNuevoServicio) btnNuevoServicio.style.display = cat === 'servicios' ? '' : 'none';
+  const btnNuevoProducto = $('btnNuevoProducto');
+  if (btnNuevoProducto) btnNuevoProducto.style.display = cat === 'productos' ? '' : 'none';
+
+  if (cat === 'materia_prima') { renderTablaMateriaPrima(tbody); return; }
+  if (cat === 'servicios')     { renderTablaServicios(tbody); return; }
+  renderTablaProductos(tbody);
+}
+
+function estadoVacioTabla(colspan, tipoTexto, onClickNuevo) {
+  return `
+    <tr><td colspan="${colspan}">
+      <div class="empty-state">
+        <div class="empty-state-icon">📦</div>
+        <h3>${STATE.busqueda ? 'Sin resultados' : `Sin ${tipoTexto} aún`}</h3>
+        <p>${STATE.busqueda
+          ? `No se encontró "${escHtml(STATE.busqueda)}". Intenta con otro término.`
+          : `Agrega tu primer ${tipoTexto.replace(/s$/, '')} para comenzar.`}</p>
+        ${!STATE.busqueda && onClickNuevo ? `<button class="btn btn-primary" onclick="${onClickNuevo}">+ Nuevo</button>` : ''}
+      </div>
+    </td></tr>`;
+}
+
+// ============================================================
+// TABLA -- PRODUCTOS (seccion propia, columnas propias -- ya sin
+// la columna "Tipo", redundante ahora que la pestaña ya lo dice)
+// ============================================================
+// Celda de nombre + SKU, con miniatura si la cuenta activo "Inventario
+// con imagenes" -- para cualquier otra cuenta, se ve exactamente igual
+// que siempre (sin espacio de mas reservado para la foto).
+function celdaNombreConFoto(p) {
+  const nombreHtml = `<div class="td-nombre">${escHtml(p.nombre)}</div>${p.sku ? `<div class="td-sku">${escHtml(p.sku)}</div>` : ''}`;
+  if (!STATE.empresa?.usa_inventario_imagenes) return nombreHtml;
+  const foto = p.imagen_url
+    ? `<img src="${escHtml(p.imagen_url)}" class="item-foto-thumb" alt="">`
+    : `<div class="item-foto-placeholder">🖼️</div>`;
+  return `<div style="display:flex;align-items:center;gap:8px">${foto}<div>${nombreHtml}</div></div>`;
+}
+
+// Alterna entre la tabla normal y la cuadricula tipo catalogo -- solo
+// la cuadricula muestra la foto grande; ambas leen los MISMOS datos
+// (STATE.filtrados), nada de la logica de guardado cambia.
+function mostrarCatalogoOTabla(mostrarCatalogo) {
+  const tableCard = document.getElementById('tableCardProductos');
+  const grid = document.getElementById('catalogoGrid');
+  if (tableCard) tableCard.style.display = mostrarCatalogo ? 'none' : '';
+  if (grid) grid.style.display = mostrarCatalogo ? '' : 'none';
+}
+
+function renderCatalogoGrid(items, mostrarStock) {
+  const grid = document.getElementById('catalogoGrid');
+  if (!grid) return;
+  if (!items.length) {
+    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px 0">Nada por aquí todavía.</p>';
+    return;
+  }
+  grid.innerHTML = items.map(p => {
+    const foto = p.imagen_url
+      ? `<img src="${escHtml(p.imagen_url)}" class="catalogo-card-foto" alt="">`
+      : `<div class="catalogo-card-foto-placeholder">🖼️</div>`;
+    const precioHtml = p.tipo_precio === 'escala'
+      ? `<b>${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</b>`
+      : `<b>${fmtMoney(p.precio)}</b>`;
+    return `
+      <div class="catalogo-card" data-id="${p.id}">
+        <div class="catalogo-card-foto-wrap">
+          <span class="catalogo-card-estado" style="color:${p.activo ? 'var(--success,#16a34a)' : 'var(--text-muted)'}">${p.activo ? '● Activo' : '● Inactivo'}</span>
+          ${foto}
+        </div>
+        <div class="catalogo-card-body">
+          <div class="catalogo-card-nombre">${escHtml(p.nombre)}</div>
+          ${p.sku ? `<div class="catalogo-card-sku">${escHtml(p.sku)}</div>` : ''}
+          ${p.categoria ? `<div class="catalogo-card-categoria">${escHtml(p.categoria)}</div>` : ''}
+          <div class="catalogo-card-precios">
+            <span style="color:var(--text-muted)">Precio</span>
+            ${precioHtml}
+          </div>
+          ${mostrarStock ? `<div class="catalogo-card-stock">Stock: ${fmtNum(p.stock_actual)}</div>` : ''}
+          <div class="catalogo-card-acciones">
+            <button class="btn btn-secondary" onclick="abrirDetalle('${p.id}')">👁 Ver</button>
+            <button class="btn btn-primary" onclick="abrirEditar('${p.id}')">✏️ Editar</button>
+            <button class="btn btn-secondary" onclick="duplicarProducto('${p.id}')" title="Duplicar">📋</button>
+            <button class="btn btn-secondary" onclick="confirmarEliminarProducto('${p.id}')" title="Eliminar">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Columnas disponibles para la tabla de Productos -- cada una sabe
+// generar su propio <th> y su propia celda <td>. Usado SOLO cuando
+// la cuenta configuro un orden propio (STATE.ordenColumnasProductos);
+// si no hay configuracion, se usa el camino de SIEMPRE, sin tocar.
+const COLUMNAS_PRODUCTOS_DISPONIBLES = {
+  nombre:      { label: 'Nombre / SKU', th: () => '<th>Nombre / SKU</th>', td: p => `<td>${celdaNombreConFoto(p)}</td>` },
+  modelo:      { label: 'Modelo', th: () => '<th>Modelo</th>', td: p => `<td>${p.modelo ? escHtml(p.modelo) : '<span style="color:var(--text-muted)">—</span>'}</td>` },
+  ubicacion:   { label: 'Ubicación', th: () => '<th>Ubicación</th>', td: p => `<td>${p.ubicacion_fisica ? escHtml(p.ubicacion_fisica) : '<span style="color:var(--text-muted)">—</span>'}</td>` },
+  categoria:   { label: 'Categoría', th: () => '<th>Categoría</th>', td: p => `<td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}</td>` },
+  precio:      { label: 'Precio', th: () => '<th>Precio</th>', td: p => `<td class="td-money">${p.tipo_precio === 'escala' ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>` : fmtMoney(p.precio)}</td>` },
+  costo:       { label: 'Costo', th: () => '<th>Costo</th>', td: p => `<td class="td-money">${fmtMoney(p.costo)}</td>` },
+  margen:      { label: 'Margen', th: () => '<th>Margen</th>', td: p => `<td>${renderMargen(p.precio, p.costo)}</td>` },
+  stock:       { label: 'Stock', th: () => '<th>Stock</th>', td: p => { const bajo = esStockBajo(p); return `<td><div class="td-stock"><span>${fmtNum(p.stock_actual)}${(p.unidad_codigo && p.unidad_codigo !== 'unidad' && window.N360Unidades?.porCodigo(p.unidad_codigo)) ? ' <small style="color:var(--text-muted)">' + escHtml(window.N360Unidades.porCodigo(p.unidad_codigo).abreviatura) + '</small>' : ''}</span>${bajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}</div></td>`; } },
+  estado:      { label: 'Estado', th: () => '<th>Estado</th>', td: p => `<td><span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>` },
+  creado:      { label: 'Creado', th: () => '<th>Creado</th>', td: p => `<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>` },
+  actualizado: { label: 'Actualizado', th: () => '<th>Actualizado</th>', td: p => `<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>` },
+  acciones:    { label: 'Acciones', th: () => '<th>Acciones</th>', td: p => {
+    const movBtn = `<button class="row-action-btn mov-btn-especial" title="Movimiento especial (merma)" onclick="abrirMovimiento('${p.id}')" style="opacity:1;color:var(--warning);">📉</button>`;
+    return `<td><div style="display:flex;align-items:center;gap:4px;"><div class="row-actions" style="opacity:1;">
+      <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
+      <button class="row-action-btn edit" title="Editar" onclick="abrirEditar('${p.id}')">✏️</button>
+      <button class="row-action-btn dup" title="Duplicar" onclick="duplicarProducto('${p.id}')">📋</button>
+      <button class="row-action-btn del" title="Eliminar" onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+    </div>${movBtn}</div></td>`;
+  } },
+};
+const ORDEN_COLUMNAS_PRODUCTOS_DEFAULT = ['nombre','modelo','ubicacion','categoria','precio','costo','margen','stock','estado','creado','actualizado','acciones'];
+
+// Servicios reutiliza los MISMOS generadores de celda que Productos
+// para las columnas compartidas (nombre, categoria, precio, costo,
+// margen, estado, creado, actualizado) -- un servicio no tiene
+// modelo ni stock, y sus acciones no incluyen el boton de merma
+// (no maneja inventario).
+const COLUMNAS_SERVICIOS_DISPONIBLES = {
+  nombre: COLUMNAS_PRODUCTOS_DISPONIBLES.nombre,
+  categoria: COLUMNAS_PRODUCTOS_DISPONIBLES.categoria,
+  precio: COLUMNAS_PRODUCTOS_DISPONIBLES.precio,
+  costo: COLUMNAS_PRODUCTOS_DISPONIBLES.costo,
+  margen: COLUMNAS_PRODUCTOS_DISPONIBLES.margen,
+  estado: COLUMNAS_PRODUCTOS_DISPONIBLES.estado,
+  creado: COLUMNAS_PRODUCTOS_DISPONIBLES.creado,
+  actualizado: COLUMNAS_PRODUCTOS_DISPONIBLES.actualizado,
+  acciones: { label: 'Acciones', th: () => '<th>Acciones</th>', td: p => `<td><div class="row-actions" style="opacity:1;">
+      <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
+      <button class="row-action-btn edit" title="Editar" onclick="abrirEditar('${p.id}')">✏️</button>
+      <button class="row-action-btn dup" title="Duplicar" onclick="duplicarProducto('${p.id}')">📋</button>
+      <button class="row-action-btn del" title="Eliminar" onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+    </div></td>` },
+};
+const ORDEN_COLUMNAS_SERVICIOS_DEFAULT = ['nombre','categoria','precio','costo','margen','estado','creado','actualizado','acciones'];
+
+function renderTablaServiciosDinamico(tbody, orden) {
+  const cols = orden.filter(c => c.visible !== false && COLUMNAS_SERVICIOS_DISPONIBLES[c.clave]);
+  const thead = document.getElementById('theadServicios');
+  if (thead) thead.innerHTML = `<tr>${cols.map(c => COLUMNAS_SERVICIOS_DISPONIBLES[c.clave].th()).join('')}</tr>`;
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = estadoVacioTabla(cols.length, 'servicios', "abrirModalNuevo('servicio')");
+    return;
+  }
+  tbody.innerHTML = STATE.filtrados.map(p => `<tr data-id="${p.id}">${cols.map(c => COLUMNAS_SERVICIOS_DISPONIBLES[c.clave].td(p)).join('')}</tr>`).join('');
+  activarHoverFilas(tbody);
+}
+
+function renderTablaProductosDinamico(tbody, orden) {
+  const cols = orden.filter(c => c.visible !== false && COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave]);
+  const thead = document.getElementById('theadProductos');
+  if (thead) thead.innerHTML = `<tr>${cols.map(c => COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave].th()).join('')}</tr>`;
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = estadoVacioTabla(cols.length, 'productos', "abrirModalNuevo('producto')");
+    return;
+  }
+  tbody.innerHTML = STATE.filtrados.map(p => `<tr data-id="${p.id}">${cols.map(c => COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave].td(p)).join('')}</tr>`).join('');
+  activarHoverFilas(tbody);
+}
+
+function renderTablaProductos(tbody) {
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTabla(true);
+    renderCatalogoGrid(STATE.filtrados, true);
+    return;
+  }
+  mostrarCatalogoOTabla(false);
+
+  // Si la cuenta configuro su propio orden de columnas, se usa ese
+  // camino -- cualquier otra cuenta (sin configurar nada, el caso de
+  // TODAS las demas) sigue el camino de SIEMPRE, sin ningun cambio.
+  if (Array.isArray(STATE.ordenColumnasProductos) && STATE.ordenColumnasProductos.length) {
+    renderTablaProductosDinamico(tbody, STATE.ordenColumnasProductos);
+    return;
+  }
+
+  // Si antes hubo una configuracion dinamica en esta misma sesion y
+  // se quito, el thead queda con las columnas viejas -- se restaura
+  // al original (guardado la primera vez que se renderiza).
+  const thead = document.getElementById('theadProductos');
+  if (thead) {
+    if (!STATE._theadProductosOriginal) STATE._theadProductosOriginal = thead.innerHTML;
+    else thead.innerHTML = STATE._theadProductosOriginal;
+  }
+
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = estadoVacioTabla(11, 'productos', "abrirModalNuevo('producto')");
+    return;
+  }
+
+  tbody.innerHTML = STATE.filtrados.map(p => {
+    const stockBajo = esStockBajo(p);
+    const stockHtml = `<div class="td-stock">
+         <span>${fmtNum(p.stock_actual)}</span>
+         ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
+       </div>`;
+    const movBtn = `<button class="row-action-btn mov-btn-especial"
+          title="Movimiento especial (merma)"
+          onclick="abrirMovimiento('${p.id}')"
+          style="opacity:1;color:var(--warning);">📉</button>`;
+
+    return `
+      <tr data-id="${p.id}">
+        <td>
+          ${celdaNombreConFoto(p)}
+        </td>
+        <td style="display:${STATE.usaModeloProducto ? '' : 'none'}">${p.modelo ? escHtml(p.modelo) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>
+          ${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}
+          ${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}
+        </td>
+        <td class="td-money">
+          ${p.tipo_precio === 'escala'
+            ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>`
+            : fmtMoney(p.precio)}
+        </td>
+        <td class="td-money">${fmtMoney(p.costo)}</td>
+        <td>${renderMargen(p.precio, p.costo)}</td>
+        <td>${stockHtml}</td>
+        <td>
+          <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
+            ${p.activo ? 'Activo' : 'Inactivo'}
+          </span>
+        </td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div class="row-actions" style="opacity:1;">
+              <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
+              <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
+              ${(STATE.usaNumeroSerie && p.requiere_numero_serie === true && p.tipo === 'producto') ? `<button class="row-action-btn" title="Números de serie y garantía del proveedor" onclick="abrirSeriesProducto('${p.id}')">🔢</button>` : ''}
+              <button class="row-action-btn dup"  title="Duplicar"      onclick="duplicarProducto('${p.id}')">📋</button>
+              <button class="row-action-btn del"  title="Eliminar"      onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+            </div>
+            ${movBtn}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  activarHoverFilas(tbody);
+}
+
+// ============================================================
+// TABLA -- SERVICIOS (seccion propia: sin Stock ni Modelo, un
+// servicio no maneja inventario)
+// ============================================================
+function renderTablaServicios(tbody) {
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTabla(true);
+    renderCatalogoGrid(STATE.filtrados, false);
+    return;
+  }
+  mostrarCatalogoOTabla(false);
+
+  if (Array.isArray(STATE.ordenColumnasServicios) && STATE.ordenColumnasServicios.length) {
+    renderTablaServiciosDinamico(tbody, STATE.ordenColumnasServicios);
+    return;
+  }
+
+  const theadS = document.getElementById('theadServicios');
+  if (theadS) {
+    if (!STATE._theadServiciosOriginal) STATE._theadServiciosOriginal = theadS.innerHTML;
+    else theadS.innerHTML = STATE._theadServiciosOriginal;
+  }
+
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = estadoVacioTabla(9, 'servicios', "abrirModalNuevo('servicio')");
+    return;
+  }
+
+  tbody.innerHTML = STATE.filtrados.map(p => `
+    <tr data-id="${p.id}">
+      <td>
+        ${celdaNombreConFoto(p)}
+      </td>
+      <td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td class="td-money">
+        ${p.tipo_precio === 'escala'
+          ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>`
+          : fmtMoney(p.precio)}
+      </td>
+      <td class="td-money">${fmtMoney(p.costo)}</td>
+      <td>${renderMargen(p.precio, p.costo)}</td>
+      <td>
+        <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
+          ${p.activo ? 'Activo' : 'Inactivo'}
+        </span>
+      </td>
+      <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>
+      <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.updated_at)}</td>
+      <td>
+        <div class="row-actions" style="opacity:1;">
+          <button class="row-action-btn view" title="Ver detalle" onclick="abrirDetalle('${p.id}')">👁</button>
+          <button class="row-action-btn edit" title="Editar"      onclick="abrirEditar('${p.id}')">✏️</button>
+          <button class="row-action-btn dup"  title="Duplicar"    onclick="duplicarProducto('${p.id}')">📋</button>
+          <button class="row-action-btn del"  title="Eliminar"    onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  activarHoverFilas(tbody);
+}
+
+function activarHoverFilas(tbody) {
+  tbody.querySelectorAll('tr[data-id]').forEach(row => {
+    const actions = row.querySelector('.row-actions');
+    if (!actions) return;
+    row.addEventListener('mouseenter', () => actions.style.opacity = '1');
+    row.addEventListener('mouseleave', () => actions.style.opacity = '1');
+  });
+}
+
+
+// ============================================================
+// TABLA SIMPLIFICADA -- MATERIA PRIMA
+// Reutiliza los mismos datos (STATE.filtrados, ya filtrado por
+// es_materia_prima=true) y las mismas funciones de accion de siempre
+// (abrirDetalle/abrirEditar/confirmarEliminarProducto/abrirMovimiento)
+// -- solo cambia que columnas se muestran, nunca la logica real.
+// ============================================================
+// "Nueva materia prima" reutiliza el mismo modal que ya existe en
+// Producción (con su misma logica real, incluido el descuento de
+// Caja al comprar) en vez de duplicarla aquí -- así nunca hay dos
+// lugares del sistema haciendo lo mismo de forma distinta.
+function irAIngresarMateriaPrima() {
+  window.location.href = 'produccion.html?abrir=materia-prima';
+}
+function renderTablaMateriaPrima(tbody) {
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTabla(true);
+    renderCatalogoGrid(STATE.filtrados, true);
+    return;
+  }
+  mostrarCatalogoOTabla(false);
+  if (STATE.filtrados.length === 0) {
+    tbody.innerHTML = `
+      <tr><td colspan="8">
+        <div class="empty-state">
+          <div class="empty-state-icon">🧱</div>
+          <h3>${STATE.busqueda ? 'Sin resultados' : 'Sin materia prima aún'}</h3>
+          <p>${STATE.busqueda
+            ? `No se encontró "${escHtml(STATE.busqueda)}". Intenta con otro término.`
+            : 'Agrega tu primer insumo -- también puedes hacerlo directo desde el módulo Producción.'}</p>
+          ${!STATE.busqueda
+            ? `<button class="btn btn-primary" onclick="irAIngresarMateriaPrima()">+ Nueva materia prima</button>`
+            : ''}
+        </div>
+      </td></tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = STATE.filtrados.map(p => {
+    const stockBajo = esStockBajo(p);
+    return `
+      <tr data-id="${p.id}">
+        <td>
+          ${celdaNombreConFoto(p)}
+        </td>
+        <td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>${p.proveedor_nombre ? escHtml(p.proveedor_nombre) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td class="td-money">${fmtMoney(p.costo)}</td>
+        <td>
+          <div class="td-stock">
+            <span>${fmtNum(p.stock_actual)}</span>
+            ${stockBajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}
+          </div>
+        </td>
+        <td>${fmtNum(p.stock_minimo || 0)}</td>
+        <td>
+          <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
+            ${p.activo ? 'Activo' : 'Inactivo'}
+          </span>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <div class="row-actions" style="opacity:1;">
+              <button class="row-action-btn view" title="Ver detalle"   onclick="abrirDetalle('${p.id}')">👁</button>
+              <button class="row-action-btn edit" title="Editar"        onclick="abrirEditar('${p.id}')">✏️</button>
+              <button class="row-action-btn del"  title="Eliminar"      onclick="confirmarEliminarProducto('${p.id}')">🗑️</button>
+            </div>
+            <button class="row-action-btn mov-btn-especial" title="Movimiento especial (merma)" onclick="abrirMovimiento('${p.id}')" style="opacity:1;color:var(--warning);">📉</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  tbody.querySelectorAll('tr[data-id]').forEach(row => {
+    const actions = row.querySelector('.row-actions');
+    if (!actions) return;
+    row.addEventListener('mouseenter', () => actions.style.opacity = '1');
+    row.addEventListener('mouseleave', () => actions.style.opacity = '1');
+  });
+}
+
+// ============================================================
+// SKELETONS
+// ============================================================
+function mostrarSkeletons() {
+  const tbody = $('productosTbody');
+  if (!tbody) return;
+  tbody.innerHTML = Array(6).fill('').map(() => `
+    <tr class="skeleton-row">
+      <td><div class="skeleton skel-badge"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:140px"></div></td>
+      <td><div class="skeleton skel-line" style="width:80px"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:70px"></div></td>
+      <td><div class="skeleton skel-line" style="width:50px"></div></td>
+      <td><div class="skeleton skel-line" style="width:50px"></div></td>
+      <td><div class="skeleton skel-badge"></div></td>
+      <td></td>
+    </tr>
+  `).join('');
+}
+
+function mostrarErrorTabla() {
+  const tbody = $('productosTbody');
+  if (!tbody) return;
+  tbody.innerHTML = `
+    <tr><td colspan="12">
+      <div class="empty-state">
+        <div class="empty-state-icon">⚠️</div>
+        <h3>Error al cargar datos</h3>
+        <p>No se pudieron obtener los productos. Verifica tu conexión.</p>
+        <button class="btn btn-secondary" onclick="cargarProductos()">🔄 Reintentar</button>
+      </div>
+    </td></tr>
+  `;
+}
+
+// ============================================================
+// IMPACTO EN CAJA (nuevo producto)
+// Toggle: "Descontar de caja" (compra nueva) vs "Ya lo tenía"
+// (inventario físico previo, útil al iniciar con el sistema)
+// ============================================================
+
+
+// ============================================================
+// REGISTRAR COMPRA EN CAJA
+// Inserta un movimiento EGRESO en movimientos_financieros,
+// con la misma lógica/estructura que usa el módulo de Caja
+// (saldo_anterior / saldo_resultante como fuente de verdad).
+// No depende de caja.js/cajaAPI.js — autocontenido para no
+// arriesgar nada del módulo de Caja.
+
+// ============================================================
+// MODAL NUEVO / EDITAR
+// ============================================================
+function abrirModalNuevo(tipo = 'producto') {
+  STATE.modalMode  = 'crear';
+  STATE.editTarget = null;
+
+  resetFormulario();
+  setTipoModal(tipo, true);
+  configurarCamposSegunModo('crear');
+
+  $('modalProductoTitle').textContent = tipo === 'producto' ? '+ Nuevo Producto' : '+ Nuevo Servicio';
+  $('btnGuardarProducto').textContent = 'Crear';
+  $('modalProducto').classList.add('open');
+
+  setTimeout(() => $('inputNombre')?.focus(), 100);
+}
+
+function abrirEditar(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+
+  STATE.modalMode  = 'editar';
+  STATE.editTarget = p;
+
+  resetFormulario();
+  cargarFormulario(p);
+  setTipoModal(p.tipo, false);
+  configurarCamposSegunModo('editar');
+  cargarLotesDelProducto(p);
+
+  $('modalProductoTitle').textContent = `Editar: ${p.nombre}`;
+  $('btnGuardarProducto').textContent = 'Guardar cambios';
+  $('modalProducto').classList.add('open');
+}
+
+/* =====================================================
+   PRÓXIMOS A VENCER — junta los lotes de TODOS los productos del
+   negocio, ordenados por el que vence más pronto primero.
+===================================================== */
+async function abrirModalProximosVencer() {
+  $('modalProximosVencer').classList.add('open');
+  cambiarTabLotes('proximos');
+  await filtrarProximosVencer(30);
+}
+function cerrarModalProximosVencer() {
+  $('modalProximosVencer').classList.remove('open');
+}
+function cambiarTabLotes(tab) {
+  document.getElementById('tabPróximos').classList.toggle('active', tab === 'proximos');
+  document.getElementById('tabTodos').classList.toggle('active', tab === 'todos');
+  document.getElementById('panelProximosVencer').style.display = tab === 'proximos' ? '' : 'none';
+  document.getElementById('panelTodosLotes').style.display = tab === 'todos' ? '' : 'none';
+  if (tab === 'todos') cargarTodosLotes();
+}
+
+async function cargarTodosLotes() {
+  const cont = document.getElementById('listaTodosLotes');
+  cont.innerHTML = 'Cargando…';
+  try {
+    const { data: lotes } = await N360Leer.todo(() => supabaseClient.from('producto_lotes')
+      .select('*, productos(nombre, sku)')
+      .eq('auth_user_id', STATE.user.id).eq('activo', true).gt('cantidad_actual', 0)
+      .order('fecha_vencimiento', { ascending: true }), 'lotes');
+
+    if (!lotes || !lotes.length) {
+      cont.innerHTML = `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px">Todavía no hay ningún lote registrado. Se agregan al comprar productos desde Compras, o asignándolos a stock que ya tenías desde la ficha de cada producto.</p>`;
+      return;
+    }
+
+    // Agrupados por producto, para responder justo lo que preguntaste:
+    // "qué productos están metidos en esos lotes".
+    const porProducto = new Map();
+    lotes.forEach(l => {
+      const nombre = l.productos?.nombre || 'Producto';
+      if (!porProducto.has(nombre)) porProducto.set(nombre, []);
+      porProducto.get(nombre).push(l);
+    });
+
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    cont.innerHTML = Array.from(porProducto.entries()).map(([nombre, lotesProd]) => `
+      <div style="margin-bottom:14px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px">${escHtml(nombre)}</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${lotesProd.map(l => {
+            const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
+            const dias = Math.round((venc - hoy) / 86400000);
+            const color = dias < 0 ? 'var(--danger,#dc2626)' : (dias <= 15 ? '#f59e0b' : 'var(--text-primary)');
+            return `
+              <div style="display:flex;justify-content:space-between;padding:7px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px">
+                <span>${l.numero_lote ? `Lote ${escHtml(l.numero_lote)}` : 'Sin número'} · ${fmtNum(l.cantidad_actual)} unidades</span>
+                <span style="color:${color};font-weight:600">${l.fecha_vencimiento}</span>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    console.warn('cargarTodosLotes:', e);
+    cont.innerHTML = `<p style="font-size:12.5px;color:var(--danger)">No se pudo cargar la lista.</p>`;
+  }
+}
+
+async function filtrarProximosVencer(dias) {
+  const cont = $('listaProximosVencer');
+  cont.innerHTML = 'Cargando…';
+  try {
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const limite = new Date(hoy); limite.setDate(limite.getDate() + dias);
+    const limiteISO = limite.toISOString().slice(0,10);
+
+    const { data: lotes } = await N360Leer.todo(() => supabaseClient.from('producto_lotes')
+      .select('*, productos(nombre, sku)')
+      .eq('auth_user_id', STATE.user.id).eq('activo', true).gt('cantidad_actual', 0)
+      .lte('fecha_vencimiento', limiteISO)
+      .order('fecha_vencimiento', { ascending: true }), 'lotes');
+
+    if (!lotes || !lotes.length) {
+      cont.innerHTML = `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px">
+        Nada vence en los próximos ${dias >= 9999 ? '' : dias + ' días'} ${dias >= 9999 ? '— sin lotes registrados aún' : ''} 🎉</p>`;
+      return;
+    }
+
+    cont.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${lotes.map(l => {
+          const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
+          const diasRestantes = Math.round((venc - hoy) / 86400000);
+          const vencido = diasRestantes < 0;
+          const color = vencido ? 'var(--danger, #dc2626)' : (diasRestantes <= 15 ? '#f59e0b' : 'var(--text-primary)');
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg-app);border-left:3px solid ${color};border-radius:8px;font-size:12.5px">
+              <div>
+                <div style="font-weight:600">${escHtml(l.productos?.nombre || 'Producto')}</div>
+                <div style="color:var(--text-muted);font-size:11.5px">${l.numero_lote ? `Lote ${escHtml(l.numero_lote)} · ` : ''}${fmtNum(l.cantidad_actual)} unidades</div>
+              </div>
+              <span style="color:${color};font-weight:700;white-space:nowrap">${vencido ? 'Vencido' : `${diasRestantes}d`}</span>
+            </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    console.warn('filtrarProximosVencer:', e);
+    cont.innerHTML = `<p style="font-size:12.5px;color:var(--danger)">No se pudo cargar la lista.</p>`;
+  }
+}
+
+/* =====================================================
+   LOTES Y VENCIMIENTOS — solo se muestra esta sección si el negocio
+   activó la función en Configuración. Es de solo lectura aquí: los
+   lotes se crean desde Compras, no se editan desde Productos.
+===================================================== */
+async function cargarLotesDelProducto(producto) {
+  const seccion = $('seccionLotesProducto');
+  const lista = $('listaLotesProducto');
+  if (!seccion || !lista) return;
+
+  if (STATE.empresa?.maneja_lotes_vencimiento !== true || producto.tipo !== 'producto') {
+    seccion.style.display = 'none';
+    return;
+  }
+  seccion.style.display = '';
+  lista.innerHTML = 'Cargando…';
+  STATE.productoLotesActual = producto;
+
+  try {
+    const { data: lotesTodos } = await supabaseClient.from('producto_lotes')
+      .select('*').eq('producto_id', producto.id).eq('activo', true)
+      .order('fecha_vencimiento', { ascending: true });
+    // La lista MUESTRA los lotes con unidades (igual que siempre); para un ingreso de mercaderia
+    // tambien se puede elegir uno que se haya agotado (llego otra entrega del mismo lote).
+    const lotes = (lotesTodos || []).filter(l => Number(l.cantidad_actual) > 0);
+    STATE.lotesDestino = lotesTodos || [];
+    await cargarLotesDelNegocio();
+
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const stockTotal = Number(producto.stock_actual || 0);
+    const stockEnLotes = (lotes || []).reduce((s, l) => s + Number(l.cantidad_actual), 0);
+    // Stock que ya existía en el sistema antes de activar esta
+    // función (o que se agregó por otro lado que no pasa por
+    // Compras) — nunca tuvo un lote asignado, así que no aparece en
+    // "Próximos a vencer" hasta que alguien le ponga una fecha aquí.
+    const stockSinAsignar = Math.max(0, round2(stockTotal - stockEnLotes));
+
+    let htmlLotes = '';
+    if (lotes && lotes.length) {
+      htmlLotes = `
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:${stockSinAsignar>0?'10px':'0'}">
+          ${lotes.map(l => {
+            const venc = new Date(l.fecha_vencimiento + 'T00:00:00');
+            const diasRestantes = Math.round((venc - hoy) / 86400000);
+            let color = 'var(--text-primary)', etiqueta = '';
+            if (diasRestantes < 0) { color = 'var(--danger, #dc2626)'; etiqueta = ' — ¡vencido!'; }
+            else if (diasRestantes <= 30) { color = '#f59e0b'; etiqueta = ` — vence en ${diasRestantes} día${diasRestantes===1?'':'s'}`; }
+            return `
+              <div class="fila-lote" data-lote-id="${l.id}" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-app);border-radius:8px;font-size:12.5px;gap:8px">
+                <span class="fila-lote-texto">${l.numero_lote ? `Lote ${escHtml(l.numero_lote)}` : 'Sin número de lote'} · ${fmtNum(l.cantidad_actual)} unidades</span>
+                <span style="display:flex;align-items:center;gap:8px">
+                  <span style="color:${color};font-weight:600">${l.fecha_vencimiento}${etiqueta}</span>
+                  <button type="button" title="Editar número de lote o vencimiento" onclick="abrirEdicionLote('${l.id}', '${(l.numero_lote||'').replace(/'/g,"\\'")}', '${l.fecha_vencimiento}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;flex-shrink:0">✏️</button>
+                </span>
+              </div>`;
+          }).join('')}
+        </div>`;
+    } else if (stockSinAsignar <= 0) {
+      htmlLotes = `<p style="font-size:12.5px;color:var(--text-muted)">Sin lotes registrados todavía.</p>`;
+    }
+
+    // Nuevo lote = ingreso de mercaderia (suma al stock). Distinto de
+    // "asignar stock sin lote", que solo reparte lo que ya existia.
+    const htmlNuevoLote = `
+      <div style="margin-top:10px">
+        <button type="button" class="btn btn-secondary btn-sm" id="btnMostrarFormNuevoLote"
+                onclick="document.getElementById('formNuevoLote').style.display='';this.style.display='none'">➕ Ingreso de mercadería</button>
+        <div id="formNuevoLote" style="display:none;margin-top:8px;padding:10px 12px;background:var(--bg-app);border-radius:8px">
+          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:8px">Suma estas unidades al stock del producto: en un lote nuevo (con su número y vencimiento) o en un lote que ya tienes.</div>
+          ${(STATE.lotesDestino || []).length ? `
+          <div style="margin-bottom:8px">
+            <label style="font-size:11px;display:block;margin-bottom:3px">¿A qué lote?</label>
+            <select id="selectDestinoLote" onchange="alCambiarDestinoLote()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb);max-width:100%">
+              <option value="">🆕 Lote nuevo</option>
+              ${STATE.lotesDestino.map(l => {
+                const vencido = new Date(l.fecha_vencimiento + 'T00:00:00') < hoy;
+                return `<option value="${l.id}" ${vencido ? 'disabled' : ''}>${l.numero_lote ? escHtml(l.numero_lote) : 'Sin número'} · vence ${l.fecha_vencimiento} · ${fmtNum(l.cantidad_actual)} u.${vencido ? ' (vencido)' : ''}${Number(l.cantidad_actual) <= 0 ? ' (agotado)' : ''}</option>`;
+              }).join('')}
+            </select>
+          </div>` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+              <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad *</label>
+              <input type="number" id="inputCantidadNuevoLote" min="0.01" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+            </div>
+            <div id="camposNuevoLote" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div style="flex-basis:100%">${htmlSelectorLotesNegocio('inputNumeroNuevoLote', 'inputVencimientoNuevoLote')}</div>
+              <div>
+                <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
+                <input type="text" id="inputNumeroNuevoLote" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+              </div>
+              <div>
+                <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
+                <input type="date" id="inputVencimientoNuevoLote" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb)"/>
+              </div>
+            </div>
+            <div id="hintLoteExistente" style="display:none;font-size:11.5px;color:var(--text-muted);align-self:center">Conserva el número y el vencimiento de ese lote.</div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="guardarNuevoLoteIngreso()">Guardar</button>
+          </div>
+        </div>
+      </div>`;
+
+    // Aviso + formulario para el stock que ya existía antes de tener
+    // lotes — mismo espíritu que el "saldo inicial" de Bancos. Ahora
+    // con 2 caminos: sumarlo a un lote que ya existe, o crear uno
+    // nuevo — igual que se elige en Compras.
+    let htmlSinAsignar = '';
+    if (stockSinAsignar > 0) {
+      const hayLotesExistentes = lotes && lotes.length > 0;
+      htmlSinAsignar = `
+        <div style="padding:10px 12px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;font-size:12.5px;color:#92400E">
+          <div style="margin-bottom:8px">⚠️ ${fmtNum(stockSinAsignar)} unidades de este producto no tienen lote asignado (probablemente ya existían antes de activar esta función) — no van a aparecer en "Próximos a vencer" hasta que las asignes a un lote.</div>
+
+          <div id="formAsignarLoteExistente" style="display:none;margin-top:8px">
+            ${hayLotesExistentes ? `
+            <div style="display:flex;gap:14px;margin-bottom:10px">
+              <label style="cursor:pointer;font-weight:600"><input type="radio" name="modoAsignarLote" value="existente" checked onchange="cambiarModoAsignarLote()"> Agregar a un lote existente</label>
+              <label style="cursor:pointer;font-weight:600"><input type="radio" name="modoAsignarLote" value="nuevo" onchange="cambiarModoAsignarLote()"> Crear lote nuevo</label>
+            </div>` : ''}
+
+            <div id="subformLoteExistente" style="${hayLotesExistentes ? '' : 'display:none'}">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">¿A cuál lote?</label>
+                  <select id="selectLoteExistente" style="padding:5px 8px;border-radius:6px;border:1px solid #F59E0B">
+                    ${(lotes||[]).map(l => `<option value="${l.id}">${l.numero_lote ? escHtml(l.numero_lote) : 'Sin número'} · vence ${l.fecha_vencimiento}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad a sumar</label>
+                  <input type="number" id="inputCantidadAgregarExistente" value="${stockSinAsignar}" min="0.01" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="guardarAgregarALoteExistente(${stockSinAsignar})">Guardar</button>
+              </div>
+            </div>
+
+            <div id="subformLoteNuevo" style="${hayLotesExistentes ? 'display:none' : ''}">
+              ${htmlSelectorLotesNegocio('inputNumeroLoteExistente', 'inputVencimientoLoteExistente')}
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">Cantidad</label>
+                  <input type="number" id="inputCantidadLoteExistente" value="${stockSinAsignar}" min="0.01" step="0.01" style="width:90px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">Número de lote (opcional)</label>
+                  <input type="text" id="inputNumeroLoteExistente" style="width:130px;padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+                </div>
+                <div>
+                  <label style="font-size:11px;display:block;margin-bottom:3px">Fecha de vencimiento *</label>
+                  <input type="date" id="inputVencimientoLoteExistente" style="padding:5px 8px;border-radius:6px;border:1px solid #F59E0B"/>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="guardarLoteStockExistente(${stockSinAsignar})">Guardar</button>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnMostrarFormLoteExistente" onclick="document.getElementById('formAsignarLoteExistente').style.display='';this.style.display='none'">+ Asignar este stock a un lote</button>
+        </div>`;
+    }
+
+    lista.innerHTML = htmlLotes + htmlSinAsignar + htmlNuevoLote;
+  } catch (e) {
+    console.warn('cargarLotesDelProducto:', e);
+    lista.innerHTML = `<p style="font-size:12.5px;color:var(--danger)">No se pudieron cargar los lotes.</p>`;
+  }
+}
+
+function cambiarModoAsignarLote() {
+  const modo = document.querySelector('input[name="modoAsignarLote"]:checked')?.value;
+  document.getElementById('subformLoteExistente').style.display = modo === 'existente' ? '' : 'none';
+  document.getElementById('subformLoteNuevo').style.display = modo === 'nuevo' ? '' : 'none';
+}
+
+/* Suma la cantidad indicada a un lote que YA existe (no crea uno
+   nuevo). Nunca deja pasar más de lo que realmente hay sin asignar
+   — antes esto no se validaba y se podía "inventar" stock que no
+   existía de verdad. */
+async function guardarAgregarALoteExistente(stockSinAsignarMax) {
+  const loteId = $('selectLoteExistente')?.value;
+  const cantidad = parseFloat($('inputCantidadAgregarExistente')?.value);
+
+  if (!loteId) { showToast('error', 'Falta elegir', 'Elige a cuál lote agregar.'); return; }
+  if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
+  if (cantidad > stockSinAsignarMax + 0.001) {
+    showToast('error', 'Cantidad demasiado alta', `Solo hay ${fmtNum(stockSinAsignarMax)} unidades sin asignar — no se puede inventar más stock del que realmente existe.`);
+    return;
+  }
+
+  try {
+    const { data: loteActual, error: errGet } = await supabaseClient.from('producto_lotes')
+      .select('cantidad_actual, cantidad_inicial').eq('id', loteId).single();
+    if (errGet) throw errGet;
+
+    const { error } = await supabaseClient.from('producto_lotes').update({
+      cantidad_actual: Number(loteActual.cantidad_actual) + cantidad,
+      cantidad_inicial: Number(loteActual.cantidad_inicial) + cantidad,
+      updated_at: new Date().toISOString(),
+    }).eq('id', loteId);
+    if (error) throw error;
+
+    showToast('success', 'Stock agregado', 'Se sumó correctamente al lote elegido.');
+    await cargarLotesDelProducto(STATE.productoLotesActual);
+  } catch (e) {
+    console.warn('guardarAgregarALoteExistente:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
+/* Asigna un lote/vencimiento a stock que YA existía en el producto
+   antes de tener control de lotes — a diferencia de Compras, esto
+   NUNCA suma al stock_actual (esas unidades ya estaban contadas),
+   solo les pone la etiqueta de fecha que les faltaba. */
+// Editar un lote ya existente -- corregir el numero de lote o la
+// fecha de vencimiento si se digitaron mal, sin tener que borrar el
+// lote y perder su historial de compra. Edicion inline en la misma
+// fila, sin necesitar un modal aparte.
+function abrirEdicionLote(loteId, numeroActual, vencimientoActual) {
+  const fila = document.querySelector(`.fila-lote[data-lote-id="${loteId}"]`);
+  if (!fila) return;
+  fila.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;width:100%;flex-wrap:wrap">
+      <input type="text" id="editLoteNumero_${loteId}" value="${escHtml(numeroActual)}" placeholder="Número de lote" style="flex:1;min-width:100px;padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb);font-size:12px"/>
+      <input type="date" id="editLoteVenc_${loteId}" value="${vencimientoActual}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb);font-size:12px"/>
+      <button type="button" onclick="guardarEdicionLote('${loteId}')" style="background:var(--accent,#6C63FF);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600">Guardar</button>
+      <button type="button" onclick="cargarLotesDelProducto(STATE.productoLotesActual)" style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer">Cancelar</button>
+    </div>`;
+}
+
+async function guardarEdicionLote(loteId) {
+  const numero = ($(`editLoteNumero_${loteId}`)?.value || '').trim();
+  const vencimiento = $(`editLoteVenc_${loteId}`)?.value || '';
+  if (!vencimiento) { showToast('error', 'Falta la fecha', 'La fecha de vencimiento es obligatoria.'); return; }
+  try {
+    const { error } = await supabaseClient.from('producto_lotes')
+      .update({ numero_lote: numero || null, fecha_vencimiento: vencimiento, updated_at: new Date().toISOString() })
+      .eq('id', loteId);
+    if (error) throw error;
+    showToast('success', 'Lote actualizado', 'Se guardaron los cambios correctamente.');
+    await cargarLotesDelProducto(STATE.productoLotesActual);
+  } catch (e) {
+    console.error('guardarEdicionLote:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
+async function guardarLoteStockExistente(stockSinAsignarMax) {
+  const producto = STATE.productoLotesActual;
+  if (!producto) return;
+
+  const cantidad = parseFloat($('inputCantidadLoteExistente')?.value);
+  const numeroLote = $('inputNumeroLoteExistente')?.value.trim() || null;
+  const fechaVencimiento = $('inputVencimientoLoteExistente')?.value;
+
+  if (!fechaVencimiento) { showToast('error', 'Falta la fecha', 'Indica la fecha de vencimiento.'); return; }
+  if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
+  if (cantidad > stockSinAsignarMax + 0.001) {
+    showToast('error', 'Cantidad demasiado alta', `Solo hay ${fmtNum(stockSinAsignarMax)} unidades sin asignar — no se puede inventar más stock del que realmente existe.`);
+    return;
+  }
+
+  try {
+    const { error } = await supabaseClient.from('producto_lotes').insert({
+      auth_user_id: STATE.user.id,
+      producto_id: producto.id,
+      numero_lote: numeroLote,
+      fecha_vencimiento: fechaVencimiento,
+      cantidad_inicial: cantidad,
+      cantidad_actual: cantidad,
+      costo_unitario: producto.costo || null,
+    });
+    if (error) throw error;
+    showToast('success', 'Lote asignado', 'Se asignó correctamente al stock existente.');
+    await cargarLotesDelProducto(producto);
+  } catch (e) {
+    console.warn('guardarLoteStockExistente:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
+// Nuevo lote como INGRESO de mercaderia: crea el lote, suma la cantidad
+// al stock del producto y deja rastro en el historial de movimientos.
+// El stock se lee fresco de la base de datos justo antes de sumar.
+/* Lotes ya registrados en el negocio (de cualquier producto) para ELEGIR en vez de escribir a mano.
+   Solo vigentes (no vencidos) y sin repetir (mismo numero + vencimiento = una sola opcion). Elegir uno
+   solo rellena las casillas de numero y vencimiento: el lote del producto se crea igual que siempre. */
+async function cargarLotesDelNegocio() {
+  try {
+    const d = new Date(), hoyISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const { data, error } = await supabaseClient.from('producto_lotes').select('numero_lote, fecha_vencimiento, productos(nombre)')
+      .eq('auth_user_id', STATE.user.id).eq('activo', true).gte('fecha_vencimiento', hoyISO)
+      .order('fecha_vencimiento', { ascending: true }).limit(300);
+    if (error) throw error;
+    const unicos = new Map();
+    (data || []).forEach(l => {
+      const k = `${(l.numero_lote || '').trim().toLowerCase()}|${l.fecha_vencimiento}`;
+      if (!unicos.has(k)) unicos.set(k, { numero: (l.numero_lote || '').trim(), venc: l.fecha_vencimiento, productos: [] });
+      const e = unicos.get(k), n = l.productos?.nombre;
+      if (n && e.productos.length < 2 && !e.productos.includes(n)) e.productos.push(n);
+    });
+    STATE.lotesNegocio = [...unicos.values()];
+  } catch (e) { console.warn('cargarLotesDelNegocio:', e); STATE.lotesNegocio = []; }
+}
+function htmlSelectorLotesNegocio(idNumero, idVenc) {
+  const lotes = STATE.lotesNegocio || [];
+  if (!lotes.length) return `<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px">Todavía no hay lotes registrados en tu negocio: escribe el número y el vencimiento para crear el primero.</div>`;
+  return `<select onchange="elegirLoteDelNegocio(this,'${idNumero}','${idVenc}')" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border,#e5e7eb);margin-bottom:6px">
+    <option value="">Elegir un lote ya registrado…</option>
+    ${lotes.map((l, i) => `<option value="${i}">${l.numero ? escHtml(l.numero) : 'Sin número'} · vence ${l.venc}${l.productos.length ? ' · ' + escHtml(l.productos.join(', ')) : ''}</option>`).join('')}
+  </select>`;
+}
+function elegirLoteDelNegocio(sel, idNumero, idVenc) {
+  const l = sel.value === '' ? null : (STATE.lotesNegocio || [])[Number(sel.value)];
+  if (!l) return;
+  if ($(idNumero)) $(idNumero).value = l.numero;
+  if ($(idVenc)) $(idVenc).value = l.venc;
+}
+
+// Al elegir un lote existente se ocultan numero y vencimiento (ese lote ya los tiene).
+function alCambiarDestinoLote() {
+  const existente = !!$('selectDestinoLote')?.value;
+  if ($('camposNuevoLote')) $('camposNuevoLote').style.display = existente ? 'none' : 'flex';
+  if ($('hintLoteExistente')) $('hintLoteExistente').style.display = existente ? '' : 'none';
+}
+
+// Ingreso de mercaderia en un lote que YA existe: suma la cantidad al lote y al stock del producto.
+// Hay DOS cantidades que cambian a la vez, asi que: (1) cada cambio solo se aplica si el valor sigue
+// siendo el que se leyo (si justo se vendio algo, NO se pisa); (2) si el segundo paso falla, el
+// primero se deshace; (3) no se permite sumar a un lote vencido.
+async function guardarIngresoEnLoteExistente(loteId) {
+  const producto = STATE.productoLotesActual;
+  if (!producto) return;
+  const cantidad = parseFloat($('inputCantidadNuevoLote')?.value);
+  if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
+  const uid = STATE.user.id;
+  const d = new Date(), hoyISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const cambio = () => showToast('error', 'El inventario cambió', 'Mientras guardabas hubo otro movimiento (por ejemplo una venta). Revisa las cantidades e intenta de nuevo.');
+  try {
+    const { data: lote, error: errL } = await supabaseClient.from('producto_lotes').select('*')
+      .eq('id', loteId).eq('producto_id', producto.id).eq('auth_user_id', uid).eq('activo', true).maybeSingle();
+    if (errL) throw errL;
+    if (!lote) { showToast('error', 'Lote no disponible', 'Ese lote ya no existe o fue desactivado.'); await cargarLotesDelProducto(producto); return; }
+    if (lote.fecha_vencimiento < hoyISO) { showToast('error', 'Lote vencido', 'No se puede sumar mercadería a un lote vencido. Crea un lote nuevo.'); return; }
+
+    const { data: prodFresco, error: errP } = await supabaseClient.from('productos')
+      .select('stock_actual').eq('id', producto.id).eq('auth_user_id', uid).maybeSingle();
+    if (errP) throw errP;
+    const stockAntes = Number(prodFresco?.stock_actual || 0), stockDespues = round2(stockAntes + cantidad);
+    const actualAntes = Number(lote.cantidad_actual), inicialAntes = Number(lote.cantidad_inicial);
+    const actualDespues = round2(actualAntes + cantidad), inicialDespues = round2(inicialAntes + cantidad);
+
+    // 1) el lote (solo si su cantidad sigue siendo la leida)
+    const r1 = await supabaseClient.from('producto_lotes')
+      .update({ cantidad_actual: actualDespues, cantidad_inicial: inicialDespues, updated_at: new Date().toISOString() })
+      .eq('id', loteId).eq('auth_user_id', uid).eq('cantidad_actual', actualAntes).select('id');
+    if (r1.error) throw r1.error;
+    if (!r1.data || r1.data.length !== 1) { cambio(); await cargarLotesDelProducto(producto); return; }
+
+    // 2) el stock del producto (con la misma proteccion); si falla, se deshace el lote
+    const r2 = await supabaseClient.from('productos').update({ stock_actual: stockDespues })
+      .eq('id', producto.id).eq('auth_user_id', uid).eq('stock_actual', stockAntes).select('id');
+    if (r2.error || !r2.data || r2.data.length !== 1) {
+      await supabaseClient.from('producto_lotes').update({ cantidad_actual: actualAntes, cantidad_inicial: inicialAntes })
+        .eq('id', loteId).eq('auth_user_id', uid).eq('cantidad_actual', actualDespues);
+      if (r2.error) throw r2.error;
+      cambio(); await cargarLotesDelProducto(producto); return;
+    }
+
+    try {
+      const { error: errMov } = await supabaseClient.from('movimientos_inventario').insert([{
+        auth_user_id: uid, producto_id: producto.id, tipo: 'entrada', razon: 'ingreso_lote',
+        cantidad, stock_antes: stockAntes, stock_despues: stockDespues,
+        nota: `Ingreso al lote ${lote.numero_lote || 'sin número'} (vence ${lote.fecha_vencimiento})`, descuenta_caja: false,
+      }]);
+      if (errMov) console.warn('movimientos_inventario:', errMov.message);
+    } catch (_) { console.warn('movimientos_inventario no disponible'); }
+
+    showToast('success', 'Mercadería agregada', `Se sumaron ${fmtNum(cantidad)} unidades al lote ${lote.numero_lote || 'sin número'}.`);
+    producto.stock_actual = stockDespues;
+    if ($('inputStockActualEdit')) $('inputStockActualEdit').value = stockDespues;   // para que guardar el producto despues NO pise el stock recien sumado
+    if (STATE.editTarget && STATE.editTarget.id === producto.id) STATE.editTarget.stock_actual = stockDespues;
+    await cargarLotesDelProducto(producto);
+    await cargarProductos();
+  } catch (e) {
+    console.warn('guardarIngresoEnLoteExistente:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
+async function guardarNuevoLoteIngreso() {
+  const producto = STATE.productoLotesActual;
+  if (!producto) return;
+  const loteDestino = $('selectDestinoLote')?.value;          // vacio = lote nuevo (el camino de siempre)
+  if (loteDestino) return guardarIngresoEnLoteExistente(loteDestino);
+
+  const cantidad = parseFloat($('inputCantidadNuevoLote')?.value);
+  const numeroLote = $('inputNumeroNuevoLote')?.value.trim() || null;
+  const fechaVencimiento = $('inputVencimientoNuevoLote')?.value;
+
+  if (!fechaVencimiento) { showToast('error', 'Falta la fecha', 'Indica la fecha de vencimiento.'); return; }
+  if (!cantidad || cantidad <= 0) { showToast('error', 'Cantidad inválida', 'Indica una cantidad mayor a cero.'); return; }
+
+  try {
+    const { data: loteNuevo, error: errLote } = await supabaseClient.from('producto_lotes').insert({
+      auth_user_id: STATE.user.id, producto_id: producto.id, numero_lote: numeroLote,
+      fecha_vencimiento: fechaVencimiento, cantidad_inicial: cantidad, cantidad_actual: cantidad,
+      costo_unitario: producto.costo || null,
+    }).select('id').single();
+    if (errLote) throw errLote;
+
+    // Se suma en el servidor sobre la existencia REAL del momento.
+    const { data: movLote, error: errStock } = await supabaseClient.rpc('ajustar_stock_producto', {
+      p_producto_id: producto.id, p_delta: cantidad, p_exigir_existencia: false,
+    });
+    const stockAntes = Number(movLote?.antes || 0);
+    const stockDespues = Number(movLote?.despues || 0);
+    if (errStock) {
+      // No dejar un lote "huerfano" que no sumo stock: se deshace.
+      await supabaseClient.from('producto_lotes').delete().eq('id', loteNuevo.id);
+      throw errStock;
+    }
+
+    try {
+      await supabaseClient.from('movimientos_inventario').insert([{
+        auth_user_id: STATE.user.id, producto_id: producto.id, tipo: 'entrada', razon: 'nuevo_lote',
+        cantidad, stock_antes: stockAntes, stock_despues: stockDespues,
+        nota: `Nuevo lote ${numeroLote || 'sin número'} (vence ${fechaVencimiento})`, descuenta_caja: false,
+      }]);
+    } catch (_) { console.warn('movimientos_inventario no disponible'); }
+
+    showToast('success', 'Lote agregado', `Se sumaron ${fmtNum(cantidad)} unidades al stock.`);
+    producto.stock_actual = stockDespues;
+    // El modal de edicion tiene su propio campo de stock: se actualiza
+    // para que guardar el producto despues NO pise el stock recien sumado.
+    if ($('inputStockActualEdit')) $('inputStockActualEdit').value = stockDespues;
+    if (STATE.editTarget && STATE.editTarget.id === producto.id) STATE.editTarget.stock_actual = stockDespues;
+    await cargarLotesDelProducto(producto);
+    await cargarProductos();
+  } catch (e) {
+    console.warn('guardarNuevoLoteIngreso:', e);
+    showToast('error', 'No se pudo guardar', 'Intenta de nuevo.');
+  }
+}
+
+function cerrarModalProducto() {
+  $('modalProducto').classList.remove('open');
+  STATE.editTarget = null;
+  STATE.modalMode  = null;
+}
+
+// En modo editar → ocultar stockSection completo, mostrar aviso con solo stock_minimo
+function configurarCamposSegunModo(modo) {
+  const esEdicion  = modo === 'editar';
+  const stockWrap  = $('stockSection');
+  const avisoStock = $('avisoStockBloqueado');
+
+  if (esEdicion) {
+    if (stockWrap)  stockWrap.style.display  = 'none';
+    if (avisoStock) {
+      avisoStock.classList.add('visible');
+      avisoStock.style.display = 'flex';
+    }
+  } else {
+    if (stockWrap)  stockWrap.style.display  = '';
+    if (avisoStock) {
+      avisoStock.classList.remove('visible');
+      avisoStock.style.display = 'none';
+    }
+  }
+
+  // Lote del stock inicial: solo al crear (o duplicar) y solo si el
+  // negocio maneja lotes y vencimientos. Siempre arranca vacio.
+  const grupoLote = $('grupoLoteInicial');
+  if (grupoLote) {
+    grupoLote.style.display = (!esEdicion && STATE.empresa?.maneja_lotes_vencimiento === true) ? '' : 'none';
+    if ($('inputNumeroLoteInicial')) $('inputNumeroLoteInicial').value = '';
+    if ($('inputVencimientoLoteInicial')) $('inputVencimientoLoteInicial').value = '';
+    if (grupoLote.style.display !== 'none' && $('selectorLotesInicial')) {      // lotes ya registrados para elegir (o aviso si no hay)
+      $('selectorLotesInicial').innerHTML = '';
+      cargarLotesDelNegocio().then(() => { const c = $('selectorLotesInicial'); if (c) c.innerHTML = htmlSelectorLotesNegocio('inputNumeroLoteInicial', 'inputVencimientoLoteInicial'); });
+    }
+  }
+}
+
+/* ============================================================
+   UNIDAD DE MEDIDA — "Se vende por"
+   ============================================================ */
+function poblarSelectorUnidad(seleccion, textoLegacy, conSinDefinir) {
+  const sel = $('selUnidadVenta');
+  if (!sel || !window.N360Unidades) return;
+  const U = window.N360Unidades;
+  const grupos = Object.keys(U.TIPOS).map(tipo => {
+    const items = U.todas().filter(u => u.tipo === tipo);
+    if (!items.length) return '';
+    return `<optgroup label="${U.TIPOS[tipo]}">` +
+      items.map(u => `<option value="${escHtml(u.codigo)}">${escHtml(u.nombre)} (${escHtml(u.abreviatura)})</option>`).join('') + '</optgroup>';
+  }).join('');
+  const legacy = textoLegacy ? `<option value="__legacy">Texto anterior: ${escHtml(textoLegacy)}</option>` : '';
+  const sinDef = conSinDefinir ? '<option value="__sin">Sin definir (como estaba)</option>' : '';
+  sel.innerHTML = sinDef + legacy + grupos + '<option value="__nueva">➕ Crear otra unidad…</option>';
+  sel.dataset.legacy = textoLegacy || '';
+  sel.value = seleccion || 'unidad';
+  if (sel.value !== (seleccion || 'unidad')) sel.value = 'unidad';
+  poblarSelectorCompra();
+  poblarSelectorContenido();
+}
+
+// "Se compra en": misma lista de unidades; vacío = igual que la de venta.
+function poblarSelectorCompra(seleccion) {
+  const sc = $('selUnidadCompra');
+  if (!sc || !window.N360Unidades) return;
+  const U = window.N360Unidades;
+  const actual = seleccion !== undefined ? seleccion : sc.value;
+  sc.innerHTML = '<option value="">Igual que la de venta</option>' + Object.keys(U.TIPOS).map(tipo => {
+    const items = U.todas().filter(u => u.tipo === tipo);
+    return items.length ? `<optgroup label="${U.TIPOS[tipo]}">` + items.map(u => `<option value="${escHtml(u.codigo)}">${escHtml(u.nombre)} (${escHtml(u.abreviatura)})</option>`).join('') + '</optgroup>' : '';
+  }).join('');
+  sc.value = actual || '';
+  if (sc.value !== (actual || '')) sc.value = '';
+}
+
+function alCambiarUnidadCompra() {
+  const sc = $('selUnidadCompra');
+  const fila = $('filaFactorCompra');
+  if (!sc || !fila) return;
+  fila.style.display = sc.value ? 'flex' : 'none';
+  if (!sc.value) $('inputFactorCompra').value = '';
+  actualizarHintUnidad();
+}
+
+// Devuelve un mensaje de error si la unidad de compra está mal configurada.
+function validarUnidadCompra(tipo) {
+  if (tipo !== 'producto') return '';
+  const sc = $('selUnidadCompra');
+  if (!sc || !sc.value) return '';
+  const venta = $('selUnidadVenta')?.value;
+  if (!window.N360Unidades?.porCodigo(venta)) return 'Primero elige en qué unidad se vende el producto.';
+  if (sc.value === venta) return 'La unidad de compra es la misma que la de venta: elige "Igual que la de venta".';
+  const f = parseFloat($('inputFactorCompra')?.value);
+  if (!(f > 0)) return 'Escribe cuántas unidades de venta trae cada unidad de compra (ej: 100).';
+  return '';
+}
+
+function alCambiarUnidadVenta() {
+  const sel = $('selUnidadVenta');
+  if (!sel) return;
+  if (sel.value === '__nueva') {
+    $('panelUnidadNueva').style.display = '';
+    $('inputUnidadNuevaNombre')?.focus();
+    return;
+  }
+  $('panelUnidadNueva').style.display = 'none';
+  const u = window.N360Unidades?.porCodigo(sel.value);
+  if (u) $('chkPermiteFraccion').checked = !!u.fraccionable;
+  actualizarHintUnidad();
+}
+
+function actualizarHintUnidad() {
+  const U0 = window.N360Unidades;
+  const uv = U0?.porCodigo($('selUnidadVenta')?.value);
+  const uc = U0?.porCodigo($('selUnidadCompra')?.value);
+  if ($('lblUnidadCompra')) $('lblUnidadCompra').textContent = uc ? uc.nombre.toLowerCase() : '';
+  if ($('lblUnidadVentaFactor')) $('lblUnidadVentaFactor').textContent = uv ? uv.plural.toLowerCase() : 'unidades de venta';
+  const hc = $('hintUnidadCompra');
+  if (hc) {
+    const f = parseFloat($('inputFactorCompra')?.value);
+    hc.innerHTML = (uc && f > 0 && uv)
+      ? `Al comprar <strong>1 ${escHtml(uc.nombre.toLowerCase())}</strong> entran <strong>${f} ${escHtml(uv.plural.toLowerCase())}</strong> al inventario.`
+      : '';
+  }
+  const sel = $('selUnidadVenta');
+  const hint = $('hintUnidadVenta');
+  const ej = $('ejemploFraccion');
+  if (!sel || !hint) return;
+  const u = window.N360Unidades?.porCodigo(sel.value);
+  if (!u) {
+    hint.textContent = sel.value === '__legacy' ? 'Se mantiene la unidad que ya tenía este producto.'
+      : sel.value === '__sin' ? 'Este producto no tiene unidad definida: sigue funcionando igual. Elige una para usar cantidades por libra, kilo, metro, etc.' : '';
+    if (ej) ej.textContent = '';
+    return;
+  }
+  hint.innerHTML = `El <strong>costo</strong> y el <strong>precio</strong> de este producto son por <strong>${escHtml(u.nombre.toLowerCase())}</strong>. El inventario se cuenta en ${escHtml(u.plural.toLowerCase())}.`;
+  if (ej) ej.textContent = u.fraccionable ? `(ej: 1.5 ${u.abreviatura}, 0.25 ${u.abreviatura})` : '';
+}
+
+function cancelarUnidadNueva() {
+  $('panelUnidadNueva').style.display = 'none';
+  $('errUnidadNueva').textContent = '';
+  const sel = $('selUnidadVenta');
+  if (sel) { sel.value = 'unidad'; alCambiarUnidadVenta(); }
+}
+
+async function guardarUnidadNueva() {
+  const err = $('errUnidadNueva');
+  err.textContent = '';
+  try {
+    const u = await window.N360Unidades.crearPersonalizada(supabaseClient, STATE.user.id, {
+      nombre: $('inputUnidadNuevaNombre').value,
+      abreviatura: $('inputUnidadNuevaAbrev').value,
+      tipo: $('selUnidadNuevaTipo').value,
+      fraccionable: $('chkUnidadNuevaFraccion').checked,
+    });
+    poblarSelectorUnidad(u.codigo, $('selUnidadVenta').dataset.legacy);
+    $('panelUnidadNueva').style.display = 'none';
+    ['inputUnidadNuevaNombre','inputUnidadNuevaAbrev'].forEach(i => $(i).value = '');
+    $('chkUnidadNuevaFraccion').checked = false;
+    alCambiarUnidadVenta();
+  } catch (e) {
+    err.textContent = e.message || 'No se pudo guardar la unidad.';
+  }
+}
+
+function poblarSelectorContenido(seleccion) {
+  const sc = $('selContenidoUnidad');
+  if (!sc || !window.N360Unidades) return;
+  const U = window.N360Unidades;
+  const actual = seleccion !== undefined ? seleccion : sc.value;
+  sc.innerHTML = '<option value="">— Sin contenido —</option>' + Object.keys(U.TIPOS).map(tipo => {
+    const items = U.todas().filter(u => u.tipo === tipo);
+    return items.length ? `<optgroup label="${U.TIPOS[tipo]}">` + items.map(u => `<option value="${escHtml(u.codigo)}">${escHtml(u.nombre)} (${escHtml(u.abreviatura)})</option>`).join('') + '</optgroup>' : '';
+  }).join('');
+  sc.value = actual || '';
+  if (sc.value !== (actual || '')) sc.value = '';
+}
+
+// Contenido por unidad de venta (opcional): permite vender "100 m" de un rollo de 300 m.
+function validarContenido(tipo) {
+  if (tipo !== 'producto') return '';
+  const sc = $('selContenidoUnidad'); const q = $('inputContenidoCantidad');
+  if (!sc || !q) return '';
+  const hayUnidad = !!sc.value; const cant = parseFloat(q.value);
+  if (!hayUnidad && !q.value) return '';
+  if (!hayUnidad) return 'Elige la unidad del contenido (ej. metros).';
+  if (!(cant > 0)) return 'Escribe cuánto contiene (ej. 300).';
+  return '';
+}
+
+// Valores de unidad para guardar el producto. Servicios no llevan unidad.
+function leerUnidadParaGuardar(tipo, previo) {
+  if (tipo !== 'producto') return {};
+  const sel = $('selUnidadVenta');
+  if (!sel || !window.N360Unidades) return {};
+  const v = sel.value;
+  let out = {};
+  if (v === '__sin') out = {};
+  else if (v === '__legacy') {
+    // Se conserva el texto anterior sin tocarlo.
+    out = { permite_fraccion: $('chkPermiteFraccion')?.checked === true ? true : null };
+  } else {
+    const u = window.N360Unidades.porCodigo(v);
+    if (u) out = {
+      unidad_codigo: u.codigo,
+      unidad_medida: u.nombre.toLowerCase(),
+      permite_fraccion: $('chkPermiteFraccion')?.checked === true,
+    };
+  }
+  // Unidad de compra: solo se envían estas columnas si hay algo que
+  // guardar (o algo que limpiar), para no tocarlas en productos normales.
+  const sc = $('selUnidadCompra');
+  const f = parseFloat($('inputFactorCompra')?.value);
+  if (sc && sc.value && f > 0) {
+    out.unidad_compra_codigo = sc.value;
+    out.factor_compra = f;
+  } else if (previo && previo.unidad_compra_codigo) {
+    out.unidad_compra_codigo = null;
+    out.factor_compra = null;
+  }
+  // Contenido por unidad (vender por partes). Solo se tocan estas columnas si el formulario las trae.
+  const scont = $('selContenidoUnidad'); const qcont = parseFloat($('inputContenidoCantidad')?.value);
+  if (scont && scont.value && qcont > 0) {
+    out.contenido_cantidad = qcont;
+    out.contenido_unidad_codigo = scont.value;
+    out.permite_fraccion = true; // vender por partes implica poder fraccionar
+  } else if (previo && (previo.contenido_cantidad != null || previo.contenido_unidad_codigo)) {
+    out.contenido_cantidad = null;
+    out.contenido_unidad_codigo = null;
+  }
+  return out;
+}
+
+function aplicarUnidadAlFormulario(p) {
+  const U = window.N360Unidades;
+  if (!U) return;
+  let codigo = p?.unidad_codigo || null;
+  let legacy = '';
+  if (!codigo && p?.unidad_medida) {
+    const m = U.porTexto(p.unidad_medida);
+    if (m) codigo = m.codigo; else legacy = p.unidad_medida;
+  }
+  // Producto existente sin unidad: se deja "Sin definir" para no cambiar
+  // su comportamiento (p. ej. que ya venda fracciones) solo por editarlo.
+  const existenteSinUnidad = !!p && !codigo && !legacy;
+  poblarSelectorUnidad(codigo || (legacy ? '__legacy' : (existenteSinUnidad ? '__sin' : 'unidad')), legacy, existenteSinUnidad);
+  const u = U.porCodigo($('selUnidadVenta').value);
+  const chk = $('chkPermiteFraccion');
+  if (chk) chk.checked = (p && p.permite_fraccion != null) ? !!p.permite_fraccion : !!(u && u.fraccionable);
+  $('panelUnidadNueva').style.display = 'none';
+  poblarSelectorCompra(p?.unidad_compra_codigo || '');
+  if ($('inputFactorCompra')) $('inputFactorCompra').value = p?.factor_compra || '';
+  if ($('errUnidadCompra')) $('errUnidadCompra').textContent = '';
+  poblarSelectorContenido(p?.contenido_unidad_codigo || '');
+  if ($('inputContenidoCantidad')) $('inputContenidoCantidad').value = p?.contenido_cantidad || '';
+  if ($('errContenido')) $('errContenido').textContent = '';
+  alCambiarUnidadCompra();
+}
+
+function setTipoModal(tipo, habilitarToggle = true) {
+  const btnProd      = $('toggleProducto');
+  const btnServ      = $('toggleServicio');
+  const inputTipo    = $('inputTipo');
+  const stockSection = $('stockSection');
+
+  if (inputTipo)    inputTipo.value = tipo;
+  if (btnProd)      btnProd.classList.toggle('active', tipo === 'producto');
+  if (btnServ)      btnServ.classList.toggle('active', tipo === 'servicio');
+
+  // Solo mostrar stock (y el toggle de impacto en caja, que vive dentro)
+  // si es producto Y estamos en modo creación/duplicación
+  if (stockSection) {
+    const mostrar = tipo === 'producto' && STATE.modalMode !== 'editar';
+    stockSection.style.display = mostrar ? '' : 'none';
+  }
+
+  // Materia prima solo tiene sentido para productos (los servicios no
+  // manejan stock) -- se oculta en ambos modos, crear y editar.
+  const wrapMP = $('wrapMateriaPrima');
+  const wrapMPEdit = $('wrapMateriaPrimaEdit');
+  if (wrapMP) wrapMP.style.display = tipo === 'producto' ? '' : 'none';
+  if (wrapMPEdit) wrapMPEdit.style.display = tipo === 'producto' ? '' : 'none';
+  aplicarVisibilidadFarmacia();
+  const wrapUnidad = $('wrapUnidadVenta');
+  if (wrapUnidad) wrapUnidad.style.display = tipo === 'producto' ? '' : 'none';
+
+  if (btnProd) btnProd.disabled = !habilitarToggle;
+  if (btnServ) btnServ.disabled = !habilitarToggle;
+}
+
+/* ============================================================
+   CÓDIGO DE BARRAS — modo "Escanear"
+   El input ya admite escritura manual normalmente. Este modo solo
+   agrega una ayuda visual + evita que el Enter del lector dispare
+   el guardado accidental del formulario completo.
+   ============================================================ */
+let cbModoEscaneo = false;
+
+// Escanear con la camara del celular -- opcion adicional al lector
+// fisico de arriba (toggleModoEscaneoCB), sin tocar nada de ese
+// mecanismo. Dos caminos, en este orden:
+// 1) BarcodeDetector -- funcion NATIVA del navegador (Chrome/Android
+//    la trae de fabrica), lee QR y codigos de barras reales, y NO
+//    depende de ningun servidor externo -- cero riesgo de que un CDN
+//    falle o tarde en cargar.
+// 2) Si el navegador no la tiene (Safari/iOS viejo, navegadores
+//    antiguos), se cae a ZXing (cargado desde CDN) como respaldo.
+let _zxingReader = null;
+let _streamEscanerCelular = null;
+let _detectorEscaner = null;
+let _rafEscanerCelular = null;
+
+async function abrirEscanerCelular() {
+  const errEl = $('errEscanerCelular');
+  if (errEl) errEl.textContent = '';
+  $('modalEscanerCelular').classList.add('open');
+
+  if ('BarcodeDetector' in window) {
+    await abrirEscanerNativo(errEl);
+  } else {
+    await abrirEscanerZXing(errEl);
+  }
+}
+
+async function abrirEscanerNativo(errEl) {
+  try {
+    const formatos = await BarcodeDetector.getSupportedFormats();
+    _detectorEscaner = new BarcodeDetector({ formats: formatos });
+    // Resolucion alta pedida a proposito -- un codigo de barras 1D
+    // necesita bastante nitidez para leerse bien; con la resolucion
+    // por defecto (a veces 640x480) las lineas finas del codigo
+    // quedan borrosas y nunca se detectan, aunque la camara este
+    // enfocando bien a simple vista.
+    _streamEscanerCelular = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+    const video = $('videoEscanerCelular');
+    video.srcObject = _streamEscanerCelular;
+    await video.play();
+    configurarZoomEscaner(_streamEscanerCelular);
+
+    // Deteccion automatica de fondo -- mejor esfuerzo, no critica: si
+    // el codigo se ve bien y el navegador lo agarra solo, mejor. El
+    // boton "Capturar" (abajo) es el camino confiable que SIEMPRE
+    // funciona si el codigo esta a la vista, tomando una sola foto
+    // en vez de depender de leer cuadros de video en movimiento.
+    const analizar = async () => {
+      if (!_streamEscanerCelular) return; // se cerró mientras tanto
+      try {
+        const codigos = await _detectorEscaner.detect(video);
+        if (codigos && codigos.length && codigos[0].rawValue) {
+          onCodigoDetectadoCelular(codigos[0].rawValue);
+          return;
+        }
+      } catch (eDet) { /* un cuadro sin codigo legible -- normal, se sigue intentando */ }
+      _rafEscanerCelular = requestAnimationFrame(analizar);
+    };
+    _rafEscanerCelular = requestAnimationFrame(analizar);
+  } catch (e) {
+    console.error('abrirEscanerNativo:', e);
+    if (errEl) errEl.textContent = 'No se pudo acceder a la cámara. Revisa los permisos del navegador para este sitio.';
+  }
+}
+
+async function abrirEscanerZXing(errEl) {
+  // El paquete puede exponerse como ZXingBrowser o como ZXing segun
+  // la version/build del CDN -- se prueban ambos nombres posibles,
+  // en vez de depender de adivinar cual es el correcto. Si la fuente
+  // principal del CDN fallo, hay un respaldo cargandose en paralelo
+  // (ver productos.html) -- se espera un poco antes de rendirse.
+  function obtenerNamespaceZXing() {
+    if (typeof ZXingBrowser !== 'undefined') return ZXingBrowser;
+    if (typeof ZXing !== 'undefined') return ZXing;
+    return null;
+  }
+  let ns = obtenerNamespaceZXing();
+  for (let intento = 0; !ns && intento < 15; intento++) {
+    await new Promise(r => setTimeout(r, 200));
+    ns = obtenerNamespaceZXing();
+  }
+  if (!ns || !ns.BrowserMultiFormatReader) {
+    if (errEl) errEl.textContent = 'No se pudo cargar el lector. Revisa tu conexión a internet e intenta de nuevo.';
+    return;
+  }
+
+  try {
+    _zxingReader = new ns.BrowserMultiFormatReader();
+    const video = $('videoEscanerCelular');
+    // undefined = deja que el navegador elija la camara (preferentemente
+    // la trasera en un celular) -- ZXing maneja el stream por su cuenta.
+    await _zxingReader.decodeFromVideoDevice(undefined, video, (result) => {
+      if (!result) return; // sin codigo detectado en este cuadro -- normal, se sigue intentando
+      // El resultado puede traer el texto como metodo (getText()) o
+      // como propiedad (text), segun la version de la libreria -- se
+      // prueban ambas formas para no perder la deteccion por un
+      // nombre distinto.
+      const texto = (typeof result.getText === 'function') ? result.getText() : result.text;
+      if (texto) onCodigoDetectadoCelular(texto);
+      // Un error (NotFoundException) se dispara en CADA cuadro sin
+      // codigo detectado todavia -- es normal, no algo que avisar.
+    });
+  } catch (e) {
+    console.error('abrirEscanerZXing:', e);
+    if (errEl) errEl.textContent = 'No se pudo acceder a la cámara. Revisa los permisos del navegador para este sitio.';
+  }
+}
+
+// Captura manual -- toma UNA foto a resolucion completa (mucho mas
+// nitida que leer cuadros de video en movimiento) y busca el codigo
+// en esa imagen fija. Este es el camino CONFIABLE: si "Capturar" no
+// encuentra nada, se avisa claro y la camara sigue abierta para
+// intentar de nuevo (mejor enfoque, mas cerca, mas luz) -- nunca se
+// queda en silencio sin decir nada.
+async function capturarYBuscarCodigo() {
+  const video = $('videoEscanerCelular');
+  const estadoEl = $('estadoEscanerCelular');
+  const errEl = $('errEscanerCelular');
+  const btn = $('btnCapturarEscaner');
+  if (errEl) errEl.textContent = '';
+  if (estadoEl) estadoEl.textContent = '🔍 Buscando el código...';
+  if (btn) btn.disabled = true;
+
+  try {
+    if (!video || !video.videoWidth) {
+      if (estadoEl) estadoEl.textContent = '';
+      if (errEl) errEl.textContent = 'La cámara todavía no está lista. Espera un segundo e intenta de nuevo.';
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    let texto = null;
+    if (_detectorEscaner) {
+      const codigos = await _detectorEscaner.detect(canvas);
+      if (codigos && codigos.length) texto = codigos[0].rawValue;
+    } else {
+      // Respaldo ZXing: decodifica desde una imagen fija en vez de
+      // video en vivo -- misma idea, otra libreria.
+      const ns = (typeof ZXingBrowser !== 'undefined') ? ZXingBrowser : (typeof ZXing !== 'undefined') ? ZXing : null;
+      if (ns) {
+        const img = new Image();
+        img.src = canvas.toDataURL('image/png');
+        await new Promise(res => { img.onload = res; });
+        const reader = new ns.BrowserMultiFormatReader();
+        const result = await reader.decodeFromImage(img).catch(() => null);
+        if (result) texto = (typeof result.getText === 'function') ? result.getText() : result.text;
+      }
+    }
+
+    if (texto) {
+      onCodigoDetectadoCelular(texto);
+    } else {
+      if (estadoEl) estadoEl.textContent = '';
+      if (errEl) errEl.textContent = 'No se detectó ningún código en esa foto. Acércate más, mejora la luz, y prueba de nuevo.';
+    }
+  } catch (e) {
+    console.error('capturarYBuscarCodigo:', e);
+    if (estadoEl) estadoEl.textContent = '';
+    if (errEl) errEl.textContent = 'No se detectó ningún código en esa foto. Acércate más, mejora la luz, y prueba de nuevo.';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Zoom real de la camara -- clave para codigos de barras pequeños:
+// de lejos no se lee bien, y de muy cerca el celular desenfoca. Con
+// zoom, el celular se queda a una distancia donde SI enfoca bien,
+// pero el codigo se ve mas grande igual. Solo funciona si el celular
+// lo soporta (la mayoria de Android con camara trasera si) -- si no,
+// el control simplemente no aparece, sin romper nada.
+let _trackCamaraEscaner = null;
+
+function configurarZoomEscaner(stream) {
+  const wrap = $('wrapZoomEscaner');
+  const rango = $('rangoZoomEscaner');
+  if (!wrap || !rango) return;
+  try {
+    _trackCamaraEscaner = stream.getVideoTracks()[0] || null;
+    const cap = _trackCamaraEscaner?.getCapabilities ? _trackCamaraEscaner.getCapabilities() : null;
+    if (cap && cap.zoom) {
+      rango.min = cap.zoom.min;
+      rango.max = cap.zoom.max;
+      rango.step = cap.zoom.step || 0.1;
+      rango.value = cap.zoom.min;
+      wrap.style.display = 'flex';
+    } else {
+      wrap.style.display = 'none';
+    }
+  } catch (e) {
+    console.warn('configurarZoomEscaner:', e);
+    wrap.style.display = 'none';
+  }
+}
+
+function onCambiarZoomEscaner(valor) {
+  if (!_trackCamaraEscaner) return;
+  _trackCamaraEscaner.applyConstraints({ advanced: [{ zoom: parseFloat(valor) }] }).catch(e => console.warn('onCambiarZoomEscaner:', e));
+}
+
+function onCodigoDetectadoCelular(texto) {
+  const input = $('inputCodBarras');
+  if (input) input.value = texto;
+  cerrarEscanerCelular();
+  showToast('success', 'Código detectado', texto);
+}
+
+function cerrarEscanerCelular() {
+  if (_zxingReader) {
+    try { _zxingReader.reset(); } catch (_) { /* ya estaba detenido */ }
+    _zxingReader = null;
+  }
+  if (_rafEscanerCelular) { cancelAnimationFrame(_rafEscanerCelular); _rafEscanerCelular = null; }
+  if (_streamEscanerCelular) {
+    _streamEscanerCelular.getTracks().forEach(t => t.stop());
+    _streamEscanerCelular = null;
+  }
+  _trackCamaraEscaner = null;
+  const wrapZoom = $('wrapZoomEscaner');
+  if (wrapZoom) wrapZoom.style.display = 'none';
+  const modal = $('modalEscanerCelular');
+  if (modal) modal.classList.remove('open');
+}
+
+function toggleModoEscaneoCB() {
+  const input = $('inputCodBarras');
+  const btn   = $('btnEscanearCB');
+  const label = $('btnEscanearCBLabel');
+  const hint  = $('cbScanHint');
+  if (!input) return;
+
+  cbModoEscaneo = !cbModoEscaneo;
+
+  if (cbModoEscaneo) {
+    btn?.classList.add('scanning');
+    if (label) label.textContent = 'Cancelar';
+    if (hint) hint.style.display = 'block';
+    input.value = '';
+    input.focus();
+  } else {
+    btn?.classList.remove('scanning');
+    if (label) label.textContent = 'Escanear';
+    if (hint) hint.style.display = 'none';
+  }
+}
+
+function initEscaneoCodigoBarras() {
+  const input = $('inputCodBarras');
+  if (!input) return;
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    // Nunca dejar que el Enter del lector (o del teclado) llegue al
+    // listener del <form> y dispare guardarProducto() sin querer.
+    e.preventDefault();
+    e.stopPropagation();
+    if (cbModoEscaneo) {
+      if (input.value.trim()) {
+        showToast?.('✅ Código capturado', 'success');
+        toggleModoEscaneoCB();
+        // Pasar el foco al siguiente campo lógico del formulario
+        $('inputCosto')?.focus();
+      }
+    } else {
+      // Modo manual: Enter simplemente confirma el campo, no guarda todo el form
+      input.blur();
+    }
+  });
+}
+
+function resetFormulario() {
+  const form = $('formProducto');
+  if (form) form.reset();
+  $$('.form-error').forEach(el => el.textContent = '');
+  STATE.fotoProductoBlob = null;
+  STATE.fotoProductoEliminar = false;
+  const previewFoto = $('fotoProductoPreviewWrap');
+  if (previewFoto) previewFoto.innerHTML = '🖼️';
+  const btnQuitarFoto = $('btnQuitarFotoProducto');
+  if (btnQuitarFoto) btnQuitarFoto.style.display = 'none';
+  const inputFoto = $('inputFotoProducto');
+  if (inputFoto) inputFoto.value = '';
+  aplicarVisibilidadFotoProducto();
+  const wrap = $('margenPreviewWrap');
+  if (wrap) wrap.style.display = 'none';
+  const avisoStock = $('avisoStockBloqueado');
+  if (avisoStock) {
+    avisoStock.classList.remove('visible');
+    avisoStock.style.display = 'none';
+  }
+  // Tipo de precio: por defecto siempre "Precio fijo" (comportamiento actual)
+  STATE.formEscalas = [];
+  setTipoPrecio('fijo');
+  renderEscalasEditor();
+  STATE.formEscalasCosto = [];
+  setTipoCosto('fijo');
+  renderEscalasCostoEditor();
+  STATE.formPresentaciones = [];
+  const inputUM = $('inputUnidadMedida');
+  if (inputUM) inputUM.value = '';
+  aplicarUnidadAlFormulario(null);
+  renderPresentacionesEditor();
+  aplicarVisibilidadPresentaciones();
+  const inputSerie = $('inputRequiereSerie');
+  if (inputSerie) inputSerie.checked = false;
+  aplicarVisibilidadNumeroSerie();
+  const inputModelo = $('inputModelo');
+  if (inputModelo) inputModelo.value = '';
+  aplicarVisibilidadModelo();
+  // Por defecto: "Descontar de caja" (caso más común — compra nueva)
+  // Fecha de creación: hoy por defecto, pero editable — útil cuando el
+  // producto ya existía antes de usar el sistema (inventario histórico).
+  const inputFecha = $('inputFechaCreacion');
+  if (inputFecha) inputFecha.value = ymdLocal(new Date());
+}
+
+function cargarFormulario(p) {
+  const campos = [
+    ['inputNombre',          p.nombre        || ''],
+    ['inputDescripcion',     p.descripcion   || ''],
+    ['inputCategoria',       p.categoria     || ''],
+    ['inputMarca',           p.proveedor_id  || ''],
+    ['inputSku',             p.sku           || ''],
+    ['inputCodBarras',       p.codigo_barras || ''],
+    ['inputCosto',           p.costo         ?? ''],
+    ['inputPrecio',          p.precio        ?? ''],
+    ['inputStockMinimo',     p.stock_minimo  ?? ''],
+    ['inputStockMinimoEdit', p.stock_minimo  ?? ''],
+    ['inputStockMaximoEdit', p.stock_maximo  ?? ''],
+    ['inputStockActualEdit', p.stock_actual  ?? ''],
+    ['inputGarantiaMeses',     p.garantia_meses ?? ''],
+    ['inputGarantiaMesesEdit', p.garantia_meses ?? ''],
+    ['inputActivo',          p.activo ? 'true' : 'false'],
+  ];
+  campos.forEach(([id, val]) => {
+    const el = $(id);
+    if (el) el.value = val;
+  });
+
+  // Foto existente (si la cuenta ya tenia inventario con imagenes activo
+  // cuando se guardo este producto)
+  if (p.imagen_url) {
+    $('fotoProductoPreviewWrap').innerHTML = `<img src="${escHtml(p.imagen_url)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoProducto').style.display = '';
+  }
+
+  // Materia prima: checkbox real, se maneja aparte (.checked, no .value)
+  const esMP = p.es_materia_prima === true;
+  if ($('inputEsMateriaPrima')) $('inputEsMateriaPrima').checked = esMP;
+  if ($('inputEsMateriaPrimaEdit')) $('inputEsMateriaPrimaEdit').checked = esMP;
+
+  // Sustancia controlada (Farmacia): mismo patron que materia prima
+  const esSC = p.es_sustancia_controlada === true;
+  if ($('inputEsSustanciaControlada')) $('inputEsSustanciaControlada').checked = esSC;
+  if ($('inputEsSustanciaControladaEdit')) $('inputEsSustanciaControladaEdit').checked = esSC;
+
+  if ($('inputPrincipioActivo')) $('inputPrincipioActivo').value = p.principio_activo || '';
+  if ($('inputPrincipioActivoEdit')) $('inputPrincipioActivoEdit').value = p.principio_activo || '';
+  if ($('inputConcentracion')) $('inputConcentracion').value = p.concentracion || '';
+  if ($('inputConcentracionEdit')) $('inputConcentracionEdit').value = p.concentracion || '';
+  if ($('inputPresentacion')) $('inputPresentacion').value = p.presentacion || '';
+  if ($('inputPresentacionEdit')) $('inputPresentacionEdit').value = p.presentacion || '';
+  if ($('inputUbicacionFisica')) $('inputUbicacionFisica').value = p.ubicacion_fisica || '';
+  if ($('inputUbicacionFisicaEdit')) $('inputUbicacionFisicaEdit').value = p.ubicacion_fisica || '';
+  aplicarVisibilidadFarmacia();
+
+  // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
+  const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
+  STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
+  setTipoPrecio(p.tipo_precio === 'escala' ? 'escala' : 'fijo');
+  renderEscalasEditor();
+  STATE.formEscalasCosto = (STATE.escalasCostoPorProducto[p.id] || []).map(e => ({ nombre: e.nombre, costo: e.costo }));
+  setTipoCosto(p.tipo_costo === 'escala' ? 'escala' : 'fijo');
+  renderEscalasCostoEditor();
+
+  // Presentaciones de venta (si el negocio activó la función)
+  const inputUMEdit = $('inputUnidadMedida');
+  if (inputUMEdit) inputUMEdit.value = p.unidad_medida || '';
+  aplicarUnidadAlFormulario(p);
+  STATE.formPresentaciones = [];
+  renderPresentacionesEditor();
+  aplicarVisibilidadPresentaciones();
+  cargarPresentacionesDeProducto(p.id);
+  const inputSerieEdit = $('inputRequiereSerieEdit');
+  if (inputSerieEdit) inputSerieEdit.checked = p.requiere_numero_serie === true;
+  aplicarVisibilidadNumeroSerie();
+  const inputModeloEdit = $('inputModeloEdit');
+  if (inputModeloEdit) inputModeloEdit.value = p.modelo || '';
+  aplicarVisibilidadModelo();
+
+  // Fecha de creación: editable, para poder corregirla cuando el producto
+  // ya existía antes de usar el sistema (no siempre coincide con "hoy").
+  // Al duplicar, se trata como producto nuevo: por defecto hoy, no la
+  // fecha del original (igual se puede corregir a mano si hace falta).
+  const inputFecha = $('inputFechaCreacion');
+  if (inputFecha) {
+    inputFecha.value = (p.created_at && STATE.modalMode !== 'duplicar')
+      ? new Date(p.created_at).toISOString().slice(0, 10)
+      : ymdLocal(new Date());
+  }
+}
+
+// ============================================================
+// GUARDAR PRODUCTO
+// ============================================================
+async function guardarProducto() {
+  const btn   = $('btnGuardarProducto');
+  const errEl = $('errNombre');
+  if (errEl) errEl.textContent = '';
+
+  // Foto: undefined = no se toco (no se envia el campo, se preserva lo
+  // que ya habia); string = foto nueva subida; null = se quito a proposito.
+  let imagenUrlFinal;
+  if (STATE.fotoProductoBlob) {
+    try {
+      imagenUrlFinal = await subirFotoInventario(STATE.fotoProductoBlob);
+    } catch (e) {
+      console.error('guardarProducto, subir foto:', e);
+      const errFoto = $('errFotoProducto');
+      if (errFoto) errFoto.textContent = 'No se pudo subir la foto. Intenta de nuevo.';
+      return;
+    }
+  } else if (STATE.fotoProductoEliminar) {
+    imagenUrlFinal = null;
+  }
+
+  const tipo        = $('inputTipo')?.value || 'producto';
+  const nombre      = ($('inputNombre')?.value || '').trim();
+  const descripcion = ($('inputDescripcion')?.value || '').trim();
+  const categoria   = ($('inputCategoria')?.value || '').trim();
+  const proveedorId = ($('inputMarca')?.value || '').trim() || null;
+  const proveedorNombre = proveedorId
+    ? (STATE.proveedores.find(pr => pr.id === proveedorId)?.nombre || null)
+    : null;
+  const sku         = ($('inputSku')?.value || '').trim();
+  const codBarras   = ($('inputCodBarras')?.value || '').trim();
+  const costoRaw    = $('inputCosto')?.value;
+  const precioRaw   = $('inputPrecio')?.value;
+  const tipoCosto   = $('inputTipoCosto')?.value === 'escala' ? 'escala' : 'fijo';
+  const costoEscalaBase = tipoCosto === 'escala' ? parseFloat((STATE.formEscalasCosto[0] || {}).costo) : NaN;
+  const costo       = tipoCosto === 'escala' ? (isNaN(costoEscalaBase) ? 0 : costoEscalaBase) : (costoRaw !== '' ? parseFloat(costoRaw) : 0);
+  const precio      = precioRaw !== '' ? parseFloat(precioRaw) : 0;
+  const tipoPrecio  = $('inputTipoPrecio')?.value === 'escala' ? 'escala' : 'fijo';
+  const activoVal   = $('inputActivo')?.value;
+  const activo      = activoVal === 'true';
+  const fechaCreacionRaw = ($('inputFechaCreacion')?.value || '').trim(); // yyyy-mm-dd
+
+  const errUC = $('errUnidadCompra');
+  if (errUC) errUC.textContent = '';
+  const msgUC = validarUnidadCompra(tipo);
+  if (msgUC) { if (errUC) errUC.textContent = msgUC; return; }
+
+  const errCont = $('errContenido');
+  if (errCont) errCont.textContent = '';
+  const msgCont = validarContenido(tipo);
+  if (msgCont) { if (errCont) errCont.textContent = msgCont; return; }
+
+  const errEscalasCosto = $('errEscalasCosto');
+  if (errEscalasCosto) errEscalasCosto.textContent = '';
+  if (tipoCosto === 'escala') {
+    if (!STATE.formEscalasCosto.some(f => (f.nombre || '').trim())) {
+      if (errEscalasCosto) errEscalasCosto.textContent = 'Agrega al menos un costo en la escala';
+      return;
+    }
+    const filaIncompletaC = STATE.formEscalasCosto.findIndex(f => {
+      const tn = !!(f.nombre || '').trim();
+      const tc = f.costo !== '' && f.costo !== null && f.costo !== undefined && !isNaN(parseFloat(f.costo));
+      return tn !== tc;
+    });
+    if (filaIncompletaC !== -1) {
+      if (errEscalasCosto) errEscalasCosto.textContent = `Falta completar la fila #${filaIncompletaC + 1} de la escala de costos (nombre o costo) — complétala o bórrala antes de guardar`;
+      return;
+    }
+  }
+  const errEscalas = $('errEscalas');
+  if (errEscalas) errEscalas.textContent = '';
+  if (tipoPrecio === 'escala') {
+    const escalasValidas = STATE.formEscalas.filter(f => (f.nombre || '').trim());
+    if (!escalasValidas.length) {
+      if (errEscalas) errEscalas.textContent = 'Agrega al menos un precio en la escala';
+      return;
+    }
+    // BUG REAL CORREGIDO: antes, una fila con precio pero SIN nombre
+    // (o con nombre pero sin precio) se descartaba en silencio al
+    // guardar -- el producto se guardaba bien ("éxito"), pero esa
+    // fila a medio llenar desaparecía sin ningún aviso, dando la
+    // impresión de que el precio nuevo "no se guardó" cuando en
+    // realidad nunca se envió completo. Ahora se avisa claramente
+    // cuál fila falta completar, en vez de perderla sin decir nada.
+    const filaIncompleta = STATE.formEscalas.findIndex(f => {
+      const tieneNombre = !!(f.nombre || '').trim();
+      const tienePrecio = f.precio !== '' && f.precio !== null && f.precio !== undefined && !isNaN(parseFloat(f.precio));
+      return tieneNombre !== tienePrecio; // uno de los dos sin el otro
+    });
+    if (filaIncompleta !== -1) {
+      if (errEscalas) errEscalas.textContent = `Falta completar la fila #${filaIncompleta + 1} de la escala (le falta el nombre o el precio) — complétala o bórrala antes de guardar`;
+      return;
+    }
+  }
+
+  // Stock mínimo: usar el campo visible según el modo
+  const stockMinimoEl  = STATE.modalMode === 'editar' ? $('inputStockMinimoEdit') : $('inputStockMinimo');
+  const stockMinimoRaw = stockMinimoEl?.value;
+  const stockMinimo    = stockMinimoRaw !== '' && stockMinimoRaw !== undefined
+    ? parseFloat(stockMinimoRaw)
+    : 0;
+
+  // Stock máximo: opcional, null si se deja vacío (sin límite)
+  const stockMaximoEl  = STATE.modalMode === 'editar' ? $('inputStockMaximoEdit') : $('inputStockMaximo');
+  const stockMaximoRaw = stockMaximoEl?.value;
+  const stockMaximo    = stockMaximoRaw !== '' && stockMaximoRaw !== undefined
+    ? parseFloat(stockMaximoRaw)
+    : null;
+
+  // Garantía en meses (opcional) — igual criterio: campo visible según el modo
+  const garantiaEl  = STATE.modalMode === 'editar' ? $('inputGarantiaMesesEdit') : $('inputGarantiaMeses');
+  const garantiaRaw = garantiaEl?.value;
+  const garantiaMeses = (garantiaRaw !== '' && garantiaRaw !== undefined) ? parseFloat(garantiaRaw) : null;
+
+  // Materia prima: checkbox visible según el modo
+  const esMateriaPrimaEl = STATE.modalMode === 'editar' ? $('inputEsMateriaPrimaEdit') : $('inputEsMateriaPrima');
+  const esMateriaPrima = esMateriaPrimaEl?.checked === true;
+
+  // Sustancia controlada (Farmacia): mismo patron que materia prima
+  const esSustanciaControladaEl = STATE.modalMode === 'editar' ? $('inputEsSustanciaControladaEdit') : $('inputEsSustanciaControlada');
+  const esSustanciaControlada = esSustanciaControladaEl?.checked === true;
+
+  const principioActivo = (STATE.modalMode === 'editar' ? $('inputPrincipioActivoEdit') : $('inputPrincipioActivo'))?.value.trim() || null;
+  const concentracion   = (STATE.modalMode === 'editar' ? $('inputConcentracionEdit')   : $('inputConcentracion'))?.value.trim() || null;
+  const presentacion    = (STATE.modalMode === 'editar' ? $('inputPresentacionEdit')    : $('inputPresentacion'))?.value.trim() || null;
+  const ubicacionFisica = (STATE.modalMode === 'editar' ? $('inputUbicacionFisicaEdit') : $('inputUbicacionFisica'))?.value.trim() || null;
+
+  // Stock actual: usar el campo visible según el modo. En edición ahora
+  // también es editable directamente (antes solo se podía desde
+  // Movimientos especiales); ese botón se mantiene igual para bajas
+  // con motivo registrado y descuento de caja.
+  const stockActualEl  = STATE.modalMode === 'editar' ? $('inputStockActualEdit') : $('inputStockActual');
+  const stockActualRaw = stockActualEl?.value;
+  const stockActual     = stockActualRaw !== '' && stockActualRaw !== undefined
+    ? parseFloat(stockActualRaw)
+    : 0;
+
+  if (!nombre) {
+    if (errEl) errEl.textContent = 'El nombre es obligatorio';
+    $('inputNombre')?.focus();
+    return;
+  }
+
+  // Lote del stock inicial: si se escribio un numero de lote pero se
+  // dejo sin fecha de vencimiento, se avisa antes de guardar nada.
+  if (STATE.modalMode !== 'editar' && STATE.empresa?.maneja_lotes_vencimiento === true
+      && ($('inputNumeroLoteInicial')?.value || '').trim() && !$('inputVencimientoLoteInicial')?.value) {
+    if (errEl) errEl.textContent = 'Si indicas un número de lote, indica también su fecha de vencimiento.';
+    $('inputVencimientoLoteInicial')?.focus();
+    return;
+  }
+  if (!btn) return;
+
+  const textoOriginal = btn.textContent;
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+
+  try {
+    let error = null;
+    let productoIdGuardado = null;
+
+    if (STATE.modalMode === 'crear' || STATE.modalMode === 'duplicar') {
+      const payload = {
+        auth_user_id:  STATE.user.id,
+        tipo,
+        nombre,
+        descripcion:   descripcion || null,
+        categoria:     categoria   || null,
+        proveedor_id:      proveedorId,
+        proveedor_nombre:  proveedorNombre,
+        sku:           sku         || null,
+        codigo_barras: codBarras   || null,
+        costo:         isNaN(costo)       ? 0 : costo,
+        precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
+        tipo_precio:   tipoPrecio,
+        tipo_costo:    tipoCosto,
+        unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
+        ...leerUnidadParaGuardar(tipo, STATE.modalMode === 'editar' ? STATE.editTarget : null),
+        requiere_numero_serie: $('inputRequiereSerie')?.checked === true,
+        modelo: ($('inputModelo')?.value || '').trim() || null,
+        stock_actual:  tipo === 'producto' ? (isNaN(stockActual) ? 0 : stockActual) : 0,
+        stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : 0,
+        stock_maximo:  tipo === 'producto' ? stockMaximo : null,
+        garantia_meses: garantiaMeses,
+        es_materia_prima: esMateriaPrima,
+        es_sustancia_controlada: esSustanciaControlada,
+        principio_activo: principioActivo, concentracion, presentacion, ubicacion_fisica: ubicacionFisica,
+        activo,
+      };
+      // Fecha de creación manual (producto que ya existía antes del sistema).
+      // Si el usuario no la tocó, queda con el default de la base de datos.
+      // FIX: antes se guardaba la fecha "pelada" (ej. "2026-07-08"), y
+      // Postgres la interpreta como medianoche UTC. En Nicaragua (UTC-6)
+      // esa medianoche cae en las 6:00 PM del día ANTERIOR hora local, así
+      // que al mostrarla se veía un día atrás (8 de julio → aparecía 7).
+      // Anclando a las 12:00 del mediodía UTC, la fecha elegida se mantiene
+      // igual sin importar la zona horaria de quien la vea.
+      if (fechaCreacionRaw) payload.created_at = fechaCreacionRaw + 'T12:00:00Z';
+      if (imagenUrlFinal !== undefined) payload.imagen_url = imagenUrlFinal;
+
+      let res = await supabaseClient.from('productos').insert([payload]).select();
+      if (res.error && fechaCreacionRaw) {
+        // Reintentar sin la fecha manual, por si la columna no la acepta en este entorno
+        const { created_at, ...payloadSinFecha } = payload;
+        res = await supabaseClient.from('productos').insert([payloadSinFecha]).select();
+      }
+      error = res.error;
+      productoIdGuardado = Array.isArray(res.data) && res.data[0] ? res.data[0].id : null;
+
+      // NOTA: antes, al crear un producto con stock inicial, aquí se
+      // descontaba de Caja automáticamente. Se quitó a propósito: el
+      // módulo de Compras ya maneja ese flujo completo (con proveedor,
+      // factura, método de pago y su propio registro en Caja), y tener
+      // dos caminos distintos para lo mismo causaba doble descuento.
+      // Para registrar una compra real, se usa el módulo de Compras.
+
+    } else if (STATE.modalMode === 'editar' && STATE.editTarget) {
+      // En edición: el stock actual ahora SÍ se puede ajustar directamente
+      // desde aquí. "Movimientos especiales" se mantiene intacto para bajas
+      // con motivo (robo, daño, merma, etc.) que además pueden descontar
+      // de caja automáticamente — ese flujo no cambia.
+      const stockAntes = parseFloat(STATE.editTarget.stock_actual ?? 0);
+      // Si en esta edición se marcó "requiere número de serie" por primera vez, al guardar se abre la ventana para cargar sus series.
+      window.__serieActivadaEnEdicion = (STATE.editTarget.requiere_numero_serie !== true && $('inputRequiereSerieEdit')?.checked === true) ? STATE.editTarget.id : null;
+
+      // Si cambia la existencia, se pregunta el motivo ANTES de guardar.
+      // Cancelar = no se guarda nada (ni el producto ni el stock).
+      let motivoAjuste = null;
+      const stockNuevoPrevisto = isNaN(stockActual) ? 0 : stockActual;
+      if (tipo === 'producto' && stockNuevoPrevisto !== stockAntes && window.N360AjusteExistencia) {
+        motivoAjuste = await window.N360AjusteExistencia.pedirMotivo({ nombre, antes: stockAntes, despues: stockNuevoPrevisto });
+        if (!motivoAjuste) {
+          const errAjuste = document.getElementById('errNombre');
+          if (errAjuste) errAjuste.textContent = 'No se guardó: falta indicar por qué cambia la existencia.';
+          return;
+        }
+      }
+
+      const updatePayload = {
+        tipo,
+        nombre,
+        descripcion:   descripcion || null,
+        categoria:     categoria   || null,
+        proveedor_id:      proveedorId,
+        proveedor_nombre:  proveedorNombre,
+        sku:           sku         || null,
+        codigo_barras: codBarras   || null,
+        costo:         isNaN(costo)  ? 0 : costo,
+        precio:        tipoPrecio === 'escala' ? 0 : (isNaN(precio) ? 0 : precio),
+        tipo_precio:   tipoPrecio,
+        tipo_costo:    tipoCosto,
+        unidad_medida: ($('inputUnidadMedida')?.value || '').trim() || null,
+        ...leerUnidadParaGuardar(tipo, STATE.modalMode === 'editar' ? STATE.editTarget : null),
+        requiere_numero_serie: $('inputRequiereSerieEdit')?.checked === true,
+        modelo: ($('inputModeloEdit')?.value || '').trim() || null,
+        stock_minimo:  tipo === 'producto' ? (isNaN(stockMinimo) ? 0 : stockMinimo) : null,
+        stock_maximo:  tipo === 'producto' ? stockMaximo : null,
+        garantia_meses: garantiaMeses,
+        es_materia_prima: esMateriaPrima,
+        es_sustancia_controlada: esSustanciaControlada,
+        principio_activo: principioActivo, concentracion, presentacion, ubicacion_fisica: ubicacionFisica,
+        activo,
+      };
+      // La existencia YA NO va en este guardado: antes, si alguien vendía el
+      // producto mientras esta ventana estaba abierta, al guardar (aunque solo
+      // se cambiara el precio) la existencia volvía al número viejo. Ahora
+      // solo se toca si el usuario la cambió, y en el servidor (ver abajo).
+      // Fecha de creación corregible a mano (ej: producto que ya existía
+      // antes del sistema y quedó registrado con la fecha de "hoy").
+      // FIX: mismo anclaje a mediodía UTC que en creación, ver nota arriba.
+      if (fechaCreacionRaw) updatePayload.created_at = fechaCreacionRaw + 'T12:00:00Z';
+      if (imagenUrlFinal !== undefined) updatePayload.imagen_url = imagenUrlFinal;
+
+      let res = await supabaseClient
+        .from('productos')
+        .update(updatePayload)
+        .eq('id', STATE.editTarget.id)
+        .eq('auth_user_id', STATE.user.id);
+      if (res.error && fechaCreacionRaw) {
+        // Reintentar sin la fecha manual, por si la columna no la acepta en este entorno
+        const { created_at, ...updateSinFecha } = updatePayload;
+        res = await supabaseClient
+          .from('productos')
+          .update(updateSinFecha)
+          .eq('id', STATE.editTarget.id)
+          .eq('auth_user_id', STATE.user.id);
+      }
+      error = res.error;
+      productoIdGuardado = STATE.editTarget.id;
+
+      // Existencia cambiada a mano: se aplica en el servidor sobre el valor
+      // REAL. Si nadie movió el producto mientras se editaba, queda el número
+      // escrito; si hubo una venta en ese rato, se aplica la diferencia que
+      // hizo el usuario (la venta no se pierde).
+      if (!error && tipo === 'producto' && stockNuevoPrevisto !== stockAntes) {
+        const { data: fij, error: errFij } = await supabaseClient.rpc('stock_fijar', {
+          p_producto_id: STATE.editTarget.id, p_esperado: stockAntes, p_nuevo: stockNuevoPrevisto,
+        });
+        if (errFij) {
+          error = errFij;
+        } else {
+          const antesReal = Number(fij?.antes ?? stockAntes), despuesReal = Number(fij?.despues ?? stockNuevoPrevisto);
+          if (fij?.hubo_movimiento_en_medio) {
+            showToast('info', 'Existencia ajustada', `Mientras editabas hubo otro movimiento de este producto. Se aplicó tu cambio sobre lo real: quedó en ${fmtNum(despuesReal)}.`);
+          }
+          // Dejar rastro del ajuste manual de stock (auditoría), igual que hacen
+          // los Movimientos especiales. Si la tabla no existe o falla, no se
+          // interrumpe el guardado del producto — solo se registra en consola.
+          if (despuesReal !== antesReal) {
+            try {
+              await supabaseClient.from('movimientos_inventario').insert([{
+                auth_user_id:   STATE.user.id,
+                producto_id:    STATE.editTarget.id,
+                tipo:           'ajuste_manual',
+                razon:          motivoAjuste ? motivoAjuste.razon : 'edicion_producto',
+                cantidad:       Math.round((despuesReal - antesReal) * 1000) / 1000,
+                stock_antes:    antesReal,
+                stock_despues:  despuesReal,
+                nota:           window.N360AjusteExistencia ? window.N360AjusteExistencia.notaMovimiento(motivoAjuste) : 'Editado directamente desde el formulario de producto',
+                costo_unitario: isNaN(costo) ? null : costo,
+                costo_total:    isNaN(costo) ? null : Math.round(Math.abs(despuesReal - antesReal) * costo * 100) / 100,
+                descuenta_caja: false,
+              }]);
+            } catch (_) {
+              console.warn('Tabla movimientos_inventario no disponible aún');
+            }
+          }
+        }
+      }
+    }
+
+    if (error) throw error;
+
+    // Lote del stock inicial (solo crear/duplicar, producto, negocio con
+    // lotes, stock > 0 y fecha de vencimiento indicada). Aislado: si
+    // fallara, el producto YA quedo guardado y el stock sigue ahi como
+    // "sin lote", asignable despues desde el producto.
+    try {
+      const vencLoteInicial = $('inputVencimientoLoteInicial')?.value;
+      if (productoIdGuardado && STATE.modalMode !== 'editar' && tipo === 'producto'
+          && STATE.empresa?.maneja_lotes_vencimiento === true && stockActual > 0 && vencLoteInicial) {
+        const { error: errLoteIni } = await supabaseClient.from('producto_lotes').insert({
+          auth_user_id: STATE.user.id, producto_id: productoIdGuardado,
+          numero_lote: ($('inputNumeroLoteInicial')?.value || '').trim() || null,
+          fecha_vencimiento: vencLoteInicial,
+          cantidad_inicial: stockActual, cantidad_actual: stockActual,
+          costo_unitario: isNaN(costo) ? null : costo,
+        });
+        if (errLoteIni) throw errLoteIni;
+      }
+    } catch (eLoteIni) {
+      console.warn('Lote del stock inicial:', eLoteIni);
+      showToast('warning', 'Producto guardado', 'El lote del stock inicial no se pudo crear — puedes asignarlo después desde el producto.');
+    }
+
+    // Sincronizar escalas de precio (crea/actualiza/elimina filas según corresponda).
+    // Si falla, el producto YA quedó guardado — solo se avisa, no se revierte nada.
+    if (productoIdGuardado) {
+      try {
+        await sincronizarEscalas(productoIdGuardado, tipoPrecio === 'escala' ? STATE.formEscalas : []);
+        // Presentaciones: solo se tocan si el negocio activó la función.
+        // Si está apagada, ni se consulta -- nada cambia para quien no la usa.
+        if (STATE.manejaPresentaciones) {
+          await sincronizarPresentaciones(productoIdGuardado, STATE.formPresentaciones || []);
+        }
+      } catch (eEscalas) {
+        console.error('sincronizarEscalas:', eEscalas);
+        showToast('warning', 'Producto guardado', 'No se pudieron guardar los precios de la escala, intenta editarlo de nuevo.');
+      }
+    }
+
+    // Escala de costos: mismo criterio — el producto ya quedó guardado, solo se avisa si falla.
+    if (productoIdGuardado) {
+      try {
+        if (tipoCosto === 'escala' || (STATE.escalasCostoPorProducto[productoIdGuardado] || []).length) {
+          await sincronizarEscalasCosto(productoIdGuardado, tipoCosto === 'escala' ? STATE.formEscalasCosto : []);
+        }
+      } catch (eEC) {
+        console.error('sincronizarEscalasCosto:', eEC);
+        showToast('warning', 'Producto guardado', 'No se pudieron guardar los costos de la escala, intenta editarlo de nuevo.');
+      }
+    }
+
+    cerrarModalProducto();
+    const detalleMensaje = tipoPrecio === 'escala'
+      ? `${nombre} · ${STATE.formEscalas.filter(f => (f.nombre||'').trim()).length} precio(s) de escala guardados`
+      : nombre;
+    showToast(
+      'success',
+      STATE.modalMode === 'editar' ? 'Producto actualizado' : 'Producto creado',
+      detalleMensaje
+    );
+    // Se cambia a la pestaña de categoria correcta antes de recargar
+    // -- si el usuario estaba viendo "Servicios" y acaba de crear un
+    // Producto, sin esto parecería que lo recien creado "se perdió".
+    const categoriaDelGuardado = esMateriaPrima ? 'materia_prima' : (tipo === 'servicio' ? 'servicios' : 'productos');
+    cambiarCategoriaProductos(categoriaDelGuardado);
+
+    // Importante: primero las escalas y DESPUÉS los productos —
+    // cargarProductos() dibuja la tabla de inmediato, así que si corriera
+    // en paralelo con cargarEscalas() podría pintar la tabla con el mapa
+    // de escalas todavía viejo (por eso aparecía "Sin precios configurados"
+    // hasta editar y volver a guardar).
+    await cargarEscalas();
+    await cargarEscalasCosto();
+    await cargarProductos();
+
+    // Producto nuevo que requiere serie y ya trae existencia: ofrece registrar sus series (opcional, no cambia stock ni dinero).
+    try {
+      if (STATE.modalMode !== 'editar' && productoIdGuardado && STATE.usaNumeroSerie && tipo === 'producto'
+          && $('inputRequiereSerie')?.checked === true && stockActual > 0) {
+        setTimeout(() => abrirSeriesProducto(productoIdGuardado), 300);
+      }
+      // Producto existente al que se le acaba de marcar "requiere número de serie": abre la carga de series ahí mismo.
+      if (STATE.modalMode === 'editar' && window.__serieActivadaEnEdicion && STATE.usaNumeroSerie && tipo === 'producto') {
+        const idSerie = window.__serieActivadaEnEdicion;
+        window.__serieActivadaEnEdicion = null;
+        setTimeout(() => abrirSeriesProducto(idSerie), 300);
+      }
+    } catch (eSer) { console.warn('series del producto nuevo:', eSer); }
+
+  } catch (e) {
+    console.error('guardarProducto:', e);
+    showToast('error', 'Error al guardar', e.message || 'Verifica los datos e intenta de nuevo.');
+  } finally {
+    btn.classList.remove('btn-loading');
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
+// VER DETALLE
+// FIX: usa helper esStockBajo()
+// ============================================================
+function abrirDetalle(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+
+  const m = calcMargen(p.precio, p.costo);
+  const margenHtml = m !== null
+    ? `<span class="td-margin ${m >= 40 ? 'margin-good' : m >= 20 ? 'margin-mid' : 'margin-low'}">${m.toFixed(2)}%</span>`
+    : '—';
+
+  // FIX: usar helper centralizado
+  const stockBajo = esStockBajo(p);
+
+  $('detalleContent').innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-item full">
+        <div class="detail-label">Nombre</div>
+        <div class="detail-value" style="font-size:18px;font-weight:700">${escHtml(p.nombre)}</div>
+      </div>
+      ${p.descripcion ? `
+      <div class="detail-item full">
+        <div class="detail-label">Descripción</div>
+        <div class="detail-value">${escHtml(p.descripcion)}</div>
+      </div>` : ''}
+      <div class="detail-divider"></div>
+      <div class="detail-item">
+        <div class="detail-label">Tipo</div>
+        <div class="detail-value">
+          <span class="tipo-badge ${p.tipo === 'producto' ? 'tipo-producto' : 'tipo-servicio'}">
+            ${p.tipo === 'producto' ? '📦' : '🔧'} ${p.tipo}
+          </span>
+        </div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Categoría</div>
+        <div class="detail-value">${p.categoria ? escHtml(p.categoria) : '—'}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Marca / Proveedor</div>
+        <div class="detail-value">${p.proveedor_nombre ? `🏷️ ${escHtml(p.proveedor_nombre)}` : '—'}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">SKU</div>
+        <div class="detail-value" style="font-family:var(--font-mono)">${p.sku || '—'}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Código de Barras</div>
+        <div class="detail-value" style="font-family:var(--font-mono)">${p.codigo_barras || '—'}</div>
+      </div>
+      <div class="detail-divider"></div>
+      <div class="detail-item">
+        <div class="detail-label">Costo</div>
+        <div class="detail-value detail-money" style="color:var(--text-secondary)">${fmtMoney(p.costo)}</div>
+      </div>
+      ${p.tipo_precio === 'escala' ? `
+      <div class="detail-item full">
+        <div class="detail-label">Escala de precios</div>
+        <div class="detail-value">
+          ${(STATE.escalasPorProducto[p.id] || []).map(e => `
+            <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+              <span>${escHtml(e.nombre)}</span>
+              <span style="font-weight:700;color:var(--accent)">${fmtMoney(e.precio)}</span>
+            </div>`).join('') || '<span style="color:var(--text-muted)">Sin precios configurados</span>'}
+        </div>
+      </div>
+      ` : `
+      <div class="detail-item">
+        <div class="detail-label">Precio de Venta</div>
+        <div class="detail-value detail-money" style="color:var(--accent)">${fmtMoney(p.precio)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Margen</div>
+        <div class="detail-value">${margenHtml}</div>
+      </div>
+      `}
+      <div class="detail-item">
+        <div class="detail-label">Estado</div>
+        <div class="detail-value">
+          <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
+            ${p.activo ? 'Activo' : 'Inactivo'}
+          </span>
+        </div>
+      </div>
+      ${p.tipo === 'producto' ? `
+      <div class="detail-divider"></div>
+      <div class="detail-item">
+        <div class="detail-label">Stock Actual</div>
+        <div class="detail-value" style="font-size:18px;font-weight:700">
+          ${fmtNum(p.stock_actual)}
+          ${stockBajo ? '<span class="stock-warn" style="font-size:12px">⚠ Stock bajo</span>' : ''}
+        </div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Stock Mínimo</div>
+        <div class="detail-value">${fmtNum(p.stock_minimo)}</div>
+      </div>` : ''}
+      <div class="detail-divider"></div>
+      <div class="detail-item">
+        <div class="detail-label">Creado</div>
+        <div class="detail-value" style="font-size:12px">${fmtFecha(p.created_at)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Última actualización</div>
+        <div class="detail-value" style="font-size:12px">${fmtFecha(p.updated_at)}</div>
+      </div>
+    </div>
+  `;
+
+  $('btnEditarDesdeDetalle').onclick = () => {
+    cerrarDetalle();
+    abrirEditar(id);
+  };
+
+  $('modalDetalle').classList.add('open');
+}
+
+function cerrarDetalle() {
+  $('modalDetalle').classList.remove('open');
+}
+
+// ============================================================
+// DUPLICAR
+// ============================================================
+/* ---------- Eliminar producto (individual, con confirmación) ---------- */
+async function confirmarEliminarProducto(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+
+  // Aviso extra si el producto está metido dentro de algún combo — borrarlo
+  // rompería ese combo en silencio (la relación se elimina en cascada).
+  let advertenciaCombo = '';
+  try {
+    const { data: enCombos } = await supabaseClient
+      .from('combo_items').select('combos(nombre)').eq('producto_id', id);
+    const nombresCombos = [...new Set((enCombos || []).map(it => it.combos?.nombre).filter(Boolean))];
+    if (nombresCombos.length) {
+      advertenciaCombo = `\n\n⚠️ Este producto forma parte de: ${nombresCombos.join(', ')}. Si lo eliminas, se quitará también de ese/esos combo(s).`;
+    }
+  } catch (e) { /* si falla esta verificación, se sigue con la confirmación normal */ }
+
+  const confirmado = confirm(
+    `¿Eliminar "${p.nombre}" definitivamente?\n\nRestará su valor del inventario. Su historial en Compras y Créditos se conserva (con su nombre y datos tal como quedaron), esta acción solo no se puede deshacer para el producto en sí.${advertenciaCombo}`
+  );
+  if (!confirmado) return;
+
+  try {
+    const { error } = await supabaseClient.from('productos').delete()
+      .eq('id', id).eq('auth_user_id', STATE.user.id);
+    if (error) throw error;
+    showToast('success', 'Producto eliminado', `"${p.nombre}" se eliminó correctamente.`);
+    await cargarProductos(); // recarga la lista y recalcula el valor de inventario
+  } catch (e) {
+    console.error('confirmarEliminarProducto:', e);
+    showToast('error', 'Error al eliminar', e.message || 'Intenta de nuevo.');
+  }
+}
+
+async function duplicarProducto(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+
+  STATE.modalMode  = 'duplicar';
+  STATE.editTarget = null;
+
+  resetFormulario();
+  cargarFormulario({ ...p, nombre: p.nombre + ' — Copia' });
+
+  const stockField = $('inputStockActual');
+  if (stockField) { stockField.disabled = false; stockField.value = p.stock_actual ?? 0; }
+
+  setTipoModal(p.tipo, false);
+  configurarCamposSegunModo('crear'); // duplicar actúa como crear
+
+  $('modalProductoTitle').textContent = `Duplicar: ${p.nombre}`;
+  $('btnGuardarProducto').textContent = 'Crear copia';
+  $('modalProducto').classList.add('open');
+}
+
+// ============================================================
+// MOVIMIENTOS ESPECIALES — Modal completo
+// ============================================================
+const RAZONES_MERMA = [
+  { id: 'robo',           label: 'Robo',           icon: '🔓' },
+  { id: 'dano',           label: 'Daño',           icon: '💥' },
+  { id: 'vencimiento',    label: 'Vencimiento',    icon: '🗓️' },
+  { id: 'uso_interno',    label: 'Uso interno',    icon: '🏭' },
+  { id: 'conteo_fisico',  label: 'Conteo físico',  icon: '🔢' },
+  { id: 'error_anterior', label: 'Error anterior', icon: '↩️' },
+];
+
+function abrirMovimiento(id) {
+  const p = STATE.productos.find(x => x.id === id);
+  if (!p) return;
+  STATE.movTarget = p;
+
+  const nombreEl = $('movProductoNombre');
+  if (nombreEl) nombreEl.textContent = p.nombre;
+
+  const stockEl = $('movStockActual');
+  if (stockEl) stockEl.textContent = `Stock actual: ${fmtNum(p.stock_actual)}`;
+
+  const cantEl = $('movCantidad');
+  const notaEl = $('movNota');
+  const cajaCh = $('movDescontarCaja');
+  if (cantEl) cantEl.value = '';
+  if (notaEl) notaEl.value = '';
+  if (cajaCh) cajaCh.checked = false;
+
+  $$('.razon-card').forEach(c => c.classList.remove('selected'));
+  $('movRazonSeleccionada').value = '';
+
+  const errEl = $('movError');
+  if (errEl) errEl.textContent = '';
+
+  const prevEl = $('movCajaPreview');
+  if (prevEl) prevEl.textContent = '';
+
+  actualizarAvisoCaja();
+
+  $('modalMovimiento').classList.add('open');
+}
+
+function cerrarMovimiento() {
+  $('modalMovimiento').classList.remove('open');
+  STATE.movTarget = null;
+}
+
+function seleccionarRazon(el, razonId) {
+  $$('.razon-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  $('movRazonSeleccionada').value = razonId;
+
+  const errEl = $('movError');
+  if (errEl) errEl.textContent = '';
+
+  actualizarAvisoCaja();
+}
+
+function actualizarAvisoCaja() {
+  const razon    = $('movRazonSeleccionada')?.value;
+  const cajaRow  = $('movCajaRow');
+  const cajaInfo = $('movCajaRowInfo');
+  if (!cajaRow) return;
+
+  const requiereCaja = ['robo', 'dano', 'vencimiento', 'uso_interno'];
+  const esSoloAjuste = ['conteo_fisico', 'error_anterior'];
+
+  cajaRow.style.display  = requiereCaja.includes(razon) ? '' : 'none';
+  if (cajaInfo) cajaInfo.style.display = esSoloAjuste.includes(razon) ? '' : 'none';
+
+  const cajaCh = $('movDescontarCaja');
+  if (cajaCh && !requiereCaja.includes(razon)) cajaCh.checked = false;
+}
+
+async function confirmarMovimiento() {
+  const p = STATE.movTarget;
+  if (!p) return;
+
+  const razon   = $('movRazonSeleccionada')?.value;
+  const cantRaw = $('movCantidad')?.value;
+  const nota    = ($('movNota')?.value || '').trim();
+  const desCaja = $('movDescontarCaja')?.checked ?? false;
+  const errEl   = $('movError');
+
+  if (!razon) {
+    if (errEl) errEl.textContent = 'Selecciona la razón del movimiento.';
+    return;
+  }
+
+  const cantidad = parseFloat(cantRaw);
+  if (!cantRaw || isNaN(cantidad) || cantidad <= 0) {
+    if (errEl) errEl.textContent = 'Ingresa una cantidad válida mayor a 0.';
+    $('movCantidad')?.focus();
+    return;
+  }
+
+  const stockActual = parseFloat(p.stock_actual ?? 0);
+  if (cantidad > stockActual) {
+    if (errEl) errEl.textContent =
+      `No puedes descontar ${fmtNum(cantidad)} — stock disponible: ${fmtNum(stockActual)}.`;
+    return;
+  }
+
+  const btn = $('btnConfirmarMovimiento');
+  const textoOriginal = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.classList.add('btn-loading'); }
+
+  try {
+    // En el servidor, restando sobre la existencia REAL (si ya no alcanza
+    // porque se vendió algo mientras tanto, se avisa y no se descuenta nada).
+    const { data: mov, error: stockErr } = await supabaseClient.rpc('ajustar_stock_producto', {
+      p_producto_id: p.id, p_delta: -cantidad, p_exigir_existencia: true,
+    });
+    if (stockErr) throw stockErr;
+    const stockAntesReal = Number(mov?.antes ?? stockActual);
+    const nuevoStock = Number(mov?.despues ?? (stockActual - cantidad));
+
+    // Registrar en tabla de movimientos (si existe)
+    try {
+      await supabaseClient.from('movimientos_inventario').insert([{
+        auth_user_id:   STATE.user.id,
+        producto_id:    p.id,
+        tipo:           'merma',
+        razon,
+        cantidad:       -cantidad,
+        stock_antes:    stockAntesReal,
+        stock_despues:  nuevoStock,
+        nota:           nota || null,
+        descuenta_caja: desCaja,
+        costo_unitario: desCaja ? parseFloat(p.costo || 0) : null,
+        costo_total:    desCaja ? (parseFloat(p.costo || 0) * cantidad) : null,
+      }]);
+    } catch (_) {
+      console.warn('Tabla movimientos_inventario no disponible aún');
+    }
+
+    // Descontar de caja si aplica
+    if (desCaja && p.costo) {
+      const costoTotal  = parseFloat(p.costo) * cantidad;
+      const razonLabel  = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
+      try {
+        await supabaseClient.from('gastos').insert([{
+          auth_user_id: STATE.user.id,
+          concepto:     `Merma de inventario — ${razonLabel}: ${p.nombre} (${fmtNum(cantidad)} u.)`,
+          monto:        costoTotal,
+          categoria:    'Merma de inventario',
+          tipo:         'inmediato',
+          observaciones: nota || null,
+          fecha:        ymdLocal(new Date()),
+        }]);
+      } catch (_) {
+        console.warn('No se pudo registrar en gastos');
+      }
+    }
+
+    cerrarMovimiento();
+
+    const razonLabel = RAZONES_MERMA.find(r => r.id === razon)?.label || razon;
+    const cajaMsg    = desCaja ? ` · ${fmtMoney((p.costo || 0) * cantidad)} descontados de caja` : '';
+    showToast('warning', 'Movimiento registrado',
+      `${razonLabel}: −${fmtNum(cantidad)} u. de ${p.nombre}${cajaMsg}`);
+
+    await cargarProductos();
+
+  } catch (e) {
+    console.error('confirmarMovimiento:', e);
+    if (errEl) errEl.textContent = 'Error al guardar: ' + (e.message || 'inténtalo de nuevo');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('btn-loading');
+      btn.textContent = textoOriginal;
+    }
+  }
+}
+
+// ============================================================
+// NOTIFICACIONES
+// FIX: usa helper esStockBajo()
+// ============================================================
+function initNotificaciones() {
+  const btnNotif = document.querySelector('.header-icon-btn[title="Notificaciones"]');
+  if (!btnNotif) return;
+  btnNotif.addEventListener('click', () => {
+    const stockBajo = STATE.productos.filter(esStockBajo);
+    if (stockBajo.length > 0) {
+      showToast('warning',
+        `${stockBajo.length} producto${stockBajo.length !== 1 ? 's' : ''} con stock bajo`,
+        stockBajo.slice(0, 3).map(p => `• ${p.nombre}`).join('<br>'));
+    } else {
+      showToast('info', 'Sin notificaciones', 'Todo tu inventario está en orden.');
+    }
+  });
+}
+
+// ============================================================
+// ESCAPE HTML
+// ============================================================
+function escHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ============================================================
+// EVENTOS
+// ============================================================
+function initEventos() {
+  initBusquedaGrupoPromocion();
+
+  const searchInput = $('searchInput');
+  const searchClear = $('searchClear');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      STATE.busqueda = e.target.value;
+      if (searchClear) searchClear.classList.toggle('visible', STATE.busqueda.length > 0);
+      aplicarFiltros();
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      STATE.busqueda = '';
+      searchClear.classList.remove('visible');
+      aplicarFiltros();
+    });
+  }
+
+  const ordenSelect = $('ordenProductos');
+  if (ordenSelect) {
+    ordenSelect.addEventListener('change', (e) => {
+      STATE.ordenActivo = e.target.value;
+      aplicarFiltros();
+    });
+  }
+
+  const comboSearchInput = $('comboSearchInput');
+  const comboSearchClear = $('comboSearchClear');
+  if (comboSearchInput) {
+    comboSearchInput.addEventListener('input', (e) => {
+      STATE.comboBusqueda = e.target.value;
+      if (comboSearchClear) comboSearchClear.classList.toggle('visible', STATE.comboBusqueda.length > 0);
+      aplicarFiltrosCombos();
+    });
+  }
+  if (comboSearchClear) {
+    comboSearchClear.addEventListener('click', () => {
+      if (comboSearchInput) comboSearchInput.value = '';
+      STATE.comboBusqueda = '';
+      comboSearchClear.classList.remove('visible');
+      aplicarFiltrosCombos();
+    });
+  }
+  const ordenCombosSelect = $('ordenCombos');
+  if (ordenCombosSelect) {
+    ordenCombosSelect.addEventListener('change', (e) => {
+      STATE.comboOrden = e.target.value;
+      aplicarFiltrosCombos();
+    });
+  }
+
+  // Buscador de ESCANEO: exclusivo para el lector de código de barras
+  // (o escribiéndolo a mano + Enter). Busca coincidencia exacta y filtra
+  // la tabla a ese producto — nunca toca ni interfiere con el buscador
+  // de nombre/SKU de arriba.
+  const scanInput = $('scanInput');
+  const scanClear = $('scanClear');
+  if (scanInput) {
+    scanInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const codigo = scanInput.value.trim();
+      if (!codigo) return;
+
+      const encontrado = STATE.productos.find(p => (p.codigo_barras || '').trim() === codigo);
+      if (!encontrado) {
+        showToast('warning', 'No encontrado', `Ningún producto tiene el código "${codigo}"`);
+        scanInput.select();
+        return;
+      }
+
+      // Reutiliza el mismo buscador de nombre/SKU de arriba para filtrar
+      // la tabla — así no se duplica lógica de filtrado.
+      if (searchInput) searchInput.value = encontrado.nombre;
+      STATE.busqueda = encontrado.nombre;
+      if (searchClear) searchClear.classList.add('visible');
+      aplicarFiltros();
+
+      showToast('success', 'Encontrado', encontrado.nombre);
+      scanInput.value = '';
+      scanClear?.classList.remove('visible');
+    });
+    scanInput.addEventListener('input', () => {
+      scanClear?.classList.toggle('visible', scanInput.value.length > 0);
+    });
+  }
+  if (scanClear) {
+    scanClear.addEventListener('click', () => {
+      if (scanInput) scanInput.value = '';
+      scanClear.classList.remove('visible');
+      scanInput?.focus();
+    });
+  }
+
+  const filtersGroups = document.querySelectorAll('.filters-group');
+  filtersGroups.forEach(filtersGroup => {
+    filtersGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+      $$('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      STATE.filtroActivo = btn.dataset.filtro;
+      aplicarFiltros();
+    });
+  });
+
+  const filtroMarca = $('filtroMarca');
+  if (filtroMarca) {
+    filtroMarca.addEventListener('change', (e) => {
+      STATE.filtroMarca = e.target.value;
+      aplicarFiltros();
+    });
+  }
+
+  const btnProd = $('toggleProducto');
+  const btnServ = $('toggleServicio');
+  if (btnProd) btnProd.addEventListener('click', () => setTipoModal('producto', true));
+  if (btnServ) btnServ.addEventListener('click', () => setTipoModal('servicio', true));
+
+  // Toggle de impacto en caja (nuevo producto)
+
+  const btnGuardar = $('btnGuardarProducto');
+  if (btnGuardar) btnGuardar.addEventListener('click', guardarProducto);
+
+  const formProducto = $('formProducto');
+  if (formProducto) {
+    formProducto.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.target.tagName === 'TEXTAREA') return;
+      // BUG REAL CORREGIDO: al escribir varios precios de escala seguidos
+      // (nombre, precio, nombre, precio...) es MUY natural presionar Enter
+      // entre campos -- pero eso disparaba guardarProducto() de inmediato,
+      // guardando el producto CON LA FILA A MEDIO ESCRIBIR todavía vacía o
+      // incompleta. El toast decía "Producto actualizado" (parecía exitoso),
+      // pero el precio nuevo que se estaba escribiendo nunca llegaba a
+      // guardarse. Ahora Enter dentro del editor de escalas (o de combo)
+      // no dispara el guardado -- solo confirma el campo, como es normal.
+      if (e.target.closest('#escalasEditorBody, #comboEscalasEditorBody')) return;
+      e.preventDefault();
+      guardarProducto();
+    });
+  }
+
+  // Código de barras: modo escaneo (ver initEscaneoCodigoBarras)
+  initEscaneoCodigoBarras();
+
+  // Movimiento: cantidad cambia → actualizar preview de caja
+  const movCantidad = $('movCantidad');
+  if (movCantidad) {
+    movCantidad.addEventListener('input', () => {
+      const p      = STATE.movTarget;
+      const cant   = parseFloat(movCantidad.value) || 0;
+      const prevEl = $('movCajaPreview');
+      if (prevEl && p && p.costo && cant > 0) {
+        prevEl.textContent = `Se registrará ${fmtMoney(parseFloat(p.costo) * cant)} como gasto de merma`;
+      } else if (prevEl) {
+        prevEl.textContent = '';
+      }
+    });
+  }
+
+  const cajaCh = $('movDescontarCaja');
+  if (cajaCh) {
+    cajaCh.addEventListener('change', () => {
+      const prevEl = $('movCajaPreview');
+      const p      = STATE.movTarget;
+      const cant   = parseFloat($('movCantidad')?.value) || 0;
+      if (prevEl) {
+        prevEl.textContent = (cajaCh.checked && p && p.costo && cant > 0)
+          ? `Se registrará ${fmtMoney(parseFloat(p.costo) * cant)} como gasto de merma`
+          : '';
+      }
+    });
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      cerrarModalProducto();
+      cerrarDetalle();
+      cerrarMovimiento();
+    }
+  });
+
+  $$('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) {
+        overlay.classList.remove('open');
+        STATE.editTarget = null;
+        STATE.modalMode  = null;
+        STATE.movTarget  = null;
+      }
+    });
+  });
+
+  const inputNombre = $('inputNombre');
+  if (inputNombre) {
+    inputNombre.addEventListener('input', () => {
+      const errEl = $('errNombre');
+      if (errEl) errEl.textContent = '';
+    });
+  }
+
+}
+
+// ============================================================
+// FECHA EN HEADER
+// ============================================================
+function actualizarFecha() {
+  const el = $('fechaActual');
+  if (el) el.textContent = fechaActual();
+}
+
+// ============================================================
+// INIT PRINCIPAL
+// FIX: cargar moneda/empresa ANTES de cargar productos.
+//      Antes ambas corrían en Promise.all (en paralelo), lo que
+//      generaba una condición de carrera: si cargarProductos()
+//      terminaba primero, actualizarStats() -> fmtMoney() usaba
+//      el símbolo por defecto ('$' / USD) en vez de la moneda
+//      configurada (ej. 'C$' / NIO), provocando el bug aleatorio
+//      al recargar la página.
+// ============================================================
+/* ============================================================
+   PROMOCIONES — reglas que Ventas aplica solas, distinto de un
+   Combo (que es un producto fijo con un solo precio). Aquí solo se
+   define/administra la regla; la lógica de APLICARLA vive en
+   Ventas, en su propio archivo, para no arriesgar nada de aquí.
+   ============================================================ */
+STATE.promociones = STATE.promociones || [];
+STATE.grupoPromocionActual = STATE.grupoPromocionActual || []; // [{id, nombre}]
+
+async function cargarPromociones() {
+  const tbody = $('promosTbody');
+  try {
+    const { data, error } = await supabaseClient
+      .from('promociones')
+      .select('*, promocion_productos(producto_id)')
+      .eq('auth_user_id', STATE.user.id)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    STATE.promociones = data || [];
+    renderPromociones();
+  } catch (e) {
+    console.error('cargarPromociones:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--danger)">No se pudieron cargar las promociones.</td></tr>`;
+  }
+}
+
+const TIPO_PROMO_LABEL = {
+  nxm_mismo: '2x1 — mismo producto',
+  nxm_grupo: '2x1 — varios productos',
+  regalo: 'Compra 1, lleva otro gratis',
+  descuento_cantidad: 'Descuento por cantidad',
+};
+
+function detallePromocion(p) {
+  const prod = (id) => STATE.productos.find(x => x.id === id)?.nombre || '—';
+  switch (p.tipo) {
+    case 'nxm_mismo':
+      return `${prod(p.producto_id)} — compra ${p.n_compra}, paga ${p.m_paga}`;
+    case 'nxm_grupo': {
+      const n = (p.promocion_productos || []).length;
+      return `${n} producto${n===1?'':'s'} en el grupo — compra ${p.n_compra}, paga ${p.m_paga}`;
+    }
+    case 'regalo':
+      return `Compra ${p.cantidad_disparador} de "${prod(p.producto_disparador_id)}" → gratis "${prod(p.producto_regalo_id)}"${Number(p.precio_regalo)>0?` (${fmtMoney(p.precio_regalo)})`:''}`;
+    case 'descuento_cantidad':
+      return `${prod(p.producto_id)} — ${p.descuento_porcentaje}% desde ${p.cantidad_minima} unidades`;
+    default: return '—';
+  }
+}
+
+function vigenciaPromocion(p) {
+  if (!p.fecha_inicio && !p.fecha_fin) return 'Sin vencimiento';
+  const ini = p.fecha_inicio ? new Date(p.fecha_inicio+'T00:00:00').toLocaleDateString('es-NI',{day:'2-digit',month:'short'}) : '—';
+  const fin = p.fecha_fin ? new Date(p.fecha_fin+'T00:00:00').toLocaleDateString('es-NI',{day:'2-digit',month:'short'}) : '—';
+  return `${ini} → ${fin}`;
+}
+
+// Mismo cálculo ya usado en Ventas — para nxm_grupo no hay un precio
+// único (depende de qué elija el cajero al vender), así que ahí se
+// muestra un guión en vez de un número.
+function precioVitrinaPromo(p) {
+  // Si el negocio puso un precio fijo, ese manda siempre — el cálculo
+  // automático de abajo solo sirve como respaldo cuando no se definió.
+  if (p.precio_promocion !== null && p.precio_promocion !== undefined) {
+    return fmtMoney(Number(p.precio_promocion));
+  }
+  const precioDe = (prod) => {
+    if (!prod) return null;
+    if (prod.tipo_precio === 'escala') {
+      const escalas = STATE.escalasPorProducto?.[prod.id] || [];
+      return escalas.length ? Number(escalas[0].precio || 0) : null;
+    }
+    return Number(prod.precio || 0);
+  };
+  if (p.tipo === 'nxm_mismo') {
+    const prod = STATE.productos.find(x => x.id === p.producto_id);
+    const precio = precioDe(prod);
+    return precio === null ? '—' : fmtMoney(precio * p.m_paga);
+  }
+  if (p.tipo === 'descuento_cantidad') {
+    const prod = STATE.productos.find(x => x.id === p.producto_id);
+    const precio = precioDe(prod);
+    return precio === null ? '—' : fmtMoney(round2(precio * p.cantidad_minima * (1 - Number(p.descuento_porcentaje||0)/100)));
+  }
+  if (p.tipo === 'regalo') {
+    const disparador = STATE.productos.find(x => x.id === p.producto_disparador_id);
+    const precio = precioDe(disparador);
+    return precio === null ? '—' : fmtMoney(precio * p.cantidad_disparador + Number(p.precio_regalo || 0));
+  }
+  return '<span style="color:var(--text-muted)">según lo elegido</span>';
+}
+
+function mostrarCatalogoOTablaPromos(mostrarCatalogo) {
+  const tableCard = document.getElementById('tableCardPromos');
+  const grid = document.getElementById('catalogoGridPromos');
+  if (tableCard) tableCard.style.display = mostrarCatalogo ? 'none' : '';
+  if (grid) grid.style.display = mostrarCatalogo ? '' : 'none';
+}
+
+function renderCatalogoGridPromos(items) {
+  const grid = document.getElementById('catalogoGridPromos');
+  if (!grid) return;
+  if (!items.length) {
+    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:30px 0">Aún no has creado ninguna promoción.</p>';
+    return;
+  }
+  grid.innerHTML = items.map(p => {
+    const foto = p.imagen_url
+      ? `<img src="${escHtml(p.imagen_url)}" class="catalogo-card-foto" alt="">`
+      : `<div class="catalogo-card-foto-placeholder">🎉</div>`;
+    return `
+      <div class="catalogo-card" data-id="${p.id}">
+        <div class="catalogo-card-foto-wrap">
+          <span class="catalogo-card-estado" style="color:${p.activo ? 'var(--success,#16a34a)' : 'var(--text-muted)'};cursor:pointer" onclick="togglePromocionActiva('${p.id}', ${!p.activo})">${p.activo ? '● Activa' : '● Pausada'}</span>
+          ${foto}
+        </div>
+        <div class="catalogo-card-body">
+          <div class="catalogo-card-nombre">🎉 ${escHtml(p.nombre)}</div>
+          <div class="catalogo-card-sku">${escHtml(TIPO_PROMO_LABEL[p.tipo] || p.tipo)}</div>
+          <div class="catalogo-card-categoria">${escHtml(detallePromocion(p))}</div>
+          <div class="catalogo-card-precios">
+            <span style="color:var(--text-muted)">Precio</span>
+            <b>${precioVitrinaPromo(p)}</b>
+          </div>
+          <div class="catalogo-card-stock">${escHtml(vigenciaPromocion(p))}</div>
+          <div class="catalogo-card-acciones">
+            <button class="btn btn-secondary" onclick="eliminarPromocion('${p.id}')">🗑️ Eliminar</button>
+            <button class="btn btn-primary" onclick="abrirModalPromocion('${p.id}')">✏️ Editar</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderPromociones() {
+  const tbody = $('promosTbody');
+  const countEl = $('promosCount');
+  if (countEl) countEl.textContent = `${STATE.promociones.length} promoción${STATE.promociones.length===1?'':'es'}`;
+
+  if (STATE.empresa?.usa_inventario_imagenes) {
+    mostrarCatalogoOTablaPromos(true);
+    renderCatalogoGridPromos(STATE.promociones);
+    return;
+  }
+  mostrarCatalogoOTablaPromos(false);
+  if (!tbody) return;
+
+  if (!STATE.promociones.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">Aún no has creado ninguna promoción.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = STATE.promociones.map(p => `
+    <tr>
+      <td><strong>${escHtml(p.nombre)}</strong></td>
+      <td>${escHtml(TIPO_PROMO_LABEL[p.tipo] || p.tipo)}</td>
+      <td style="font-size:12.5px;color:var(--text-muted)">${escHtml(detallePromocion(p))}</td>
+      <td style="font-weight:700;color:var(--accent)">${precioVitrinaPromo(p)}</td>
+      <td style="font-size:12.5px">${escHtml(vigenciaPromocion(p))}</td>
+      <td><span class="status-badge ${p.activo?'status-activo':'status-inactivo'}" style="cursor:pointer" onclick="togglePromocionActiva('${p.id}', ${!p.activo})">${p.activo?'Activa':'Pausada'}</span></td>
+      <td>
+        <button class="row-action-btn" title="Editar" onclick="abrirModalPromocion('${p.id}')">✏️</button>
+        <button class="row-action-btn" title="Eliminar" onclick="eliminarPromocion('${p.id}')" style="color:var(--danger)">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function togglePromocionActiva(id, nuevoValor) {
+  try {
+    const { error } = await supabaseClient.from('promociones').update({ activo: nuevoValor, updated_at: new Date().toISOString() })
+      .eq('id', id).eq('auth_user_id', STATE.user.id);
+    if (error) throw error;
+    showToast('success', nuevoValor ? 'Promoción activada' : 'Promoción pausada', '');
+    await cargarPromociones();
+  } catch (e) {
+    console.error('togglePromocionActiva:', e);
+    showToast('error', 'No se pudo actualizar', '');
+  }
+}
+
+async function eliminarPromocion(id) {
+  if (!confirm('¿Eliminar esta promoción? Esta acción no se puede deshacer.')) return;
+  try {
+    const { error } = await supabaseClient.from('promociones').delete().eq('id', id).eq('auth_user_id', STATE.user.id);
+    if (error) throw error;
+    showToast('success', 'Promoción eliminada', '');
+    await cargarPromociones();
+  } catch (e) {
+    console.error('eliminarPromocion:', e);
+    showToast('error', 'No se pudo eliminar', '');
+  }
+}
+
+function llenarSelectsProductosPromocion() {
+  const opciones = STATE.productos.filter(p => p.activo).map(p => {
+    const esEscala = p.tipo_precio === 'escala';
+    const precioTexto = esEscala
+      ? `📊 ${fmtRangoEscala(STATE.escalasPorProducto[p.id])}`
+      : fmtMoney(p.precio);
+    return `<option value="${p.id}">${escHtml(p.nombre)} — ${precioTexto}</option>`;
+  }).join('');
+  ['pm-producto-nxm','pm-producto-disparador','pm-producto-regalo','pm-producto-descuento'].forEach(id => {
+    const sel = $(id);
+    if (sel) sel.innerHTML = opciones;
+  });
+}
+
+function onCambioProductoRegalo() {
+  const id = $('pm-producto-regalo').value;
+  const prod = STATE.productos.find(p => p.id === id);
+  const nota = $('pm-nota-escala-regalo');
+  if (nota) nota.style.display = (prod && prod.tipo_precio === 'escala') ? '' : 'none';
+}
+
+function onCambioTipoPromocion() {
+  const tipo = $('pm-tipo').value;
+  $('pm-bloque-nxm-mismo').style.display   = tipo === 'nxm_mismo' ? '' : 'none';
+  $('pm-bloque-nxm-grupo').style.display   = tipo === 'nxm_grupo' ? '' : 'none';
+  $('pm-bloque-regalo').style.display      = tipo === 'regalo' ? '' : 'none';
+  $('pm-bloque-descuento').style.display   = tipo === 'descuento_cantidad' ? '' : 'none';
+}
+
+function abrirModalPromocion(id) {
+  $('pm-error').textContent = '';
+  $('pm-id').value = id || '';
+  llenarSelectsProductosPromocion();
+  STATE.grupoPromocionActual = [];
+  $('pm-grupo-resultados').innerHTML = '';
+  $('pm-buscar-grupo').value = '';
+  STATE.fotoPromoBlob = null;
+  STATE.fotoPromoEliminar = false;
+  $('fotoPromoPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoPromo').style.display = 'none';
+  $('inputFotoPromo').value = '';
+  aplicarVisibilidadFotoPromo();
+
+  if (id) {
+    const p = STATE.promociones.find(x => x.id === id);
+    if (!p) return;
+    if (p.imagen_url) {
+      $('fotoPromoPreviewWrap').innerHTML = `<img src="${escHtml(p.imagen_url)}" style="width:100%;height:100%;object-fit:cover">`;
+      $('btnQuitarFotoPromo').style.display = '';
+    }
+    $('modalPromocionTitle').textContent = '✏️ Editar promoción';
+    $('pm-nombre').value = p.nombre;
+    $('pm-tipo').value = p.tipo;
+    $('pm-fecha-inicio').value = p.fecha_inicio || '';
+    $('pm-fecha-fin').value = p.fecha_fin || '';
+    $('pm-precio-promocion').value = (p.precio_promocion !== null && p.precio_promocion !== undefined) ? p.precio_promocion : '';
+    $('pm-garantia-meses').value = (p.garantia_meses !== null && p.garantia_meses !== undefined) ? p.garantia_meses : '';
+
+    if (p.tipo === 'nxm_mismo') {
+      $('pm-producto-nxm').value = p.producto_id || '';
+      $('pm-n-compra').value = p.n_compra || 2;
+      $('pm-m-paga').value = p.m_paga || 1;
+    } else if (p.tipo === 'nxm_grupo') {
+      $('pm-n-compra-grupo').value = p.n_compra || 2;
+      $('pm-m-paga-grupo').value = p.m_paga || 1;
+      STATE.grupoPromocionActual = (p.promocion_productos || []).map(pp => {
+        const prod = STATE.productos.find(x => x.id === pp.producto_id);
+        return { id: pp.producto_id, nombre: prod?.nombre || '—' };
+      });
+      renderGrupoPromocionLista();
+    } else if (p.tipo === 'regalo') {
+      $('pm-producto-disparador').value = p.producto_disparador_id || '';
+      $('pm-cantidad-disparador').value = p.cantidad_disparador || 1;
+      $('pm-producto-regalo').value = p.producto_regalo_id || '';
+      $('pm-precio-regalo').value = p.precio_regalo || 0;
+    } else if (p.tipo === 'descuento_cantidad') {
+      $('pm-producto-descuento').value = p.producto_id || '';
+      $('pm-cantidad-minima').value = p.cantidad_minima || 3;
+      $('pm-descuento-porcentaje').value = p.descuento_porcentaje || 10;
+    }
+  } else {
+    $('modalPromocionTitle').textContent = '🎉 Nueva promoción';
+    $('pm-nombre').value = '';
+    $('pm-tipo').value = '';
+    $('pm-n-compra').value = 2; $('pm-m-paga').value = 1;
+    $('pm-n-compra-grupo').value = 2; $('pm-m-paga-grupo').value = 1;
+    $('pm-cantidad-disparador').value = 1; $('pm-precio-regalo').value = 0;
+    $('pm-cantidad-minima').value = 3; $('pm-descuento-porcentaje').value = 10;
+    $('pm-fecha-inicio').value = ''; $('pm-fecha-fin').value = '';
+    $('pm-precio-promocion').value = '';
+    $('pm-garantia-meses').value = '';
+    renderGrupoPromocionLista();
+  }
+  onCambioTipoPromocion();
+  onCambioProductoRegalo();
+
+  // Al editar, el tipo ya esta definido -- se va directo al paso 2.
+  // Al crear una nueva, se empieza eligiendo el tipo (paso 1).
+  $('pm-paso-1').style.display = id ? 'none' : '';
+  $('pm-paso-2').style.display = id ? '' : 'none';
+
+  $('modalPromocion').classList.add('open');
+}
+
+function elegirTipoPromocion(tipo) {
+  $('pm-tipo').value = tipo;
+  onCambioTipoPromocion();
+  $('pm-paso-1').style.display = 'none';
+  $('pm-paso-2').style.display = '';
+}
+
+function volverPasoUnoPromocion() {
+  $('pm-paso-2').style.display = 'none';
+  $('pm-paso-1').style.display = '';
+}
+
+function cerrarModalPromocion() {
+  $('modalPromocion').classList.remove('open');
+}
+
+function renderGrupoPromocionLista() {
+  const cont = $('pm-grupo-lista');
+  if (!cont) return;
+  if (!STATE.grupoPromocionActual.length) {
+    cont.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Todavía no has agregado productos al grupo.</p>';
+    return;
+  }
+  cont.innerHTML = STATE.grupoPromocionActual.map((p, i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--bg-hover,#f4f4f5);border-radius:8px;margin-bottom:4px">
+      <span style="font-size:12.5px">${escHtml(p.nombre)}</span>
+      <button type="button" class="btn-icon" onclick="quitarDelGrupoPromocion(${i})" title="Quitar">✕</button>
+    </div>
+  `).join('');
+}
+
+function quitarDelGrupoPromocion(idx) {
+  STATE.grupoPromocionActual.splice(idx, 1);
+  renderGrupoPromocionLista();
+}
+
+function agregarAlGrupoPromocion(id, nombre) {
+  if (STATE.grupoPromocionActual.some(p => p.id === id)) return;
+  STATE.grupoPromocionActual.push({ id, nombre });
+  $('pm-buscar-grupo').value = '';
+  $('pm-grupo-resultados').innerHTML = '';
+  renderGrupoPromocionLista();
+}
+
+function initBusquedaGrupoPromocion() {
+  const input = $('pm-buscar-grupo');
+  if (!input) return;
+  input.addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const cont = $('pm-grupo-resultados');
+    if (!q) { cont.innerHTML = ''; return; }
+    const yaAgregados = new Set(STATE.grupoPromocionActual.map(p => p.id));
+    const resultados = STATE.productos
+      .filter(p => p.activo && !yaAgregados.has(p.id) && p.nombre.toLowerCase().includes(q))
+      .slice(0, 6);
+    cont.innerHTML = resultados.map(p => `
+      <div style="padding:6px 10px;background:var(--bg-hover,#f4f4f5);border-radius:8px;margin-bottom:4px;cursor:pointer;font-size:12.5px"
+           onclick="agregarAlGrupoPromocion('${p.id}','${escHtml(p.nombre)}')">
+        ${escHtml(p.nombre)}
+      </div>
+    `).join('') || '<p style="font-size:12px;color:var(--text-muted)">Sin resultados</p>';
+  });
+}
+
+async function guardarPromocion() {
+  const errEl = $('pm-error');
+  errEl.textContent = '';
+  const id = $('pm-id').value;
+  const nombre = $('pm-nombre').value.trim();
+  const tipo = $('pm-tipo').value;
+  const fechaInicio = $('pm-fecha-inicio').value || null;
+  const fechaFin = $('pm-fecha-fin').value || null;
+  const precioPromocionRaw = $('pm-precio-promocion').value;
+  const precioPromocion = precioPromocionRaw === '' ? null : parseFloat(precioPromocionRaw);
+  const garantiaPromocionRaw = $('pm-garantia-meses').value;
+  const garantiaPromocion = garantiaPromocionRaw === '' ? null : parseFloat(garantiaPromocionRaw);
+
+  if (!tipo) { errEl.textContent = 'Elige el tipo de promoción.'; return; }
+  if (!nombre) { errEl.textContent = 'El nombre es obligatorio.'; return; }
+  if (fechaInicio && fechaFin && fechaFin < fechaInicio) { errEl.textContent = 'La fecha de vigencia final no puede ser antes que la inicial.'; return; }
+  if (precioPromocionRaw !== '' && (isNaN(precioPromocion) || precioPromocion < 0)) { errEl.textContent = 'El precio de la promoción no es válido.'; return; }
+
+  let imagenUrlPromo;
+  if (STATE.fotoPromoBlob) {
+    try {
+      imagenUrlPromo = await subirFotoInventario(STATE.fotoPromoBlob, 'promociones');
+    } catch (e) {
+      console.error('guardarPromocion, subir foto:', e);
+      const errFoto = $('errFotoPromo');
+      if (errFoto) errFoto.textContent = 'No se pudo subir la foto. Intenta de nuevo.';
+      return;
+    }
+  } else if (STATE.fotoPromoEliminar) {
+    imagenUrlPromo = null;
+  }
+
+  const payload = { auth_user_id: STATE.user.id, nombre, tipo, fecha_inicio: fechaInicio, fecha_fin: fechaFin, precio_promocion: precioPromocion, garantia_meses: garantiaPromocion };
+  if (imagenUrlPromo !== undefined) payload.imagen_url = imagenUrlPromo;
+  let productosGrupo = null;
+
+  if (tipo === 'nxm_mismo') {
+    const productoId = $('pm-producto-nxm').value;
+    const nCompra = parseInt($('pm-n-compra').value, 10);
+    const mPaga = parseInt($('pm-m-paga').value, 10);
+    if (!productoId) { errEl.textContent = 'Elige el producto.'; return; }
+    if (!nCompra || !mPaga || mPaga >= nCompra) { errEl.textContent = 'La cantidad a pagar debe ser menor a la cantidad a comprar.'; return; }
+    Object.assign(payload, { producto_id: productoId, n_compra: nCompra, m_paga: mPaga });
+  } else if (tipo === 'nxm_grupo') {
+    const nCompra = parseInt($('pm-n-compra-grupo').value, 10);
+    const mPaga = parseInt($('pm-m-paga-grupo').value, 10);
+    if (STATE.grupoPromocionActual.length < 2) { errEl.textContent = 'Agrega al menos 2 productos al grupo.'; return; }
+    if (!nCompra || !mPaga || mPaga >= nCompra) { errEl.textContent = 'La cantidad a pagar debe ser menor a la cantidad a comprar.'; return; }
+    Object.assign(payload, { n_compra: nCompra, m_paga: mPaga });
+    productosGrupo = STATE.grupoPromocionActual.map(p => p.id);
+  } else if (tipo === 'regalo') {
+    const disparadorId = $('pm-producto-disparador').value;
+    const regaloId = $('pm-producto-regalo').value;
+    const cantidadDisparador = parseInt($('pm-cantidad-disparador').value, 10);
+    const precioRegalo = parseFloat($('pm-precio-regalo').value) || 0;
+    if (!disparadorId || !regaloId) { errEl.textContent = 'Elige ambos productos.'; return; }
+    if (!cantidadDisparador || cantidadDisparador < 1) { errEl.textContent = 'La cantidad necesaria debe ser al menos 1.'; return; }
+    Object.assign(payload, { producto_disparador_id: disparadorId, cantidad_disparador: cantidadDisparador, producto_regalo_id: regaloId, precio_regalo: precioRegalo });
+  } else if (tipo === 'descuento_cantidad') {
+    const productoId = $('pm-producto-descuento').value;
+    const cantidadMinima = parseInt($('pm-cantidad-minima').value, 10);
+    const descuentoPorcentaje = parseFloat($('pm-descuento-porcentaje').value);
+    if (!productoId) { errEl.textContent = 'Elige el producto.'; return; }
+    if (!cantidadMinima || cantidadMinima < 2) { errEl.textContent = 'La cantidad mínima debe ser al menos 2.'; return; }
+    if (!descuentoPorcentaje || descuentoPorcentaje <= 0 || descuentoPorcentaje > 100) { errEl.textContent = 'El descuento debe ser entre 1% y 100%.'; return; }
+    Object.assign(payload, { producto_id: productoId, cantidad_minima: cantidadMinima, descuento_porcentaje: descuentoPorcentaje });
+  }
+
+  const btn = $('btnGuardarPromocion');
+  btn.disabled = true;
+  try {
+    let promocionId = id;
+    if (id) {
+      const { error } = await supabaseClient.from('promociones').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id).eq('auth_user_id', STATE.user.id);
+      if (error) throw error;
+      // Limpiar el grupo anterior antes de re-insertar (si es nxm_grupo)
+      await supabaseClient.from('promocion_productos').delete().eq('promocion_id', id).eq('auth_user_id', STATE.user.id);
+    } else {
+      const { data, error } = await supabaseClient.from('promociones').insert(payload).select('id').single();
+      if (error) throw error;
+      promocionId = data.id;
+    }
+
+    if (productosGrupo && productosGrupo.length) {
+      const filas = productosGrupo.map(pid => ({ auth_user_id: STATE.user.id, promocion_id: promocionId, producto_id: pid }));
+      const { error: errGrupo } = await supabaseClient.from('promocion_productos').insert(filas);
+      if (errGrupo) throw errGrupo;
+    }
+
+    showToast('success', id ? 'Promoción actualizada' : 'Promoción creada', '');
+    cerrarModalPromocion();
+    await cargarPromociones();
+  } catch (e) {
+    console.error('guardarPromocion:', e);
+    errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function init() {
+  initSupabase();
+  initTema();
+  initSidebar();
+  actualizarFecha();
+  initEventos();
+
+  const autenticado = await checkAuth();
+  if (!autenticado) return;
+
+  // 1) Primero la moneda/configuración de empresa (asigna MONEDA_SIMBOLO)
+  await cargarDatosEmpresa();
+
+  // 2) Escalas de precio ANTES que productos: cargarProductos() dibuja la
+  // tabla de inmediato usando STATE.escalasPorProducto, así que si se
+  // cargara después, la tabla se pintaría con el mapa todavía vacío.
+  await cargarEscalas();
+  await cargarEscalasCosto();
+
+  // 3) Luego los productos, que ya usarán MONEDA_SIMBOLO y escalas correctas
+  await cargarProductos();
+
+  // 3.5) Combos (independientes de productos, pero necesitan su lista ya cargada)
+  await cargarCombos();
+
+  // 3.6) Promociones — mismo espíritu, tampoco bloquea si falla
+  await cargarPromociones();
+
+  // 4) Catálogo de marcas/proveedores (opcional, no bloquea la carga)
+  cargarProveedores();
+
+  initNotificaciones();
+
+  // Llegó desde Configuración (?series=1) al activar números de serie: abre el asistente.
+  try { if (new URLSearchParams(location.search).get('series') === '1' && STATE.usaNumeroSerie) setTimeout(abrirAsistenteSeries, 400); } catch (e) {}
+
+  if (window.Negocio360Tutorial) {
+    const pasosProductos = [
+      { icono: '📦', titulo: 'Bienvenido a Productos/Servicios', texto: 'Aquí cargas todo lo que vendes -- productos con stock, o servicios sin inventario.' },
+      { icono: '➕', titulo: 'Agrega uno nuevo', texto: 'Con "Nuevo producto" pones nombre, precio, costo, y si aplica, cuánto stock tienes disponible.' },
+      { icono: '🏷️', titulo: 'Organiza con categorías', texto: 'Las categorías te ayudan a encontrar todo más rápido, y a que tus reportes salgan más claros.' },
+      { icono: '📊', titulo: 'Vigila tu stock', texto: 'El stock se descuenta solo con cada venta -- aquí siempre ves cuánto te queda de cada producto.' },
+    ];
+    Negocio360Tutorial.verificarYMostrar('productos', pasosProductos);
+    Negocio360Tutorial.agregarBotonAyuda('productos', pasosProductos);
+  }
+}
+
+/* ============================================================
+   CONFIGURACIÓN DE INVENTARIO -- selector predeterminado / con
+   imágenes. Guarda en configuracion_empresa.usa_inventario_imagenes
+   (default false para toda cuenta) -- solo la cuenta que activa
+   esto explicitamente aqui ve algo distinto; el resto sigue igual.
+============================================================ */
+let _tipoInventarioSeleccion = 'predeterminado';
+
+/* ============================================================
+   FOTO DEL PRODUCTO/SERVICIO -- mismo mecanismo ya probado en
+   catalogo360.js (comprimir a WebP antes de subir, para no gastar
+   almacenamiento). Solo se muestra el campo si la cuenta activo
+   "Inventario con imagenes" en la Configuracion de Inventario.
+============================================================ */
+function comprimirImagenInventario(archivo, anchoMax = 800, calidad = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(archivo);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > anchoMax) { h = Math.round(h * (anchoMax / w)); w = anchoMax; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (!blob) { reject(new Error('No se pudo procesar la imagen')); return; }
+        resolve(blob);
+      }, 'image/webp', calidad);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+    img.src = url;
+  });
+}
+
+async function subirFotoInventario(blob, carpeta = 'productos') {
+  const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.webp';
+  const ruta = STATE.user.id + '/' + carpeta + '/' + nombreArchivo;
+  const { error } = await supabaseClient.storage.from('inventario_fotos').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from('inventario_fotos').getPublicUrl(ruta);
+  return data.publicUrl;
+}
+
+// Muestra u oculta el campo de foto segun si la cuenta activo la
+// funcion -- se llama al abrir el modal, tanto para crear como editar.
+function aplicarVisibilidadFotoProducto() {
+  const wrap = $('wrapFotoProducto');
+  if (wrap) wrap.style.display = STATE.empresa?.usa_inventario_imagenes ? '' : 'none';
+}
+
+function onSeleccionarFotoProducto(event) {
+  const archivo = event.target.files?.[0];
+  if (!archivo) return;
+  const errEl = $('errFotoProducto');
+  if (errEl) errEl.textContent = '';
+
+  comprimirImagenInventario(archivo).then(blob => {
+    STATE.fotoProductoBlob = blob;
+    STATE.fotoProductoEliminar = false;
+    const preview = $('fotoProductoPreviewWrap');
+    preview.innerHTML = `<img src="${URL.createObjectURL(blob)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoProducto').style.display = '';
+  }).catch(e => {
+    console.error('onSeleccionarFotoProducto:', e);
+    if (errEl) errEl.textContent = 'No se pudo procesar esa imagen. Intenta con otra.';
+  });
+}
+
+function quitarFotoProducto() {
+  STATE.fotoProductoBlob = null;
+  STATE.fotoProductoEliminar = true;
+  $('fotoProductoPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoProducto').style.display = 'none';
+  $('inputFotoProducto').value = '';
+}
+
+// Mismo mecanismo de arriba, para Combos y Promociones -- sus propios
+// formularios/tablas, pero reutilizan la misma compresion y el mismo
+// bucket de Storage.
+function aplicarVisibilidadFotoCombo() {
+  const wrap = $('wrapFotoCombo');
+  if (wrap) wrap.style.display = STATE.empresa?.usa_inventario_imagenes ? '' : 'none';
+}
+function onSeleccionarFotoCombo(event) {
+  const archivo = event.target.files?.[0];
+  if (!archivo) return;
+  const errEl = $('errFotoCombo');
+  if (errEl) errEl.textContent = '';
+  comprimirImagenInventario(archivo).then(blob => {
+    STATE.fotoComboBlob = blob;
+    STATE.fotoComboEliminar = false;
+    $('fotoComboPreviewWrap').innerHTML = `<img src="${URL.createObjectURL(blob)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoCombo').style.display = '';
+  }).catch(e => {
+    console.error('onSeleccionarFotoCombo:', e);
+    if (errEl) errEl.textContent = 'No se pudo procesar esa imagen. Intenta con otra.';
+  });
+}
+function quitarFotoCombo() {
+  STATE.fotoComboBlob = null;
+  STATE.fotoComboEliminar = true;
+  $('fotoComboPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoCombo').style.display = 'none';
+  $('inputFotoCombo').value = '';
+}
+
+function aplicarVisibilidadFotoPromo() {
+  const wrap = $('wrapFotoPromo');
+  if (wrap) wrap.style.display = STATE.empresa?.usa_inventario_imagenes ? '' : 'none';
+}
+function onSeleccionarFotoPromo(event) {
+  const archivo = event.target.files?.[0];
+  if (!archivo) return;
+  const errEl = $('errFotoPromo');
+  if (errEl) errEl.textContent = '';
+  comprimirImagenInventario(archivo).then(blob => {
+    STATE.fotoPromoBlob = blob;
+    STATE.fotoPromoEliminar = false;
+    $('fotoPromoPreviewWrap').innerHTML = `<img src="${URL.createObjectURL(blob)}" style="width:100%;height:100%;object-fit:cover">`;
+    $('btnQuitarFotoPromo').style.display = '';
+  }).catch(e => {
+    console.error('onSeleccionarFotoPromo:', e);
+    if (errEl) errEl.textContent = 'No se pudo procesar esa imagen. Intenta con otra.';
+  });
+}
+function quitarFotoPromo() {
+  STATE.fotoPromoBlob = null;
+  STATE.fotoPromoEliminar = true;
+  $('fotoPromoPreviewWrap').innerHTML = '🖼️';
+  $('btnQuitarFotoPromo').style.display = 'none';
+  $('inputFotoPromo').value = '';
+}
+
+let _ordenColumnasEdicion = null;
+
+function clonarOrdenColumnas(orden) {
+  return orden.map(c => ({ ...c }));
+}
+
+function renderListaColumnasProductos() {
+  const cont = document.getElementById('listaColumnasProductos');
+  if (!cont) return;
+  cont.innerHTML = _ordenColumnasEdicion.map((c, i) => {
+    const info = COLUMNAS_PRODUCTOS_DISPONIBLES[c.clave];
+    if (!info) return '';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-app,#f8fafc);border-radius:8px">
+        <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer;font-size:13px">
+          <input type="checkbox" ${c.visible !== false ? 'checked' : ''} onchange="toggleVisibilidadColumnaProducto('${c.clave}')"/>
+          ${info.label}
+        </label>
+        <button type="button" onclick="moverColumnaProducto('${c.clave}', -1)" ${i === 0 ? 'disabled' : ''} style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;width:26px;height:26px;cursor:pointer">↑</button>
+        <button type="button" onclick="moverColumnaProducto('${c.clave}', 1)" ${i === _ordenColumnasEdicion.length - 1 ? 'disabled' : ''} style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;width:26px;height:26px;cursor:pointer">↓</button>
+      </div>`;
+  }).join('');
+}
+
+function moverColumnaProducto(clave, direccion) {
+  const i = _ordenColumnasEdicion.findIndex(c => c.clave === clave);
+  const j = i + direccion;
+  if (i < 0 || j < 0 || j >= _ordenColumnasEdicion.length) return;
+  [_ordenColumnasEdicion[i], _ordenColumnasEdicion[j]] = [_ordenColumnasEdicion[j], _ordenColumnasEdicion[i]];
+  renderListaColumnasProductos();
+}
+
+function toggleVisibilidadColumnaProducto(clave) {
+  const c = _ordenColumnasEdicion.find(c => c.clave === clave);
+  if (c) c.visible = c.visible === false ? true : false;
+}
+
+function restaurarColumnasProductosDefault() {
+  _ordenColumnasEdicion = ORDEN_COLUMNAS_PRODUCTOS_DEFAULT.map(clave => ({ clave, visible: true }));
+  renderListaColumnasProductos();
+}
+
+let _ordenColumnasServiciosEdicion = null;
+
+function renderListaColumnasServicios() {
+  const cont = document.getElementById('listaColumnasServicios');
+  if (!cont) return;
+  cont.innerHTML = _ordenColumnasServiciosEdicion.map((c, i) => {
+    const info = COLUMNAS_SERVICIOS_DISPONIBLES[c.clave];
+    if (!info) return '';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-app,#f8fafc);border-radius:8px">
+        <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer;font-size:13px">
+          <input type="checkbox" ${c.visible !== false ? 'checked' : ''} onchange="toggleVisibilidadColumnaServicio('${c.clave}')"/>
+          ${info.label}
+        </label>
+        <button type="button" onclick="moverColumnaServicio('${c.clave}', -1)" ${i === 0 ? 'disabled' : ''} style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;width:26px;height:26px;cursor:pointer">↑</button>
+        <button type="button" onclick="moverColumnaServicio('${c.clave}', 1)" ${i === _ordenColumnasServiciosEdicion.length - 1 ? 'disabled' : ''} style="background:none;border:1px solid var(--border,#e5e7eb);border-radius:6px;width:26px;height:26px;cursor:pointer">↓</button>
+      </div>`;
+  }).join('');
+}
+
+function moverColumnaServicio(clave, direccion) {
+  const i = _ordenColumnasServiciosEdicion.findIndex(c => c.clave === clave);
+  const j = i + direccion;
+  if (i < 0 || j < 0 || j >= _ordenColumnasServiciosEdicion.length) return;
+  [_ordenColumnasServiciosEdicion[i], _ordenColumnasServiciosEdicion[j]] = [_ordenColumnasServiciosEdicion[j], _ordenColumnasServiciosEdicion[i]];
+  renderListaColumnasServicios();
+}
+
+function toggleVisibilidadColumnaServicio(clave) {
+  const c = _ordenColumnasServiciosEdicion.find(c => c.clave === clave);
+  if (c) c.visible = c.visible === false ? true : false;
+}
+
+function restaurarColumnasServiciosDefault() {
+  _ordenColumnasServiciosEdicion = ORDEN_COLUMNAS_SERVICIOS_DEFAULT.map(clave => ({ clave, visible: true }));
+  renderListaColumnasServicios();
+}
+
+async function abrirModalConfigInventario() {
+  document.getElementById('configInvError').textContent = '';
+  let actual = 'predeterminado';
+  try {
+    const { data } = await supabaseClient.from('configuracion_empresa')
+      .select('usa_inventario_imagenes').eq('auth_user_id', STATE.user.id).maybeSingle();
+    actual = data?.usa_inventario_imagenes ? 'imagenes' : 'predeterminado';
+  } catch (e) { console.warn('abrirModalConfigInventario:', e); }
+  elegirTipoInventario(actual);
+
+  _ordenColumnasEdicion = Array.isArray(STATE.ordenColumnasProductos) && STATE.ordenColumnasProductos.length
+    ? clonarOrdenColumnas(STATE.ordenColumnasProductos)
+    : ORDEN_COLUMNAS_PRODUCTOS_DEFAULT.map(clave => ({ clave, visible: true }));
+  renderListaColumnasProductos();
+
+  _ordenColumnasServiciosEdicion = Array.isArray(STATE.ordenColumnasServicios) && STATE.ordenColumnasServicios.length
+    ? clonarOrdenColumnas(STATE.ordenColumnasServicios)
+    : ORDEN_COLUMNAS_SERVICIOS_DEFAULT.map(clave => ({ clave, visible: true }));
+  renderListaColumnasServicios();
+
+  document.getElementById('modalConfigInventario').classList.add('open');
+}
+
+function cerrarModalConfigInventario() {
+  document.getElementById('modalConfigInventario').classList.remove('open');
+}
+
+function elegirTipoInventario(valor) {
+  _tipoInventarioSeleccion = valor;
+  document.querySelectorAll('.config-inv-opcion').forEach(el => {
+    el.classList.toggle('selected', el.dataset.valor === valor);
+  });
+}
+
+async function guardarConfigInventario() {
+  const btn = document.getElementById('btnGuardarConfigInventario');
+  const errEl = document.getElementById('configInvError');
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    const activar = _tipoInventarioSeleccion === 'imagenes';
+
+    // Validacion de seguridad: si el usuario oculto TODAS las columnas
+    // por error (o dejo la lista vacia), se usa el orden por defecto en
+    // su lugar, para nunca guardar una tabla imposible de usar.
+    const colsVisibles = (_ordenColumnasEdicion || []).filter(c => c.visible !== false);
+    const ordenAGuardar = colsVisibles.length
+      ? _ordenColumnasEdicion
+      : ORDEN_COLUMNAS_PRODUCTOS_DEFAULT.map(clave => ({ clave, visible: true }));
+
+    const colsVisiblesServ = (_ordenColumnasServiciosEdicion || []).filter(c => c.visible !== false);
+    const ordenServiciosAGuardar = colsVisiblesServ.length
+      ? _ordenColumnasServiciosEdicion
+      : ORDEN_COLUMNAS_SERVICIOS_DEFAULT.map(clave => ({ clave, visible: true }));
+
+    // update puro -- a estas alturas (Productos, despues del onboarding)
+    // la fila de configuracion_empresa siempre deberia existir ya. Un
+    // upsert aqui fallaba con 400: al intentar el camino de INSERT,
+    // faltaba nombre_comercial (columna obligatoria sin valor por
+    // defecto), que este formulario nunca conoce ni deberia tocar.
+    const { data, error } = await supabaseClient.from('configuracion_empresa')
+      .update({ usa_inventario_imagenes: activar, orden_columnas_productos: ordenAGuardar, orden_columnas_servicios: ordenServiciosAGuardar })
+      .eq('auth_user_id', STATE.user.id)
+      .select('auth_user_id');
+    if (error) throw error;
+
+    // Caso raro: la cuenta nunca tuvo fila en configuracion_empresa.
+    // Se crea con lo minimo necesario para cumplir esa columna obligatoria.
+    if (!data || !data.length) {
+      const { error: errIns } = await supabaseClient.from('configuracion_empresa')
+        .insert({ auth_user_id: STATE.user.id, nombre_comercial: 'Mi negocio', usa_inventario_imagenes: activar, orden_columnas_productos: ordenAGuardar, orden_columnas_servicios: ordenServiciosAGuardar });
+      if (errIns) throw errIns;
+    }
+
+    cerrarModalConfigInventario();
+    // Solo esta cuenta se recarga -- para que la vista se actualice
+    // con (o sin) la columna de fotos en cada tarjeta/fila.
+    window.location.reload();
+  } catch (e) {
+    console.error('guardarConfigInventario:', e);
+    errEl.textContent = 'No se pudo guardar. Intenta de nuevo.';
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);

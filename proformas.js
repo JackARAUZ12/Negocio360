@@ -186,8 +186,8 @@ async function loadMetodosPago() {
 
 async function loadClientes() {
   try {
-    const { data } = await sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    const { data } = await N360Leer.todo(() => sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre'), 'clientes');
     STATE.clientes = data || [];
     llenarSelectClientes();
   } catch (e) { console.warn('loadClientes:', e); }
@@ -320,9 +320,9 @@ function actualizarProveedorLineaProf(idx, valor) {
 
 async function loadProductos() {
   try {
-    const { data } = await sbClient.from('productos')
+    const { data } = await N360Leer.todo(() => sbClient.from('productos')
       .select('id,nombre,sku,tipo,categoria,stock_actual,precio,costo,activo,tipo_precio,unidad_codigo,permite_fraccion,proveedor_id,proveedor_nombre,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre');
+      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre'), 'productos');
     const productos = data || [];
 
     // Combos: se agregan al mismo catálogo de búsqueda/carrito que los
@@ -370,8 +370,8 @@ async function loadProductos() {
 // producto cada vez que se agrega al carrito.
 async function loadEscalasCache() {
   try {
-    const { data } = await sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
-      .eq('auth_user_id', STATE.userId).order('orden');
+    const { data } = await N360Leer.todo(() => sbClient.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+      .eq('auth_user_id', STATE.userId).order('orden'), 'escalas de precio');
     const map = {};
     (data||[]).forEach(e => {
       if (!map[e.producto_id]) map[e.producto_id] = [];
@@ -1001,6 +1001,7 @@ function abrirEditarProforma(id) {
   const p = STATE.proformas.find(x => x.id === id);
   if (!p) return;
   if (['convertida','pago_parcial'].includes(p.estado)) { showToast('Esta proforma ya no se puede editar', 'error'); return; }
+  if (window.N360ProfProd?.bloqueada(p.id)) { showToast('Esta proforma ya tiene producción: no se edita. Cancela las órdenes pendientes en Producción si necesitas cambiarla.', 'error'); return; }
   abrirNuevaProforma();
   STATE.proformaActual = p;
   document.getElementById('np-modal-title').textContent = `Editar Proforma ${p.numero_proforma}`;
@@ -1140,8 +1141,15 @@ async function guardarProforma() {
 
     await window.N360ProfVarios?.guardarDestinatarios?.(proformaId);
 
+    // Opcional (apagado por defecto): al pasar a "aprobada", crea sola la orden de producción.
+    let ordenesAuto = null;
+    if (estado === 'aprobada' && STATE.proformaActual?.estado !== 'aprobada' && window.N360ProfProd?.autoAlAprobar) {
+      ordenesAuto = await window.N360ProfProd.autoAlAprobar(proformaId);
+    }
+
     closeModal('modal-nueva-proforma');
     showToast(`Proforma ${numero} guardada correctamente`);
+    if (ordenesAuto && ordenesAuto.length) showToast(`🏭 Se crearon ${ordenesAuto.length} orden(es) de producción (${ordenesAuto.map(o => o.numero).join(', ')})`);
     await Promise.allSettled([loadProformas(), loadKPIsProf()]);
   } catch (e) {
     console.error('guardarProforma:', e);
@@ -1173,8 +1181,8 @@ async function loadProformas() {
   const tbody = document.getElementById('prof-tbody');
   if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Cargando proformas…</td></tr>`;
   try {
-    const { data, error } = await sbClient.from('proformas').select('*')
-      .eq('auth_user_id', STATE.userId).order('created_at', { ascending:false });
+    const { data, error } = await N360Leer.todo(() => sbClient.from('proformas').select('*')
+      .eq('auth_user_id', STATE.userId).order('created_at', { ascending:false }), 'proformas');
     if (error) throw error;
 
     const lista = data || [];
@@ -1187,6 +1195,7 @@ async function loadProformas() {
 
     STATE.proformas = lista;
     STATE.page = 1;
+    try { await window.N360ProfProd?.cargar(); } catch (_) { /* ciclo de producción: opcional */ }
     renderTablaProf();
   } catch (e) {
     console.error('loadProformas:', e);
@@ -1228,7 +1237,7 @@ function renderTablaProf() {
   } else {
     tbody.innerHTML = pagina.map(p => {
       const ei = ESTADO_PROF_INFO[p.estado] || ESTADO_PROF_INFO.borrador;
-      const puedeEditar = !['convertida','pago_parcial'].includes(p.estado);
+      const puedeEditar = !['convertida','pago_parcial'].includes(p.estado) && !window.N360ProfProd?.bloqueada(p.id);
       const puedeConvertir = !['convertida','rechazada','pago_parcial'].includes(p.estado);
       return `
       <tr>
@@ -1237,7 +1246,7 @@ function renderTablaProf() {
         <td>${fmtFecha(p.fecha)}</td>
         <td>${p.fecha_vencimiento?fmtFecha(p.fecha_vencimiento):'—'}</td>
         <td class="td-right td-money">${fmt(p.total)}</td>
-        <td><span class="status-badge ${ei.badge}">${ei.label}</span></td>
+        <td><span class="status-badge ${ei.badge}">${ei.label}</span>${window.N360ProfProd?.chip(p.id) || ''}</td>
         <td class="td-actions" style="white-space:nowrap">
           <button class="btn-primary" style="padding:5px 10px;font-size:11.5px;gap:5px" title="Exportar Proforma" onclick="exportarProformaDesdeTabla('${p.id}')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
@@ -1305,6 +1314,7 @@ function confirmarEliminarProf(id) {
   const p = STATE.proformas.find(x => x.id === id);
   if (!p) return;
   if (['convertida','pago_parcial'].includes(p.estado)) { showToast('No se puede eliminar: ya tiene una venta o crédito vinculado', 'error'); return; }
+  if (window.N360ProfProd?.bloqueada(p.id)) { showToast('No se puede eliminar: ya tiene producción. Cancela las órdenes pendientes en Producción primero.', 'error'); return; }
   STATE.proformaActual = p;
   openModal('modal-confirmar-eliminar-prof');
 }
@@ -1312,6 +1322,7 @@ async function eliminarProforma() {
   const p = STATE.proformaActual;
   if (!p) return;
   if (['convertida','pago_parcial'].includes(p.estado)) { showToast('No se puede eliminar: ya tiene una venta o crédito vinculado', 'error'); return; }
+  if (window.N360ProfProd?.bloqueada(p.id)) { showToast('No se puede eliminar: ya tiene producción.', 'error'); closeModal('modal-confirmar-eliminar-prof'); return; }
   setBtnLoading('btn-confirmar-eliminar-prof', true);
   try {
     const { error } = await sbClient.from('proformas').delete().eq('id', p.id).eq('auth_user_id', STATE.userId);
@@ -1427,6 +1438,9 @@ async function verDetalleProf(id) {
         </tr>`).join('') || '<tr><td colspan="5" class="empty-cell">Sin ítems</td></tr>'}</tbody></table>
       </div>`;
     body.innerHTML = html;
+    try { await window.N360ProfProd?.pintarDetalle(p, body); } catch (_) { /* ciclo de producción: opcional */ }
+    try { await window.N360ProfAnt?.pintar(p, body); } catch (_) { /* anticipo: opcional */ }
+    try { await window.N360ProfReserva?.pintar(p, body); } catch (_) { /* reserva: opcional */ }
   } catch (e) {
     body.innerHTML = 'No se pudo cargar el detalle.';
   }
@@ -1438,10 +1452,18 @@ async function verDetalleProf(id) {
 function abrirConvertirAVenta(id) {
   const p = STATE.proformas.find(x => x.id === id);
   if (!p) return;
+  if (window.N360ProfProd?.pendiente(p.id)) { showToast('Esta proforma tiene producción sin terminar. Complétala (o cancélala) en Producción antes de convertirla en venta.', 'error'); return; }
   STATE.proformaActual = p;
   document.getElementById('cv-error').textContent = '';
   const wB = document.getElementById('cv-wrap-banco'); if (wB) wB.style.display = 'none';
   loadMetodosPago().then(() => onCambiarMetodoConvertir());
+  const avisoAnt = document.getElementById('cv-anticipo'); if (avisoAnt) { avisoAnt.style.display = 'none'; avisoAnt.textContent = ''; }
+  if (STATE.empresaConfig?.usa_modulo_certificados === true && avisoAnt) {
+    sbClient.rpc('proforma_anticipo_resumen', { p_proforma_id: p.id }).then(({ data }) => {
+      const ap = Number(data?.aplicable) || 0;
+      if (ap > 0) { avisoAnt.style.display = ''; avisoAnt.textContent = `💵 Esta proforma tiene un anticipo cobrado. Se aplicará ${fmt(ap)} como pago; en Caja se registra solo lo que falta cobrar (${fmt(Math.max(0, Number(p.total) - ap))}).`; }
+    }).catch(() => {});
+  }
   openModal('modal-convertir-venta');
 }
 
@@ -1482,6 +1504,7 @@ async function onCambiarMetodoConvertir() {
 async function abrirPagoParcial() {
   const p = STATE.proformaActual;
   if (!p) return;
+  if (window.N360ProfProd?.pendiente(p.id)) { showToast('Esta proforma tiene producción sin terminar. Complétala (o cancélala) en Producción antes de cobrarla.', 'error'); return; }
 
   // BUG REAL CORREGIDO: este botón se vuelve clicable en cuanto se abre
   // el detalle de la proforma, pero STATE.detalleActual se llena DESPUÉS,
@@ -1635,7 +1658,8 @@ async function guardarConfigTicket() {
   }
 }
 
-async function enriquecerItemsConCombo(items) {
+async function enriquecerItemsConCombo(items) { const r = await _enriquecerItemsConComboBase(items); return (window.N360CR && window.N360CR.conCabys) ? window.N360CR.conCabys(r) : r; }
+async function _enriquecerItemsConComboBase(items) {
   const combosIds = [...new Set((items||[]).filter(it => !!it.combo_id).map(it => it.combo_id))];
   if (!combosIds.length) return items;
   try {
@@ -1780,7 +1804,9 @@ async function finalizarConversionProforma(ventaId, proformaId, metodoId, metodo
   for (let i = 0; i < 3; i++) {
     if (i) await new Promise(r => setTimeout(r, i === 1 ? 700 : 1500));
     try {
-      const { data, error } = await sbClient.rpc('proforma_finalizar_conversion', args);
+      // Función con soporte de anticipo (idéntica a la de siempre si no hay anticipo); si aún no existe, la de siempre.
+      let { data, error } = await sbClient.rpc('proforma_finalizar_conversion_anticipo', args);
+      if (error && (error.code === 'PGRST202' || error.code === '42883')) ({ data, error } = await sbClient.rpc('proforma_finalizar_conversion', args));
       if (!error) return { data, error: null };
       ultimo = error;
       // Errores de datos (no de conexión): no tiene sentido reintentar.
@@ -1848,6 +1874,21 @@ async function confirmarConvertirAVenta() {
     const bancoConvId = (wrapBancoConv && wrapBancoConv.style.display !== 'none')
       ? (document.getElementById('cv-banco')?.value || null) : null;
 
+    // Anticipo cobrado (certificado en modo anticipo): se aplica como pago parcial de esta venta.
+    let certsAnticipo = [];
+    if (STATE.empresaConfig?.usa_modulo_certificados === true) {
+      const { data: resA } = await sbClient.rpc('proforma_anticipo_resumen', { p_proforma_id: p.id });
+      let restante = Number(resA?.aplicable) || 0;
+      for (const c of (resA?.certificados || [])) {
+        if (restante <= 0.004) break;
+        if (c.estado !== 'activo' || !(Number(c.saldo) > 0)) continue;
+        const m = Math.round(Math.min(restante, Number(c.saldo)) * 100) / 100;
+        certsAnticipo.push({ certificado_id: c.id, monto: m, codigo: c.codigo });
+        restante = Math.round((restante - m) * 100) / 100;
+      }
+    }
+    const totalAnticipo = certsAnticipo.reduce((t, c) => t + c.monto, 0);
+
     // ---- B: número de venta ----
     const { data: numeroVenta } = await sbClient.rpc('generar_numero_venta', { p_user_id: STATE.userId });
 
@@ -1857,10 +1898,14 @@ async function confirmarConvertirAVenta() {
       cliente_id: p.cliente_id || null, cliente_nombre: p.cliente_nombre,
       fecha: todayISO(), subtotal: p.subtotal, descuento: p.descuento, impuesto: p.impuesto,
       total: p.total, costo_total: p.costo_total,
-      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
-      estado: 'completada', observaciones: p.observaciones || null,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre + (totalAnticipo > 0 ? ' + Certificado de regalo' : ''),
+      estado: 'completada',
+      observaciones: totalAnticipo > 0
+        ? [p.observaciones, `Anticipo aplicado ${certsAnticipo.map(c => c.codigo).join(', ')}: ${fmt(totalAnticipo)}`].filter(Boolean).join(' · ')
+        : (p.observaciones || null),
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_activo ? p.iva_porcentaje : 0,
       proforma_id: p.id,
+      ...(totalAnticipo > 0 ? { certificados_aplicados: certsAnticipo.map(c => ({ certificado_id: c.certificado_id, monto: c.monto })) } : {}),
       creado_por_nombre: obtenerNombrePerfilActivo(),
     };
     const { data: ventaNueva, error: errVenta } = await sbClient.from('ventas').insert(ventaPayload).select('id').single();

@@ -111,8 +111,15 @@ function renderUserInfo(profile, email) {
 
 async function cargarClientesAgenda() {
   try {
-    const { data } = await sb.from('clientes').select('id,nombre').eq('auth_user_id', STATE.userId).order('nombre');
-    STATE.clientes = data || [];
+    // Todos los clientes (de 1000 en 1000: la base entrega como máximo 1000 por consulta), con su apellido.
+    let todos = [];
+    for (let i = 0; i < 100; i++) {
+      const { data, error } = await sb.from('clientes').select('id,nombre,apellido,telefono').eq('auth_user_id', STATE.userId).order('nombre').order('id').range(i * 1000, i * 1000 + 999);
+      if (error) throw error;
+      todos = todos.concat(data || []);
+      if (!data || data.length < 1000) break;
+    }
+    STATE.clientes = todos.map(c => ({ ...c, nombre: [c.nombre, c.apellido].filter(x => x && String(x).trim()).join(' ').trim() || c.nombre || '' }));
     const sel = document.getElementById('ne-cliente');
     if (sel) sel.innerHTML = '<option value="">— Sin vincular —</option>' +
       STATE.clientes.map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
@@ -184,13 +191,13 @@ async function cargarAgenda() {
   const { desde, hasta } = rangoVisibleCalendario();
 
   try {
-    const [eventos, cuotasCredito, cuotasCxp, gastosProg, activosGarantia] = await Promise.all([
+    const [eventos, cuotasCredito, cuotasCxp, gastosProg, activosGarantia, cxpSinCuotas] = await Promise.all([
       sb.from('agenda_eventos').select('*').eq('auth_user_id', STATE.userId)
         .gte('fecha', desde).lte('fecha', hasta).neq('estado', 'cancelado').order('fecha'),
-      sb.from('creditos_cuotas').select('id, fecha_vencimiento, monto_total, saldo, credito_id, estado')
+      sb.from('creditos_cuotas').select('id, fecha_vencimiento, monto_total, monto_pagado, saldo, credito_id, estado')
         .eq('auth_user_id', STATE.userId).in('estado', ['pendiente','parcial'])
         .gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta),
-      sb.from('cuentas_por_pagar_cuotas').select('id, fecha_vencimiento, monto_total, saldo, cuenta_id, estado')
+      sb.from('cuentas_por_pagar_cuotas').select('id, fecha_vencimiento, monto_total, monto_pagado, saldo, cuenta_id, estado')
         .eq('auth_user_id', STATE.userId).in('estado', ['pendiente','parcial'])
         .gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta),
       sb.from('gastos_programados').select('id, nombre, monto, fecha_proxima, categoria')
@@ -199,6 +206,10 @@ async function cargarAgenda() {
       sb.from('activos_fijos').select('id, nombre, garantia_vencimiento')
         .eq('auth_user_id', STATE.userId).eq('estado', 'activo').not('garantia_vencimiento', 'is', null)
         .gte('garantia_vencimiento', desde).lte('garantia_vencimiento', hasta),
+      // Cuentas por pagar que vencen en el rango (las que no tienen cuotas no salían nunca en la Agenda)
+      sb.from('cuentas_por_pagar').select('id, numero, proveedor_nombre, fecha_vencimiento, saldo_pendiente, estado')
+        .eq('auth_user_id', STATE.userId).not('estado', 'in', '(pagada,pagado,anulada,anulado)').gt('saldo_pendiente', 0)
+        .gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta),
     ]);
 
     const items = [];
@@ -219,13 +230,16 @@ async function cargarAgenda() {
       const mapaClientes = Object.fromEntries((clientesInfo||[]).map(c => [c.id, c.nombre]));
 
       cuotasCredito.data.forEach(cuota => {
-        if (Number(cuota.saldo ?? cuota.monto_total) <= 0) return;
+        // Lo que falta de ESTA cuota. "saldo" en créditos es el saldo de la tabla de amortización
+        // después de la cuota (la última siempre trae 0) y por eso esas cuotas no salían aquí.
+        const pend = Math.max(0, Number(cuota.monto_total || 0) - Number(cuota.monto_pagado || 0));
+        if (pend <= 0.004) return;
         const credito = mapaCreditos[cuota.credito_id];
         const nombreCliente = credito ? (mapaClientes[credito.cliente_id] || 'Cliente') : 'Cliente';
         items.push({
           fecha: cuota.fecha_vencimiento, tipo: 'credito', categoria: 'pago',
           titulo: `Cuota de crédito — ${nombreCliente}`,
-          sub: `${fmt(cuota.saldo ?? cuota.monto_total)} pendiente`,
+          sub: `${fmt(pend)} pendiente`,
           urlDestino: 'creditos.html', clickeable: true,
         });
       });
@@ -237,11 +251,28 @@ async function cargarAgenda() {
       const mapaCuentas = Object.fromEntries((cuentasInfo||[]).map(c => [c.id, c.proveedor_nombre]));
 
       cuotasCxp.data.forEach(cuota => {
-        if (Number(cuota.saldo ?? cuota.monto_total) <= 0) return;
+        const pend = Math.max(0, Number(cuota.monto_total || 0) - Number(cuota.monto_pagado || 0));
+        if (pend <= 0.004) return;
         items.push({
           fecha: cuota.fecha_vencimiento, tipo: 'cxp', categoria: 'pago',
           titulo: `Pago a proveedor — ${mapaCuentas[cuota.cuenta_id] || 'Proveedor'}`,
-          sub: `${fmt(cuota.saldo ?? cuota.monto_total)} pendiente`,
+          sub: `${fmt(pend)} pendiente`,
+          urlDestino: 'cuentas-por-pagar.html', clickeable: true,
+        });
+      });
+    }
+
+    // Cuentas por pagar SIN cuotas (pago único): se muestran en su fecha de vencimiento.
+    if ((cxpSinCuotas && cxpSinCuotas.data || []).length) {
+      const ids = cxpSinCuotas.data.map(c => c.id);
+      const { data: conCuotas } = await sb.from('cuentas_por_pagar_cuotas').select('cuenta_id').in('cuenta_id', ids);
+      const tienenCuotas = new Set((conCuotas || []).map(x => x.cuenta_id));
+      cxpSinCuotas.data.forEach(c => {
+        if (tienenCuotas.has(c.id)) return;
+        items.push({
+          fecha: c.fecha_vencimiento, tipo: 'cxp', categoria: 'pago',
+          titulo: `Pago a proveedor — ${c.proveedor_nombre || 'Proveedor'}${c.numero ? ' (' + c.numero + ')' : ''}`,
+          sub: `${fmt(c.saldo_pendiente)} pendiente`,
           urlDestino: 'cuentas-por-pagar.html', clickeable: true,
         });
       });
@@ -345,10 +376,10 @@ function renderCalendarioSemana() {
   const hoy = todayLocalISO();
   const dow = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
-  let html = `<div class="cal-grid-header">${dow.map((d,i) => {
+  let html = `<div class="cal-grid-header cal-header-semana">${dow.map((d,i) => {
     const dia = sumarDias(inicio, i);
     return `<div class="cal-dow">${d} <span style="color:var(--text-secondary)">${dia.getDate()}</span></div>`;
-  }).join('')}</div><div class="cal-grid">`;
+  }).join('')}</div><div class="cal-grid cal-grid-semana">`;
 
   for (let i = 0; i < 7; i++) {
     const dia = sumarDias(inicio, i);
@@ -356,8 +387,10 @@ function renderCalendarioSemana() {
     const esHoy = iso === hoy;
     const items = itemsDelDia(iso);
     html += `<div class="cal-cell cal-semana-cell ${esHoy?'cal-hoy':''}" onclick="abrirEventosDia('${iso}')">
+      <div class="cal-semana-dia-label">${dow[i]} ${dia.getDate()}${esHoy ? ' · hoy' : ''}</div>
       <div class="cal-eventos-wrap">
       ${items.map(it => `<div class="cal-evento-pill" style="background:${it.color}">${contenidoPillEvento(it)}</div>`).join('')}
+      ${items.length ? '' : '<div class="cal-semana-vacio">Sin eventos</div>'}
       </div>
     </div>`;
   }

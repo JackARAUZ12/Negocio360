@@ -442,8 +442,8 @@ async function cargarProductosCacheDelivery() {
 // Mismo patrón que ya usa Ventas.
 async function cargarEscalasCacheDelivery() {
   try {
-    const { data } = await sb.from('precios_escala').select('id, producto_id, nombre, precio, orden')
-      .eq('auth_user_id', STATE.userId).order('orden');
+    const { data } = await N360Leer.todo(() => sb.from('precios_escala').select('id, producto_id, nombre, precio, orden')
+      .eq('auth_user_id', STATE.userId).order('orden'), 'escalas de precio');
     const map = {};
     (data || []).forEach(e => {
       if (!map[e.producto_id]) map[e.producto_id] = [];
