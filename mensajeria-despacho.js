@@ -2,7 +2,8 @@
    MENSAJERIA-DESPACHO.JS — NEGOCIO360 · Mensajería: Despacho
    Tablero por estado. Se marcan envíos y se asignan a un repartidor
    (uno o varios a la vez). Muestra la carga de cada repartidor y el
-   efectivo que anda en la calle (aviso si pasa su tope).
+   efectivo que anda en la calle (aviso si pasa su tope), y el mapa en
+   vivo con los repartidores y los envíos (mensajeria-mapa.js).
    Todo cambio pasa por funciones del servidor (msj_*).
 ===================================================== */
 'use strict';
@@ -31,7 +32,7 @@ TD.pintarReps = function () {
     const mano = TD.mano[r.id] || 0, tope = msTope(r, TD.cfg), pasa = tope > 0 && mano > tope;
     return `<div class="ms-rep${pasa ? ' alerta' : ''}"><b>${esc(MS_VEHICULOS[r.vehiculo]?.split(' ')[0] || '🛵')} ${esc(r.nombre)}</b>
       <span>${TD.carga(r.id)} por entregar · ${TD.lista.filter(e => e.repartidor_id === r.id && e.estado === 'entregado').length} hoy</span>
-      <span>💵 En mano: <b>${fmt(mano)}</b>${tope ? ' / ' + fmt(tope) : ''}</span>${msUbicLink(r)}${pasa ? '<span style="color:var(--danger);font-weight:800">⚠️ Pasó su tope: que venga a cuadrar</span>' : ''}</div>`;
+      <span>💵 En mano: <b>${fmt(mano)}</b>${tope ? ' / ' + fmt(tope) : ''}</span>${r.ubic_lat != null ? `<button type="button" class="ms-ubic" onclick="TM.verRep('${r.id}')">📍 ${esc(msHace(r.ubic_at))} · Ver en el mapa</button>` : ''}${pasa ? '<span style="color:var(--danger);font-weight:800">⚠️ Pasó su tope: que venga a cuadrar</span>' : ''}</div>`;
   }).join('') : '<div class="tl-aviso">No tienes repartidores activos. Regístralos en “Zonas, tarifas y repartidores”.</div>';
   $d('d-rep').innerHTML = '<option value="">Elige el repartidor…</option>' + act.map(r => `<option value="${r.id}">${esc(r.nombre)} (${TD.carga(r.id)} por entregar)</option>`).join('');
   const zs = [...new Set(TD.lista.map(e => e.zona_nombre).filter(Boolean))].sort();
@@ -55,7 +56,7 @@ TD.pintar = function () {
       ${marcable && items.length ? `<button type="button" class="btn-secondary tln-btn-sm" onclick="TD.marcarCol('${k}')">☑ Marcar todos</button>` : ''}
       ${items.map(e => TD.tarjeta(e, marcable)).join('') || '<div class="tl-vacio">Nada aquí.</div>'}</div>`;
   }).join('');
-  TD.barra();
+  TD.barra(); TM.pintar();
 };
 TD.tarjeta = function (e, marcable) {
   const r = TD.rep(e.repartidor_id), c = msPorCobrar(e);
@@ -79,7 +80,7 @@ TD.acciones = function (e) {
     default: return '';
   }
 };
-TD.marcar = function (id, si) { if (si) TD.sel.add(id); else TD.sel.delete(id); TD.barra(); };
+TD.marcar = function (id, si) { if (si) TD.sel.add(id); else TD.sel.delete(id); TD.barra(); TM.pintar(); };
 TD.marcarCol = function (k) {
   const est = TD_COLS.find(c => c[0] === k)[2];
   const ids = TD.visibles().filter(e => est.includes(e.estado)).map(e => e.id);

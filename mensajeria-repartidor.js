@@ -6,12 +6,13 @@
    Waze / Google Maps, llamar, WhatsApp, "Salir a ruta", "Entregado"
    (foto, quién recibió, cómo pagó) y "No se pudo" (motivo).
    "Compartir mi ubicación": usa el GPS del celular (gratis) y la
-   oficina lo ve en Despacho con un enlace a Google Maps.
+   oficina lo ve en el mapa en vivo de Despacho.
 ===================================================== */
 'use strict';
 const TR = { reps: [], cfg: {}, rep: null, fijo: false, lista: [], hoy: [], mano: 0, ocupado: false, gps: null, gpsUlt: 0, gpsEstado: '' };
 const $r = id => document.getElementById(id);
 const TR_GUARDADO = 'n360_msj_repartidor';
+const TR_GPS = 'n360_msj_gps';   // si la dejó encendida, se vuelve a encender sola al abrir la pantalla
 
 TR.elegirRepartidor = function () {
   const pf = msPerfil();
@@ -36,17 +37,18 @@ TR.pintarGps = function () {
     <span class="tl-muted" style="font-size:13px">${esc(TR.gpsEstado || (on ? 'Buscando señal…' : 'La oficina ve dónde vas. Solo mientras esta pantalla esté abierta.'))}</span>`;
 };
 TR.gpsCambiar = function () {
-  if (TR.gps) { navigator.geolocation.clearWatch(TR.gps); TR.gps = null; TR.gpsEstado = 'Ubicación apagada.'; TR.pintarGps(); return; }
+  if (TR.gps) { navigator.geolocation.clearWatch(TR.gps); TR.gps = null; TR.gpsEstado = 'Ubicación apagada.'; try { localStorage.setItem(TR_GPS, '0'); } catch (_) {} TR.pintarGps(); return; }
+  try { localStorage.setItem(TR_GPS, '1'); } catch (_) {}
   TR.gpsEstado = 'Buscando señal…'; TR.gpsUlt = 0;
   TR.gps = navigator.geolocation.watchPosition(TR.gpsLlego, err => {
     TR.gpsEstado = err && err.code === 1 ? 'Permite la ubicación en tu celular para compartirla.' : 'No se pudo leer el GPS. Intenta al aire libre.';
-    if (err && err.code === 1 && TR.gps) { navigator.geolocation.clearWatch(TR.gps); TR.gps = null; }
+    if (err && err.code === 1 && TR.gps) { navigator.geolocation.clearWatch(TR.gps); TR.gps = null; try { localStorage.setItem(TR_GPS, '0'); } catch (_) {} }
     TR.pintarGps();
   }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 30000 });
   TR.pintarGps();
 };
 TR.gpsLlego = async function (p) {
-  if (!TR.rep || Date.now() - TR.gpsUlt < 120000) return; // cada 2 minutos basta
+  if (!TR.rep || Date.now() - TR.gpsUlt < 60000) return; // cada minuto basta (cuida datos y batería)
   TR.gpsUlt = Date.now();
   const r = await msRpc('msj_ubicacion_enviar', { p_repartidor: TR.rep.id, p_lat: p.coords.latitude, p_lng: p.coords.longitude, p_precision: Math.round(p.coords.accuracy || 0) });
   TR.gpsEstado = r.ok ? `✅ Enviada a las ${new Date().toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}` : 'No se pudo enviar. Se reintenta solo.';
@@ -121,6 +123,8 @@ window.tallerListo = async function () {
   const [reps, cfg] = await Promise.all([msRepartidores(false), msConfig()]);
   TR.reps = reps; TR.cfg = cfg; TR.elegirRepartidor();
   await TR.cargar();
+  let seguir = false; try { seguir = localStorage.getItem(TR_GPS) === '1'; } catch (_) {}
+  if (seguir && TR.rep && !TR.gps && 'geolocation' in navigator) TR.gpsCambiar();
   setInterval(() => { if (!document.hidden && !document.querySelector('.tl-modal.abierto') && !TR.ocupado) TR.cargar(); }, 60000);
 };
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') document.querySelectorAll('.tl-modal.abierto').forEach(m => m.classList.remove('abierto')); });

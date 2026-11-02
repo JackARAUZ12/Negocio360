@@ -598,7 +598,7 @@
       .tl-tabla td::before{content:attr(data-t);font-weight:700;color:var(--text-muted);text-align:left}.tl-tabla td.tl-ac{display:block;text-align:left}.tl-tabla td.tl-ac::before{content:none}}
 
   </style>
-  <link rel="stylesheet" href="mensajeria.css?v=20261102b" />
+  <link rel="stylesheet" href="mensajeria.css?v=20261102c" />
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
 <body>
@@ -801,6 +801,7 @@
       <div class="panel-header" style="padding:0 0 12px"><div class="panel-title">🗂️ Despacho</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn-secondary" onclick="TD.cargar()">🔄 Actualizar</button><button type="button" class="btn-primary" onclick="(window.parent!==window&&window.parent.tpIr)?window.parent.tpIr('mensajeria-envios.html?nuevo=1'):location.href='mensajeria-envios.html?nuevo=1'">+ Nuevo envío</button></div></div>
       <div class="tln-sub tl-muted" style="margin-bottom:8px">Marca los envíos y asígnalos a un repartidor. Arriba ves cuántas entregas lleva cada repartidor y cuánto efectivo anda en la calle.</div>
+      <section class="ms-mapa-caja" aria-label="Mapa en vivo"><div id="d-mapa-cab" class="ms-mapa-cab"></div><div id="d-mapa" class="ms-mapa"></div></section>
       <div id="d-reps" class="ms-reps"></div>
       <div class="tl-bar">
         <input type="search" class="tl-inp" id="d-buscar" placeholder="Buscar por guía, destinatario, dirección o zona…" oninput="TD.pintar()" aria-label="Buscar envío" />
@@ -822,8 +823,9 @@
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="taller-base.js?v=20261031d"></script>
-<script src="mensajeria-base.js?v=20261102b"></script>
-<script src="mensajeria-despacho.js?v=20261102b"></script>
+<script src="mensajeria-base.js?v=20261102c"></script>
+<script src="mensajeria-mapa.js?v=20261102c"></script>
+<script src="mensajeria-despacho.js?v=20261102c"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261031a"></script>

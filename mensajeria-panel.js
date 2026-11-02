@@ -266,7 +266,7 @@ const TPN_RECORRIDO = [
   { icono: '💵', titulo: '4. Cuadrar repartidor', texto: 'Al final del día el sistema dice cuánto efectivo debe entregar cada repartidor. Las tarifas que cobró entran a Caja como venta; lo de productos es de los comercios y queda aparte. Si falta dinero, queda como deuda del repartidor.' },
   { icono: '🤝', titulo: '5. Liquidar comercio', texto: 'Le entregas al comercio lo cobrado a su nombre menos tus tarifas. Tus tarifas entran a Ventas y Caja. Imprime o manda por WhatsApp su estado de cuenta. Cada envío se liquida una sola vez.' },
   { icono: '🔗', titulo: 'Rastreo y Excel', texto: 'Cada envío tiene un enlace para que quien espera el paquete vea en qué paso va, sin cuenta (va en el WhatsApp y en el QR de la etiqueta). Si un comercio manda muchos envíos, cárgalos desde Excel.' },
-  { icono: '🌐', titulo: 'Portal de comercios y ubicación', texto: 'Dale a cada comercio su enlace privado (en Zonas, tarifas y repartidores → Portal): desde su celular pide envíos, los sigue y ve cuánto le toca. El repartidor puede tocar "Compartir mi ubicación" y en Despacho ves dónde va en Google Maps. Todo gratis.' },
+  { icono: '🌐', titulo: 'Portal de comercios y mapa en vivo', texto: 'Dale a cada comercio su enlace privado (en Zonas, tarifas y repartidores → Portal): desde su celular pide envíos, los sigue y ve cuánto le toca. El repartidor toca "Compartir mi ubicación" y en Despacho lo ves moverse en el mapa en vivo, junto con los envíos. Todo gratis.' },
   { icono: '💼', titulo: 'Pago a repartidores', texto: 'Cada semana o quincena pagas a los repartidores que cobran por entrega o por porcentaje. Queda como gasto, y se les puede descontar su deuda.' },
 ];
 function tpnRecorrido(forzar) {

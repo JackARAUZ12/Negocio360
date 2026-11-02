@@ -78,6 +78,8 @@ async function nuevaPagina(browser, base, ancho, alto, conSemilla = true) {
     const u = ruta.request().url();
     if (u.startsWith(base)) return ruta.continue();
     if (u.includes('supabase-js')) return ruta.fulfill({ contentType: 'application/javascript', body: MOCK });
+    if (/unpkg\.com\/leaflet@[^/]+\/dist\/leaflet\.(js|css)$/.test(u)) return ruta.fulfill({ contentType: u.endsWith('.js') ? 'application/javascript' : 'text/css', body: fs.readFileSync(path.join(__dirname, 'vendor', 'leaflet.' + (u.endsWith('.js') ? 'js' : 'css'))) });   // mapa real (copia local)
+    if (/tile\.openstreetmap\.org/.test(u)) return ruta.fulfill({ contentType: 'image/png', body: PNG_PRUEBA });
     if (u.includes('/storage/v1/object/public/')) return ruta.fulfill({ contentType: 'image/png', body: PNG_PRUEBA });   // fotos subidas: imagen real (si no, se ocultan al no cargar)
     if (u.endsWith('.js') || u.includes('lucide')) return ruta.fulfill({ contentType: 'application/javascript', body: '' });
     return ruta.fulfill({ contentType: 'text/css', body: '' });
@@ -3227,9 +3229,26 @@ async function pruebaMensajeriaFase4(browser, base) {
     db = await leer(); const rep = db.mensajeria_repartidores.find(r => r.id === 'r-1');
     verificar(rep && Math.abs(rep.ubic_lat - 12.1364) < 1e-6 && Math.abs(rep.ubic_lng + 86.2514) < 1e-6, `${tag}: "Compartir mi ubicación" guarda dónde va el repartidor`);
     await sinDesborde(page, `${tag} repartidor con ubicación`);
+    // Un envío por asignar con ubicación, para verlo en el mapa
+    db = await leer(); Object.assign(db.mensajeria_envios.find(e => e.numero === 'ENV-000004'), { lat: 12.1402, lng: -86.2611 });
+    await poner(page, db);
     await page.goto(base + '/mensajeria-despacho.html'); await page.waitForSelector('#d-reps .ms-rep', { timeout: 20000 });
-    const mapa = await page.getAttribute('#d-reps .ms-ubic', 'href');
-    verificar(/google\.com\/maps\/search\/\?api=1&query=12\.1364%2C-86\.2514/.test(mapa || '') && (await page.textContent('#d-reps')).includes('Ver en el mapa'), `${tag}: Despacho muestra "📍 Ver en el mapa" con la ubicación del repartidor`);
+    await page.waitForSelector('#d-mapa.leaflet-container .ms-moto', { timeout: 15000 });
+    const mp = await page.evaluate(() => ({ moto: document.querySelector('.ms-moto').textContent, vivo: document.querySelector('.ms-moto').classList.contains('vivo'), pins: document.querySelectorAll('.ms-pin').length,
+      cab: document.getElementById('d-mapa-cab').textContent, alto: document.getElementById('d-mapa').getBoundingClientRect().height, ancho: document.getElementById('d-mapa').getBoundingClientRect().width }));
+    verificar(mp.moto.includes('Pedro') && mp.vivo && mp.pins === 1 && mp.cab.includes('1 repartidor') && mp.alto >= 260 && mp.ancho <= ancho,
+      `${tag}: Despacho muestra el mapa en vivo con el repartidor (verde, recién enviado) y el envío con ubicación (${mp.alto}px de alto)`);
+    await page.click('#d-reps .ms-ubic'); await page.waitForSelector('.leaflet-popup-content .ms-pop', { timeout: 8000 });
+    verificar((await page.textContent('.leaflet-popup-content')).includes('Pedro Ruiz') && (await page.textContent('.leaflet-popup-content')).includes('ahora'), `${tag}: "Ver en el mapa" lleva al repartidor y muestra hace cuánto mandó su ubicación`);
+    await page.waitForTimeout(700); await page.evaluate(() => { TM.mapa.closePopup(); TM.verTodo(); }); await page.waitForTimeout(700);
+    await page.click('.ms-pin', { force: true }); await page.waitForSelector('.leaflet-popup-content button:has-text("Marcar para asignar")', { timeout: 8000 });
+    await page.click('.leaflet-popup-content button:has-text("Marcar para asignar")');
+    await page.waitForFunction(() => document.querySelector('.ms-pin.sel') && /1 envío marcado/.test(document.getElementById("d-cuantos").textContent), null, { timeout: 8000 });
+    verificar(await page.locator('#d-tablero .tl-ot', { hasText: 'ENV-000004' }).locator('input.ms-sel').isChecked(), `${tag}: tocar un envío en el mapa lo marca para asignar (también en el tablero)`);
+    await page.click('#d-mapa-cab button:has-text("Ocultar")'); await page.waitForFunction(() => document.getElementById('d-mapa').style.display === 'none');
+    await page.click('#d-mapa-cab button:has-text("Ver mapa")'); await page.waitForFunction(() => document.getElementById('d-mapa').style.display !== 'none');
+    verificar(true, `${tag}: el mapa se puede ocultar y volver a mostrar`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-mapa-${ancho}.png` });
     await sinDesborde(page, `${tag} despacho con ubicación`);
     verificar(page.__errores.length === 0, `${tag} fase 4: sin errores (${page.__errores.join(' | ')})`);
     await ctx.close();
