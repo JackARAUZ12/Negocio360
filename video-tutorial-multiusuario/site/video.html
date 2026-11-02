@@ -1,0 +1,286 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Tutorial Multiusuario</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+  :root { --ink:#0B1736; --muted:#5B6478; --accent:#5a5af4; --blue:#2563EB; --soft:#EEF0FF; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #F4F6FB; font-family: 'Plus Jakarta Sans', sans-serif; color: var(--ink); }
+  #bg { position: absolute; inset: 0; overflow: hidden; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55; }
+  #dots { position: absolute; inset: 0; background-image: radial-gradient(rgba(37,99,235,.13) 1.6px, transparent 1.7px); background-size: 44px 44px; }
+  .scene { position: absolute; inset: 0; display: none; }
+  .head { position: absolute; left: 70px; right: 70px; top: 96px; text-align: center; }
+  .chip { display: inline-flex; align-items: center; gap: 10px; padding: 12px 24px; border-radius: 999px; background: var(--soft); color: var(--accent); font-weight: 800; font-size: 26px; letter-spacing: 2px; border: 2px solid rgba(90,90,244,.25); }
+  .title { font-size: 74px; font-weight: 800; line-height: 1.08; margin-top: 26px; letter-spacing: -1.5px; }
+  .title b { color: var(--accent); font-weight: 800; }
+  .sub { font-size: 34px; color: var(--muted); margin-top: 18px; line-height: 1.35; font-weight: 500; }
+  .stage { position: absolute; left: 0; right: 0; top: 400px; height: 1360px; overflow: hidden; }
+  .cam { position: absolute; left: 0; top: 0; width: 1080px; height: 1360px; transform-origin: 0 0; }
+  .laptop { position: absolute; }
+  .laptop .bez { position: absolute; left: 0; top: 0; background: #0F172A; border-radius: 26px; padding: 20px; box-shadow: 0 40px 90px rgba(15,23,42,.28); }
+  .laptop .bez::before { content: ''; position: absolute; top: 8px; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #334155; }
+  .laptop .base { position: absolute; height: 34px; background: linear-gradient(#CBD5E1, #94A3B8); border-radius: 4px 4px 22px 22px; }
+  .laptop .base::after { content: ''; position: absolute; left: 50%; top: 0; width: 160px; margin-left: -80px; height: 10px; background: #64748B; border-radius: 0 0 10px 10px; }
+  .screen { position: relative; overflow: hidden; border-radius: 6px; background: #fff; }
+  .screen iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; background: #fff; }
+  .phone { position: absolute; background: #0F172A; border-radius: 74px; padding: 22px; box-shadow: 0 40px 90px rgba(15,23,42,.30), inset 0 0 0 3px #334155; }
+  .phone .screen { border-radius: 54px; }
+  .phone .notch { position: absolute; top: 40px; left: 50%; width: 30px; height: 30px; margin-left: -15px; border-radius: 50%; background: #0F172A; z-index: 5; }
+  .callout { position: absolute; padding: 18px 28px; border-radius: 22px; background: var(--ink); color: #fff; font-weight: 700; font-size: 32px; box-shadow: 0 18px 40px rgba(11,23,54,.30); white-space: nowrap; z-index: 20; }
+  .callout .n { display: inline-flex; width: 42px; height: 42px; border-radius: 50%; background: var(--accent); align-items: center; justify-content: center; margin-right: 14px; font-size: 24px; vertical-align: middle; }
+  #foot { position: absolute; left: 70px; right: 70px; bottom: 56px; height: 90px; display: flex; align-items: center; gap: 22px; }
+  #steps { flex: 1; display: flex; gap: 10px; }
+  #steps div { flex: 1; height: 10px; border-radius: 6px; background: rgba(90,90,244,.15); overflow: hidden; }
+  #steps div i { display: block; height: 100%; background: var(--accent); width: 0; }
+  #flogo { display: flex; align-items: center; gap: 12px; }
+  #flogo img.i { width: 46px; height: 46px; } #flogo img.w { height: 26px; }
+  /* concept */
+  .pcard { position: absolute; width: 440px; padding: 30px; background: #fff; border-radius: 30px; box-shadow: 0 20px 50px rgba(15,23,42,.10); border: 2px solid #E8E8EF; }
+  .pcard .av { width: 82px; height: 82px; border-radius: 22px; color: #fff; font-weight: 800; font-size: 38px; display: flex; align-items: center; justify-content: center; }
+  .pcard .nm { font-size: 36px; font-weight: 800; margin-top: 16px; } .pcard .rl { font-size: 25px; color: var(--muted); margin-top: 4px; font-weight: 600; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; } .tags span { font-size: 21px; padding: 7px 13px; border-radius: 10px; background: var(--soft); color: var(--accent); font-weight: 700; }
+  .pin { position: absolute; right: 26px; top: 30px; font-size: 22px; font-weight: 800; color: #94A3B8; letter-spacing: 3px; }
+  .mail { position: absolute; left: 190px; width: 700px; top: 130px; padding: 30px 36px; border-radius: 30px; background: var(--ink); color: #fff; display: flex; align-items: center; gap: 24px; box-shadow: 0 24px 60px rgba(11,23,54,.30); }
+  .mail .ic { width: 84px; height: 84px; border-radius: 22px; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; font-size: 44px; }
+  .mail .a { font-size: 36px; font-weight: 800; } .mail .b { font-size: 25px; opacity: .7; margin-top: 4px; font-weight: 600; }
+  svg.lines { position: absolute; left: 0; top: 0; width: 1080px; height: 1360px; }
+  .rec { display: flex; align-items: center; gap: 26px; font-size: 40px; font-weight: 700; margin-bottom: 34px; }
+  .rec .ck { width: 66px; height: 66px; border-radius: 20px; background: #22c55e; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 38px; font-weight: 800; flex: none; }
+</style></head>
+<body>
+<div id="bg"><div class="blob" id="b1" style="width:700px;height:700px;background:#93C5FD"></div><div class="blob" id="b2" style="width:640px;height:640px;background:#C7D2FE"></div><div id="dots"></div></div>
+<div id="scenes"></div>
+<div id="foot"><div id="steps"></div><div id="flogo"><img class="i" src="iso.png"><img class="w" src="wordmark_dark.png"></div></div>
+<script>
+const $ = s => document.querySelector(s);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const ease = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eOut = k => 1 - Math.pow(1 - k, 3);
+const eBack = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const prog = (u, a, d) => clamp((u - a) / d);
+const AV = { 'María': '#10B981', 'Carlos': '#3B82F6', 'Bodega': '#8B5CF6' };
+const LAP = { w: 1280, h: 800, k: 0.72 }, PH = { w: 390, h: 844, k: 1.5 };
+const STAGE_H = 1360;
+
+// ---------- builders ----------
+function el(tag, cls, html, parent) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; if (parent) parent.appendChild(e); return e; }
+function head(sc, chip, title, sub) { const h = el('div', 'head', `<div class="chip">${chip}</div><div class="title">${title}</div><div class="sub">${sub}</div>`, sc); return h; }
+function laptop(parent, src, x, y, scale = 1) {
+  const k = LAP.k * scale, sw = LAP.w * k, sh = LAP.h * k, pad = 20 * scale;
+  const L = el('div', 'laptop', null, parent); L.style.left = x + 'px'; L.style.top = y + 'px';
+  const bez = el('div', 'bez', null, L); bez.style.padding = pad + 'px'; bez.style.borderRadius = 26 * scale + 'px';
+  const scr = el('div', 'screen', null, bez); scr.style.width = sw + 'px'; scr.style.height = sh + 'px';
+  const f = el('iframe', null, null, scr); f.src = src; f.width = LAP.w; f.height = LAP.h; f.style.transform = `scale(${k})`;
+  const base = el('div', 'base', null, L); base.style.left = -50 * scale + 'px'; base.style.top = sh + 2 * pad + 'px'; base.style.width = sw + 2 * pad + 100 * scale + 'px'; base.style.height = 34 * scale + 'px';
+  return { f, k, sx: x + pad, sy: y + pad, w: sw + 2 * pad, h: sh + 2 * pad + 34 * scale };
+}
+function phone(parent, srcs, x, y, scale = 1) {
+  const k = PH.k * scale, sw = PH.w * k, sh = PH.h * k, pad = 22 * scale;
+  const P = el('div', 'phone', null, parent); P.style.left = x + 'px'; P.style.top = y + 'px'; P.style.padding = pad + 'px'; P.style.borderRadius = 74 * scale + 'px';
+  el('div', 'notch', null, P).style.top = pad + 18 * scale + 'px';
+  const scr = el('div', 'screen', null, P); scr.style.width = sw + 'px'; scr.style.height = sh + 'px'; scr.style.borderRadius = 54 * scale + 'px';
+  const fs = srcs.map(s => { const f = el('iframe', null, null, scr); f.src = s; f.width = PH.w; f.height = PH.h; f.style.transform = `scale(${k})`; return f; });
+  return { fs, k, sx: x + pad, sy: y + pad, w: sw + 2 * pad, h: sh + 2 * pad };
+}
+function callout(parent, html) { const c = el('div', 'callout', html, parent); c.style.display = 'none'; return c; }
+// show a callout during [a,b) with a pop-in
+function showCallout(c, u, a, b, x, y) {
+  const on = u >= a && u < b; c.style.display = on ? 'block' : 'none'; if (!on) return;
+  const p = eBack(prog(u, a, 0.45)), o = 1 - prog(u, b - 0.3, 0.3);
+  c.style.left = x + 'px'; c.style.top = y + 'px'; c.style.opacity = o; c.style.transform = `translate(-50%,0) scale(${clamp(p, 0, 1.2)})`;
+}
+// camera: keys [t, zoom, target] — target is [x,y] in app px or a selector inside the iframe
+function rectIn(f, sel) { const e = f.contentDocument.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return (r.width || r.height) ? [r.left + r.width / 2, r.top + r.height / 2] : null; }
+function camera(cam, rig, u, keys) {
+  const pts = keys.map(k => { const p = typeof k[2] === 'string' ? rectIn(rig.f, k[2]) : k[2]; return p ? [rig.sx + p[0] * rig.k, rig.sy + p[1] * rig.k] : null; });
+  let i = 0; while (i < keys.length - 1 && u >= keys[i + 1][0]) i++;
+  let z, F;
+  const A = pts[i] || [540, STAGE_H / 2];
+  if (i === keys.length - 1 || u < keys[0][0]) { z = keys[i][1]; F = A; }
+  else { const B = pts[i + 1] || A, t0 = keys[i][0], t1 = keys[i + 1][0], mv = Math.min(1.0, t1 - t0), q = ease(clamp((u - (t1 - mv)) / mv)); z = lerp(keys[i][1], keys[i + 1][1], q); F = [lerp(A[0], B[0], q), lerp(A[1], B[1], q)]; }
+  cam.style.transform = `translate(${540 - z * F[0]}px, ${STAGE_H / 2 - z * F[1]}px) scale(${z})`;
+}
+const LAP_X = (1080 - (LAP.w * LAP.k + 40)) / 2, LAP_Y = (STAGE_H - (LAP.h * LAP.k + 74)) / 2;
+const LAPC = [LAP_X + 20 + LAP.w * LAP.k / 2, LAP_Y + 20 + LAP.h * LAP.k / 2];
+const FULL = [640, 400]; // app center → laptop centred in stage
+
+// ---------- scenes ----------
+const SC = [];
+function scene(dur, step, build) { const root = el('div', 'scene', null, $('#scenes')); const s = { dur, step, root }; s.update = build(root); SC.push(s); return s; }
+
+// 0 · intro
+scene(6, -1, root => {
+  const box = el('div', null, null, root); box.style.cssText = 'position:absolute;left:0;right:0;top:470px;height:420px';
+  const pieces = [0, 1, 2, 3].map(i => { const im = el('img', null, null, box); im.src = `piece${i}.png`; im.style.cssText = 'position:absolute;left:340px;top:0;width:400px;height:400px'; return im; });
+  const DIR = [[.53, .28], [-.32, .49], [-.54, -.32], [.29, -.54]];
+  const word = el('img', null, null, root); word.src = 'wordmark_dark.png'; word.style.cssText = 'position:absolute;left:290px;top:940px;width:500px';
+  const t = el('div', null, `<div class="chip">TUTORIAL</div><div class="title" style="font-size:96px;margin-top:34px">Sistema<br><b>Multiusuario</b></div><div class="sub" style="font-size:38px">Cada persona de tu equipo,<br>con su propio acceso</div><div class="sub" style="font-size:32px;margin-top:40px;font-weight:700;color:#0B1736">💻 Computadora &nbsp;·&nbsp; 📱 Celular</div>`, root);
+  t.style.cssText = 'position:absolute;left:60px;right:60px;top:1080px;text-align:center';
+  return u => {
+    pieces.forEach((im, i) => { const p = eBack(prog(u, 0.2 + i * 0.25, 0.8)), d = DIR[i]; im.style.opacity = clamp(prog(u, 0.2 + i * 0.25, 0.25)); im.style.transform = `translate(${d[0] * 700 * (1 - p)}px,${d[1] * 700 * (1 - p)}px) rotate(${(1 - p) * (i % 2 ? 160 : -160) + eOut(prog(u, 1.6, 1.2)) * 90}deg) scale(${lerp(.4, 1, clamp(p, 0, 1.1))})`; });
+    const w = eOut(prog(u, 1.9, 0.9)); word.style.opacity = w; word.style.clipPath = `inset(0 ${100 - w * 100}% 0 0)`;
+    const kids = [...t.children]; kids.forEach((c, i) => { const p = eOut(prog(u, 2.4 + i * 0.3, 0.6)); c.style.opacity = p; c.style.transform = `translateY(${(1 - p) * 40}px)`; });
+  };
+});
+
+// 1 · concept
+scene(10, -1, root => {
+  const h = head(root, 'CÓMO FUNCIONA', 'Un correo,<br><b>varios perfiles</b>', 'Todos entran con el correo del negocio.<br>Cada persona tiene su perfil y su propio PIN.');
+  const st = el('div', 'stage', null, root);
+  const svg = el('div', null, '<svg class="lines" viewBox="0 0 1080 1360"></svg>', st).firstChild;
+  const mail = el('div', 'mail', '<div class="ic">✉️</div><div><div class="a">minegocio@correo.com</div><div class="b">Cuenta del negocio · una sola contraseña</div></div>', st);
+  const P = [['👑', '#1A1D2E', 'Admin', 'Dueño · acceso total', ['Todo el sistema']], ['M', AV['María'], 'María', 'Cajera', ['Ventas', 'Clientes', 'Caja']], ['C', AV['Carlos'], 'Carlos', 'Vendedor', ['Ventas', 'Clientes', 'Productos']], ['B', AV['Bodega'], 'Bodega', 'Inventario', ['Productos', 'Compras']]];
+  const pos = [[70, 400], [570, 400], [70, 820], [570, 820]];
+  const cards = P.map((p, i) => { const c = el('div', 'pcard', `<div class="pin">PIN ••••</div><div class="av" style="background:${p[1]}">${p[0]}</div><div class="nm">${p[2]}</div><div class="rl">${p[3]}</div><div class="tags">${p[4].map(x => `<span>${x}</span>`).join('')}</div>`, st); c.style.left = pos[i][0] + 'px'; c.style.top = pos[i][1] + 'px'; return c; });
+  svg.innerHTML = pos.map((p, i) => `<path id="ln${i}" d="M540 290 C 540 350, ${p[0] + 220} 250, ${p[0] + 220} ${p[1]}" fill="none" stroke="#5a5af4" stroke-width="4" stroke-dasharray="10 12" opacity=".5"/>`).join('');
+  const dev = el('div', null, '💻 &nbsp;+&nbsp; 📱 &nbsp;Funciona igual en computadora y celular', st);
+  dev.style.cssText = 'position:absolute;left:0;right:0;top:1250px;text-align:center;font-size:34px;font-weight:700;color:#0B1736';
+  return u => {
+    const m = eBack(prog(u, 0.6, 0.6)); mail.style.transform = `scale(${clamp(m, 0, 1.1)})`; mail.style.opacity = clamp(m);
+    cards.forEach((c, i) => { const p = eBack(prog(u, 1.6 + i * 0.5, 0.6)); c.style.opacity = clamp(p); c.style.transform = `translateY(${(1 - clamp(p)) * 60}px) scale(${clamp(p, 0, 1.08)})`; svg.querySelector('#ln' + i).style.opacity = .5 * clamp(prog(u, 1.4 + i * 0.5, 0.4)); svg.querySelector('#ln' + i).style.strokeDashoffset = -u * 30; });
+    dev.style.opacity = eOut(prog(u, 4.5, 0.6));
+  };
+});
+
+// 2 · activar
+scene(9, 0, root => {
+  head(root, 'PASO 1 · 💻 COMPUTADORA', 'Activa el <b>multiusuario</b>', 'Configuración → Sistema multiusuario');
+  const st = el('div', 'stage', null, root), cam = el('div', 'cam', null, st);
+  const rig = laptop(cam, 'configuracion.html', LAP_X, LAP_Y);
+  const c1 = callout(st, '<span class="n">✓</span>Al entrar se pedirá elegir usuario');
+  return u => { rig.f.contentWindow.update(u); camera(cam, rig, u, [[0, 1, FULL], [2.2, 1.75, '.cfg-card']]); showCallout(c1, u, 5.0, 9, 540, 1080); };
+});
+
+// 3 · crear usuario
+scene(22, 1, root => {
+  head(root, 'PASO 2 · 💻 COMPUTADORA', 'Crea los <b>usuarios</b>', 'Nombre, código de acceso (PIN)<br>y módulos permitidos');
+  const st = el('div', 'stage', null, root), cam = el('div', 'cam', null, st);
+  const rig = laptop(cam, 'dashboard.html?v=crear', LAP_X, LAP_Y);
+  const cs = [['1', 'Toca “Agregar usuario”', 0.6, 2.2], ['2', 'Confirma con el código del Admin', 2.6, 4.9], ['3', 'Escribe su nombre y su PIN', 7.2, 10.0], ['4', 'Marca a qué módulos puede entrar', 10.0, 13.6], ['✓', '¡Usuario creado!', 14.2, 15.6], ['+', 'Repite con cada persona', 15.6, 17.6], ['👀', 'Así se ve al entrar', 17.9, 22]].map(c => [callout(st, `<span class="n">${c[0]}</span>${c[1]}`), c[2], c[3]]);
+  return u => {
+    rig.f.contentWindow.update(u);
+    camera(cam, rig, u, [[0, 1, FULL], [1.2, 1.8, '#pg-card'], [7.0, 1.8, '#pg-card'], [7.6, 1.75, '#pg-card'], [17.6, 1.8, '#pg-card']]);
+    cs.forEach(([c, a, b]) => showCallout(c, u, a, b, 540, 1200));
+  };
+});
+
+// 4 · celular
+scene(18, 2, root => {
+  head(root, 'PASO 3 · 📱 CELULAR', 'Cada quien entra<br>con <b>su perfil</b>', 'Mismo correo del negocio + su propio PIN');
+  const st = el('div', 'stage', null, root);
+  const pr = phone(st, ['login.html', 'dashboard.html?v=celular'], 0, 0, 0.86);
+  pr.root = st.lastChild; pr.root.style.left = (1080 - pr.w) / 2 + 'px'; pr.root.style.top = '10px';
+  const cs = [['1', 'Correo y contraseña del negocio', 0.5, 4.8], ['2', 'Elige tu perfil', 5.4, 8.9], ['3', 'Escribe tu PIN', 9.2, 13.5], ['✓', 'Entró como María', 14.0, 18]].map(c => [callout(st, `<span class="n">${c[0]}</span>${c[1]}`), c[2], c[3]]);
+  return u => {
+    const login = u < 5;
+    pr.fs[0].style.visibility = login ? 'visible' : 'hidden'; pr.fs[1].style.visibility = login ? 'hidden' : 'visible';
+    if (login) pr.fs[0].contentWindow.update(u); else pr.fs[1].contentWindow.update(u - 5);
+    cs.forEach(([c, a, b]) => showCallout(c, u, a, b, 540, 1240));
+  };
+});
+
+// 5 · menú limitado (computadora + celular)
+scene(12, 3, root => {
+  head(root, 'PASO 4 · 💻 + 📱', 'Cada quien ve<br><b>solo lo suyo</b>', 'El menú muestra únicamente sus módulos');
+  const st = el('div', 'stage', null, root);
+  const L = laptop(st, 'dashboard.html?v=menudesk', 40, 40, 1.04);
+  const pr = phone(st, ['dashboard.html?v=menu'], 610, 520, 0.68);
+  const lbl1 = el('div', 'callout', '💻 María en la computadora', st), lbl2 = el('div', 'callout', '📱 María en el celular', st);
+  const note = el('div', 'callout', '🔒 Configuración y Auditoría: solo el Admin', st);
+  [lbl1, lbl2, note].forEach(c => c.style.fontSize = '28px');
+  return u => {
+    L.f.contentWindow.update(u); pr.fs[0].contentWindow.update(u);
+    const a = eOut(prog(u, 0.3, 0.8)); L.f.parentNode.parentNode.parentNode.style.transform = `translateY(${(1 - a) * 80}px)`;
+    const b = eOut(prog(u, 0.9, 0.8)); pr.fs[0].parentNode.parentNode.style.transform = `translateY(${(1 - b) * 400}px)`;
+    showCallout(lbl1, u, 1.2, 12, 300, 720); showCallout(lbl2, u, 2.6, 12, 300, 860); showCallout(note, u, 6.0, 12, 540, 1255);
+  };
+});
+
+// 6 · permisos por acción
+scene(10, 4, root => {
+  head(root, 'PASO 5 · 💻 COMPUTADORA', 'Permisos <b>por acción</b>', 'Decide qué puede hacer cada usuario<br>dentro de Productos/Servicios');
+  const st = el('div', 'stage', null, root), cam = el('div', 'cam', null, st);
+  const rig = laptop(cam, 'productos.html', LAP_X, LAP_Y);
+  const cs = [['1', 'Abre “Configuración de inventario”', 0.4, 2.6], ['2', 'Elige el usuario: Carlos', 2.8, 4.0], ['3', 'Desmarca lo que NO puede hacer', 4.0, 7.2], ['✓', 'Sus botones se ocultan', 7.6, 10]].map(c => [callout(st, `<span class="n">${c[0]}</span>${c[1]}`), c[2], c[3]]);
+  return u => {
+    rig.f.contentWindow.update(u);
+    camera(cam, rig, u, [[0, 1.3, '#mk-cfginv'], [2.6, 1.75, '#modalConfigInventario .modal']]);
+    cs.forEach(([c, a, b]) => showCallout(c, u, a, b, 540, 1225));
+  };
+});
+
+// 7 · auditoría
+scene(10, 5, root => {
+  head(root, 'PASO 6 · 💻 COMPUTADORA', 'Todo queda <b>registrado</b>', 'Auditoría: quién hizo qué, en qué módulo<br>y a qué hora');
+  const st = el('div', 'stage', null, root), cam = el('div', 'cam', null, st);
+  const rig = laptop(cam, 'auditoria.html', LAP_X, LAP_Y);
+  const cs = [['👤', 'Cada movimiento con su usuario', 1.0, 5.2], ['🔎', 'Filtra por usuario: María', 5.4, 10]].map(c => [callout(st, `<span class="n">${c[0]}</span>${c[1]}`), c[2], c[3]]);
+  return u => {
+    rig.f.contentWindow.update(u);
+    camera(cam, rig, u, [[0, 1, FULL], [1.0, 1.65, [380, 215]], [4.6, 1.65, [380, 215]], [5.4, 2.0, '#aud-filtro-usuario'], [7.4, 1.65, [380, 215]]]);
+    cs.forEach(([c, a, b]) => showCallout(c, u, a, b, 540, 1225));
+  };
+});
+
+// 8 · sucursales
+scene(9, 6, root => {
+  head(root, 'EXTRA · 💻 COMPUTADORA', 'Accesos por <b>sucursal</b>', 'Elige qué perfiles entran a cada sucursal<br>y con qué módulos');
+  const st = el('div', 'stage', null, root), cam = el('div', 'cam', null, st);
+  const rig = laptop(cam, 'sucursales.html', LAP_X, LAP_Y);
+  const cs = [['1', 'Sucursales → “👥 Accesos”', 0.4, 2.4], ['✓', 'María ya puede entrar', 2.4, 3.8], ['2', 'Dale acceso a Carlos', 3.8, 6.6], ['💾', 'Guardar accesos', 6.6, 9]].map(c => [callout(st, `<span class="n">${c[0]}</span>${c[1]}`), c[2], c[3]]);
+  return u => {
+    rig.f.contentWindow.update(u);
+    camera(cam, rig, u, [[0, 1.4, '#mk-acc'], [2.2, 1.6, '#modal-accesos-sucursal .modal-box']]);
+    cs.forEach(([c, a, b]) => showCallout(c, u, a, b, 540, 1225));
+  };
+});
+
+// 9 · outro
+scene(10, 7, root => {
+  const t = el('div', null, `<div class="chip">RESUMEN</div><div class="title" style="font-size:88px">¡Así de <b>fácil</b>!</div>`, root);
+  t.style.cssText = 'position:absolute;left:60px;right:60px;top:150px;text-align:center';
+  const items = ['Activa el multiusuario', 'Crea un perfil con PIN por persona', 'Elige sus módulos y permisos', 'Entra desde computadora o celular', 'Revisa todo en Auditoría'];
+  const list = el('div', null, items.map(s => `<div class="rec"><div class="ck">✓</div>${s}</div>`).join(''), root);
+  list.style.cssText = 'position:absolute;left:130px;top:520px';
+  const lk = el('div', null, `<img src="iso.png" style="width:150px"><img src="wordmark_dark.png" style="height:84px;margin-left:24px">`, root);
+  lk.style.cssText = 'position:absolute;left:0;right:0;top:1330px;display:flex;align-items:center;justify-content:center';
+  const url = el('div', null, 'negocio360oficial.com', root);
+  url.style.cssText = 'position:absolute;left:290px;width:500px;top:1540px;text-align:center;padding:24px 0;border-radius:999px;background:#5a5af4;color:#fff;font-size:38px;font-weight:800;box-shadow:0 18px 40px rgba(90,90,244,.35)';
+  return u => {
+    [...t.children].forEach((c, i) => { const p = eOut(prog(u, 0.2 + i * 0.25, 0.6)); c.style.opacity = p; c.style.transform = `translateY(${(1 - p) * 30}px)`; });
+    [...list.children].forEach((c, i) => { const p = eBack(prog(u, 1.0 + i * 0.5, 0.5)); c.style.opacity = clamp(p); c.style.transform = `translateX(${(1 - clamp(p)) * -80}px)`; });
+    const l = eBack(prog(u, 4.2, 0.7)); lk.style.opacity = clamp(l); lk.style.transform = `scale(${clamp(l, 0, 1.1)})`;
+    const v = eBack(prog(u, 4.8, 0.6)); url.style.opacity = clamp(v); url.style.transform = `scale(${clamp(v, 0, 1.1)})`;
+  };
+});
+
+// ---------- timeline ----------
+const T0 = 0.1; let acc = T0; SC.forEach(s => { s.s = acc; acc += s.dur; });
+const END = acc;
+const stepsEl = $('#steps'); for (let i = 0; i < 7; i++) el('div', null, '<i></i>', stepsEl);
+window.TOTAL = END + 0.5;
+window.ready = Promise.all([...document.querySelectorAll('iframe')].map(f => new Promise(r => {
+  const done = () => f.contentWindow.mkReady ? f.contentWindow.mkReady.then(r) : r();
+  if (f.contentDocument && f.contentDocument.readyState === 'complete' && f.contentWindow.update) done(); else f.addEventListener('load', done);
+})).concat([document.fonts.ready]));
+
+window.render = t => {
+  $('#b1').style.transform = `translate(${-200 + Math.sin(t * .2) * 120}px, ${200 + Math.cos(t * .15) * 100}px)`;
+  $('#b2').style.transform = `translate(${600 + Math.cos(t * .17) * 120}px, ${1300 + Math.sin(t * .13) * 120}px)`;
+  const cur = SC.find(s => t >= s.s && t < s.s + s.dur) || (t < T0 ? SC[0] : SC[SC.length - 1]);
+  SC.forEach(s => { s.root.style.display = s === cur ? 'block' : 'none'; });
+  const u = Math.max(0, t - cur.s);
+  cur.update(u);
+  const last = cur === SC[SC.length - 1];
+  const a = eOut(clamp(u / 0.45)) * (last ? 1 : 1 - Math.pow(clamp((u - (cur.dur - 0.35)) / 0.35), 2));
+  cur.root.style.opacity = a; cur.root.style.transform = `translateY(${(1 - a) * 24}px)`;
+  // progress footer: 7 segments (6 steps + extra)
+  const foot = $('#foot'); foot.style.opacity = cur.step >= 0 && cur.step < 7 ? 1 : 0;
+  [...stepsEl.children].forEach((d, i) => { d.firstChild.style.width = (i < cur.step ? 100 : i === cur.step ? clamp(u / cur.dur) * 100 : 0) + '%'; });
+  const fadeEnd = clamp((t - (END - 1.2)) / 1.2), fadeStart = 1 - clamp(t / 0.5);
+  document.body.style.filter = '';
+  $('#scenes').style.opacity = 1 - fadeEnd; $('#foot').style.opacity = cur.step >= 0 && cur.step < 7 ? 1 - fadeEnd : 0;
+};
+</script>
+</body></html>

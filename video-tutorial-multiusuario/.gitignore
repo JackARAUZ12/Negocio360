@@ -1,0 +1,9 @@
+*.mp4
+list.txt
+music.mp3
+site/*.html
+!site/video.html
+site/*.png
+site/perfiles-guard.css
+site/movil-sin-zoom.css
+site/productos.css
