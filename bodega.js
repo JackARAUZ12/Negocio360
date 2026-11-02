@@ -223,6 +223,14 @@ function initSidebar() {
 // ============================================================
 // TOASTS
 // ============================================================
+// Los avisos se muestran como texto: nombres de productos o códigos escaneados nunca se interpretan como HTML.
+// Solo se respeta el salto de línea <br> que algunos avisos usan a propósito.
+function _escToast(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    .replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+}
+
 function showToast(tipo, titulo, mensaje, duracion = 3500) {
   const container = $('toastContainer');
   if (!container) return;
@@ -232,8 +240,8 @@ function showToast(tipo, titulo, mensaje, duracion = 3500) {
   toast.innerHTML = `
     <span class="toast-icon">${icons[tipo] || 'ℹ️'}</span>
     <div class="toast-body">
-      <div class="toast-title">${titulo}</div>
-      ${mensaje ? `<div class="toast-msg">${mensaje}</div>` : ''}
+      <div class="toast-title">${_escToast(titulo)}</div>
+      ${mensaje ? `<div class="toast-msg">${_escToast(mensaje)}</div>` : ''}
     </div>
     <button class="toast-close" onclick="removeToast(this.parentElement)">✕</button>
   `;
