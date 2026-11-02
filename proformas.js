@@ -2417,10 +2417,8 @@ async function generarPDFProforma(p, items, cliente) {
 
   return doc;
 }
-async function descargarPdfProformaActual() {
-  const p = STATE.proformaActual;
-  if (!p) return;
-  try {
+// Arma el PDF de la proforma abierta (el mismo de siempre). Lo usan "Descargar PDF" y "Enviar".
+async function pdfProformaActualDoc(p) {
     // Siempre se pide fresco por proforma_id — nunca se reutiliza
     // STATE.detalleActual (podría ser el de OTRA proforma vista antes).
     const { data: itemsFrescos } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id);
@@ -2428,10 +2426,17 @@ async function descargarPdfProformaActual() {
     await window.N360ProfVarios?.cargarDestinatarios?.(p);
     let cliente = null;
     if (p.cliente_id) {
-      const { data } = await sbClient.from('clientes').select('telefono,correo,direccion,direccion_factura,ciudad').eq('id', p.cliente_id).maybeSingle();
+      const { data } = await sbClient.from('clientes').select('telefono,whatsapp,correo,direccion,direccion_factura,ciudad').eq('id', p.cliente_id).maybeSingle();
       cliente = data || null;
     }
     const doc = await generarPDFProforma(p, items, cliente);
+  return { doc, cliente };
+}
+async function descargarPdfProformaActual() {
+  const p = STATE.proformaActual;
+  if (!p) return;
+  try {
+    const { doc } = await pdfProformaActualDoc(p);
     doc.save(`Proforma_${(p.numero_proforma||'proforma').replace(/[^\w\-]/g,'')}.pdf`);
   } catch (e) {
     console.error('descargarPdfProformaActual:', e);
@@ -2441,6 +2446,30 @@ async function descargarPdfProformaActual() {
 async function compartirProformaActual() {
   const p = STATE.proformaActual;
   if (!p) return;
+  // 📤 Enviar al cliente con el PDF (celular: compartir el archivo; computadora: WhatsApp o correo)
+  if (window.N360Enviar) {
+    const negocio = STATE.empresaConfig?.nombre_comercial || '';
+    const primer = String(p.cliente_nombre || '').trim().split(' ')[0];
+    N360Enviar.abrir({
+      titulo: `proforma ${p.numero_proforma || ''}`.trim(),
+      archivo: `Proforma_${(p.numero_proforma||'proforma').replace(/[^\w\-]/g,'')}.pdf`,
+      asunto: `Proforma ${p.numero_proforma || ''}${negocio ? ' — ' + negocio : ''}`,
+      texto: `Hola${primer ? ' ' + primer : ''} 👋 Te compartimos la proforma ${p.numero_proforma || ''} por un total de ${fmt(p.total)}. Cualquier consulta, con gusto te atendemos.${negocio ? '\n— ' + negocio : ''}`,
+      cliente: { nombre: p.cliente_nombre || '' },
+      generar: async () => (await pdfProformaActualDoc(p)).doc,
+      alEnviar: async () => { await marcarProformaEnviada(p); },
+    });
+    // Teléfono y correo del cliente (si los tiene) se ponen solos
+    if (p.cliente_id) {
+      try {
+        const { data } = await sbClient.from('clientes').select('telefono,whatsapp,correo').eq('id', p.cliente_id).maybeSingle();
+        const w = document.getElementById('n360env-wa'), c = document.getElementById('n360env-correo');
+        if (data && w && !w.value) w.value = data.whatsapp || data.telefono || '';
+        if (data && c && !c.value) c.value = data.correo || '';
+      } catch (e) { /* sin datos del cliente: se escriben a mano */ }
+    }
+    return;
+  }
   const texto = `Proforma ${p.numero_proforma} — ${p.cliente_nombre||'Cliente'} — Total: ${fmt(p.total)}`;
   let compartida = false;
   try {

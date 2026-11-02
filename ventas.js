@@ -5775,12 +5775,10 @@ async function reimprimirTicketVenta() {
 }
 window.reimprimirTicketVenta = reimprimirTicketVenta;
 
-async function descargarComprobanteCartaVenta() {
-  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
-  if (!venta) return;
-  try {
+// Arma el comprobante tamaño carta de una venta (el mismo de siempre). Lo usan "Comprobante" y "Enviar".
+async function pdfComprobanteCartaVentaDoc(venta) {
     const { data: items } = await sb.from('venta_detalles').select('*')
-      .eq('venta_id', S.ventaDetalleId).eq('auth_user_id', S.userId);
+      .eq('venta_id', venta.id).eq('auth_user_id', S.userId);
 
     const doc = await generarComprobanteCartaPDF('venta', {
       userId: S.userId,
@@ -5807,6 +5805,13 @@ async function descargarComprobanteCartaVenta() {
       sku: it.producto_sku || null, producto_id: it.producto_id || null,
     })));
 
+    return doc;
+}
+async function descargarComprobanteCartaVenta() {
+  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
+  if (!venta) return;
+  try {
+    const doc = await pdfComprobanteCartaVentaDoc(venta);
     doc.save(`Comprobante_${venta.numero_venta}.pdf`);
   } catch (e) {
     console.error('descargarComprobanteCartaVenta:', e);
@@ -5814,6 +5819,34 @@ async function descargarComprobanteCartaVenta() {
   }
 }
 window.descargarComprobanteCartaVenta = descargarComprobanteCartaVenta;
+
+/* 📤 Enviar al cliente (Fase 3): comprobante tamaño carta por WhatsApp o correo.
+   Solo genera el PDF de siempre: no toca la venta, Caja ni inventario. */
+async function enviarVentaActual() {
+  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
+  if (!venta) return;
+  if (!window.N360Enviar) { descargarComprobanteCartaVenta(); return; }
+  const negocio = S.empresaConfig?.nombre_comercial || '';
+  const primer = String(venta.cliente_nombre || '').trim().split(' ')[0];
+  const generico = /^(cliente|consumidor)/i.test(primer);
+  N360Enviar.abrir({
+    titulo: `factura ${venta.numero_venta || ''}`.trim(),
+    archivo: `Factura_${String(venta.numero_venta || 'venta').replace(/[^\w\-]/g, '')}.pdf`,
+    asunto: `Factura ${venta.numero_venta || ''}${negocio ? ' — ' + negocio : ''}`,
+    texto: `Hola${primer && !generico ? ' ' + primer : ''} 👋 Te compartimos tu factura ${venta.numero_venta || ''} por ${fmt(venta.total)}. ¡Gracias por tu compra!${negocio ? '\n— ' + negocio : ''}`,
+    cliente: { nombre: venta.cliente_nombre || '' },
+    generar: () => pdfComprobanteCartaVentaDoc(venta),
+  });
+  if (venta.cliente_id) {
+    try {
+      const { data } = await sb.from('clientes').select('telefono,whatsapp,correo').eq('id', venta.cliente_id).eq('auth_user_id', S.userId).maybeSingle();
+      const w = document.getElementById('n360env-wa'), c = document.getElementById('n360env-correo');
+      if (data && w && !w.value) w.value = data.whatsapp || data.telefono || '';
+      if (data && c && !c.value) c.value = data.correo || '';
+    } catch (e) { /* sin datos del cliente: se escriben a mano */ }
+  }
+}
+window.enviarVentaActual = enviarVentaActual;
 
 /* ============================================================
    CONFIRMAR VENTA — TRANSACCIÓN COMPLETA
