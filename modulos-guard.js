@@ -118,6 +118,12 @@
           .select('usa_modulo_mensajeria').eq('auth_user_id', authUserId).maybeSingle();
         cfg._flagsPropios.usa_modulo_mensajeria = ms?.usa_modulo_mensajeria === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_mensajeria = false; }
+      // Vendedores: consulta aparte, mismo criterio.
+      try {
+        const { data: vd } = await client.from('configuracion_empresa')
+          .select('usa_vendedores').eq('auth_user_id', authUserId).maybeSingle();
+        cfg._flagsPropios.usa_vendedores = vd?.usa_vendedores === true;
+      } catch (_) { cfg._flagsPropios.usa_vendedores = false; }
       // Panadería: consulta aparte, mismo criterio.
       try {
         const { data: pa } = await client.from('configuracion_empresa')

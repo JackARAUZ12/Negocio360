@@ -992,6 +992,7 @@ async function abrirDetalle(ventaId) {
           <div class="detalle-label">Descuento</div>
           <div class="detalle-value">${fmt(venta.descuento)}</div>
         </div>
+        ${window.N360Vendedor ? N360Vendedor.htmlDetalle(venta) : ''}
         ${Number(venta.descuento_general) > 0 ? `<div class="detalle-item">
           <div class="detalle-label">Incluye descuento general</div>
           <div class="detalle-value">${fmt(venta.descuento_general)} <span style="font-size:12px;color:var(--text-muted)">(${venta.descuento_general_modo === 'porcentaje' ? Number(venta.descuento_general_valor) + '%' : 'monto fijo'}${venta.descuento_general_motivo ? ' · ' + esc(venta.descuento_general_motivo) : ''})</span></div>
@@ -2073,6 +2074,7 @@ function validarPasoActual() {
       return false;
     }
     if (!validarPagoSeparado()) return false;
+    if (window.N360Vendedor && !N360Vendedor.validar('normal')) return false;
     if (S.metodoPagoId === 'fiado' && S.clienteOpcion === 'final') {
       showToast('Para fiar necesitas un cliente: vuelve al primer paso y elige o crea uno', 'error');
       return false;
@@ -6404,6 +6406,8 @@ async function _confirmarVentaInterno(conImpresion) {
       // columnas de IVA tambien lo lleve (nunca debe haber descuento sin canje).
       ...((S.canje && S.canje.clienteId === S.clienteId && (r.descuentoPuntos || 0) > 0)
         ? { canje_recompensa_id: S.canje.id, canje_descuento: r.descuentoPuntos } : {}),
+      // Vendedor (solo si el negocio activó Vendedores y se eligió uno): es solo un dato, no cambia montos.
+      ...(window.N360Vendedor ? N360Vendedor.payload('normal') : {}),
     };
 
     // Campos opcionales de IVA (si la columna no existe en la tabla, Supabase
@@ -7805,6 +7809,7 @@ async function _confirmarVentaRapidaInterno() {
   if (VR.procesando) return;
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
   if (!validarPagoSeparadoVR()) return;
+  if (window.N360Vendedor && !N360Vendedor.validar('vr')) return;
 
   // Aviso (no bloquea): costo 0 o venta por debajo del costo -> ganancia incorrecta.
   try {
@@ -7906,6 +7911,7 @@ async function _confirmarVentaRapidaInterno() {
       estado:             'completada',
       observaciones:      'Venta rápida (escáner)',
       categoria:          'venta_rapida',
+      ...(window.N360Vendedor ? N360Vendedor.payload('vr') : {}),
     };
     const ventaPayloadConIva = {
       ...ventaPayload,

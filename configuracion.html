@@ -20,7 +20,7 @@
 <script src="reloj-sesion.js?v=20261028b"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261030a"></script>
-<script src="modulos-registro.js?v=20261102a"></script>
+<script src="modulos-registro.js?v=20261102b"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
@@ -1684,6 +1684,27 @@
             </label>
           </div>
           <div class="cfg-status" id="transporte-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="vendedores-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🧑‍💼</div>
+            <div>
+              <div class="cfg-card-title">Vendedores</div>
+              <div class="cfg-card-desc">Elige “¿Quién vendió?” en cada venta, aunque esa persona no tenga usuario en el sistema, y mira el reporte de cuánto vendió y ganó cada uno. Es solo un dato de la venta: no cambia montos, Caja ni inventario.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar Vendedores</div>
+              <div class="cfg-row-sub" id="vendedores-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="vendedores-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleVendedoresClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="vendedores-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="panaderia-card">
@@ -3515,6 +3536,45 @@ async function guardarModuloMensajeria(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Vendedores: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloVendedores() {
+  const toggle = document.getElementById('vendedores-toggle');
+  const sub = document.getElementById('vendedores-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_vendedores').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_vendedores === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — en Ventas aparece “¿Quién vendió?” y en el menú “Vendedores”.' : 'Desactivado — no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloVendedores:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleVendedoresClick(evt) {
+  const toggle = document.getElementById('vendedores-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloVendedores(toggle.checked);
+}
+async function guardarModuloVendedores(activo) {
+  const toggle = document.getElementById('vendedores-toggle');
+  const sub = document.getElementById('vendedores-row-sub');
+  const statusEl = document.getElementById('vendedores-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_vendedores: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — en Ventas aparece “¿Quién vendió?” y en el menú “Vendedores”.' : 'Desactivado — no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Vendedores activado. Recarga la página para ver el menú.' : 'Vendedores desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloVendedores:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Modulo de Panaderia: se activa/desactiva desde aqui. Apagado por defecto.
 async function cargarModuloPanaderia() {
   const toggle = document.getElementById('panaderia-toggle');
@@ -4223,6 +4283,7 @@ async function initConfiguracion() {
       cargarModuloTaller();
       cargarModuloMensajeria();
       cargarModuloPanaderia();
+      cargarModuloVendedores();
       cargarModuloComisiones();
       cargarDatosFiscalesCR();
       cargarModuloDiseno();
@@ -4256,7 +4317,7 @@ document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
-<script src="modulos-guard.js?v=20261102a"></script>
+<script src="modulos-guard.js?v=20261102b"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>
