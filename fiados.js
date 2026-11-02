@@ -615,8 +615,56 @@ function abrirCobro(modo, ids) {
   document.getElementById('co-error').textContent = '';
   document.getElementById('co-confirmar').textContent = modo === 'abono' ? 'Registrar abono' : `Cobrar ${fmt(saldo)}`;
   onMetodoCobroChange();
+  try { psfMontar(); psfReset(); } catch (_) {}
   abrirModal('modal-cobro');
   if (modo === 'abono') setTimeout(() => campo.focus(), 80);
+}
+
+/* ➗ PAGO SEPARADO (Fase 4.5): un mismo cobro con varios métodos. Solo si se toca el enlace;
+   si no, el cobro funciona exactamente igual que siempre. */
+const PSF = { activo: false, lineas: [] };
+function psfObjetivo() { const c = FD.cobro; if (!c) return 0; return c.modo === 'abono' ? r2(Number(document.getElementById('co-monto').value) || 0) : r2(c.saldo); }
+function psfMontar() {
+  const w = document.getElementById('co-banco-wrap'); if (!w || document.getElementById('psf-link')) return;
+  w.insertAdjacentHTML('afterend', `<div id="psf-zona"><button type="button" id="psf-link" onclick="psfActivar()" style="background:none;border:none;color:var(--accent,#4f46e5);font-weight:700;font-size:13px;cursor:pointer;padding:4px 0">➗ Pago separado (pagar con varios métodos)</button>
+    <div id="psf-wrap" style="display:none;padding:10px;border:1.5px dashed var(--accent,#4f46e5);border-radius:12px;margin:6px 0"></div></div>`);
+  document.getElementById('co-monto').addEventListener('input', () => { if (PSF.activo) psfSuma(); });
+}
+function psfReset() {
+  PSF.activo = false; PSF.lineas = [];
+  const sel = document.getElementById('co-metodo'); if (sel) { sel.disabled = false; sel.closest('.fd-campo').style.opacity = ''; }
+  const w = document.getElementById('psf-wrap'); if (w) { w.style.display = 'none'; w.innerHTML = ''; }
+  const l = document.getElementById('psf-link'); if (l) l.style.display = (FD.metodos || []).length > 1 ? '' : 'none';
+}
+function psfActivar() {
+  const ms = FD.metodos || []; if (ms.length < 2) return;
+  const ef = ms.find(m => /efectivo/i.test(m.nombre)) || ms[0], ot = ms.find(m => m.id !== ef.id) || ms[1];
+  PSF.activo = true; PSF.lineas = [{ metodoId: ef.id, bancoId: '', monto: 0 }, { metodoId: ot.id, bancoId: '', monto: 0 }];
+  const sel = document.getElementById('co-metodo'); sel.disabled = true; sel.closest('.fd-campo').style.opacity = '.45';
+  document.getElementById('co-banco-wrap').style.display = 'none';
+  document.getElementById('psf-link').style.display = 'none'; document.getElementById('psf-wrap').style.display = '';
+  psfPintar();
+}
+function psfPintar() {
+  const w = document.getElementById('psf-wrap'); if (!w) return;
+  const ms = FD.metodos || [], nom = id => (ms.find(m => m.id === id) || {}).nombre || '';
+  w.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:13.5px">➗ Pago separado</b>
+      <button type="button" onclick="psfReset();onMetodoCobroChange()" style="background:none;border:none;color:var(--accent,#4f46e5);font-weight:700;font-size:12.5px;cursor:pointer">Usar un solo método</button></div>
+    ${PSF.lineas.map((l, i) => `<div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1fr) auto;gap:6px;align-items:center;margin-bottom:6px">
+      <select class="fd-in" aria-label="Método" onchange="PSF.lineas[${i}].metodoId=this.value;PSF.lineas[${i}].bancoId='';psfPintar()">${ms.map(m => `<option value="${esc(m.id)}" ${m.id === l.metodoId ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select>
+      ${!/efectivo|cash/i.test(nom(l.metodoId)) && (FD.bancos || []).length ? `<select class="fd-in" aria-label="Banco" onchange="PSF.lineas[${i}].bancoId=this.value"><option value="">Sin banco</option>${FD.bancos.map(b => `<option value="${esc(b.id)}" ${b.id === l.bancoId ? 'selected' : ''}>🏦 ${esc(b.nombre)}</option>`).join('')}</select>` : '<span style="font-size:12px;color:var(--text-muted,#6b7280)">—</span>'}
+      <input class="fd-in" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Monto" aria-label="Monto" value="${l.monto || ''}" oninput="PSF.lineas[${i}].monto=r2(Number(this.value)||0);psfSuma()">
+      <button type="button" title="Quitar" onclick="if(PSF.lineas.length>2){PSF.lineas.splice(${i},1);psfPintar()}" ${PSF.lineas.length <= 2 ? 'disabled style="opacity:.35"' : ''} style="border:1px solid var(--border,#e5e7eb);background:none;border-radius:8px;width:32px;height:32px;cursor:pointer;color:var(--danger,#dc2626)">✕</button></div>`).join('')}
+    <button type="button" onclick="PSF.lineas.push({metodoId:(FD.metodos[0]||{}).id,bancoId:'',monto:0});psfPintar()" style="background:none;border:none;color:var(--accent,#4f46e5);font-weight:700;font-size:13px;cursor:pointer;padding:4px 0">＋ Agregar otro método</button>
+    <div id="psf-suma" style="margin-top:6px;padding:8px 10px;border-radius:9px;font-size:13px;font-weight:700"></div>`;
+  psfSuma();
+}
+function psfSuma() {
+  const el = document.getElementById('psf-suma'); if (!el) return;
+  const t = psfObjetivo(), s = r2(PSF.lineas.reduce((a, l) => a + (Number(l.monto) || 0), 0)), d = r2(t - s), ok = t > 0 && Math.abs(d) < 0.005;
+  el.style.background = ok ? 'var(--success-soft,#dcfce7)' : '#fef3c7'; el.style.color = ok ? 'var(--success,#16a34a)' : '#b45309';
+  if (ok) { const e = document.getElementById('co-error'); if (e) e.textContent = ''; }
+  el.textContent = `Suma: ${fmt(s)} de ${fmt(t)} · ${ok ? '✅ Cuadra' : t <= 0 ? 'Escribe primero cuánto abonó' : d > 0 ? 'Falta ' + fmt(d) : 'Sobra ' + fmt(-d)}`;
 }
 
 function onMetodoCobroChange() {
@@ -634,6 +682,15 @@ async function confirmarCobro() {
     if (!(monto > 0)) { err.textContent = 'Escribe cuánto abonó.'; return; }
     if (monto > c.saldo + 0.001) { err.textContent = `No puede abonar más de lo que debe (${fmt(c.saldo)}).`; return; }
   } else monto = c.saldo;
+  // ➗ Pago separado: las líneas deben sumar EXACTO el cobro
+  let psLineas = null;
+  if (PSF.activo) {
+    const ms = FD.metodos || [];
+    psLineas = PSF.lineas.map(l => ({ metodoId: l.metodoId, metodoNombre: (ms.find(m => m.id === l.metodoId) || {}).nombre || 'Efectivo', bancoId: l.bancoId || null, monto: r2(l.monto) }));
+    if (psLineas.length < 2 || psLineas.some(l => !(l.monto > 0))) { err.textContent = 'Cada línea del pago separado debe tener un monto mayor a cero.'; return; }
+    const suma = r2(psLineas.reduce((a, l) => a + l.monto, 0));
+    if (Math.abs(suma - monto) >= 0.005) { err.textContent = `Las líneas suman ${fmt(suma)} y el cobro es ${fmt(monto)}: deben ser iguales.`; return; }
+  }
   const sel = document.getElementById('co-metodo');
   const metodoId = sel.value || null;
   const metodoNombre = sel.options[sel.selectedIndex]?.textContent || 'Efectivo';
@@ -641,7 +698,7 @@ async function confirmarCobro() {
   // 💱 Si el abono se escribió en la otra moneda: queda la nota y, si entra a un
   // banco de esa misma moneda, el banco recibe el monto exacto (repartido entre
   // los fiados en proporción; el último se lleva el resto para que sume exacto).
-  const otra = c.modo === 'abono' && window.N360MonedaAlterna ? N360MonedaAlterna.estado('co-monto') : null;
+  const otra = !psLineas && c.modo === 'abono' && window.N360MonedaAlterna ? N360MonedaAlterna.estado('co-monto') : null;
   const notaOtra = otra ? N360MonedaAlterna.nota('co-monto') : '';
   const bancoSel = bancoId ? (FD.bancos || []).find(b => b.id === bancoId) : null;
   const exactoBanco = otra && bancoSel && (bancoSel.moneda || 'NIO') === otra.moneda ? otra.monto : null;
@@ -663,9 +720,36 @@ async function confirmarCobro() {
         mb = ultimo ? r2(exactoBanco - exactoUsado) : r2(aplicar * exactoBanco / monto);
         exactoUsado = r2(exactoUsado + mb);
       }
-      const cajaRes = await registrarCaja(f, aplicar, metodoId, metodoNombre, bancoId, mb, notaOtra);
+      let cajaRes, metodoIdF = metodoId, metodoNombreF = metodoNombre;
+      if (psLineas) {
+        // ➗ Lo que se aplica a ESTE fiado se toma de las líneas en orden (cada parte con su método).
+        // Si una parte no entra a Caja, se anulan las de este fiado y se detiene sin tocarlo.
+        const marca = `PS-${Date.now().toString().slice(-7)}`;
+        let falta = aplicar; const usadas = [];
+        for (const l of psLineas) {
+          if (falta <= 0.004) break;
+          const parte = r2(Math.min(falta, l.monto)); if (parte <= 0.004) continue;
+          const rr = await CajaAPI.registrarMovimiento({
+            auth_user_id: FD.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'COBRO',
+            concepto: `Fiado cobrado — ${f.cliente_nombre} · pago separado ${marca} (${l.metodoNombre})`, monto: parte,
+            metodo_pago_id: l.metodoId || null, metodo_pago_nombre: l.metodoNombre, banco_id: l.bancoId || null,
+            referencia_tipo: 'fiado', referencia_id: f.id, observaciones: f.descripcion || null,
+          });
+          if (!rr || !rr.ok) {
+            try {
+              const { data: hechos } = await sb.from('movimientos_financieros').select('id').eq('auth_user_id', FD.userId).eq('referencia_id', f.id).eq('estado', 'completado').ilike('concepto', `%${marca}%`);
+              for (const h of (hechos || [])) await sb.from('movimientos_financieros').update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: 'Pago separado incompleto: se revirtió' }).eq('id', h.id).eq('auth_user_id', FD.userId).eq('estado', 'completado');
+            } catch (e2) { console.warn('revertir pago separado fiado:', e2); }
+            throw new Error(`no entró a Caja la parte de ${l.metodoNombre}. Este fiado no se tocó`);
+          }
+          l.monto = r2(l.monto - parte); falta = r2(falta - parte); usadas.push(`${l.metodoNombre} ${fmt(parte)}`);
+        }
+        cajaRes = { ok: true }; metodoIdF = null; metodoNombreF = ('Pago separado: ' + usadas.join(' + ')).slice(0, 200);
+      } else {
+        cajaRes = await registrarCaja(f, aplicar, metodoId, metodoNombre, bancoId, mb, notaOtra);
+      }
       const { error: eP } = await sb.from('fiado_pagos').insert({
-        auth_user_id: FD.userId, fiado_id: f.id, monto: aplicar, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+        auth_user_id: FD.userId, fiado_id: f.id, monto: aplicar, metodo_pago_id: metodoIdF, metodo_pago_nombre: metodoNombreF,
         saldo_anterior: Number(f.saldo), saldo_nuevo: pagado ? 0 : saldoNuevo,
       });
       if (eP) throw eP;

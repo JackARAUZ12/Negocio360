@@ -153,6 +153,7 @@ function pshSuma() {
   const el = document.getElementById('psh-suma'); if (!el) return;
   const t = pshTotal(), s = round2(PSH.lineas.reduce((a, l) => a + (Number(l.monto) || 0), 0)), d = round2(t - s), ok = Math.abs(d) < 0.005;
   el.style.background = ok ? 'var(--success-soft,#dcfce7)' : '#fef3c7'; el.style.color = ok ? 'var(--success,#16a34a)' : '#b45309';
+  if (ok) { const e = document.getElementById('est-error'); if (e) e.textContent = ''; }
   el.textContent = `Suma: ${fmt(s)} de ${fmt(t)} · ${ok ? '✅ Cuadra' : d > 0 ? 'Falta ' + fmt(d) : 'Sobra ' + fmt(-d)}`;
 }
 // Revisión final. Devuelve las líneas listas o el motivo.
