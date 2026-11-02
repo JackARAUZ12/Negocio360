@@ -2823,6 +2823,15 @@ async function pruebaMensajeria(browser, base) {
     verificar((await page.textContent('#tln-inicio-vista')).includes('dinero del comercio'), `${tag}: el panel explica qué es tuyo (tarifa) y qué es del comercio`);
     await sinDesborde(page, `${tag} panel de Mensajería`);
     if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-panel-${ancho}.png`, fullPage: true });
+    // "Repartidores" en "Prepara tu empresa" abre directo la pestaña de repartidores, con el botón para agregar a la vista
+    await page.click('#tln-preparar-lista button:has-text("Repartidores")');
+    let fa = null;
+    for (let i = 0; i < 100 && !fa; i++) { fa = page.frames().find(f => /mensajeria-ajustes\.html/.test(f.url())); if (!fa) await page.waitForTimeout(100); }
+    await fa.waitForSelector('#a-cuerpo button:has-text("Nuevo repartidor")', { timeout: 15000 });
+    const vis = await fa.evaluate(() => { const t = document.querySelector('#a-tabs [data-tab="repartidores"]').getBoundingClientRect(), b = [...document.querySelectorAll('#a-cuerpo button')].find(x => /Nuevo repartidor/.test(x.textContent)).getBoundingClientRect();
+      return t.right <= innerWidth + 1 && t.left >= 0 && b.right <= innerWidth + 1 && document.querySelector('#a-tabs .ms-tab.activa').dataset.tab === 'repartidores'; });
+    verificar(vis, `${tag}: "Repartidores" del panel abre su pestaña, y la pestaña y "+ Nuevo repartidor" se ven completas en pantalla`);
+    await page.goto(base + '/mensajeria.html'); await page.waitForSelector('#tln-tabs .tln-tab', { timeout: 20000 });
     await page.click('#tln-tabs [data-sub="envios"]');
     let fr = null;
     for (let i = 0; i < 100 && !fr; i++) { fr = page.frames().find(f => /mensajeria-envios\.html/.test(f.url())); if (!fr) await page.waitForTimeout(100); }

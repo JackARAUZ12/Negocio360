@@ -12,7 +12,7 @@
 .ms-linea b{color:var(--text-primary)}
 .ms-monto{font-weight:800;color:var(--text-primary)}
 .ms-cobrar{display:inline-flex;align-items:center;gap:6px;background:var(--warning-soft);color:var(--warning);border-radius:10px;padding:4px 10px;font-weight:800;font-size:13.5px}
-.ms-tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:2px}
+.ms-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;padding-bottom:2px}
 .ms-tab{flex:none;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-secondary);border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .ms-tab.activa{background:var(--accent);border-color:var(--accent);color:#fff}
 .ms-res{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:12px}

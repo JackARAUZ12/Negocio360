@@ -226,8 +226,8 @@ function tpnPintarCiclo() {
 function tpnPintarPreparar() {
   const d = TPN.datos || {};
   const items = [
-    { ok: (d.zonas || 0) > 0, t: 'Zonas y tarifas', d: d.zonas ? `${tpnS(d.zonas, 'zona', 'zonas')} con su precio.` : 'Crea tus zonas (barrios o municipios) con el precio de cada una: la tarifa de cada envío sale sola.', ir: "tpnIrSub('ajustes')", btn: 'Zonas' },
-    { ok: (d.reps || 0) > 0, t: 'Tus repartidores', d: d.reps ? `${tpnS(d.reps, 'repartidor', 'repartidores')}.` : 'Registra a tus repartidores. Si les das un usuario del sistema, cada uno ve solo sus entregas.', ir: "tpnIrSub('ajustes')", btn: 'Repartidores' },
+    { ok: (d.zonas || 0) > 0, t: 'Zonas y tarifas', d: d.zonas ? `${tpnS(d.zonas, 'zona', 'zonas')} con su precio.` : 'Crea tus zonas (barrios o municipios) con el precio de cada una: la tarifa de cada envío sale sola.', ir: "tpIr('mensajeria-ajustes.html?tab=zonas')", btn: 'Zonas' },
+    { ok: (d.reps || 0) > 0, t: 'Tus repartidores', d: d.reps ? `${tpnS(d.reps, 'repartidor', 'repartidores')}.` : 'Registra a tus repartidores. Si les das un usuario del sistema, cada uno ve solo sus entregas.', ir: "tpIr('mensajeria-ajustes.html?tab=repartidores')", btn: 'Repartidores' },
     { ok: (d.comercios || 0) > 0, opc: true, t: 'Tus comercios (clientes)', d: d.comercios ? `${tpnS(d.comercios, 'cliente', 'clientes')}.` : 'Opcional: los comercios que te mandan paquetes, para tener su historial y precios especiales.', ir: "tpnIrOtra('clientes.html')", btn: 'Clientes' },
     { ok: !!d.cfg, opc: true, t: 'Recargos y tope de efectivo', d: d.cfg ? 'Configurados.' : 'Opcional: cobro extra por urgente, paquete grande o reintento, y aviso cuando un repartidor anda con mucho efectivo.', ir: "tpIr('mensajeria-ajustes.html?tab=recargos')", btn: 'Recargos' },
   ];
