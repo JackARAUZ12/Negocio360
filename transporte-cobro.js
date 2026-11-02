@@ -61,6 +61,12 @@ const TXCobro = (() => {
 #txc-cobro .txc-ok{text-align:center;padding:10px 0}
 #txc-cobro .txc-ok-ico{font-size:44px}
 #txc-cobro .txc-ok-tit{font-size:20px;font-weight:900;margin-top:6px}
+#txc-cobro .txc-sep{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,.9fr) auto;gap:6px;align-items:center;margin-top:6px}
+#txc-cobro .txc-sep select,#txc-cobro .txc-sep input{width:100%;min-width:0;font-size:14px;padding:8px}
+#txc-cobro .txc-sep-x{border:1px solid var(--border,#e5e7eb);background:none;border-radius:8px;width:34px;height:34px;cursor:pointer;color:var(--danger,#dc2626)}
+#txc-cobro .txc-sep-suma{margin-top:8px;padding:8px 10px;border-radius:9px;font-size:13px;font-weight:700;background:#fef3c7;color:#b45309}
+#txc-cobro .txc-sep-suma.ok{background:var(--success-soft,#dcfce7);color:var(--success,#16a34a)}
+@media (max-width:480px){#txc-cobro .txc-sep{grid-template-columns:1fr 1fr}}
 #txc-marco{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px;top:0}
 #txc-cobro.txc-avanzado .txc-caja{max-width:980px;height:94vh}
 #txc-cobro.txc-avanzado .txc-cuerpo{display:none}
@@ -175,7 +181,9 @@ const TXCobro = (() => {
         <input type="number" class="txc-in" id="txc-ret-pct" min="0" max="100" step="0.01" value="${esc(String(E.ret.pct))}" ${E.ret.activo ? '' : 'disabled'} aria-label="Porcentaje de retención"/> %</label>` : ''}
       <div class="txc-sec">¿Cómo te paga?</div>
       <div class="txc-chips" id="txc-metodos">${e.metodos.map(mt => `<button type="button" class="txc-chip" data-metodo="${esc(mt.id)}" data-nombre="${esc(mt.nombre)}">${esc(mt.nombre)}</button>`).join('')
+        + (e.separado && e.metodos.length > 1 ? '<button type="button" class="txc-chip" data-metodo="__separado" data-nombre="Pago separado">➗ Pago separado</button>' : '')
         + (e.fiado ? '<button type="button" class="txc-chip" data-metodo="__fiado" data-nombre="A crédito">🧾 A crédito (paga después)</button>' : '') || '<span class="txc-ayuda">No hay formas de pago activas: configúralas en Caja.</span>'}</div>
+      <div id="txc-separado" style="display:none"></div>
       <div id="txc-bancos-wrap" style="display:none"><div class="txc-sec">¿A qué banco entra?</div><div class="txc-chips" id="txc-bancos"></div></div>
       <div id="txc-efectivo" class="txc-fila" style="display:none">
         <div><label class="txc-lab" for="txc-recibido">Recibido</label><input class="txc-in" id="txc-recibido" type="number" inputmode="decimal" min="0" step="any" placeholder="0.00"/></div>
@@ -204,7 +212,8 @@ const TXCobro = (() => {
     if (E.cobrando) return;
     E.metodo = { id, nombre }; E.banco = null;
     document.querySelectorAll('#txc-metodos [data-metodo]').forEach(b => b.classList.toggle('activo', b.dataset.metodo === id));
-    const conBanco = id !== '__fiado' && necesitaBanco(nombre);
+    pintarSeparado(id === '__separado');
+    const conBanco = id !== '__fiado' && id !== '__separado' && necesitaBanco(nombre);
     document.getElementById('txc-bancos-wrap').style.display = conBanco ? '' : 'none';
     if (conBanco) {
       document.getElementById('txc-bancos').innerHTML = E.bancos.map(b => `<button type="button" class="txc-chip" data-banco="${esc(b.id)}">🏦 ${esc(b.nombre)}</button>`).join('');
@@ -220,8 +229,48 @@ const TXCobro = (() => {
     document.getElementById('txc-err').textContent = id === '__fiado' ? 'Queda a crédito: lo verás en "Por cobrar" y en Créditos hasta que te pague.' : '';
     listo(); cambio();
   }
+  /* ➗ Pago separado: el MISMO de Ventas (un movimiento de Caja por cada forma de pago, con su banco).
+     Aquí solo se reparte; Ventas vuelve a revisar que cuadre exacto antes de registrar. */
+  function pintarSeparado(mostrar) {
+    const cont = document.getElementById('txc-separado'); if (!cont) return;
+    cont.style.display = mostrar ? '' : 'none';
+    if (!mostrar) { E.sep = null; cont.innerHTML = ''; return; }
+    if (!E.sep) {
+      const ms = E.estado.metodos, ef = ms.find(m => /efectivo/i.test(m.nombre)) || ms[0], ot = ms.find(m => m.id !== ef.id) || ms[0];
+      E.sep = [{ metodoId: ef.id, monto: 0, bancoId: '' }, { metodoId: ot.id, monto: 0, bancoId: '' }];
+    }
+    const ms = E.estado.metodos, nom = id => (ms.find(m => m.id === id) || {}).nombre || '';
+    cont.innerHTML = `<div class="txc-sec">Reparte el pago</div>${E.sep.map((l, i) => `<div class="txc-sep">
+        <select class="txc-in" data-sep-met="${i}" aria-label="Forma de pago">${ms.map(m => `<option value="${esc(m.id)}" ${m.id === l.metodoId ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select>
+        ${necesitaBanco(nom(l.metodoId)) ? `<select class="txc-in" data-sep-banco="${i}" aria-label="Banco"><option value="">¿A qué banco?</option>${E.bancos.map(b => `<option value="${esc(b.id)}" ${b.id === l.bancoId ? 'selected' : ''}>🏦 ${esc(b.nombre)}</option>`).join('')}</select>` : '<span class="txc-ayuda">—</span>'}
+        <input class="txc-in" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Monto" aria-label="Monto" data-sep-monto="${i}" value="${l.monto || ''}">
+        <button type="button" class="txc-sep-x" data-sep-quitar="${i}" title="Quitar" ${E.sep.length <= 2 ? 'disabled style="opacity:.35"' : ''}>✕</button></div>`).join('')}
+      <button type="button" class="txc-link" id="txc-sep-mas">＋ Agregar otra forma de pago</button>
+      <div class="txc-sep-suma" id="txc-sep-suma"></div>`;
+    cont.querySelectorAll('[data-sep-met]').forEach(s => s.addEventListener('change', () => { const l = E.sep[+s.dataset.sepMet]; l.metodoId = s.value; l.bancoId = ''; pintarSeparado(true); }));
+    cont.querySelectorAll('[data-sep-banco]').forEach(s => s.addEventListener('change', () => { E.sep[+s.dataset.sepBanco].bancoId = s.value; listo(); }));
+    cont.querySelectorAll('[data-sep-monto]').forEach(s => s.addEventListener('input', () => { E.sep[+s.dataset.sepMonto].monto = r2(s.value); listo(); }));
+    cont.querySelectorAll('[data-sep-quitar]').forEach(s => s.addEventListener('click', () => { if (E.sep.length > 2) { E.sep.splice(+s.dataset.sepQuitar, 1); pintarSeparado(true); } }));
+    document.getElementById('txc-sep-mas').addEventListener('click', () => { E.sep.push({ metodoId: ms[0].id, monto: 0, bancoId: '' }); pintarSeparado(true); });
+    listo();
+  }
+  function separadoListo() {
+    if (!E.sep) return false;
+    const ms = E.estado.metodos, nom = id => (ms.find(m => m.id === id) || {}).nombre || '';
+    const suma = r2(E.sep.reduce((a, l) => a + (Number(l.monto) || 0), 0)), dif = r2(aPagar() - suma);
+    const sinBanco = E.sep.find(l => l.monto > 0 && necesitaBanco(nom(l.metodoId)) && !l.bancoId);
+    const el = document.getElementById('txc-sep-suma');
+    if (el) {
+      const ok = Math.abs(dif) < 0.005 && !sinBanco && E.sep.filter(l => l.monto > 0).length >= 2;
+      el.className = 'txc-sep-suma' + (ok ? ' ok' : '');
+      el.textContent = `Suma: ${f(suma)} de ${f(aPagar())} · ` + (Math.abs(dif) >= 0.005 ? (dif > 0 ? 'Falta ' + f(dif) : 'Sobra ' + f(-dif))
+        : sinBanco ? `Elige el banco de ${nom(sinBanco.metodoId)}` : E.sep.filter(l => l.monto > 0).length < 2 ? 'Usa al menos 2 formas de pago' : '✅ Cuadra');
+    }
+    return Math.abs(dif) < 0.005 && !sinBanco && E.sep.filter(l => l.monto > 0).length >= 2;
+  }
   function listo() {
     const b = document.getElementById('txc-cobrar'); if (!b) return;
+    if (E.metodo?.id === '__separado') { b.disabled = !separadoListo() || E.cobrando; b.textContent = 'Cobrar ' + f(aPagar()); return; }
     b.disabled = !E.metodo || (E.metodo.id !== '__fiado' && necesitaBanco(E.metodo.nombre) && !E.banco) || E.cobrando;
     b.textContent = (E.metodo?.id === '__fiado' ? 'Registrar a crédito ' : 'Cobrar ') + f(aPagar());
   }
@@ -241,8 +290,14 @@ const TXCobro = (() => {
     E.cobrando = true; listo();
     document.getElementById('txc-cobrar').textContent = 'Cobrando…';
     document.getElementById('txc-err').textContent = '';
-    let r;
-    try { r = await mot.cobrar({ metodoId: mt.id === '__fiado' ? null : mt.id, metodoNombre: mt.nombre, fiado: mt.id === '__fiado', banco: E.banco, notas: observaciones(E.orden) }); }
+    let r, separado = null;
+    if (mt.id === '__separado') {
+      if (!separadoListo()) { E.cobrando = false; listo(); document.getElementById('txc-err').textContent = 'El pago separado debe cuadrar exacto con lo que se cobra.'; return; }
+      const ms = E.estado.metodos;
+      separado = E.sep.filter(l => l.monto > 0).map(l => ({ metodoId: l.metodoId, monto: l.monto, banco: l.bancoId ? (E.bancos.find(b => b.id === l.bancoId) || null) : null }));
+      E.metodo = { ...mt, nombre: 'Pago separado (' + separado.map(l => (ms.find(m => m.id === l.metodoId) || {}).nombre).join(' + ') + ')' };
+    }
+    try { r = await mot.cobrar({ metodoId: (mt.id === '__fiado' || separado) ? null : mt.id, metodoNombre: E.metodo.nombre, fiado: mt.id === '__fiado', separado, banco: separado ? null : E.banco, notas: observaciones(E.orden) }); }
     catch (e) { r = { ok: false, motivo: 'No se pudo registrar la venta. Intenta de nuevo.' }; }
     E.cobrando = false;
     if (r && r.ok) { if (!E.ventaId) await hecho(r, false); return; }
