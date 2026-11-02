@@ -208,6 +208,9 @@ TE.guardar = async function () {
   const cobrar = Number(g('f-cobrar') || 0);
   if (!(cobrar >= 0)) { av.innerHTML = '<div class="tl-aviso">El monto a cobrar no es válido.</div>'; return; }
   if (cobrar > 0 && !$e('f-comercio').value) { av.innerHTML = `<div class="tl-aviso">${MS_MOTIVOS.cod_sin_comercio} Toca “➕ Registrar comercio”.</div>`; return; }
+  // Sin zona la tarifa queda en cero: se avisa antes de guardar para que no pase sin querer.
+  if (!$e('f-zona').value && TE.zonas.some(z => z.activo) && !(TE.editando && !TE.editando.zona_id)
+    && !confirm('No elegiste la zona: este envío quedaría con tarifa ' + fmt(0) + ' y no ganarías nada por llevarlo.\n\n¿Registrarlo así de todos modos?')) { $e('f-zona').focus(); av.innerHTML = '<div class="tl-aviso">Elige la zona para que la tarifa salga sola.</div>'; return; }
   const p = {
     id: TE.editando?.id || null, comercio_id: $e('f-comercio').value || null, remitente_nombre: g('f-rem'), remitente_telefono: g('f-remtel'), recoger_direccion: g('f-recoger'),
     destinatario_nombre: g('f-des'), destinatario_telefono: g('f-destel'), direccion: g('f-dir'), referencia: g('f-ref'), zona_id: $e('f-zona').value || null,
@@ -224,7 +227,7 @@ TE.guardar = async function () {
   await TE.cargar();
   if (nuevo) {
     const e = TE.lista.find(x => x.id === r.id);
-    if (e) msVentana('e-listo', `✅ Envío ${esc(r.numero)} registrado`, `<div class="ms-linea">Tarifa: <b>${fmt(r.tarifa)}</b>${msPorCobrar(e) > 0 ? ` · el repartidor cobra <b>${fmt(msPorCobrar(e))}</b>` : ''}</div><div class="tl-muted">Pega la etiqueta en el paquete. Luego asígnalo a un repartidor en Despacho.</div>`,
+    if (e) msVentana('e-listo', `✅ Envío ${esc(r.numero)} registrado`, `<div class="ms-linea">🧾 Tarifa del envío (lo que tú ganas): <b>${fmt(r.tarifa)}</b>${!e.zona_id ? ' <span class="ms-chip no_entregado">sin zona</span>' : ''}</div>${msPorCobrar(e) > 0 ? `<div class="ms-linea">💵 Al entregar, el repartidor cobra <b>${fmt(msPorCobrar(e))}</b>${Number(e.monto_cobrar) > 0 ? ` <span class="tl-muted">(producto ${fmt(e.monto_cobrar)}${e.envio_lo_paga === 'destinatario' ? ' + envío ' + fmt(Number(e.tarifa) + Number(e.recargo_reintentos || 0)) : ''}; el producto es del comercio)</span>` : ''}</div>` : ''}<div class="tl-muted">Pega la etiqueta en el paquete. Luego asígnalo a un repartidor en Despacho.</div>`,
       `<button type="button" class="btn-secondary" data-cerrar>Listo</button>${e.envio_lo_paga === 'comercio' && !e.comercio_id && Number(e.tarifa) > 0 ? `<button type="button" class="btn-secondary" onclick="document.getElementById('e-listo').classList.remove('abierto');TE.cobrar('${e.id}')">💳 Cobrar envío</button>` : ''}${e.destinatario_telefono ? `<a class="btn-secondary" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(TE.waLink(e))}">💬 Avisar por WhatsApp</a>` : ''}<button type="button" class="btn-primary" onclick="TE.etiqueta('${e.id}')">🏷️ Imprimir etiqueta</button>`, 480);
   }
 };

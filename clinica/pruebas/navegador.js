@@ -3203,6 +3203,22 @@ async function pruebaMensajeriaFase4(browser, base) {
     // 3) En Envíos aparece marcado "Portal"
     await poner(page, db); await page.goto(base + '/mensajeria-envios.html'); await page.waitForSelector('#e-lista .tl-card', { timeout: 20000 });
     verificar(await page.locator('.tl-card', { hasText: 'Lucía Méndez' }).locator('.ms-chip.portal').count() === 1, `${tag}: en Envíos, el pedido del comercio se ve con la marca "🌐 Portal"`);
+    // 3b) Envío sin zona: avisa que la tarifa quedaría en cero; si dice que no, no se guarda
+    await page.click('#e-nuevo'); await page.waitForSelector('#e-modal.abierto');
+    await page.selectOption('#f-comercio', 'cli-1'); await page.fill('#f-des', 'Sin Zona Prueba'); await page.fill('#f-dir', 'Calle sin zona'); await page.fill('#f-cobrar', '50000');
+    let pregunta = ''; page.removeAllListeners('dialog'); page.once('dialog', d => { pregunta = d.message(); d.dismiss(); });
+    await page.click('#e-guardar'); await page.waitForTimeout(400);
+    let db2 = await leer();
+    verificar(/tarifa/.test(pregunta) && !db2.mensajeria_envios.some(e => e.destinatario_nombre === 'Sin Zona Prueba') && (await page.textContent('#e-aviso')).includes('Elige la zona'),
+      `${tag}: sin zona, pregunta antes de guardar (la tarifa quedaría en cero) y si dice que no, no se guarda`);
+    page.on('dialog', d => d.accept());
+    await page.selectOption('#f-zona', 'z-1'); await page.click('#e-guardar'); await page.waitForSelector('#e-listo.abierto', { timeout: 10000 });
+    const listo = await page.textContent('#e-listo');
+    verificar(listo.includes('lo que tú ganas') && listo.includes('80.00') && listo.includes('50,000.00') && listo.includes('el producto es del comercio'),
+      `${tag}: al registrar, separa la tarifa (lo que ganas, 80) de lo que cobra el repartidor (producto 50,000 del comercio)`);
+    await modalesSinDesborde(page, `${tag} envío registrado`);
+    await page.click('#e-listo [data-cerrar]');
+    db = await leer();
     // 4) Repartidor comparte su ubicación (GPS del celular) y Despacho la ve en Google Maps
     await ctx.grantPermissions(['geolocation'], { origin: base }); await ctx.setGeolocation({ latitude: 12.1364, longitude: -86.2514 });
     await page.goto(base + '/mensajeria-repartidor.html'); await page.waitForSelector('#r-rep', { timeout: 20000 });
