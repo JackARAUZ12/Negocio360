@@ -642,7 +642,7 @@
      Si el negocio activó "generar asientos automáticamente" (casilla en Contabilidad), mientras trabaja en otros
      módulos se abre —oculta— la misma pantalla de Contabilidad que genera los asientos pendientes. Es la misma
      función y las mismas reglas que el botón manual (no se duplica nada; hay candado entre ventanas).
-     Solo corre con el perfil administrador o sin perfiles, con la pestaña a la vista y cada ~10 minutos. */
+     Corre con cualquier perfil (administrador, restringido o sin perfiles), con la pestaña a la vista y cada ~10 minutos. */
   function iniciarContabilidadEnFondo(client, userId) {
     const archivo = (location.pathname.split('/').pop() || '').toLowerCase();
     if (archivo === 'contabilidad.html' || window.self !== window.top) return;
@@ -664,7 +664,7 @@
         const raw = sessionStorage.getItem('n360_perfil_activo');
         if (!raw) return true;
         const p = JSON.parse(raw);
-        return !p || p.tipo === 'admin';
+        return !p || p.tipo === 'admin' || p.tipo === 'restringido';
       } catch (_) { return false; }
     }
     function lanzar() {
