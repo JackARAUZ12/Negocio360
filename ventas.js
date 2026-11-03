@@ -1166,8 +1166,19 @@ async function loadProductosCache() {
     // se vende desde aqui -- solo desde Farmacia > Control de
     // Sustancias, que crea la venta real por su cuenta y ya aparece
     // en el historial de Ventas igual que cualquier otra.
-    const { data } = await N360Leer.todo(() => sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre'), 'productos');
+    // Lectura con copia en la pestaña: solo se piden los productos que cambiaron desde la última vez
+    // (ante cualquier duda se lee el catálogo completo, igual que antes; ver cache-productos.js).
+    const baseVR = () => sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo,updated_at')
+      .eq('auth_user_id', S.userId);
+    const completoVR = () => N360Leer.todo(() => baseVR().eq('activo', true).order('nombre'), 'productos');
+    const { data } = window.N360Cache
+      ? await N360Cache.lista({
+          clave: 'ventas_productos', userId: S.userId, completo: completoVR,
+          delta: (desde) => N360Leer.todo(() => baseVR().gte('updated_at', desde), 'productos'),
+          contar: () => sb.from('productos').select('id', { count: 'exact', head: true }).eq('auth_user_id', S.userId).eq('activo', true),
+          filtro: (f) => f.activo === true, camposOrden: ['nombre'],
+        })
+      : await completoVR();
     const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
     // Combos: se agregan al MISMO catálogo de búsqueda/carrito que los
