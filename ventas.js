@@ -1235,8 +1235,14 @@ async function loadProductosCache() {
 
 async function loadClientesCache() {
   try {
-    const { data } = await N360Leer.todo(() => sb.from('clientes').select('id,nombre,apellido,telefono,correo')
-      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre'), 'clientes');
+    const baseC = () => sb.from('clientes').select('id,nombre,apellido,telefono,correo,activo,updated_at').eq('auth_user_id', S.userId);
+    const completoC = () => N360Leer.todo(() => baseC().eq('activo', true).order('nombre'), 'clientes');
+    const { data } = window.N360Cache
+      ? await N360Cache.lista({ clave: 'ventas_clientes', userId: S.userId, completo: completoC,
+          delta: (desde) => N360Leer.todo(() => baseC().gte('updated_at', desde), 'clientes'),
+          contar: () => sb.from('clientes').select('id', { count: 'exact', head: true }).eq('auth_user_id', S.userId).eq('activo', true),
+          filtro: (f) => f.activo === true, camposOrden: ['nombre'] })
+      : await completoC();
     S.clientesCache = data || [];
   } catch(e) { S.clientesCache = []; }
 }

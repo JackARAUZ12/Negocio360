@@ -2228,12 +2228,22 @@ async function loadKPIs(userId) {
 
   // Productos → SUM(stock_actual)
   try {
-    const { data: dataProds } = await sbClient.from('productos').select('stock_actual, stock_minimo')
-      .eq('auth_user_id', userId).eq('tipo', 'producto');
-    if (dataProds) {
-      const totalStock = dataProds.reduce((s, r) => s + (r.stock_actual || 0), 0);
+    // El cálculo se hace en la base de datos (no baja la lista de productos). Si la función falla, se usa el método anterior.
+    let resumenStock = null;
+    try {
+      const { data: rs, error: rsErr } = await sbClient.rpc('resumen_stock_dashboard', { p_user: userId });
+      const f = Array.isArray(rs) ? rs[0] : rs;
+      if (!rsErr && f && f.total_stock !== null && f.total_stock !== undefined) resumenStock = { total: Number(f.total_stock), bajos: Number(f.productos_bajos) };
+    } catch (_) { resumenStock = null; }
+    let dataProds = null;
+    if (!resumenStock) {
+      ({ data: dataProds } = await sbClient.from('productos').select('stock_actual, stock_minimo')
+        .eq('auth_user_id', userId).eq('tipo', 'producto'));
+    }
+    if (resumenStock || dataProds) {
+      const totalStock = resumenStock ? resumenStock.total : dataProds.reduce((s, r) => s + (r.stock_actual || 0), 0);
       document.getElementById('kpi-productos').textContent = totalStock.toLocaleString('es-NI');
-      const lowCount = dataProds.filter(r =>
+      const lowCount = resumenStock ? resumenStock.bajos : dataProds.filter(r =>
         (r.stock_minimo !== null && r.stock_minimo !== undefined)
           ? (r.stock_actual || 0) <= (r.stock_minimo || 0)
           : (r.stock_actual || 0) < 5

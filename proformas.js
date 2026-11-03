@@ -186,8 +186,14 @@ async function loadMetodosPago() {
 
 async function loadClientes() {
   try {
-    const { data } = await N360Leer.todo(() => sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre'), 'clientes');
+    const baseC = () => sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos,activo,updated_at').eq('auth_user_id', STATE.userId);
+    const completoC = () => N360Leer.todo(() => baseC().eq('activo', true).order('nombre'), 'clientes');
+    const { data } = window.N360Cache
+      ? await N360Cache.lista({ clave: 'proformas_clientes', userId: STATE.userId, completo: completoC,
+          delta: (desde) => N360Leer.todo(() => baseC().gte('updated_at', desde), 'clientes'),
+          contar: () => sbClient.from('clientes').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId).eq('activo', true),
+          filtro: (f) => f.activo === true, camposOrden: ['nombre'] })
+      : await completoC();
     STATE.clientes = data || [];
     llenarSelectClientes();
   } catch (e) { console.warn('loadClientes:', e); }
