@@ -1192,8 +1192,14 @@ async function loadProformas() {
   const tbody = document.getElementById('prof-tbody');
   if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Cargando proformas…</td></tr>`;
   try {
-    const { data, error } = await N360Leer.todo(() => sbClient.from('proformas').select('*')
-      .eq('auth_user_id', STATE.userId).order('created_at', { ascending:false }), 'proformas');
+    const baseP = () => sbClient.from('proformas').select('*').eq('auth_user_id', STATE.userId);
+    const completoP = () => N360Leer.todo(() => baseP().order('created_at', { ascending:false }), 'proformas');
+    const { data, error } = window.N360Cache
+      ? await N360Cache.lista({ clave: 'proformas_lista', userId: STATE.userId, completo: completoP,
+          delta: (desde) => N360Leer.todo(() => baseP().gte('updated_at', desde), 'proformas'),
+          contar: () => sbClient.from('proformas').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId),
+          camposOrden: ['created_at'] })
+      : await completoP();
     if (error) throw error;
 
     const lista = data || [];
