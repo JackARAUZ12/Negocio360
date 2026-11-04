@@ -124,6 +124,10 @@
         const vd = fila;
         cfg._flagsPropios.usa_vendedores = vd?.usa_vendedores === true;
       } catch (_) { cfg._flagsPropios.usa_vendedores = false; }
+      // Microfinanciera: consulta aparte, mismo criterio.
+      try {
+        cfg._flagsPropios.usa_modulo_microfinanciera = fila?.usa_modulo_microfinanciera === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_microfinanciera = false; }
       // Panadería: consulta aparte, mismo criterio.
       try {
         const pa = fila;
