@@ -706,7 +706,9 @@
     .pd-vacio{text-align:center;padding:28px 12px;color:var(--text-secondary)}
     .pd-vacio .ico{font-size:40px}
     @media (max-width:640px){.pd-inp{width:72px}.pd-kpi-v{font-size:19px}}
-  </style>
+    .mf-barra-eq{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--accent-soft,#eef);border:1px solid var(--border,#ddd);border-radius:12px;padding:8px 12px;margin:0 0 10px;font-size:14px}
+  .mf-entrar{max-width:440px;margin:0 auto}
+</style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
 <body>
@@ -890,11 +892,14 @@
         <h1>💼 Panel Microfinanciera</h1>
         <p>Vende o presta al crédito, cobra en tu ruta con recibo y mira quién te debe. Todo queda en <b>Créditos, Caja, Ventas e Inventario</b>, como siempre.</p>
       </div>
+      <div id="mf-barra-eq" class="mf-barra-eq" style="display:none"></div>
       <div class="pd-tabs" role="tablist">
         <button type="button" class="pd-tab activa" data-tab="ruta" onclick="mfTab('ruta')">🛵 Ruta de hoy</button>
         <button type="button" class="pd-tab" data-tab="vender" onclick="mfTab('vender')">🛒 Vender al crédito</button>
         <button type="button" class="pd-tab" data-tab="clientes" onclick="mfTab('clientes')">📒 Clientes</button>
         <button type="button" class="pd-tab" data-tab="resumen" onclick="mfTab('resumen')">📊 Resumen</button>
+        <button type="button" class="pd-tab" data-tab="caja" onclick="mfTab('caja')" style="display:none">🧾 Caja del día</button>
+        <button type="button" class="pd-tab" data-tab="equipo" onclick="mfTab('equipo')">👥 Equipo</button>
       </div>
       <div id="pd-vista"><p class="tln-sub">Cargando…</p></div>
     </div>
@@ -904,7 +909,7 @@
 <div class="tl-modal" id="pd-modal" role="dialog" aria-modal="true"><div class="tl-modal-box" id="pd-modal-box"></div></div>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="microfinanciera.js?v=20261104a"></script>
+<script src="microfinanciera.js?v=20261104b"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261104a"></script>
