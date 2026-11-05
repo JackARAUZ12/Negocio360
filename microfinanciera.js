@@ -122,7 +122,7 @@ async function leerTodo(fn) {
 async function cargarDatos() {
   const u = MF.userId, hoy = hoyISO();
   let [cli, cred, met, ban, prod, pagos] = await Promise.all([
-    leerTodo(() => sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,direccion,zona').eq('auth_user_id', u).eq('activo', true).order('nombre').order('id')),
+    leerTodo(() => sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,direccion,zona,ruc').eq('auth_user_id', u).eq('activo', true).order('nombre').order('id')),
     leerTodo(() => sb.from('creditos').select('id,numero_credito,cliente_id,tipo,total_financiado,saldo_pendiente,frecuencia,valor_cuota_aprox,estado,created_at,observaciones,mf_ref,mf_cobrador_id,mf_cobrador_nombre')
       .eq('auth_user_id', u).in('estado', ['activo', 'al_dia', 'con_atraso', 'en_proceso']).gt('saldo_pendiente', 0.004).order('id')),
     sb.from('metodos_pago').select('id,nombre').eq('auth_user_id', u).eq('activo', true).order('nombre'),
@@ -530,6 +530,7 @@ async function confirmarVenta() {
       ${r.repetido ? '<p>Este crédito ya se había guardado (no se duplicó).</p>' : `<div class="mf-recibo-monto">${fmt(r.total)}</div><div>${esc(nombreCli(c))}</div>
       <div class="mf-montos" style="margin-top:10px"><div><span>Cuotas</span><b>${r.cuotas} de ${fmt(r.cuota)}</b></div><div><span>Debe</span><b>${fmt(r.saldo)}</b></div>${Number(r.prima) > 0 ? `<div><span>Prima</span><b>${fmt(r.prima)}</b></div>` : ''}</div>`}</div></div>
     <div class="tl-modal-pie">${tel && !r.repetido ? `<a class="btn-secondary" href="https://wa.me/${waNum(tel)}?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener">💬 Enviar plan por WhatsApp</a>` : ''}
+      ${!r.repetido && r.credito_id ? `<button class="btn-secondary" onclick="abrirDocumentos('${r.credito_id}','${c.id}')">🖨️ Contrato y pagaré</button>` : ''}
       <button class="btn-secondary" onclick="cerrarModal();abrirTarjeta('${c.id}')">📒 Ver tarjeta</button><button class="btn-primary" onclick="cerrarModal();mfTab('vender')">Nueva venta</button></div>`);
 }
 function abrirNuevoCliente() {
@@ -553,10 +554,9 @@ async function guardarNuevoCliente() {
   MF.ocupado = true; document.getElementById('nc-ok').disabled = true;
   try {
     const fila = { auth_user_id: MF.userId, nombre: nom, telefono: tel || null, direccion: document.getElementById('nc-dir').value.trim() || null, activo: true };
-    const ced = document.getElementById('nc-ced').value.trim(); if (ced) fila.cedula = ced;
+    const ced = document.getElementById('nc-ced').value.trim(); if (ced) fila.ruc = ced.slice(0, 30);
     const zona = limpiarZona(document.getElementById('nc-zona').value); if (zona) fila.zona = MF.clientes.map(zonaDe).find(x => x && x.toLowerCase() === zona.toLowerCase()) || zona;
-    let { data, error } = await sb.from('clientes').insert(fila).select('id,nombre,apellido,telefono,whatsapp,direccion,zona').single();
-    if (error && /cedula/.test(error.message || '')) { delete fila.cedula; ({ data, error } = await sb.from('clientes').insert(fila).select('id,nombre,apellido,telefono,whatsapp,direccion,zona').single()); }
+    let { data, error } = await sb.from('clientes').insert(fila).select('id,nombre,apellido,telefono,whatsapp,direccion,zona,ruc').single();
     if (error) throw error;
     MF.clientes.push(data); MF.venta.clienteId = data.id; MF.venta.buscaCli = '';
     cerrarModal(true); showToast('Cliente guardado.'); pintarVender(document.getElementById('pd-vista'));
@@ -598,7 +598,8 @@ async function abrirTarjeta(clienteId) {
       const pagado = r2(Number(cr.total_financiado) - Number(cr.saldo_pendiente)), pct = cr.total_financiado > 0 ? Math.round(pagado / cr.total_financiado * 100) : 0;
       const activo = Number(cr.saldo_pendiente) > 0.004 && !['cancelado', 'refinanciado'].includes(cr.estado);
       return `<div class="pd-card" style="margin-bottom:10px"><div class="mf-card-cab"><div><b>${esc(cr.numero_credito)}</b> <span class="tl-muted">${cr.tipo === 'venta' ? '🛍️ Productos' : '💵 Préstamo'} · ${esc(FREC[cr.frecuencia] || cr.frecuencia || '')} · ${fCorta(String(cr.created_at).slice(0, 10))}</span></div>
-          ${activo ? `<button class="btn-primary" onclick="cerrarModal();abrirCobroDesdeTarjeta('${cr.id}')">💵 Cobrar</button>` : '<span class="pd-pill ok">✅ Pagado</span>'}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn-secondary" onclick="abrirDocumentos('${cr.id}','${clienteId}')">🖨️ Documentos</button>
+          ${activo ? `<button class="btn-primary" onclick="cerrarModal();abrirCobroDesdeTarjeta('${cr.id}')">💵 Cobrar</button>` : '<span class="pd-pill ok">✅ Pagado</span>'}</div></div>
         <div class="mf-montos"><div><span>Total</span><b>${fmt(cr.total_financiado)}</b></div><div><span>Pagado</span><b class="pd-verde">${fmt(pagado)}</b></div><div><span>Debe</span><b>${fmt(cr.saldo_pendiente)}</b></div></div>
         <div class="vd-barra" style="margin:8px 0"><i style="width:${Math.min(100, pct)}%"></i></div>
         ${conEquipo() ? (puedeAdministrar() && activo ? `<div class="tl-f" style="margin-bottom:8px"><label>👤 Lo cobra</label><select class="tl-sel" onchange="asignarUno('${cr.id}',this.value,'${clienteId}')">
@@ -785,6 +786,133 @@ async function guardarMoraCfg() {
   Object.assign(MF.cfg, { mf_mora_tipo: p.tipo, mf_mora_valor: p.valor, mf_mora_gracia: p.gracia, mf_mora_tope_pct: p.tope_pct, mf_mora_perdona_cobrador: p.perdona_cobrador });
   showToast(p.tipo === 'ninguna' ? 'Mora desactivada.' : 'Regla de mora guardada.');
   pintarEquipo(document.getElementById('pd-vista'));
+}
+
+/* ---------- 🖨️ DOCUMENTOS: plan de pagos, pagaré y contrato ----------
+   Solo lee e imprime: no cambia ningún dato de dinero. Modelo de uso general (revisar con un abogado). */
+function numLetras(n) {
+  const U = ['', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte',
+    'veintiuno', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+  const D = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+  const C = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+  const menos100 = x => x < 30 ? U[x] : D[Math.floor(x / 10)] + (x % 10 ? ' y ' + U[x % 10] : '');
+  const menos1000 = x => x === 100 ? 'cien' : (x >= 100 ? C[Math.floor(x / 100)] + (x % 100 ? ' ' + menos100(x % 100) : '') : menos100(x));
+  const apoc = t => t.replace(/veintiuno$/, 'veintiún').replace(/uno$/, 'un');
+  const ent = x => {
+    if (x === 0) return 'cero';
+    let t = '';
+    const mill = Math.floor(x / 1e6), mil = Math.floor((x % 1e6) / 1000), r = x % 1000;
+    if (mill) t += (mill === 1 ? 'un millón' : apoc(ent(mill)) + ' millones') + ' ';
+    if (mil) t += (mil === 1 ? 'mil' : apoc(menos1000(mil)) + ' mil') + ' ';
+    if (r) t += menos1000(r);
+    return t.trim();
+  };
+  const v = Math.round((Number(n) || 0) * 100), e = Math.floor(v / 100), c = v % 100;
+  const t = apoc(ent(e));
+  return (t.charAt(0).toUpperCase() + t.slice(1)) + ' con ' + String(c).padStart(2, '0') + '/100';
+}
+function monedaLarga() { const m = MF.cfg.moneda || 'NIO'; return m === 'USD' ? 'dólares' : m === 'CRC' ? 'colones' : 'córdobas'; }
+function fLarga(iso) { return iso ? new Date(String(iso).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-NI', { day: 'numeric', month: 'long', year: 'numeric' }) : '____'; }
+function textoMora() {
+  if (!moraActiva()) return null;
+  const c = MF.cfg, v = Number(c.mf_mora_valor), g = Number(c.mf_mora_gracia || 0), tp = c.mf_mora_tope_pct == null ? 100 : Number(c.mf_mora_tope_pct);
+  const base = c.mf_mora_tipo === 'fija_dia' ? `${fmt(v)} por cada día de atraso` : c.mf_mora_tipo === 'pct_dia' ? `el ${v}% diario sobre el monto atrasado` : `${fmt(v)} por cada cuota pagada con atraso`;
+  return `${base}${g ? `, contado después de ${g} día${g === 1 ? '' : 's'} de gracia` : ''}${tp < 100 ? `, sin exceder el ${tp}% de lo atrasado` : ''}`;
+}
+async function abrirDocumentos(creditoId, clienteId) {
+  const c = cliPorId(clienteId) || { id: clienteId, nombre: 'Cliente' };
+  modal(`<div class="tl-modal-cab"><h2>🖨️ Documentos</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div><div class="tl-modal-cuerpo"><p class="tl-muted">Cargando…</p></div>`);
+  try {
+    const { data: cr, error } = await sb.from('creditos').select('id,numero_credito,tipo,total_financiado,capital_financiado,total_intereses,monto_original,frecuencia,num_cuotas,fecha_inicio,created_at,venta_id,saldo_pendiente')
+      .eq('id', creditoId).eq('auth_user_id', MF.userId).maybeSingle();
+    if (error || !cr) throw error || new Error('no existe');
+    const [cu, pa, det] = await Promise.all([
+      sb.from('creditos_cuotas').select('numero,fecha_vencimiento,monto_total,monto_pagado,estado').eq('credito_id', cr.id).order('numero'),
+      sb.from('creditos_pagos').select('monto,observaciones,estado').eq('credito_id', cr.id).eq('estado', 'completado'),
+      cr.venta_id ? sb.from('venta_detalles').select('producto_nombre,cantidad,precio,subtotal').eq('venta_id', cr.venta_id) : Promise.resolve({ data: [] }),
+    ]);
+    const prima = r2((pa.data || []).filter(p => /prima/i.test(p.observaciones || '')).reduce((a, p) => a + Number(p.monto || 0), 0));
+    MF.doc = { cr, c, cuotas: cu.data || [], prima, items: det.data || [] };
+    let guard = {}; try { guard = JSON.parse(localStorage.getItem('n360_mf_doc_' + cr.id) || '{}') || {}; } catch (_) {}
+    document.getElementById('pd-modal-box').innerHTML = `<div class="tl-modal-cab"><h2>🖨️ Documentos · ${esc(cr.numero_credito)}</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
+      <div class="tl-modal-cuerpo">
+        <div class="tl-grid"><div class="tl-f"><label for="dc-ced">Cédula del cliente</label><input class="tl-inp" id="dc-ced" maxlength="30" value="${esc(c.ruc || guard.ced || '')}"></div>
+          <div class="tl-f"><label for="dc-dir">Domicilio del cliente</label><input class="tl-inp" id="dc-dir" maxlength="250" value="${esc(c.direccion || guard.dir || '')}"></div>
+          <div class="tl-f"><label for="dc-lugar">Lugar de firma</label><input class="tl-inp" id="dc-lugar" maxlength="80" value="${esc(guard.lugar || MF.cfg.ciudad || '')}"></div>
+          <div class="tl-f"><label for="dc-inc">Vencer todo después de</label><select class="tl-sel" id="dc-inc">${[2, 3, 4].map(n => `<option value="${n}" ${Number(guard.inc || 3) === n ? 'selected' : ''}>${n} cuotas atrasadas</option>`).join('')}</select></div></div>
+        <details ${guard.fnom ? 'open' : ''}><summary style="cursor:pointer;font-weight:600;margin:6px 0">👥 Fiador (opcional)</summary>
+          <div class="tl-grid"><div class="tl-f"><label for="dc-fnom">Nombre del fiador</label><input class="tl-inp" id="dc-fnom" maxlength="120" value="${esc(guard.fnom || '')}"></div>
+            <div class="tl-f"><label for="dc-fced">Cédula del fiador</label><input class="tl-inp" id="dc-fced" maxlength="30" value="${esc(guard.fced || '')}"></div>
+            <div class="tl-f full"><label for="dc-fdir">Domicilio del fiador</label><input class="tl-inp" id="dc-fdir" maxlength="250" value="${esc(guard.fdir || '')}"></div></div></details>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0">${[['plan', '📅 Plan de pagos'], ['pagare', '✍️ Pagaré'], ['contrato', '📄 Contrato']].map(([k, t]) => `<label class="mf-chk"><input type="checkbox" class="dc-doc" value="${k}" checked> ${t}</label>`).join('')}</div>
+        <div class="tl-aviso">Modelo de uso general. Revísalo con un abogado antes de usarlo como documento legal.</div></div>
+      <div class="tl-modal-pie"><button class="btn-secondary" onclick="abrirTarjeta('${clienteId}')">← Volver</button><button class="btn-primary" onclick="imprimirDocumentos()">🖨️ Imprimir</button></div>`;
+  } catch (e) { console.error(e); document.getElementById('pd-modal-box').innerHTML = '<div class="tl-modal-cuerpo"><div class="tl-aviso">No se pudieron cargar los datos del crédito. Revisa tu conexión.</div><button class="btn-secondary" onclick="cerrarModal()">Cerrar</button></div>'; }
+}
+function htmlDocumentos(o) {
+  const { cr, c, cuotas, prima, items } = MF.doc, cfg = MF.cfg;
+  const acreedor = cfg.razon_social || cfg.nombre_comercial || 'El negocio', ruc = cfg.ruc ? ` (RUC ${esc(cfg.ruc)})` : '';
+  const cli = nombreCli(c), ced = o.ced || '______________', dom = o.dir || '______________________', lugar = o.lugar || '__________';
+  const fechaDoc = String(cr.created_at).slice(0, 10), frec = (FREC[cr.frecuencia] || cr.frecuencia || '').toLowerCase();
+  const qs = cuotas.filter(q => !(prima > 0 && q.numero === 1)), deuda = r2(Number(cr.total_financiado) - prima);
+  const primera = qs[0]?.fecha_vencimiento, ultima = qs[qs.length - 1]?.fecha_vencimiento;
+  const mora = textoMora(), esVenta = cr.tipo === 'venta';
+  const L = x => `${numLetras(x)} ${monedaLarga()} (${fmt(x)})`;
+  const firma = (quien, nombre, cedula) => `<div class="firma"><div class="linea"></div><b>${esc(nombre)}</b><br>${quien}${cedula ? '<br>Cédula: ' + esc(cedula) : ''}</div>`;
+  const firmas = `<div class="firmas">${firma('Deudor', cli, o.ced)}${o.fnom ? firma('Fiador solidario', o.fnom, o.fced) : ''}${firma('Por el acreedor', acreedor, '')}</div>`;
+  const cab = t => `<div class="cab"><div><b>${esc(cfg.nombre_comercial || acreedor)}</b>${cfg.ruc ? '<br>RUC ' + esc(cfg.ruc) : ''}${cfg.direccion ? '<br>' + esc(cfg.direccion) : ''}${cfg.telefono ? '<br>Tel. ' + esc(cfg.telefono) : ''}</div><div class="der"><h1>${t}</h1>No. ${esc(cr.numero_credito)}</div></div>`;
+  const docs = [];
+  if (o.docs.includes('plan')) docs.push(`${cab('PLAN DE PAGOS')}
+    <p><b>Cliente:</b> ${esc(cli)} · <b>Cédula:</b> ${esc(ced)}<br><b>Fecha:</b> ${fLarga(fechaDoc)} · <b>Forma de pago:</b> ${esc(frec)}</p>
+    <table><tr><td>${esVenta ? 'Valor de la compra' : 'Monto prestado'}</td><td class="n">${fmt(esVenta ? cr.total_financiado : cr.capital_financiado)}</td></tr>
+      ${!esVenta && Number(cr.total_intereses) > 0 ? `<tr><td>Intereses</td><td class="n">${fmt(cr.total_intereses)}</td></tr>` : ''}
+      <tr><td><b>Total del crédito</b></td><td class="n"><b>${fmt(cr.total_financiado)}</b></td></tr>
+      ${prima > 0 ? `<tr><td>Prima pagada</td><td class="n">${fmt(prima)}</td></tr><tr><td><b>Saldo a pagar en cuotas</b></td><td class="n"><b>${fmt(deuda)}</b></td></tr>` : ''}</table>
+    <table class="tab"><thead><tr><th>#</th><th>Fecha</th><th class="n">Cuota</th><th>Firma / sello de recibido</th></tr></thead><tbody>
+      ${qs.map((q, i) => `<tr><td>${i + 1}</td><td>${fLarga(q.fecha_vencimiento)}</td><td class="n">${fmt(q.monto_total)}</td><td></td></tr>`).join('')}</tbody></table>
+    ${mora ? `<p class="peq">Pago atrasado: se cobra mora de ${esc(mora)}.</p>` : ''}<p class="peq">Solo son válidos los recibos emitidos por ${esc(cfg.nombre_comercial || acreedor)}.</p>${firmas}`);
+  if (o.docs.includes('pagare')) docs.push(`${cab('PAGARÉ')}<p class="monto">Por ${fmt(deuda)}</p>
+    <p>Yo, <b>${esc(cli)}</b>, mayor de edad, identificado(a) con cédula No. <b>${esc(ced)}</b>, con domicilio en ${esc(dom)}, por medio del presente <b>PAGARÉ</b> me obligo a pagar
+    incondicionalmente a la orden de <b>${esc(acreedor)}</b>${ruc}, la cantidad de <b>${L(deuda)}</b>, en ${qs.length} cuota${qs.length === 1 ? '' : 's'} de forma ${esc(frec)},
+    según el plan de pagos de esta misma fecha, la primera el ${fLarga(primera)} y la última el ${fLarga(ultima)}.</p>
+    ${mora ? `<p>En caso de atraso en cualquiera de las cuotas, pagaré además un recargo por mora de ${esc(mora)}.</p>` : ''}
+    <p>La falta de pago de ${o.inc} cuotas dará derecho al acreedor a dar por vencido el plazo y exigir de inmediato el pago total del saldo pendiente. Puedo pagar antes de las fechas acordadas.</p>
+    ${o.fnom ? `<p>Yo, <b>${esc(o.fnom)}</b>, mayor de edad, cédula No. <b>${esc(o.fced || '______________')}</b>, con domicilio en ${esc(o.fdir || '______________')}, me constituyo <b>fiador solidario</b> del deudor por todas las obligaciones de este pagaré.</p>` : ''}
+    <p>${esc(lugar)}, ${fLarga(fechaDoc)}.</p>${firmas}`);
+  if (o.docs.includes('contrato')) docs.push(`${cab(esVenta ? 'CONTRATO DE VENTA AL CRÉDITO' : 'CONTRATO DE PRÉSTAMO')}
+    <p>En ${esc(lugar)}, el ${fLarga(fechaDoc)}, comparecen: por una parte <b>${esc(acreedor)}</b>${ruc}, en adelante <b>EL ACREEDOR</b>; y por otra <b>${esc(cli)}</b>, mayor de edad, cédula No. <b>${esc(ced)}</b>, con domicilio en ${esc(dom)}, en adelante <b>EL DEUDOR</b>${o.fnom ? `; y <b>${esc(o.fnom)}</b>, cédula No. ${esc(o.fced || '______')}, en adelante <b>EL FIADOR</b>` : ''}, quienes acuerdan:</p>
+    <p><b>PRIMERA. Objeto.</b> ${esVenta ? `EL ACREEDOR vende al crédito a EL DEUDOR lo siguiente, que recibe en buen estado: ${items.filter(i => !/^Recargo/i.test(i.producto_nombre || '')).map(i => `${Number(i.cantidad)} × ${esc(i.producto_nombre)}`).join('; ') || 'los productos detallados en la venta'}.` : `EL ACREEDOR entrega en préstamo a EL DEUDOR la cantidad de ${L(cr.capital_financiado)}, que EL DEUDOR declara recibir en este acto.`}</p>
+    <p><b>SEGUNDA. Monto.</b> El total del crédito es de ${L(cr.total_financiado)}${!esVenta && Number(cr.total_intereses) > 0 ? `, que incluye intereses por ${fmt(cr.total_intereses)}` : ''}.${prima > 0 ? ` EL DEUDOR paga hoy una prima de ${fmt(prima)}, quedando un saldo de ${fmt(deuda)}.` : ''}</p>
+    <p><b>TERCERA. Forma de pago.</b> EL DEUDOR pagará ${fmt(deuda)} en ${qs.length} cuota${qs.length === 1 ? '' : 's'} de forma ${esc(frec)}, del ${fLarga(primera)} al ${fLarga(ultima)}, según el plan de pagos que forma parte de este contrato. Cada pago se aplica primero a la cuota más antigua.</p>
+    <p><b>CUARTA. Mora.</b> ${mora ? `Si EL DEUDOR se atrasa, pagará un recargo por mora de ${esc(mora)}.` : 'No se cobra recargo por mora.'}</p>
+    <p><b>QUINTA. Pago anticipado.</b> EL DEUDOR puede adelantar pagos o cancelar el total en cualquier momento.</p>
+    <p><b>SEXTA. Incumplimiento.</b> Si EL DEUDOR deja de pagar ${o.inc} cuotas, EL ACREEDOR podrá dar por vencido el plazo y exigir el total del saldo pendiente${o.fnom ? ', también a EL FIADOR, quien responde solidariamente' : ''}.</p>
+    <p><b>SÉPTIMA. Recibos.</b> Solo son válidos los recibos emitidos por EL ACREEDOR con su número.</p>
+    <p>Leído el presente contrato, las partes lo aceptan y firman.</p>${firmas}`);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(cr.numero_credito)} · Documentos</title><style>
+    @page{size:letter;margin:18mm 16mm}body{font-family:Georgia,'Times New Roman',serif;font-size:12.5px;line-height:1.55;color:#111;margin:0}
+    .doc{page-break-after:always}.doc:last-child{page-break-after:auto}.cab{display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px;font-size:11.5px}
+    .der{text-align:right}h1{font-size:17px;margin:0 0 2px;letter-spacing:.5px}p{margin:8px 0;text-align:justify}.peq{font-size:11px;color:#333}.monto{font-size:16px;font-weight:bold;text-align:right}
+    table{border-collapse:collapse;width:100%;margin:8px 0}td,th{border:1px solid #999;padding:4px 6px;text-align:left}.n{text-align:right;white-space:nowrap}.tab td:last-child{width:40%}
+    .firmas{display:flex;gap:24px;flex-wrap:wrap;margin-top:46px}.firma{flex:1;min-width:150px;text-align:center;font-size:11.5px}.linea{border-top:1px solid #111;margin-bottom:4px}
+  </style></head><body>${docs.map(d => `<div class="doc">${d}</div>`).join('')}<script>window.onload=()=>{window.print()}<\/script></body></html>`;
+}
+async function imprimirDocumentos() {
+  if (!MF.doc) return;
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const o = { ced: v('dc-ced'), dir: v('dc-dir'), lugar: v('dc-lugar'), inc: Number(v('dc-inc')) || 3, fnom: v('dc-fnom'), fced: v('dc-fced'), fdir: v('dc-fdir'),
+    docs: [...document.querySelectorAll('.dc-doc:checked')].map(x => x.value) };
+  if (!o.docs.length) { showToast('Marca al menos un documento.', 'error'); return; }
+  try { localStorage.setItem('n360_mf_doc_' + MF.doc.cr.id, JSON.stringify({ ced: o.ced, dir: o.dir, lugar: o.lugar, inc: o.inc, fnom: o.fnom, fced: o.fced, fdir: o.fdir })); } catch (_) {}
+  const w = window.open('', '_blank'); if (!w) { showToast('Permite las ventanas emergentes para imprimir.', 'error'); return; }
+  w.document.write(htmlDocumentos(o)); w.document.close();
+  // Si el cliente no tenía cédula o dirección guardada, se guarda (solo esos datos del cliente)
+  const c = MF.doc.c, cambios = {};
+  if (o.ced && !c.ruc) cambios.ruc = o.ced.slice(0, 30);
+  if (o.dir && !c.direccion) cambios.direccion = o.dir.slice(0, 250);
+  if (Object.keys(cambios).length && cliPorId(c.id)) {
+    try { const { error } = await sb.from('clientes').update(cambios).eq('id', c.id).eq('auth_user_id', MF.userId); if (!error) Object.assign(cliPorId(c.id), cambios); } catch (_) {}
+  }
 }
 
 /* ---------- 🏘️ ZONAS (para ordenar la ruta) ---------- */
