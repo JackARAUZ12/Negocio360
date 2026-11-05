@@ -1,0 +1,8 @@
+-- =====================================================================
+-- NOVACELL · restauración de los SKU de los 33 productos GLASS de la cuenta principal (5 nov 2026)
+-- Autorizado por el dueño del sistema. El disparador de sincronización los había dejado todos con SKU "A11-15" (ya corregido en
+-- 20261105c). Se restauran los SKU originales (anotados antes del daño), con respaldo previo (respaldo_glass_sku_novacell_20261105),
+-- comprobación de que cada producto coincide, y SIN tocar costo, precio ni stock. También corrige el GLASS RM A3-15 de Novacell 2
+-- (creado en 20261105b con el SKU dañado). El disparador se desactiva solo durante la operación, dentro de la misma transacción.
+-- La lista exacta de (inicio de id, SKU) está en la migración aplicada "novacell_restaurar_sku_glass".
+-- =====================================================================
