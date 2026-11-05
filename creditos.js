@@ -3373,6 +3373,7 @@
     document.getElementById('ac-resumen').textContent =
       `Crédito ${window.N360ProformaCredito ? N360ProformaCredito.texto(credito.numero_credito, N360ProformaCredito._cache[credito.id]) : credito.numero_credito} — saldo actual ${fmt(credito.saldo_pendiente)}`;
     document.getElementById('ac-aviso-productos').style.display = credito.venta_id ? '' : 'none';
+    const avPr = document.getElementById('ac-aviso-prestamo'); if (avPr) avPr.style.display = credito.tipo === 'financiero' ? '' : 'none';
     document.getElementById('ac-motivo').value = '';
     document.getElementById('ac-error').textContent = '';
     openModal('modal-anular-credito');
@@ -3432,6 +3433,22 @@
           await _sb.from('ventas').update({ estado: 'anulada', updated_at: new Date().toISOString() })
             .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
         }
+      }
+
+      // Préstamo en efectivo: el dinero que salió de Caja vuelve (se anula ese egreso).
+      // Antes quedaba descontado aunque el préstamo se anulara, y Caja no cuadraba.
+      if (creditoFresco.tipo === 'financiero') {
+        const { data: movsPrest, error: errMp } = await _sb.from('movimientos_financieros').select('id')
+          .eq('auth_user_id', CS.userId).eq('referencia_tipo', 'credito').eq('referencia_id', credito.id)
+          .eq('tipo_movimiento', 'CREDITO_OTORGADO').eq('estado', 'completado');
+        if (errMp) throw new Error('No se pudo leer Caja; no se anuló nada.');
+        for (const mv of (movsPrest || [])) {
+          const { error: eMv } = await _sb.from('movimientos_financieros')
+            .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: `Préstamo ${credito.numero_credito} anulado: ${motivo}`.slice(0, 300) })
+            .eq('id', mv.id).eq('auth_user_id', CS.userId).eq('estado', 'completado');
+          if (eMv) throw new Error('No se pudo devolver el préstamo a Caja: ' + (eMv.message || ''));
+        }
+        if ((movsPrest || []).length) await registrarHistorial(credito.id, 'desembolso_anulado', `El dinero del préstamo vuelve a Caja (se anuló la salida)`, {});
       }
 
       // Marcar el credito como anulado -- nunca se borra.

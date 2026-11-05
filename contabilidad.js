@@ -1303,6 +1303,7 @@ const TIPOS_TRANSACCION = {
   ajuste_inventario_entrada: { label: 'Ajuste de existencia que SUBE (conteo, devolución, corrección…)', ejemplo: 'Debe: Inventario — Haber: Otros Ingresos (4200). Solo los cambios de existencia hechos desde la ficha del producto CON motivo; si el motivo es "Inventario inicial", va contra Capital usando la línea de arriba. Incluye bodegas y sucursales del grupo.' },
   ajuste_inventario_salida: { label: 'Ajuste de existencia que BAJA (conteo, daño, vencimiento, robo…)', ejemplo: 'Debe: Otros Gastos (6190) — Haber: Inventario. Solo los cambios de existencia hechos desde la ficha del producto CON motivo (las bajas de "Movimientos especiales" ya se registran como gasto de merma). Incluye bodegas y sucursales del grupo.' },
   faltante_caja: { label: 'Faltante de caja al cerrar Caja Chica', ejemplo: 'Debe: Otros Gastos (6190) — Haber: Caja General. Se asienta solo con la diferencia que quedó guardada en el cierre; no cambia el saldo del módulo Caja.' },
+  interes_prestamo: { label: 'Intereses de préstamos en efectivo (al prestar)', ejemplo: 'Debe: Cuentas por Cobrar — Haber: Ingresos por intereses (u Otros Ingresos 4200). Se asienta al entregar el préstamo, por el interés pactado; así Cuentas por Cobrar queda igual a lo que el cliente debe y sus pagos no la dejan en negativo. La entrega del dinero se asienta sola con las cuentas de "Pago de crédito recibido" (al revés: Debe Cuentas por Cobrar — Haber Caja).' },
   mora_credito: { label: 'Mora por atraso cobrada (Panel Microfinanciera)', ejemplo: 'Debe: Caja General — Haber: Otros Ingresos (4200). Es el recargo por atraso que se cobra junto con la cuota; no cambia lo que el cliente debe. Si se anula el cobro, su asiento se anula.' },
   sobrante_caja: { label: 'Sobrante de caja al cerrar Caja Chica', ejemplo: 'Debe: Caja General — Haber: Otros Ingresos (4200). Se asienta solo con la diferencia que quedó guardada en el cierre; no cambia el saldo del módulo Caja.' },
 };
@@ -1325,6 +1326,7 @@ const REGLAS_TIPO_CUENTA = {
   pago_cxp:           { debe: ['pasivo'],                 haber: ['activo'],           porque: 'baja la deuda con el proveedor (Pasivo) y sale dinero (Activo)' },
   pago_salario:       { debe: ['gasto', 'costo', 'pasivo'], haber: ['activo'],         porque: 'se registra el sueldo y sale dinero (Activo)' },
   capital_inicial:    { debe: ['activo'],                 haber: ['capital', 'pasivo'], porque: 'entra dinero y lo aporta el dueño (Capital)' },
+  interes_prestamo:   { debe: ['activo'],                 haber: ['ingreso'],          porque: 'el cliente queda debiendo también el interés (Cuentas por Cobrar, Activo) y ese interés es un ingreso' },
   mora_credito:       { debe: ['activo'],                 haber: ['ingreso'],          porque: 'entra dinero (Activo) por el recargo de atraso, que es un ingreso; no baja lo que el cliente debe' },
   credito_existente:  { debe: ['activo'],                 haber: ['capital'],          porque: 'son deudas de clientes que ya existían: Cuentas por Cobrar contra Capital (no contra Inventario)' },
   inventario_inicial: { debe: ['activo'],                 haber: ['capital'],          porque: 'mercadería que ya existía: Inventario contra Capital' },
@@ -1736,6 +1738,7 @@ async function anularAsientosDeOrigenAnulado() {
     { tabla: 'gastos',  filtro: q => q.eq('estado', 'cancelado').gte('cancelado_en', FECHA_INICIO_ANULA_ASIENTOS), tipos: ['gasto'],                     motivo: 'Gasto cancelado' },
     { tabla: 'compras', filtro: q => q.eq('estado', 'anulada').gte('anulada_en', FECHA_INICIO_ANULA_ASIENTOS),     tipos: ['compra'],                    motivo: 'Compra anulada' },
     { tabla: 'cuentas_por_pagar', filtro: q => q.eq('estado', 'anulado'),                                            tipos: ['cxp_generada'],              motivo: 'Cuenta por pagar anulada (su compra se anuló)' },
+    { tabla: 'movimientos_financieros', filtro: q => q.eq('tipo_movimiento', 'CREDITO_OTORGADO').eq('estado', 'anulado'), tipos: ['prestamo_otorgado', 'interes_prestamo'], motivo: 'Préstamo anulado (su salida de Caja se anuló)' },
     { tabla: 'mf_moras', filtro: q => q.eq('estado', 'anulado'),                                                     tipos: ['mora_credito'],              motivo: 'Mora anulada (se anuló su cobro)' },
   ];
   let total = 0;
@@ -2268,6 +2271,56 @@ async function generarAsientosAutomaticosInterno() {
       if (mapeo.get('sobrante_caja')) {
         await procesarTipo('sobrante_caja', 'mf_entregas', 'diferencia', null, null, 'Sobrante en entrega de cobros — ',
           q => q.gt('diferencia', 0), null, 'created_at', null, { obtenerMonto: async f => Math.abs(Number(f.diferencia || 0)), concepto: f => f.cobrador_nombre || 'cobrador' });
+      }
+    }
+
+    // PRÉSTAMOS EN EFECTIVO (Créditos y Panel Microfinanciera). Antes no tenían asiento al entregarse,
+    // pero sus cobros sí (pago_credito): Cuentas por Cobrar quedaba en negativo y Caja contable no
+    // bajaba. Ahora, por cada salida de Caja "Préstamo otorgado" de un crédito financiero:
+    //   1) Debe Cuentas por Cobrar — Haber Caja, por lo entregado (mismas cuentas de "Pago de crédito
+    //      recibido", al revés: no hay nada nuevo que configurar).
+    //   2) Debe Cuentas por Cobrar — Haber Ingresos por intereses, por el interés pactado (regla propia).
+    // Ambos asientos apuntan a ESE movimiento de Caja: si se anula, sus asientos se anulan.
+    {
+      const mPc = mapeo.get('pago_credito');
+      let prestamos = [];
+      try {
+        const { data } = await F.lector.from('movimientos_financieros').select('id').eq('auth_user_id', F.uid)
+          .eq('tipo_movimiento', 'CREDITO_OTORGADO').eq('referencia_tipo', 'credito').eq('estado', 'completado').limit(1);
+        prestamos = data || [];
+      } catch (_) { prestamos = []; }
+      if (prestamos.length) {
+        const credCache = new Map();
+        const credDe = async f => {
+          if (!f.referencia_id) return null;
+          if (!credCache.has(f.referencia_id)) {
+            const { data: cr } = await F.lector.from('creditos').select('id,tipo,es_existente,total_intereses,numero_credito')
+              .eq('id', f.referencia_id).eq('auth_user_id', F.uid).maybeSingle();
+            credCache.set(f.referencia_id, cr || null);
+          }
+          const cr = credCache.get(f.referencia_id);
+          return cr && cr.tipo === 'financiero' && cr.es_existente !== true ? cr : null;
+        };
+        const filtroPrest = q => q.eq('tipo_movimiento', 'CREDITO_OTORGADO').eq('referencia_tipo', 'credito');
+        if (mPc && mPc.cuenta_debe_id && mPc.cuenta_haber_id) {
+          await procesarTipo('prestamo_otorgado', 'movimientos_financieros', 'monto', 'completado', 'estado', 'Préstamo entregado — ',
+            filtroPrest, null, 'fecha', null, {
+              mapeoDe: 'pago_credito',
+              cuentaDebe: () => mPc.cuenta_haber_id,   // Cuentas por Cobrar
+              cuentaHaber: () => mPc.cuenta_debe_id,   // Caja
+              obtenerMonto: async f => (await credDe(f)) ? Number(f.monto || 0) : 0,
+              concepto: f => credCache.get(f.referencia_id)?.numero_credito || 'crédito',
+            });
+        } else if (F === fuentesConta[0]) sinConfigurar++;
+        let hayInteres = !!mapeo.get('interes_prestamo');
+        if (!hayInteres) {
+          try { const { count } = await F.lector.from('creditos').select('id', { count: 'exact', head: true }).eq('auth_user_id', F.uid).eq('tipo', 'financiero').gt('total_intereses', 0); hayInteres = (count || 0) > 0; } catch (_) { hayInteres = false; }
+        }
+        if (hayInteres) await procesarTipo('interes_prestamo', 'movimientos_financieros', 'monto', 'completado', 'estado', 'Intereses del préstamo — ',
+          filtroPrest, null, 'fecha', null, {
+            obtenerMonto: async f => { const cr = await credDe(f); return cr ? Number(cr.total_intereses || 0) : 0; },
+            concepto: f => credCache.get(f.referencia_id)?.numero_credito || 'crédito',
+          });
       }
     }
 
