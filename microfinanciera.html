@@ -708,6 +708,8 @@
     @media (max-width:640px){.pd-inp{width:72px}.pd-kpi-v{font-size:19px}}
     .mf-barra-eq{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--accent-soft,#eef);border:1px solid var(--border,#ddd);border-radius:12px;padding:8px 12px;margin:0 0 10px;font-size:14px}
   .mf-entrar{max-width:440px;margin:0 auto}
+  .mf-cola{background:#fff7e6;border-color:#f5c26b;color:#7a4b00}
+  [data-theme=dark] .mf-cola{background:rgba(245,194,107,.12);color:#f5d08a}
 </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -893,6 +895,7 @@
         <p>Vende o presta al crédito, cobra en tu ruta con recibo y mira quién te debe. Todo queda en <b>Créditos, Caja, Ventas e Inventario</b>, como siempre.</p>
       </div>
       <div id="mf-barra-eq" class="mf-barra-eq" style="display:none"></div>
+      <div id="mf-cola" class="mf-barra-eq mf-cola" style="display:none" role="status" aria-live="polite"></div>
       <div class="pd-tabs" role="tablist">
         <button type="button" class="pd-tab activa" data-tab="ruta" onclick="mfTab('ruta')">🛵 Ruta de hoy</button>
         <button type="button" class="pd-tab" data-tab="vender" onclick="mfTab('vender')">🛒 Vender al crédito</button>
@@ -909,7 +912,7 @@
 <div class="tl-modal" id="pd-modal" role="dialog" aria-modal="true"><div class="tl-modal-box" id="pd-modal-box"></div></div>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="microfinanciera.js?v=20261104b"></script>
+<script src="microfinanciera.js?v=20261104c"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261104a"></script>

@@ -20,7 +20,7 @@ const MF = {
   userId: null, cfg: {}, tab: 'ruta', ocupado: false,
   clientes: [], creditos: [], cuotas: {}, metodos: [], bancos: [], productos: [], pagosHoy: [], pagosSemana: [], promesas: {},
   venta: null, cobro: null, filtroCli: '', filtroRuta: '',
-  ses: null, perfiles: [], equipo: [], selAsig: {},
+  ses: null, perfiles: [], equipo: [], selAsig: {}, cola: [], enviando: false,
 };
 
 /* ---------- utilidades ---------- */
@@ -92,13 +92,22 @@ function mensaje(d) {
 async function rpc(n, a) {
   try {
     const { data, error } = await sb.rpc(n, a);
-    if (error) { console.warn(n, error); return { ok: false, red: true, msg: 'No se pudo completar. Revisa tu conexión e intenta de nuevo (no se cobra dos veces).' }; }
+    if (error) {
+      console.warn(n, error);
+      if (esFallaRed(error)) return { ok: false, red: true, msg: 'Sin señal. Intenta de nuevo (no se cobra dos veces).' };
+      return { ok: false, msg: 'El servidor no aceptó la operación: ' + String(error.message || 'error').slice(0, 160) };
+    }
     if (!data || data.ok !== true) {
       if (data && data.motivo === 'sesion' && n !== 'mf_sesion_abrir') { sesBorrar(); setTimeout(() => { cerrarModal(true); pantallaEntrar(); }, 50); }
       return { ...(data || {}), ok: false, msg: mensaje(data) };
     }
     return data;
-  } catch (e) { return { ok: false, red: true, msg: 'Sin conexión. Intenta de nuevo (no se cobra dos veces).' }; }
+  } catch (e) { return { ok: false, red: true, msg: 'Sin señal. Intenta de nuevo (no se cobra dos veces).' }; }
+}
+function esFallaRed(err) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  const m = String((err && (err.message || err.details)) || '');
+  return !err.code && /fetch|network|load failed|timeout|abort|conex/i.test(m);
 }
 async function leerTodo(fn) {
   const out = [];
@@ -142,10 +151,11 @@ async function cargarDatos() {
 const cliPorId = id => MF.clientes.find(c => c.id === id);
 // Situación de un crédito hoy: cuánto está atrasado, cuánto le toca hoy, días de atraso y próxima cuota.
 function situacion(cr) {
-  const hoy = hoyISO(), qs = MF.cuotas[cr.id] || [];
-  let atrasado = 0, hoyMonto = 0, primeraVencida = null, prox = null;
+  const hoy = hoyISO(), qs = MF.cuotas[cr.id] || [], enCola = colaMonto(cr.id);
+  let atrasado = 0, hoyMonto = 0, primeraVencida = null, prox = null, resto = enCola;
   qs.forEach(q => {
-    const f = String(q.fecha_vencimiento).slice(0, 10), falta = r2(Number(q.monto_total) - Number(q.monto_pagado || 0));
+    const f = String(q.fecha_vencimiento).slice(0, 10); let falta = r2(Number(q.monto_total) - Number(q.monto_pagado || 0));
+    if (resto > 0.004 && falta > 0) { const a = Math.min(resto, falta); falta = r2(falta - a); resto = r2(resto - a); }
     if (falta <= 0.004) return;
     if (f < hoy) { atrasado = r2(atrasado + falta); if (!primeraVencida || f < primeraVencida) primeraVencida = f; }
     else if (f === hoy) hoyMonto = r2(hoyMonto + falta);
@@ -153,7 +163,7 @@ function situacion(cr) {
   });
   const dias = primeraVencida ? diasEntre(primeraVencida, hoy) : 0;
   const cuota = r2(cr.valor_cuota_aprox || (qs[0] ? qs[0].monto_total : 0));
-  return { atrasado, hoy: hoyMonto, dias, prox, cuota, pagarHoy: r2(atrasado + hoyMonto), saldo: r2(cr.saldo_pendiente) };
+  return { atrasado, hoy: hoyMonto, dias, prox, cuota, pagarHoy: r2(atrasado + hoyMonto), saldo: r2(Math.max(0, cr.saldo_pendiente - enCola)), enCola };
 }
 
 /* ---------- pestañas ---------- */
@@ -161,7 +171,7 @@ async function mfTab(t) {
   MF.tab = t;
   if (conEquipo() && !MF.ses) return pantallaEntrar();
   if (!tabPermitida(t)) t = MF.tab = 'ruta';
-  pintarBarraEquipo();
+  pintarBarraEquipo(); pintarBarraCola();
   document.querySelectorAll('.pd-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === t));
   try { history.replaceState(null, '', '#' + t); } catch (_) {}
   const v = document.getElementById('pd-vista');
@@ -178,14 +188,14 @@ async function recargar() { try { await cargarDatos(); } catch (e) { console.err
 function pintarRuta(v) {
   const hoy = hoyISO();
   const lista = MF.creditos.map(cr => ({ cr, s: situacion(cr), c: cliPorId(cr.cliente_id), g: MF.promesas[cr.id] }))
-    .filter(x => x.s.pagarHoy > 0.004 || (x.g && x.g.tipo === 'promesa' && x.g.fecha_promesa === hoy));
+    .filter(x => x.s.pagarHoy > 0.004 || x.s.enCola > 0 || (x.g && x.g.tipo === 'promesa' && x.g.fecha_promesa === hoy));
   const f = MF.filtroRuta.trim().toLowerCase();
   const vis = lista.filter(x => !f || nombreCli(x.c).toLowerCase().includes(f) || String(x.c?.direccion || '').toLowerCase().includes(f) || String(x.cr.numero_credito).toLowerCase().includes(f))
     .sort((a, b) => (b.s.dias - a.s.dias) || nombreCli(a.c).localeCompare(nombreCli(b.c)));
-  const esperado = r2(lista.reduce((s, x) => s + x.s.pagarHoy, 0)), cobrado = r2(MF.pagosHoy.reduce((s, p) => s + Number(p.monto || 0), 0));
-  const cobradosIds = new Set(MF.pagosHoy.map(p => p.credito_id));
+  const esperado = r2(lista.reduce((s, x) => s + x.s.pagarHoy, 0)), cobrado = r2(MF.pagosHoy.reduce((s, p) => s + Number(p.monto || 0), 0) + colaPendientes().reduce((s, c) => s + c.monto, 0));
+  const cobradosIds = new Set(MF.pagosHoy.map(p => p.credito_id).concat(colaPendientes().map(c => c.credito_id)));
   v.innerHTML = `<div class="pd-kpis">
-      <div class="pd-kpi"><div class="pd-kpi-l">💵 Cobrado hoy</div><div class="pd-kpi-v pd-verde">${fmt(cobrado)}</div><div class="pd-kpi-s">${MF.pagosHoy.length} recibo(s)</div></div>
+      <div class="pd-kpi"><div class="pd-kpi-l">💵 Cobrado hoy</div><div class="pd-kpi-v pd-verde">${fmt(cobrado)}</div><div class="pd-kpi-s">${MF.pagosHoy.length} recibo(s)${colaPendientes().length ? ' + ' + colaPendientes().length + ' sin enviar' : ''}</div></div>
       <div class="pd-kpi"><div class="pd-kpi-l">🛵 Por cobrar hoy</div><div class="pd-kpi-v">${fmt(esperado)}</div><div class="pd-kpi-s">${lista.length} cliente(s) en la ruta</div></div>
       <div class="pd-kpi"><div class="pd-kpi-l">⏰ Atrasados</div><div class="pd-kpi-v pd-rojo">${lista.filter(x => x.s.dias > 0).length}</div><div class="pd-kpi-s">con cuotas vencidas</div></div></div>
     <div class="vd-filtros"><input type="search" class="tl-inp" style="flex:1;min-width:0" placeholder="🔎 Buscar cliente, barrio o crédito" value="${esc(MF.filtroRuta)}" oninput="MF.filtroRuta=this.value;pintarRuta(document.getElementById('pd-vista'))" aria-label="Buscar en la ruta">
@@ -196,13 +206,13 @@ function pintarRuta(v) {
 }
 function tarjetaRuta(x, cobradoHoy) {
   const { cr, s, c, g } = x, tel = c?.whatsapp || c?.telefono || '';
-  const est = s.dias > 0 ? `<span class="pd-pill mal">⏰ ${s.dias} día${s.dias === 1 ? '' : 's'} de atraso</span>` : s.hoy > 0 ? '<span class="pd-pill ambar">📅 Le toca hoy</span>' : '<span class="pd-pill">🤝 Prometió hoy</span>';
+  const est = s.enCola > 0 && s.pagarHoy <= 0.004 ? '<span class="pd-pill ambar">⏳ Cobrado sin señal</span>' : s.dias > 0 ? `<span class="pd-pill mal">⏰ ${s.dias} día${s.dias === 1 ? '' : 's'} de atraso</span>` : s.hoy > 0 ? '<span class="pd-pill ambar">📅 Le toca hoy</span>' : '<span class="pd-pill">🤝 Prometió hoy</span>';
   return `<div class="mf-card${cobradoHoy ? ' cobrado' : ''}">
     <div class="mf-card-cab"><div style="min-width:0"><b class="mf-nom">${esc(nombreCli(c))}</b>
       <div class="tl-muted">${esc(cr.numero_credito)}${c?.direccion ? ' · 📍 ' + esc(c.direccion) : ''}</div></div>${est}</div>
     <div class="mf-montos"><div><span>Cobrar hoy</span><b>${fmt(s.pagarHoy)}</b></div><div><span>Cuota</span><b>${fmt(s.cuota)}</b></div><div><span>Debe en total</span><b>${fmt(s.saldo)}</b></div></div>
     ${g ? `<div class="tl-muted">📝 ${g.tipo === 'promesa' ? 'Prometió pagar el ' + fCorta(g.fecha_promesa) : g.tipo === 'no_estaba' ? 'No estaba (' + fCorta(String(g.created_at).slice(0, 10)) + ')' : esc(g.nota || '')}${g.tipo !== 'nota' && g.nota ? ' · ' + esc(g.nota) : ''}</div>` : ''}
-    ${cobradoHoy ? '<div class="tl-aviso ok">✅ Ya pagó hoy</div>' : ''}
+    ${s.enCola > 0 ? `<div class="tl-aviso">⏳ Cobro de ${fmt(s.enCola)} guardado sin señal: se envía solo al volver la señal.</div>` : cobradoHoy ? '<div class="tl-aviso ok">✅ Ya pagó hoy</div>' : ''}
     <div class="mf-acc">
       <button class="btn-primary mf-grande" onclick="abrirCobro('${cr.id}')">💵 Cobrar</button>
       <button class="btn-secondary" onclick="abrirGestion('${cr.id}','no_estaba')">🚪 No estaba</button>
@@ -258,6 +268,13 @@ async function confirmarCobro() {
   const r = await rpc('mf_cobrar', { p: { credito_id: k.cr.id, monto: m, metodo_pago_id: met ? met.id : null, metodo_pago_nombre: met ? met.nombre : 'Efectivo',
     banco_id: banco || null, nota: document.getElementById('mf-nota').value.trim(), ref: k.ref, creado_por: perfilNombre(), token: tk() } });
   MF.ocupado = false;
+  if (!r.ok && r.red) {
+    const item = { ref: k.ref, credito_id: k.cr.id, monto: m, metodo_pago_id: met ? met.id : null, metodo_pago_nombre: met ? met.nombre : 'Efectivo', banco_id: banco || null,
+      nota: document.getElementById('mf-nota').value.trim(), creado_por: perfilNombre(), perfil_id: conEquipo() ? (MF.ses?.perfil_id || null) : null,
+      cobrador: conEquipo() ? (MF.ses?.nombre || '') : '', cliente: nombreCli(cliPorId(k.cr.cliente_id)), numero_credito: k.cr.numero_credito, hora: new Date().toISOString(), estado: 'pendiente' };
+    if (colaAgregar(item)) { mostrarGuardadoSinSenal(item, k.cr); return; }
+    err.textContent = 'No hay señal y este teléfono no deja guardar el cobro. NO se cobró: anótalo en papel y regístralo al volver la señal.'; err.style.display = ''; ok.disabled = false; ok.textContent = `✅ Cobrar ${fmt(m)}`; return;
+  }
   if (!r.ok) { err.textContent = r.msg; err.style.display = ''; ok.disabled = false; ok.textContent = `✅ Cobrar ${fmt(m)}`; return; }
   mostrarRecibo(r, k.cr, met ? met.nombre : 'Efectivo');
   await cargarDatos().catch(() => {});
@@ -647,6 +664,7 @@ async function entrarPanel() {
   document.getElementById('pd-vista').innerHTML = '<p class="tln-sub">Cargando…</p>';
   await cargarEquipo(); await recargar();
   showToast(`Hola, ${r.nombre}.`);
+  if (colaPendientes().length) enviarCola();
 }
 async function salirPanel() {
   const t = tk(); sesBorrar(); MF.venta = null;
@@ -677,7 +695,8 @@ async function pintarCajaDia(v) {
           <div id="entp-${x.cobrador_id}"></div>
           <div class="pd-acciones"><button class="btn-primary mf-grande" id="entb-${x.cobrador_id}" onclick="recibirEntrega('${x.cobrador_id}')">✅ Recibir entrega</button></div>`}</div>`;
   }).join('');
-  v.innerHTML = `${tarjetas || `<div class="pd-vacio"><div class="ico">✅</div><b>${esCobrador() ? 'No tienes cobros pendientes de entregar.' : 'Nadie tiene cobros pendientes de entregar.'}</b><p class="tl-muted">Aquí sale lo que cada cobrador ha cobrado y todavía no ha entregado.</p></div>`}
+  const sinEnviar = colaPendientes();
+  v.innerHTML = `${sinEnviar.length ? `<div class="tl-aviso" style="margin-bottom:10px">⏳ Hay ${sinEnviar.length} cobro(s) guardados sin señal (${fmt(sinEnviar.reduce((a, c) => a + c.monto, 0))}) que todavía NO están aquí. Se suman cuando se envíen.</div>` : ''}${tarjetas || `<div class="pd-vacio"><div class="ico">✅</div><b>${esCobrador() ? 'No tienes cobros pendientes de entregar.' : 'Nadie tiene cobros pendientes de entregar.'}</b><p class="tl-muted">Aquí sale lo que cada cobrador ha cobrado y todavía no ha entregado.</p></div>`}
     <div class="pd-card"><h3>📜 Últimas entregas</h3>${hist.length ? `<div class="pd-tw"><table class="tl-tabla"><thead><tr><th>Fecha</th><th>Cobrador</th><th class="tl-num">Debía</th><th class="tl-num">Entregó</th><th class="tl-num">Diferencia</th><th>Recibió</th></tr></thead><tbody>
       ${hist.map(h => `<tr><td data-t="Fecha">${new Date(h.created_at).toLocaleString('es-NI', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</td><td data-t="Cobrador">${esc(h.cobrador_nombre || '')}</td>
         <td class="tl-num" data-t="Debía">${fmt(h.esperado)}</td><td class="tl-num" data-t="Entregó">${fmt(h.entregado)}</td>
@@ -812,6 +831,95 @@ async function confirmarEncender(activar) {
   } else { sesBorrar(); showToast('Trabajo en equipo apagado.'); await recargar(); mfTab('equipo'); }
 }
 
+/* ---------- 📡 COBRAR SIN SEÑAL ----------
+   Si no hay señal al cobrar, el cobro se guarda en ESTE teléfono (con su referencia única) y se
+   envía solo cuando vuelve la señal. El servidor reconoce la referencia: aunque se envíe dos
+   veces, se registra UNA sola vez. Nada se borra sin confirmación: si el servidor rechaza un
+   cobro guardado (ej. ya lo pagó en otro lado), queda marcado para que el dueño lo revise. */
+function colaKey() { return 'n360_mf_cola_' + MF.userId; }
+function colaLeer() { try { const c = JSON.parse(localStorage.getItem(colaKey()) || '[]'); MF.cola = Array.isArray(c) ? c : []; } catch (_) { MF.cola = []; } }
+function colaGuardar() { try { localStorage.setItem(colaKey(), JSON.stringify(MF.cola)); return true; } catch (_) { return false; } }
+function colaPendientes() { return (MF.cola || []).filter(c => c.estado === 'pendiente'); }
+function colaMonto(creditoId) { return r2(colaPendientes().filter(c => c.credito_id === creditoId).reduce((a, c) => a + Number(c.monto || 0), 0)); }
+function colaAgregar(item) {
+  if (MF.cola.length >= 300) return false;
+  MF.cola.push(item);
+  if (!colaGuardar()) { MF.cola.pop(); return false; }
+  // Comprobación: se vuelve a leer lo guardado para estar seguros de que quedó en el teléfono
+  try { const c = JSON.parse(localStorage.getItem(colaKey()) || '[]'); if (!c.some(x => x.ref === item.ref)) { MF.cola.pop(); return false; } } catch (_) { MF.cola.pop(); return false; }
+  return true;
+}
+function mostrarGuardadoSinSenal(item, cr) {
+  const s = situacion(cr), neg = MF.cfg.nombre_comercial || 'Mi negocio';
+  const txt = `🧾 Comprobante provisional — ${neg}\nCliente: ${item.cliente}\nCrédito: ${item.numero_credito}\nFecha: ${new Date(item.hora).toLocaleString('es-NI')}\nPagó: ${fmt(item.monto)} (${item.metodo_pago_nombre})\nAhora debe: ${fmt(s.saldo)}${item.cobrador ? '\nCobró: ' + item.cobrador : ''}\nCódigo: ${item.ref.slice(0, 8).toUpperCase()}\n(El recibo oficial llega al volver la señal.)`;
+  MF.ultimoRecibo = { txt, r: { recibo: 'Provisional ' + item.ref.slice(0, 8).toUpperCase() } };
+  modal(`<div class="tl-modal-cab"><h2>📡 Guardado sin señal</h2><button class="tl-x" onclick="cerrarModal(true);mfTab(MF.tab)" aria-label="Cerrar">✕</button></div>
+    <div class="tl-modal-cuerpo"><div class="mf-recibo">
+      <div class="mf-recibo-num">Código ${esc(item.ref.slice(0, 8).toUpperCase())} <span class="pd-pill ambar">pendiente de enviar</span></div>
+      <div class="mf-recibo-monto">${fmt(item.monto)}</div><div>${esc(item.cliente)} · ${esc(item.metodo_pago_nombre)}</div>
+      <div class="mf-montos" style="margin-top:10px"><div><span>Ahora debe</span><b>${fmt(s.saldo)}</b></div></div></div>
+      <div class="tl-aviso ok" style="margin-top:10px">El cobro quedó guardado en este teléfono. Se envía solo cuando vuelva la señal y ahí sale el recibo oficial.
+        <b>No cierres sesión ni borres los datos del navegador</b> hasta que se envíe.</div></div>
+    <div class="tl-modal-pie"><button class="btn-secondary" onclick="imprimirRecibo()">🖨️ Comprobante provisional</button><button class="btn-primary" onclick="cerrarModal(true);mfTab(MF.tab)">Listo</button></div>`);
+  pintarBarraCola();
+}
+function pintarBarraCola() {
+  const el = document.getElementById('mf-cola'); if (!el) return;
+  const pend = colaPendientes(), rech = (MF.cola || []).filter(c => c.estado === 'rechazado'), sinRed = navigator.onLine === false;
+  if (!pend.length && !rech.length && !sinRed) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const ajenos = conEquipo() ? pend.filter(c => c.perfil_id && c.perfil_id !== MF.ses?.perfil_id) : [];
+  el.style.display = '';
+  el.innerHTML = `<div>${sinRed ? '📡 <b>Sin señal.</b> Puedes seguir cobrando: los cobros se guardan en este teléfono. ' : ''}
+      ${pend.length ? `⏳ <b>${pend.length} cobro(s) sin enviar</b> (${fmt(pend.reduce((a, c) => a + c.monto, 0))}).${sinRed ? '' : ' Se están enviando…'}` : ''}
+      ${ajenos.length ? `<div class="tl-muted">${ajenos.length} son de ${esc([...new Set(ajenos.map(a => a.cobrador || 'otra persona'))].join(', '))}: se envían cuando esa persona entre con su PIN.</div>` : ''}
+      ${rech.length ? `<div style="color:var(--danger,#dc2626)">⚠️ <b>${rech.length} cobro(s) guardado(s) no se pudieron registrar.</b> Revísalos.</div>` : ''}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${pend.length && !sinRed ? `<button class="btn-secondary" style="padding:5px 10px;font-size:12.5px" onclick="enviarCola(true)" ${MF.enviando ? 'disabled' : ''}>📤 Enviar ahora</button>` : ''}
+      ${pend.length || rech.length ? `<button class="btn-secondary" style="padding:5px 10px;font-size:12.5px" onclick="verCola()">Ver</button>` : ''}</div>`;
+}
+async function enviarCola(manual) {
+  if (MF.enviando) return;
+  const pend = colaPendientes(); if (!pend.length) { pintarBarraCola(); return; }
+  if (navigator.onLine === false) { if (manual) showToast('Todavía no hay señal.', 'error'); pintarBarraCola(); return; }
+  MF.enviando = true; pintarBarraCola();
+  let enviados = 0, rechazados = 0, saltados = 0, sinRed = false;
+  try {
+    for (const it of pend) {
+      // Con equipo: cada cobro se envía con la llave de QUIEN lo cobró (si es otra persona, espera a que ella entre)
+      if (conEquipo() && (!MF.ses || (it.perfil_id && it.perfil_id !== MF.ses.perfil_id))) { saltados++; continue; }
+      const r = await rpc('mf_cobrar', { p: { credito_id: it.credito_id, monto: it.monto, metodo_pago_id: it.metodo_pago_id, metodo_pago_nombre: it.metodo_pago_nombre,
+        banco_id: it.banco_id, nota: [it.nota, 'cobrado sin señal ' + new Date(it.hora).toLocaleString('es-NI')].filter(Boolean).join(' · ').slice(0, 300), ref: it.ref, creado_por: it.creado_por, token: tk() } });
+      const x = MF.cola.find(c => c.ref === it.ref); if (!x) continue;
+      if (r.ok) { MF.cola = MF.cola.filter(c => c.ref !== it.ref); enviados++; }
+      else if (r.red) { sinRed = true; break; }
+      else if (r.motivo === 'sesion') { break; }
+      else { x.estado = 'rechazado'; x.msg = r.msg; x.revisado = new Date().toISOString(); rechazados++; }
+      colaGuardar();
+    }
+  } finally { MF.enviando = false; }
+  colaGuardar();
+  if (enviados) { showToast(`📤 Se enviaron ${enviados} cobro(s) guardados sin señal.`); await cargarDatos().catch(() => {}); if (!document.getElementById('pd-modal').classList.contains('abierto')) mfTab(MF.tab); }
+  if (rechazados) showToast(`⚠️ ${rechazados} cobro(s) guardado(s) no se pudieron registrar. Toca "Ver".`, 'error');
+  if (manual && !enviados && !rechazados) showToast(sinRed ? 'Todavía no hay señal.' : saltados ? 'Los cobros pendientes son de otra persona: se envían cuando ella entre con su PIN.' : 'Nada que enviar.', sinRed || saltados ? 'error' : 'success');
+  pintarBarraCola();
+}
+function verCola() {
+  const l = MF.cola || [];
+  modal(`<div class="tl-modal-cab"><h2>📡 Cobros guardados en este teléfono</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
+    <div class="tl-modal-cuerpo">${l.length ? `<div class="pd-tw"><table class="tl-tabla"><tbody>${l.map(c => `<tr>
+      <td data-t="Cliente"><b>${esc(c.cliente)}</b><div class="tl-muted">${esc(c.numero_credito)} · ${new Date(c.hora).toLocaleString('es-NI', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}${c.cobrador ? ' · ' + esc(c.cobrador) : ''} · código ${esc(c.ref.slice(0, 8).toUpperCase())}</div>
+        ${c.estado === 'rechazado' ? `<div style="color:var(--danger,#dc2626);font-size:12.5px">No se registró: ${esc(c.msg || '')}<br>El dinero lo tiene quien cobró: regístralo en Créditos o devuélveselo al cliente, y luego quítalo de aquí.</div>` : ''}</td>
+      <td class="tl-num" data-t="Monto">${fmt(c.monto)}</td><td data-t="Estado">${c.estado === 'pendiente' ? '<span class="pd-pill ambar">Sin enviar</span>' : '<span class="pd-pill mal">No se registró</span>'}</td>
+      <td class="tl-ac">${c.estado === 'rechazado' && puedeAdministrar() ? `<button class="btn-secondary" style="padding:5px 9px;font-size:12px" onclick="quitarDeCola('${c.ref}')">Ya lo resolví</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="tl-muted">No hay cobros guardados.</p>'}
+      <p class="tl-muted" style="margin-top:8px">Los cobros “sin enviar” no se pueden borrar: se envían solos. El servidor no deja que un cobro se registre dos veces.</p></div>
+    <div class="tl-modal-pie"><button class="btn-primary" onclick="cerrarModal()">Cerrar</button></div>`);
+}
+function quitarDeCola(refId) {
+  const c = (MF.cola || []).find(x => x.ref === refId); if (!c || c.estado !== 'rechazado' || !puedeAdministrar()) return;
+  if (!confirm(`¿Ya resolviste el cobro de ${fmt(c.monto)} de ${c.cliente}? Se quita de este teléfono (no cambia nada en Caja ni en Créditos).`)) return;
+  MF.cola = MF.cola.filter(x => x.ref !== refId); colaGuardar(); verCola(); pintarBarraCola();
+}
+
 /* ---------- ventana ---------- */
 function modal(html) { document.getElementById('pd-modal-box').innerHTML = html; document.getElementById('pd-modal').classList.add('abierto'); }
 function cerrarModal(forzar) { if (MF.ocupado && !forzar) return; document.getElementById('pd-modal').classList.remove('abierto'); MF.cobro = null; }
@@ -844,12 +952,16 @@ async function mfInit() {
         <button class="btn-primary" onclick="navigate('configuracion.html')">Ir a Configuración</button></div>`;
       return;
     }
-    sesLeer();
+    sesLeer(); colaLeer();
+    window.addEventListener('online', () => { pintarBarraCola(); enviarCola(); });
+    window.addEventListener('offline', pintarBarraCola);
+    setInterval(() => { if (colaPendientes().length) enviarCola(); }, 30000);
     await cargarEquipo();
     if (conEquipo() && !MF.ses) { pantallaEntrar(); return; }
     await cargarDatos();
     const ini = (location.hash || '').replace('#', '');
     await mfTab(['ruta', 'vender', 'clientes', 'resumen', 'caja', 'equipo'].includes(ini) ? ini : 'ruta');
+    if (colaPendientes().length) enviarCola();
   } catch (e) {
     console.error('mfInit:', e);
     document.getElementById('loader').classList.add('hidden'); document.getElementById('app').style.display = 'flex';
