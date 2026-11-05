@@ -1221,11 +1221,31 @@ function tabPermitida(t) {
   return true;
 }
 function sesKey() { return 'n360_mf_ses_' + MF.userId; }
+// Usuario elegido en el sistema multiusuario (arriba a la derecha). La sesión del Panel queda atada a él:
+// si alguien cambia de usuario en el sistema, la sesión del Panel anterior se cierra sola.
+function perfilSis() { try { const p = JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null'); return p && p.id ? p : null; } catch (_) { return null; } }
 function sesLeer() {
   MF.ses = null;
-  try { const s = JSON.parse(sessionStorage.getItem(sesKey()) || 'null'); if (s && s.token && new Date(s.expira) > new Date()) MF.ses = s; } catch (_) {}
+  try {
+    const s = JSON.parse(sessionStorage.getItem(sesKey()) || 'null');
+    if (s && s.token && new Date(s.expira) > new Date()) {
+      if ((s.perfilSis || null) === (perfilSis()?.id || null)) MF.ses = s;
+      else { sessionStorage.removeItem(sesKey()); sb.rpc('mf_sesion_cerrar', { p_token: s.token }).then(() => {}, () => {}); }
+    }
+  } catch (_) {}
 }
-function sesGuardar(s) { MF.ses = s; try { sessionStorage.setItem(sesKey(), JSON.stringify(s)); } catch (_) {} }
+function sesGuardar(s) { s.perfilSis = perfilSis()?.id || null; MF.ses = s; try { sessionStorage.setItem(sesKey(), JSON.stringify(s)); } catch (_) {} }
+// Vigila el cambio de usuario del sistema mientras el Panel está abierto
+let mfPerfilVisto;
+async function vigilarPerfil() {
+  const id = perfilSis()?.id || null;
+  if (mfPerfilVisto === undefined) { mfPerfilVisto = id; return; }
+  if (id === mfPerfilVisto) return;
+  mfPerfilVisto = id; cerrarModal(true); MF.venta = null;
+  sesLeer();
+  if (conEquipo() && !MF.ses) { pantallaEntrar(); return; }
+  await cargarEquipo(); await recargar();
+}
 function sesBorrar() { MF.ses = null; try { sessionStorage.removeItem(sesKey()); } catch (_) {} }
 async function cargarEquipo() {
   try {
@@ -1246,6 +1266,12 @@ function pintarBarraEquipo() {
   const tabs = document.querySelector('.pd-tabs[role=tablist]'); if (tabs) tabs.style.display = '';
   document.querySelectorAll('.pd-tab[data-tab]').forEach(b => { b.style.display = tabPermitida(b.dataset.tab) ? '' : 'none'; });
   const bar = document.getElementById('mf-barra-eq'); if (!bar) return;
+  const ps = perfilSis();
+  if (!conEquipo() && ps && ps.tipo !== 'admin') {
+    bar.style.display = '';
+    bar.innerHTML = `<span>⚠️ Estás como <b>${esc(ps.nombre || '')}</b>, pero el trabajo en equipo está apagado: el Panel no separa usuarios y todos pueden hacer todo. El dueño lo enciende en “Equipo y mora”.</span>`;
+    return;
+  }
   if (!conEquipo() || !MF.ses) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
   bar.style.display = '';
   bar.innerHTML = `<span>👤 <b>${esc(MF.ses.nombre)}</b> · ${ROL_TXT[MF.ses.rol] || ''}${esCobrador() ? ' · ves solo tu cartera' : ''}</span>
@@ -1257,7 +1283,14 @@ function pantallaEntrar() {
   const v = document.getElementById('pd-vista');
   const enEq = new Set(MF.equipo.filter(e => e.activo).map(e => e.perfil_id));
   const lista = MF.perfiles.filter(p => p.tipo === 'admin' || enEq.has(p.id));
-  let actual = null; try { actual = JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null')?.id || null; } catch (_) {}
+  const ps = perfilSis(), actual = ps?.id || null;
+  if (ps && !lista.find(p => p.id === actual)) {
+    v.innerHTML = `<div class="pd-card mf-entrar"><h3>🔐 Panel Microfinanciera</h3>
+      <div class="tl-aviso">Estás como <b>${esc(ps.nombre || 'otro usuario')}</b> y ese usuario no está en el equipo del Panel. Pídele al dueño que lo agregue en “Equipo y mora”, o cambia de usuario arriba.</div></div>`;
+    return;
+  }
+  // Con un usuario elegido en el sistema, solo esa persona puede entrar aquí (no se elige a otro).
+  if (ps) { const p = lista.find(x => x.id === actual); lista.length = 0; lista.push(p); }
   const sel = lista.find(p => p.id === actual) ? actual : '';
   v.innerHTML = `<div class="pd-card mf-entrar"><h3>🔐 ¿Quién eres?</h3>
       <p class="tl-muted">El trabajo en equipo está encendido: cada persona entra con <b>su PIN</b>. Así cada cobro queda a su nombre.</p>
@@ -1596,7 +1629,9 @@ async function mfInit() {
         <button class="btn-primary" onclick="navigate('configuracion.html')">Ir a Configuración</button></div>`;
       return;
     }
-    sesLeer(); colaLeer(); leerPrefRuta();
+    sesLeer(); colaLeer(); leerPrefRuta(); vigilarPerfil();
+    setInterval(vigilarPerfil, 2000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) vigilarPerfil(); });
     window.addEventListener('online', () => { pintarBarraCola(); enviarCola(); });
     window.addEventListener('offline', pintarBarraCola);
     setInterval(() => { if (colaPendientes().length) enviarCola(); }, 30000);
