@@ -227,33 +227,15 @@ async function crearNegocioVinculado() {
     const nuevoUserId = signUpData?.user?.id;
     if (!nuevoUserId) throw new Error('No se pudo crear el negocio nuevo.');
 
-    // Si este es el PRIMER negocio adicional que se crea, se
-    // materializa tambien la fila del negocio principal (antes solo
-    // existia de forma virtual) -- para que ambos queden listados
-    // igual de ahora en adelante.
-    const yaMaterializado = STATE.negocios.some(n => n.id !== null && n.es_principal);
-    if (!yaMaterializado) {
-      await sb.from('negocios_vinculados').insert({
-        auth_user_id_principal: STATE.userId, auth_user_id_negocio: STATE.userId,
-        nombre_negocio: STATE.negocios.find(n => n.es_principal)?.nombre_negocio || 'Mi negocio',
-        es_principal: true, email_interno: null, password_interno: null,
-      });
-    }
-
-    const { error: errInsert } = await sb.from('negocios_vinculados').insert({
-      auth_user_id_principal: STATE.userId, auth_user_id_negocio: nuevoUserId,
-      nombre_negocio: nombre, es_principal: false,
-      email_interno: emailInterno, password_interno: passwordInterna,
+    // El servidor vincula el negocio nuevo (con candados: solo la cuenta principal,
+    // solo la cuenta que ella autorizó y respetando el límite de negocios).
+    // También deja listo el nombre y el inicio del negocio nuevo.
+    const { data: vin, error: errVin } = await sb.rpc('crear_negocio_vinculado', {
+      p_nuevo: nuevoUserId, p_nombre: nombre, p_password: passwordInterna,
+      p_nombre_principal: STATE.negocios.find(n => n.es_principal)?.nombre_negocio || null,
     });
-    if (errInsert) throw errInsert;
-
-    // El negocio nuevo nace con su propio nombre configurado, y ya
-    // con el onboarding marcado como completo -- se creo desde aqui
-    // con un nombre real, no debe pasar por el asistente inicial.
-    await sb.from('configuracion_empresa').upsert({
-      auth_user_id: nuevoUserId, nombre_comercial: nombre, onboarding_completado: true, onboarding_step: 5,
-    }, { onConflict: 'auth_user_id' });
-    await sb.from('usuarios').update({ onboarding_completado: true }).eq('auth_user_id', nuevoUserId);
+    if (errVin) throw errVin;
+    if (!vin?.ok) { errEl.textContent = vin?.mensaje || 'No se pudo crear el negocio.'; return; }
 
     showToast(`Negocio "${nombre}" creado`);
     closeModal('modal-nuevo-negocio');
