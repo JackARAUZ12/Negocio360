@@ -1,0 +1,13 @@
+*.mp4
+*.wav
+*.f32
+*.raw
+vo.mp3
+list.txt
+shots/
+vendor/
+rects.json
+site/shots/
+site/fonts/
+site/*.png
+venv/
