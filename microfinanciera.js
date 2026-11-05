@@ -98,6 +98,14 @@ async function rpc(n, a) {
     if (error) {
       console.warn(n, error);
       if (esFallaRed(error)) return { ok: false, red: true, msg: 'Sin señal. Intenta de nuevo (no se cobra dos veces).' };
+      const rv = String(error.message || '').match(/MF_REVISION:(\w+):([\d.]*):([\d.]*):(\d*)/);
+      if (rv) {
+        const d = { motivo: 'revision', tipo: rv[1], deuda: Number(rv[2]), limite: rv[3] === '' ? null : Number(rv[3]), dias: Number(rv[4] || 0) };
+        d.msg = d.tipo === 'limite' ? `No se guardó: pasa el límite de crédito del cliente. Quedaría debiendo ${fmt(d.deuda)} y su límite es ${fmt(d.limite)}.`
+          : `No se guardó: el cliente tiene ${d.dias} días de atraso. Primero debe ponerse al día.`;
+        if (puedeAdministrar()) d.msg += ' Si quieres, autoriza una excepción (queda anotado).'; else d.msg += ' Pide autorización al dueño o supervisor.';
+        return { ok: false, ...d };
+      }
       return { ok: false, msg: 'El servidor no aceptó la operación: ' + String(error.message || 'error').slice(0, 160) };
     }
     if (!data || data.ok !== true) {
@@ -421,6 +429,7 @@ function pintarVender(v) {
       ${c ? `<div class="mf-elegido"><div><b>${esc(nombreCli(c))}</b><div class="tl-muted">${esc(c.telefono || c.whatsapp || 'Sin teléfono')}${c.direccion ? ' · 📍 ' + esc(c.direccion) : ''}</div></div><button class="btn-secondary" onclick="MF.venta.clienteId='';pintarVender(document.getElementById('pd-vista'))">Cambiar</button></div>`
         : `<div class="vd-filtros"><input type="search" class="tl-inp" style="flex:1;min-width:0" id="mf-bcli" placeholder="🔎 Buscar cliente por nombre o teléfono" value="${esc(V.buscaCli)}" oninput="MF.venta.buscaCli=this.value;pintarCliOpc()" aria-label="Buscar cliente">
           <button class="btn-secondary" onclick="abrirNuevoCliente()">＋ Nuevo cliente</button></div><div id="mf-cli-opc"></div>`}</div>
+    ${c ? '<div id="mf-rev"></div>' : ''}
     <div class="pd-card"><h3>2. ¿Qué se lleva?</h3>
       <div class="pd-tabs" style="margin-bottom:10px"><button class="pd-tab ${V.tipo === 'productos' ? 'activa' : ''}" onclick="MF.venta.tipo='productos';pintarVender(document.getElementById('pd-vista'))">🛍️ Productos</button>
         <button class="pd-tab ${V.tipo === 'efectivo' ? 'activa' : ''}" onclick="MF.venta.tipo='efectivo';pintarVender(document.getElementById('pd-vista'))">💵 Préstamo en efectivo</button></div>
@@ -441,7 +450,7 @@ function pintarVender(v) {
           <option value="">Sin cobrador (lo cobra el dueño)</option>${MF.equipo.filter(e => e.activo).map(e => `<option value="${e.perfil_id}" ${V.cobrador === e.perfil_id ? 'selected' : ''}>${esc(e.nombre)} · ${e.rol === 'supervisor' ? 'Supervisor' : 'Cobrador'}</option>`).join('')}</select></div>` : ''}
         <div class="tl-f full"><label for="mf-vnota">Nota (opcional)</label><input class="tl-inp" id="mf-vnota" maxlength="300" value="${esc(V.nota)}" oninput="MF.venta.nota=this.value"></div></div></div>
     <div class="pd-card mf-resumen-card" id="mf-resumen"></div>`;
-  if (!c) pintarCliOpc();
+  if (!c) pintarCliOpc(); else cargarRevision(c.id);
   if (V.tipo === 'productos') { pintarProdOpc(); pintarItems(); }
   pintarResumenVenta();
 }
@@ -481,6 +490,9 @@ function pintarResumenVenta() {
   const V = MF.venta, k = calcVenta(), c = cliPorId(V.clienteId);
   const faltas = [];
   if (!c) faltas.push('elige el cliente');
+  const prob = problemaRevision(k);
+  const firmaProb = JSON.stringify(prob); if (firmaProb !== MF._revProb) { MF._revProb = firmaProb; pintarRevision(); }
+  if (prob && !(V.autoriza && (V.autMotivo || '').trim().length >= 3)) faltas.push(puedeAdministrar() ? 'autoriza la excepción (abajo del cliente) o cambia el monto' : 'el cliente no cumple la revisión: pide autorización al dueño');
   if (V.tipo === 'productos' && !V.items.length) faltas.push('agrega productos');
   if (V.tipo === 'productos' && V.items.some(i => !(i.cantidad > 0) || i.precio < 0)) faltas.push('revisa cantidades y precios');
   if (V.tipo === 'productos' && V.items.some(i => i.stock != null && i.cantidad > i.stock)) faltas.push('hay productos sin suficientes existencias');
@@ -511,6 +523,10 @@ async function confirmarVenta() {
     ? `¿Vender al crédito a ${nombreCli(c)} por ${fmt(k.total)}${k.prima > 0 ? ' (prima ' + fmt(k.prima) + ')' : ''}, en ${k.n} cuotas de ${fmt(k.cuota)}?`
     : `¿Prestar ${fmt(k.cap)} a ${nombreCli(c)}? Sale de Caja. Devuelve ${fmt(k.total)} en ${k.n} cuotas de ${fmt(k.cuota)}.`;
   if (!confirm(pregunta)) return;
+  if (problemaRevision(k) && V.autoriza) {
+    const a = await rpc('mf_autorizar', { p: { token: tk(), cliente_id: V.clienteId, motivo: (V.autMotivo || '').trim(), por: perfilNombre() } });
+    if (!a.ok) { const e = document.getElementById('mf-verr'); e.textContent = a.msg; e.style.display = ''; return; }
+  }
   MF.ocupado = true; const b = document.getElementById('mf-vok'); b.disabled = true; b.textContent = 'Guardando…';
   const p = { tipo: V.tipo, cliente_id: V.clienteId, frecuencia: V.frec, num_cuotas: k.n, primera_fecha: V.primera, sin_domingos: V.frec === 'diaria' ? !!V.sinDom : false,
     nota: V.nota, ref: V.ref, creado_por: perfilNombre(), token: tk() };
@@ -520,11 +536,14 @@ async function confirmarVenta() {
   else Object.assign(p, { monto: k.cap, interes_pct: Number(V.interes) || 0 });
   const r = await rpc('mf_credito_crear', { p });
   MF.ocupado = false;
-  if (!r.ok) { const e = document.getElementById('mf-verr'); e.textContent = r.msg; e.style.display = ''; b.disabled = false; b.textContent = '✅ Intentar de nuevo'; return; }
+  if (!r.ok) { const e = document.getElementById('mf-verr'); e.textContent = r.msg; e.style.display = ''; b.disabled = false; b.textContent = '✅ Intentar de nuevo'; if (r.motivo === 'revision') { MF.rev = null; await cargarRevision(V.clienteId); const e2 = document.getElementById('mf-verr'); if (e2) { e2.textContent = r.msg; e2.style.display = ''; } } return; }
   const tel = c.whatsapp || c.telefono || '', neg = MF.cfg.nombre_comercial || 'Mi negocio';
   const txt = `🧾 *${neg}*\nHola ${nombreCli(c).split(' ')[0]} 👋, este es su plan de pago:\nCrédito: ${r.numero_credito}${r.numero_venta ? ' (venta ' + r.numero_venta + ')' : ''}\nTotal: ${fmt(r.total)}${Number(r.prima) > 0 ? `\nPrima pagada: ${fmt(r.prima)} (recibo ${r.recibo_prima})` : ''}\nCuotas: ${r.cuotas} de ${fmt(r.cuota)} (${FREC[V.frec].toLowerCase()})\nPrimer pago: ${fCorta(V.primera)}\n¡Gracias por su preferencia!`;
-  ventaNueva();
+  ventaNueva(); MF.rev = null;
   await cargarDatos().catch(() => {});
+  if (!r.repetido && r.credito_id && prefDocsAuto()) {
+    return abrirDocumentos(r.credito_id, c.id, { nuevo: true, titulo: `✅ ${r.numero_credito} guardado`, waPlan: tel ? `https://wa.me/${waNum(tel)}?text=${encodeURIComponent(txt)}` : '' });
+  }
   modal(`<div class="tl-modal-cab"><h2>✅ ${r.repetido ? 'Ya estaba registrado' : 'Listo'}</h2><button class="tl-x" onclick="cerrarModal();mfTab('vender')">✕</button></div>
     <div class="tl-modal-cuerpo"><div class="mf-recibo"><div class="mf-recibo-num">${esc(r.numero_credito || '')}</div>
       ${r.repetido ? '<p>Este crédito ya se había guardado (no se duplicó).</p>' : `<div class="mf-recibo-monto">${fmt(r.total)}</div><div>${esc(nombreCli(c))}</div>
@@ -619,7 +638,9 @@ async function abrirTarjeta(clienteId) {
       <div class="tl-modal-cuerpo"><div class="tl-muted">${esc(c.telefono || '')}${c.direccion ? ' · 📍 ' + esc(c.direccion) : ''}${tel ? ` · <a href="https://wa.me/${waNum(tel)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}</div>
       ${cliPorId(clienteId) ? `<div class="vd-filtros" style="margin:8px 0"><label for="tz-zona" style="font-weight:600;font-size:13px">🏘️ Zona</label><input class="tl-inp" style="flex:1;min-width:0" id="tz-zona" maxlength="60" list="mf-zonas-dl" value="${esc(zonaDe(c))}" placeholder="Ej. San Judas">${datalistZonas()}
         <button class="btn-secondary" id="tz-ok" onclick="guardarZona('${clienteId}')">Guardar zona</button></div>` : ''}
+      <div id="mf-ficha"></div>
       ${html || '<div class="pd-vacio"><b>Sin créditos.</b></div>'}</div>`;
+    pintarFicha(clienteId);
   } catch (e) { console.error(e); document.getElementById('pd-modal-box').innerHTML = '<div class="tl-modal-cuerpo"><div class="tl-aviso">No se pudo cargar la tarjeta. Revisa tu conexión.</div><button class="btn-secondary" onclick="cerrarModal()">Cerrar</button></div>'; }
 }
 function abrirCobroDesdeTarjeta(creditoId) {
@@ -819,7 +840,7 @@ function textoMora() {
   const base = c.mf_mora_tipo === 'fija_dia' ? `${fmt(v)} por cada día de atraso` : c.mf_mora_tipo === 'pct_dia' ? `el ${v}% diario sobre el monto atrasado` : `${fmt(v)} por cada cuota pagada con atraso`;
   return `${base}${g ? `, contado después de ${g} día${g === 1 ? '' : 's'} de gracia` : ''}${tp < 100 ? `, sin exceder el ${tp}% de lo atrasado` : ''}`;
 }
-async function abrirDocumentos(creditoId, clienteId) {
+async function abrirDocumentos(creditoId, clienteId, opt) {
   const c = cliPorId(clienteId) || { id: clienteId, nombre: 'Cliente' };
   modal(`<div class="tl-modal-cab"><h2>🖨️ Documentos</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div><div class="tl-modal-cuerpo"><p class="tl-muted">Cargando…</p></div>`);
   try {
@@ -828,13 +849,20 @@ async function abrirDocumentos(creditoId, clienteId) {
     if (error || !cr) throw error || new Error('no existe');
     const [cu, pa, det] = await Promise.all([
       sb.from('creditos_cuotas').select('numero,fecha_vencimiento,monto_total,monto_pagado,estado').eq('credito_id', cr.id).order('numero'),
-      sb.from('creditos_pagos').select('monto,observaciones,estado').eq('credito_id', cr.id).eq('estado', 'completado'),
+      sb.from('creditos_pagos').select('monto,observaciones,estado,fecha,comprobante_numero,metodo_pago_nombre').eq('credito_id', cr.id).eq('estado', 'completado').order('fecha'),
       cr.venta_id ? sb.from('venta_detalles').select('producto_nombre,cantidad,precio,subtotal').eq('venta_id', cr.venta_id) : Promise.resolve({ data: [] }),
     ]);
     const prima = r2((pa.data || []).filter(p => /prima/i.test(p.observaciones || '')).reduce((a, p) => a + Number(p.monto || 0), 0));
-    MF.doc = { cr, c, cuotas: cu.data || [], prima, items: det.data || [] };
+    let ficha = null; try { ficha = (await sb.from('mf_clientes_ficha').select('*').eq('cliente_id', clienteId).maybeSingle()).data; } catch (_) {}
+    const hoyD = hoyISO(), venc = (cu.data || []).filter(q => q.estado !== 'pagada' && Number(q.monto_total) - Number(q.monto_pagado || 0) > 0.004 && String(q.fecha_vencimiento).slice(0, 10) < hoyD);
+    MF.doc = { cr, c, cuotas: cu.data || [], prima, items: det.data || [], pagos: pa.data || [], ficha, atrasado: r2(venc.reduce((a, q) => a + Number(q.monto_total) - Number(q.monto_pagado || 0), 0)),
+      diasAtraso: venc.length ? diasEntre(String(venc[0].fecha_vencimiento).slice(0, 10), hoyD) : 0 };
     let guard = {}; try { guard = JSON.parse(localStorage.getItem('n360_mf_doc_' + cr.id) || '{}') || {}; } catch (_) {}
-    document.getElementById('pd-modal-box').innerHTML = `<div class="tl-modal-cab"><h2>🖨️ Documentos · ${esc(cr.numero_credito)}</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
+    if (ficha) { guard.fnom = guard.fnom || ficha.fiador_nombre || ''; guard.fced = guard.fced || ficha.fiador_cedula || ''; guard.fdir = guard.fdir || ficha.fiador_direccion || ''; }
+    const pagado = Number(cr.saldo_pendiente) <= 0.004, extra = typeof opt === 'object' && opt ? opt : {};
+    const docsLista = [['plan', '📅 Plan de pagos', !pagado], ['pagare', '✍️ Pagaré', !pagado && !!extra.nuevo], ['contrato', '📄 Contrato', !pagado && !!extra.nuevo], ['estado', '📊 Estado de cuenta', !extra.nuevo && !pagado && !MF.doc.atrasado]]
+      .concat(MF.doc.atrasado > 0 ? [['carta', '⚠️ Carta de cobro', true]] : []).concat(pagado ? [['constancia', '✅ Constancia de cancelación', true]] : []);
+    document.getElementById('pd-modal-box').innerHTML = `<div class="tl-modal-cab"><h2>${extra.titulo ? esc(extra.titulo) + ' · 🖨️ Documentos' : '🖨️ Documentos · ' + esc(cr.numero_credito)}</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
       <div class="tl-modal-cuerpo">
         <div class="tl-grid"><div class="tl-f"><label for="dc-ced">Cédula del cliente</label><input class="tl-inp" id="dc-ced" maxlength="30" value="${esc(c.ruc || guard.ced || '')}"></div>
           <div class="tl-f"><label for="dc-dir">Domicilio del cliente</label><input class="tl-inp" id="dc-dir" maxlength="250" value="${esc(c.direccion || guard.dir || '')}"></div>
@@ -844,13 +872,20 @@ async function abrirDocumentos(creditoId, clienteId) {
           <div class="tl-grid"><div class="tl-f"><label for="dc-fnom">Nombre del fiador</label><input class="tl-inp" id="dc-fnom" maxlength="120" value="${esc(guard.fnom || '')}"></div>
             <div class="tl-f"><label for="dc-fced">Cédula del fiador</label><input class="tl-inp" id="dc-fced" maxlength="30" value="${esc(guard.fced || '')}"></div>
             <div class="tl-f full"><label for="dc-fdir">Domicilio del fiador</label><input class="tl-inp" id="dc-fdir" maxlength="250" value="${esc(guard.fdir || '')}"></div></div></details>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0">${[['plan', '📅 Plan de pagos'], ['pagare', '✍️ Pagaré'], ['contrato', '📄 Contrato']].map(([k, t]) => `<label class="mf-chk"><input type="checkbox" class="dc-doc" value="${k}" checked> ${t}</label>`).join('')}</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0">${docsLista.map(([k, t, on]) => `<label class="mf-chk"><input type="checkbox" class="dc-doc" value="${k}" ${on ? 'checked' : ''}> ${t}</label>`).join('')}</div>
         <div class="tl-aviso">Modelo de uso general. Revísalo con un abogado antes de usarlo como documento legal.</div></div>
-      <div class="tl-modal-pie"><button class="btn-secondary" onclick="abrirTarjeta('${clienteId}')">← Volver</button><button class="btn-primary" onclick="imprimirDocumentos()">🖨️ Imprimir</button></div>`;
-  } catch (e) { console.error(e); document.getElementById('pd-modal-box').innerHTML = '<div class="tl-modal-cuerpo"><div class="tl-aviso">No se pudieron cargar los datos del crédito. Revisa tu conexión.</div><button class="btn-secondary" onclick="cerrarModal()">Cerrar</button></div>'; }
+      <div class="tl-modal-pie">${extra.waPlan ? `<a class="btn-secondary" href="${esc(extra.waPlan)}" target="_blank" rel="noopener">💬 Plan por WhatsApp</a>` : ''}<button class="btn-secondary" onclick="abrirTarjeta('${clienteId}')">📒 Tarjeta</button>${extra.nuevo ? `<button class="btn-secondary" onclick="cerrarModal();mfTab('vender')">🛒 Nueva venta</button>` : ''}<button class="btn-primary" onclick="imprimirDocumentos()">🖨️ Imprimir</button></div>`;
+  } catch (e) {
+    console.error(e);
+    const ex = typeof opt === 'object' && opt ? opt : {};
+    document.getElementById('pd-modal-box').innerHTML = `<div class="tl-modal-cab"><h2>${ex.titulo ? esc(ex.titulo) : '🖨️ Documentos'}</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
+      <div class="tl-modal-cuerpo">${ex.titulo ? '<div class="tl-aviso ok">El crédito quedó guardado.</div>' : ''}<div class="tl-aviso">No se pudieron cargar los documentos. Revisa tu conexión e intenta de nuevo.</div></div>
+      <div class="tl-modal-pie">${ex.waPlan ? `<a class="btn-secondary" href="${esc(ex.waPlan)}" target="_blank" rel="noopener">💬 Plan por WhatsApp</a>` : ''}
+        <button class="btn-secondary" onclick='abrirDocumentos(${JSON.stringify(creditoId)}, ${JSON.stringify(clienteId)}, ${esc(JSON.stringify(ex))})'>🔄 Reintentar</button>${ex.nuevo ? `<button class="btn-secondary" onclick="cerrarModal();mfTab('vender')">🛒 Nueva venta</button>` : ''}<button class="btn-primary" onclick="cerrarModal()">Cerrar</button></div>`;
+  }
 }
 function htmlDocumentos(o) {
-  const { cr, c, cuotas, prima, items } = MF.doc, cfg = MF.cfg;
+  const { cr, c, cuotas, prima, items, pagos, ficha } = MF.doc, cfg = MF.cfg;
   const acreedor = cfg.razon_social || cfg.nombre_comercial || 'El negocio', ruc = cfg.ruc ? ` (RUC ${esc(cfg.ruc)})` : '';
   const cli = nombreCli(c), ced = o.ced || '______________', dom = o.dir || '______________________', lugar = o.lugar || '__________';
   const fechaDoc = String(cr.created_at).slice(0, 10), frec = (FREC[cr.frecuencia] || cr.frecuencia || '').toLowerCase();
@@ -858,7 +893,7 @@ function htmlDocumentos(o) {
   const primera = qs[0]?.fecha_vencimiento, ultima = qs[qs.length - 1]?.fecha_vencimiento;
   const mora = textoMora(), esVenta = cr.tipo === 'venta';
   const L = x => `${numLetras(x)} ${monedaLarga()} (${fmt(x)})`;
-  const firma = (quien, nombre, cedula) => `<div class="firma"><div class="linea"></div><b>${esc(nombre)}</b><br>${quien}${cedula ? '<br>Cédula: ' + esc(cedula) : ''}</div>`;
+  const firma = (quien, nombre, cedula) => `<div class="firma"><div class="linea"></div><b>${esc(nombre)}</b>${quien ? '<br>' + quien : ''}${cedula ? '<br>Cédula: ' + esc(cedula) : ''}</div>`;
   const firmas = `<div class="firmas">${firma('Deudor', cli, o.ced)}${o.fnom ? firma('Fiador solidario', o.fnom, o.fced) : ''}${firma('Por el acreedor', acreedor, '')}</div>`;
   const cab = t => `<div class="cab"><div><b>${esc(cfg.nombre_comercial || acreedor)}</b>${cfg.ruc ? '<br>RUC ' + esc(cfg.ruc) : ''}${cfg.direccion ? '<br>' + esc(cfg.direccion) : ''}${cfg.telefono ? '<br>Tel. ' + esc(cfg.telefono) : ''}</div><div class="der"><h1>${t}</h1>No. ${esc(cr.numero_credito)}</div></div>`;
   const docs = [];
@@ -888,7 +923,28 @@ function htmlDocumentos(o) {
     <p><b>QUINTA. Pago anticipado.</b> EL DEUDOR puede adelantar pagos o cancelar el total en cualquier momento.</p>
     <p><b>SEXTA. Incumplimiento.</b> Si EL DEUDOR deja de pagar ${o.inc} cuotas, EL ACREEDOR podrá dar por vencido el plazo y exigir el total del saldo pendiente${o.fnom ? ', también a EL FIADOR, quien responde solidariamente' : ''}.</p>
     <p><b>SÉPTIMA. Recibos.</b> Solo son válidos los recibos emitidos por EL ACREEDOR con su número.</p>
+    ${ficha && ficha.garantia ? `<p><b>OCTAVA. Garantía.</b> En respaldo de este crédito, EL DEUDOR deja en garantía: ${esc(ficha.garantia)}${Number(ficha.garantia_valor) > 0 ? ` (valor estimado ${fmt(ficha.garantia_valor)})` : ''}, que le será devuelta al cancelar el total.</p>` : ''}
     <p>Leído el presente contrato, las partes lo aceptan y firman.</p>${firmas}`);
+  const pagadoTot = r2(pagos.reduce((a, p) => a + Number(p.monto || 0), 0)), hoyD = hoyISO();
+  if (o.docs.includes('estado')) docs.push(`${cab('ESTADO DE CUENTA')}
+    <p><b>Cliente:</b> ${esc(cli)} · <b>Al:</b> ${fLarga(hoyD)}</p>
+    <table><tr><td>Total del crédito</td><td class="n">${fmt(cr.total_financiado)}</td></tr><tr><td>Pagado</td><td class="n">${fmt(pagadoTot)}</td></tr>
+      <tr><td><b>Saldo</b></td><td class="n"><b>${fmt(cr.saldo_pendiente)}</b></td></tr>${MF.doc.atrasado > 0 ? `<tr><td>Atrasado (${MF.doc.diasAtraso} días)</td><td class="n">${fmt(MF.doc.atrasado)}</td></tr>` : ''}</table>
+    <table class="tab"><thead><tr><th>#</th><th>Vence</th><th class="n">Cuota</th><th class="n">Pagado</th><th>Estado</th></tr></thead><tbody>
+      ${cuotas.map(q => { const f = String(q.fecha_vencimiento).slice(0, 10), falta = Number(q.monto_total) - Number(q.monto_pagado || 0);
+        return `<tr><td>${q.numero}</td><td>${fLarga(f)}</td><td class="n">${fmt(q.monto_total)}</td><td class="n">${fmt(q.monto_pagado)}</td><td>${q.estado === 'pagada' || falta <= 0.004 ? 'Pagada' : f < hoyD ? 'ATRASADA' : Number(q.monto_pagado) > 0 ? 'Parcial' : 'Pendiente'}</td></tr>`; }).join('')}</tbody></table>
+    ${pagos.length ? `<p><b>Pagos recibidos</b></p><table><tbody>${pagos.map(p => `<tr><td>${fLarga(p.fecha)}</td><td>${esc(p.comprobante_numero || '')}</td><td>${esc(p.metodo_pago_nombre || '')}</td><td class="n">${fmt(p.monto)}</td></tr>`).join('')}</tbody></table>` : ''}`);
+  if (o.docs.includes('carta')) docs.push(`${cab('AVISO DE COBRO')}
+    <p>${esc(lugar)}, ${fLarga(hoyD)}</p><p>Señor(a) <b>${esc(cli)}</b><br>${esc(dom)}</p>
+    <p>Por este medio le recordamos que su crédito No. <b>${esc(cr.numero_credito)}</b> tiene <b>${MF.doc.diasAtraso} días de atraso</b>, con un monto vencido de <b>${L(MF.doc.atrasado)}</b>.
+    Su saldo total es de ${fmt(cr.saldo_pendiente)}.</p>
+    ${mora ? `<p>Le recordamos que el atraso genera un recargo por mora de ${esc(mora)}.</p>` : ''}
+    <p>Le pedimos ponerse al día a la mayor brevedad o comunicarse con nosotros${cfg.telefono ? ' al ' + esc(cfg.telefono) : ''} para acordar una forma de pago.${o.fnom ? ` Se envía copia a su fiador, ${esc(o.fnom)}.` : ''}</p>
+    <p>Si ya realizó su pago, por favor ignore este aviso.</p><p>Atentamente,</p><div class="firmas">${firma('', acreedor, '')}</div>`);
+  if (o.docs.includes('constancia')) docs.push(`${cab('CONSTANCIA DE CANCELACIÓN')}
+    <p>${esc(acreedor)}${ruc} hace constar que <b>${esc(cli)}</b>, cédula No. <b>${esc(ced)}</b>, <b>canceló en su totalidad</b> el crédito No. <b>${esc(cr.numero_credito)}</b>
+    por un total de ${L(cr.total_financiado)}, y que a la fecha no adeuda ningún saldo por este crédito.${ficha && ficha.garantia ? ` Se devuelve la garantía: ${esc(ficha.garantia)}.` : ''}</p>
+    <p>Se extiende la presente a solicitud del interesado en ${esc(lugar)}, el ${fLarga(hoyD)}.</p><div class="firmas">${firma('Por el acreedor', acreedor, '')}</div>`);
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(cr.numero_credito)} · Documentos</title><style>
     @page{size:letter;margin:18mm 16mm}body{font-family:Georgia,'Times New Roman',serif;font-size:12.5px;line-height:1.55;color:#111;margin:0}
     .doc{page-break-after:always}.doc:last-child{page-break-after:auto}.cab{display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px;font-size:11.5px}
@@ -913,6 +969,90 @@ async function imprimirDocumentos() {
   if (Object.keys(cambios).length && cliPorId(c.id)) {
     try { const { error } = await sb.from('clientes').update(cambios).eq('id', c.id).eq('auth_user_id', MF.userId); if (!error) Object.assign(cliPorId(c.id), cambios); } catch (_) {}
   }
+}
+
+/* ---------- 🛡️ ANTES DE PRESTAR: revisión del cliente y ficha de crédito ----------
+   La revisión que vale es la de la BASE al guardar; aquí se muestra antes para que nadie se lleve sorpresas. */
+async function cargarRevision(clienteId) {
+  const el = document.getElementById('mf-rev'); if (!el) return;
+  if (MF.rev && MF.rev.cliente === clienteId) { pintarRevision(); return; }
+  if (MF.venta) { MF.venta.autoriza = false; MF.venta.autMotivo = ''; }
+  el.innerHTML = '<p class="tl-muted">Revisando al cliente…</p>';
+  const r = await rpc('mf_revision_ver', { p: { token: tk(), cliente_id: clienteId } });
+  if (!MF.venta || MF.venta.clienteId !== clienteId) return;
+  MF.rev = r.ok ? { ...r, cliente: clienteId } : null;
+  pintarRevision(); pintarResumenVenta();
+}
+function problemaRevision(k) {
+  const R = MF.rev, V = MF.venta; if (!R || !V || R.cliente !== V.clienteId) return null;
+  const nueva = r2((k.total || 0) - (k.prima || 0));
+  if (R.limite != null && r2(Number(R.deuda) + nueva) > Number(R.limite) + 0.004) return { tipo: 'limite', quedaria: r2(Number(R.deuda) + nueva) };
+  if (R.bloq_dias != null && Number(R.atraso_dias) > Number(R.bloq_dias)) return { tipo: 'atrasado' };
+  return null;
+}
+function pintarRevision() {
+  const el = document.getElementById('mf-rev'); if (!el) return;
+  const R = MF.rev, V = MF.venta; if (!R) { el.innerHTML = ''; return; }
+  const k = calcVenta(), p = problemaRevision(k);
+  el.innerHTML = `<div class="pd-card mf-rev ${p ? 'mal' : ''}"><h3>🛡️ Revisión del cliente</h3>
+    <div class="mf-montos"><div><span>Debe hoy</span><b>${fmt(R.deuda)}</b></div><div><span>Límite</span><b>${R.limite == null ? 'Sin límite' : fmt(R.limite)}</b></div>
+      ${R.limite != null ? `<div><span>Disponible</span><b class="${Number(R.disponible) <= 0 ? 'pd-rojo' : 'pd-verde'}">${fmt(Math.max(0, R.disponible))}</b></div>` : ''}
+      <div><span>Atraso</span><b class="${Number(R.atraso_dias) > 0 ? 'pd-rojo' : ''}">${Number(R.atraso_dias) > 0 ? R.atraso_dias + ' días' : 'Al día'}</b></div></div>
+    ${p ? `<div class="tl-aviso" style="margin-top:8px">${p.tipo === 'limite' ? `⚠️ Con este crédito quedaría debiendo ${fmt(p.quedaria)}: pasa su límite.` : `⚠️ Tiene ${R.atraso_dias} días de atraso (el negocio no presta con más de ${R.bloq_dias}).`}</div>
+      ${puedeAdministrar() ? `<label class="mf-chk tl-f" style="margin-top:8px"><input type="checkbox" ${V.autoriza ? 'checked' : ''} onchange="MF.venta.autoriza=this.checked;pintarRevision();pintarResumenVenta()"> Autorizo esta excepción (queda anotado a mi nombre)</label>
+        ${V.autoriza ? `<div class="tl-f"><label for="mf-autm">Motivo</label><input class="tl-inp" id="mf-autm" maxlength="200" value="${esc(V.autMotivo || '')}" placeholder="Ej. cliente de confianza, paga el viernes" oninput="MF.venta.autMotivo=this.value;pintarResumenVenta()"></div>` : ''}`
+        : '<p class="tl-muted">Pide al dueño o supervisor que lo autorice.</p>'}`
+      : Number(R.atraso_dias) > 0 ? `<p class="tl-muted" style="margin-top:6px">Ojo: tiene cuotas atrasadas.</p>` : ''}</div>`;
+}
+async function pintarFicha(clienteId) {
+  const el = document.getElementById('mf-ficha'); if (!el || !cliPorId(clienteId)) return;
+  let f = null; try { f = (await sb.from('mf_clientes_ficha').select('*').eq('cliente_id', clienteId).maybeSingle()).data; } catch (_) {}
+  const edita = puedeAdministrar(), v = x => esc(x == null ? '' : x), ro = edita ? '' : 'readonly';
+  el.innerHTML = `<details class="pd-card" style="margin:8px 0" ${f ? '' : ''}><summary style="cursor:pointer;font-weight:700">🛡️ Ficha de crédito ${f && f.limite != null ? '· límite ' + fmt(f.limite) : ''}${f && f.fiador_nombre ? ' · fiador ' + esc(f.fiador_nombre) : ''}${f && f.garantia ? ' · con garantía' : ''}</summary>
+    <div class="tl-grid" style="margin-top:8px"><div class="tl-f"><label for="fi-lim">Límite de crédito</label><input class="tl-inp" id="fi-lim" type="number" inputmode="decimal" min="0" step="0.01" value="${v(f?.limite)}" placeholder="${MF.cfg.mf_limite_defecto != null ? 'Por defecto ' + fmt(MF.cfg.mf_limite_defecto) : 'Sin límite'}" ${ro}></div>
+      <div class="tl-f"><label for="fi-gar">Garantía</label><input class="tl-inp" id="fi-gar" maxlength="300" value="${v(f?.garantia)}" placeholder="Ej. moto Honda placa M123" ${ro}></div>
+      <div class="tl-f"><label for="fi-garv">Valor de la garantía</label><input class="tl-inp" id="fi-garv" type="number" inputmode="decimal" min="0" step="0.01" value="${v(f?.garantia_valor)}" ${ro}></div>
+      <div class="tl-f"><label for="fi-fnom">Fiador</label><input class="tl-inp" id="fi-fnom" maxlength="120" value="${v(f?.fiador_nombre)}" ${ro}></div>
+      <div class="tl-f"><label for="fi-fced">Cédula del fiador</label><input class="tl-inp" id="fi-fced" maxlength="30" value="${v(f?.fiador_cedula)}" ${ro}></div>
+      <div class="tl-f"><label for="fi-ftel">Teléfono del fiador</label><input class="tl-inp" id="fi-ftel" maxlength="30" inputmode="tel" value="${v(f?.fiador_telefono)}" ${ro}></div>
+      <div class="tl-f full"><label for="fi-fdir">Domicilio del fiador</label><input class="tl-inp" id="fi-fdir" maxlength="250" value="${v(f?.fiador_direccion)}" ${ro}></div>
+      <div class="tl-f full"><label for="fi-not">Notas</label><input class="tl-inp" id="fi-not" maxlength="300" value="${v(f?.notas)}" ${ro}></div></div>
+    ${f && f.actualizado_por ? `<p class="tl-muted">Actualizado por ${esc(f.actualizado_por)} · ${new Date(f.updated_at).toLocaleDateString('es-NI')}</p>` : ''}
+    ${edita ? `<div class="pd-acciones"><button class="btn-primary" id="fi-ok" onclick="guardarFicha('${clienteId}')">Guardar ficha</button></div>` : '<p class="tl-muted">Solo el dueño o supervisor cambian la ficha.</p>'}</details>`;
+}
+async function guardarFicha(clienteId) {
+  if (MF.ocupado) return;
+  const v = id => document.getElementById(id).value.trim();
+  const p = { token: tk(), cliente_id: clienteId, limite: v('fi-lim'), garantia: v('fi-gar'), garantia_valor: v('fi-garv'), fiador_nombre: v('fi-fnom'), fiador_cedula: v('fi-fced'),
+    fiador_telefono: v('fi-ftel'), fiador_direccion: v('fi-fdir'), notas: v('fi-not'), por: perfilNombre() };
+  if ((p.limite !== '' && !(Number(p.limite) >= 0)) || (p.garantia_valor !== '' && !(Number(p.garantia_valor) >= 0))) { showToast('Revisa los montos.', 'error'); return; }
+  MF.ocupado = true; const b = document.getElementById('fi-ok'); b.disabled = true;
+  const r = await rpc('mf_ficha_guardar', { p });
+  MF.ocupado = false; b.disabled = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  MF.rev = null; showToast('Ficha guardada.'); pintarFicha(clienteId);
+}
+function prefDocsAuto() { try { return localStorage.getItem('n360_mf_docs_auto_' + MF.userId) !== '0'; } catch (_) { return true; } }
+function tarjetaPrestar() {
+  const c = MF.cfg;
+  return `<div class="pd-card"><h3>🛡️ Antes de prestar</h3>
+    <p class="tl-muted">El sistema revisa a cada cliente al vender o prestar. Si pasa su límite o tiene demasiado atraso, <b>no deja guardar</b> salvo que el dueño o supervisor autorice la excepción (queda anotado). Cada cliente puede tener su propio límite en su ficha 📒.</p>
+    <div class="tl-grid"><div class="tl-f"><label for="pr-lim">Límite por cliente (por defecto)</label><input class="tl-inp" id="pr-lim" type="number" inputmode="decimal" min="0" step="0.01" value="${c.mf_limite_defecto ?? ''}" placeholder="Vacío = sin límite"></div>
+      <div class="tl-f"><label for="pr-dias">No prestar si tiene más de … días de atraso</label><input class="tl-inp" id="pr-dias" type="number" inputmode="numeric" min="1" max="365" step="1" value="${c.mf_bloq_atraso_dias ?? ''}" placeholder="Vacío = solo avisar"></div>
+      <label class="tl-f full mf-chk"><input type="checkbox" id="pr-docs" ${prefDocsAuto() ? 'checked' : ''}> Al terminar cada venta o préstamo, abrir de una vez el contrato, pagaré y plan de pagos para imprimir (en este teléfono)</label></div>
+    <div class="pd-acciones"><button class="btn-primary" id="pr-ok" onclick="guardarPrestarCfg()">Guardar</button></div></div>`;
+}
+async function guardarPrestarCfg() {
+  if (MF.ocupado) return;
+  const lim = document.getElementById('pr-lim').value.trim(), dias = document.getElementById('pr-dias').value.trim();
+  try { localStorage.setItem('n360_mf_docs_auto_' + MF.userId, document.getElementById('pr-docs').checked ? '1' : '0'); } catch (_) {}
+  if ((lim !== '' && !(Number(lim) >= 0)) || (dias !== '' && !(parseInt(dias) >= 1 && parseInt(dias) <= 365))) { showToast('Revisa el límite y los días (1 a 365).', 'error'); return; }
+  MF.ocupado = true; const b = document.getElementById('pr-ok'); b.disabled = true;
+  const r = await rpc('mf_prestar_config', { p: { token: tk(), limite_defecto: lim, bloq_atraso_dias: dias } });
+  MF.ocupado = false; b.disabled = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  MF.cfg.mf_limite_defecto = lim === '' ? null : Number(lim); MF.cfg.mf_bloq_atraso_dias = dias === '' ? null : parseInt(dias); MF.rev = null;
+  showToast('Guardado.');
 }
 
 /* ---------- 🏘️ ZONAS (para ordenar la ruta) ---------- */
@@ -1089,7 +1229,7 @@ function pintarEquipo(v) {
       <button class="btn-secondary" style="padding:6px 10px;font-size:12.5px" onclick="guardarMiembro('${p.id}')">Guardar</button></div>`; };
   const sinAsig = MF.creditos.filter(c => !c.mf_cobrador_id).length;
   const porCob = MF.equipo.filter(e => e.activo).map(e => { const cs = MF.creditos.filter(c => c.mf_cobrador_id === e.perfil_id); return { e, n: cs.length, saldo: r2(cs.reduce((a, c) => a + Number(c.saldo_pendiente || 0), 0)) }; });
-  v.innerHTML = tarjetaMora() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
+  v.innerHTML = tarjetaPrestar() + tarjetaMora() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
       <p class="tl-muted">${on ? 'Cada persona entra al Panel con su PIN. Los cobradores ven y cobran solo su cartera, no pueden anular, y al final del día entregan el efectivo en “Caja del día”.'
         : 'Enciéndelo si tienes cobradores o vendedores. Cada uno entrará con su PIN, cobrará solo su cartera y cada cobro quedará a su nombre. Mientras esté apagado, el Panel funciona como siempre.'}</p>
       <div class="pd-acciones"><button class="${on ? 'btn-secondary' : 'btn-primary'}" onclick="abrirEncender(${!on})">${on ? 'Apagar trabajo en equipo' : '✅ Encender trabajo en equipo'}</button></div>
