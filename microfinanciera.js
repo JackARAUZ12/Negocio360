@@ -76,7 +76,9 @@ const MOTIVOS = {
   nada: 'Esa persona no tiene cobros pendientes de entregar.', propia: 'No puedes recibir tu propia entrega: que la reciba otra persona.',
   cobrador: 'Esa persona no está en el equipo (o está desactivada).', perfil: 'Ese usuario no existe o está desactivado.',
   sin_acceso: 'Ese usuario no está en el equipo del Panel. Pídele al dueño que lo agregue.', formato: 'El PIN debe tener al menos 4 dígitos.',
-  admin: 'Elige un administrador.',
+  admin: 'Elige un administrador.', sin_pin: 'Todavía no tienes PIN del Panel. Pídele al dueño que te ponga uno en “Equipo y mora”.',
+  pin_falta: 'Ponle un PIN del Panel (4 a 8 números) a esta persona.', pin_debil: 'Ese PIN es muy fácil de adivinar (ej. 1234 o 7777). Usa 4 a 8 números distintos.',
+  version: 'Tu Panel está desactualizado. Recarga la página y vuelve a intentar.',
   mora_regla: 'Revisa la regla de mora: el valor debe ser mayor que cero (y el % por día máximo 10), gracia de 0 a 60 días y tope de 0 a 100%.',
   motivo: 'Escribe el motivo (mínimo 3 letras).', ya_anulado: 'Ese cobro ya estaba anulado.', de_creditos: 'Ese pago se hizo en Créditos: anúlalo allá.', nota: 'Escribe la nota.',
 };
@@ -387,12 +389,12 @@ function abrirGestion(creditoId, tipo) {
   modal(`<div class="tl-modal-cab"><h2>${tipo === 'promesa' ? '🤝 Promete pagar' : '🚪 No estaba'} · ${esc(nombreCli(c))}</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
     <div class="tl-modal-cuerpo">${tipo === 'promesa' ? `<div class="tl-f"><label for="mf-gf">¿Qué día va a pagar?</label><input class="tl-inp" id="mf-gf" type="date" min="${hoyISO()}" value="${masDias(hoyISO(), 1)}"></div>` : '<p class="tl-muted">Queda anotado que lo visitaste y no estaba. No cambia lo que debe.</p>'}
       <div class="tl-f"><label for="mf-gn">Nota (opcional)</label><input class="tl-inp" id="mf-gn" maxlength="300" placeholder="${tipo === 'promesa' ? 'Ej. cobra el viernes' : 'Ej. casa cerrada'}"></div><div class="tl-aviso" id="mf-gerr" style="display:none"></div></div>
-    <div class="tl-modal-pie"><button class="btn-secondary" onclick="cerrarModal()">Cancelar</button><button class="btn-primary" id="mf-gok" onclick="guardarGestion('${creditoId}','${tipo}')">Guardar</button></div>`);
+    <div class="tl-modal-pie"><button class="btn-secondary" onclick="cerrarModal()">Cancelar</button><button class="btn-primary" id="mf-gok" onclick="guardarGestion('${creditoId}','${tipo}','${ref()}')">Guardar</button></div>`);
 }
-async function guardarGestion(creditoId, tipo) {
+async function guardarGestion(creditoId, tipo, gref) {
   if (MF.ocupado) return; MF.ocupado = true;
   const b = document.getElementById('mf-gok'); b.disabled = true;
-  const r = await rpc('mf_gestion', { p: { credito_id: creditoId, tipo, fecha_promesa: tipo === 'promesa' ? document.getElementById('mf-gf').value : null, nota: document.getElementById('mf-gn').value.trim(), creado_por: perfilNombre(), token: tk() } });
+  const r = await rpc('mf_gestion', { p: { credito_id: creditoId, tipo, fecha_promesa: tipo === 'promesa' ? document.getElementById('mf-gf').value : null, nota: document.getElementById('mf-gn').value.trim(), ref: gref, creado_por: perfilNombre(), token: tk() } });
   MF.ocupado = false;
   if (!r.ok) { const e = document.getElementById('mf-gerr'); e.textContent = r.msg; e.style.display = ''; b.disabled = false; return; }
   cerrarModal(); showToast('Anotado.'); await recargar();
@@ -692,7 +694,7 @@ async function pintarCierre(v) {
   let pagos = [], creds = [], gest = [], ents = [], moras = [];
   try {
     const [p1, c1, g1, e1] = await Promise.all([
-      leerTodo(() => sb.from('creditos_pagos').select('id,credito_id,cliente_id,monto,estado,comprobante_numero,metodo_pago_nombre,mf_cobrador_nombre,created_at').eq('auth_user_id', u).eq('fecha', dia).order('created_at').order('id')),
+      leerTodo(() => sb.from('creditos_pagos').select('id,credito_id,cliente_id,monto,estado,comprobante_numero,metodo_pago_id,metodo_pago_nombre,mf_cobrador_nombre,created_at').eq('auth_user_id', u).eq('fecha', dia).order('created_at').order('id')),
       leerTodo(() => sb.from('creditos').select('id,numero_credito,tipo,cliente_id,total_financiado,capital_financiado,mf_cobrador_nombre,mf_ref,created_at').eq('auth_user_id', u).gte('created_at', ini).lt('created_at', fin).order('created_at').order('id')),
       sb.from('mf_gestiones').select('tipo,creado_por,credito_id,created_at').eq('auth_user_id', u).gte('created_at', ini).lt('created_at', fin).limit(5000),
       sb.from('mf_entregas').select('cobrador_nombre,cobros,esperado,entregado,diferencia,recibido_por,created_at').eq('auth_user_id', u).gte('created_at', ini).lt('created_at', fin).order('created_at'),
@@ -701,7 +703,7 @@ async function pintarCierre(v) {
     try { const { data } = await sb.from('mf_moras').select('cobrada,perdonada,estado,cobrador_nombre').eq('auth_user_id', u).eq('fecha', dia).eq('estado', 'completado').limit(5000); moras = data || []; } catch (_) { moras = []; }
   } catch (e) { console.error(e); v.innerHTML = '<div class="tl-aviso">No se pudo armar el cierre. Revisa tu conexión.</div>'; return; }
   const ok = pagos.filter(p => p.estado === 'completado'), anul = pagos.filter(p => p.estado === 'anulado');
-  const esEf = p => /efectivo/i.test(p.metodo_pago_nombre || 'Efectivo');
+  const esEf = p => esEfectivo(p.metodo_pago_id, p.metodo_pago_nombre);
   const suma = l => r2(l.reduce((a, p) => a + Number(p.monto || 0), 0));
   const quien = p => p.mf_cobrador_nombre || 'Dueño / módulo Créditos';
   const personas = {};
@@ -773,6 +775,27 @@ function moraEstimada(cr) {
   });
   if (t === 'fija_dia') m = v * maxd;
   return r2(Math.min(m, atr * tp / 100));
+}
+function metodosEf() { const c = MF.cfg.mf_metodos_efectivo; return Array.isArray(c) && c.length ? c : null; }
+function esEfectivo(metId, nombre) { const c = metodosEf(); return c && metId ? c.includes(metId) : /efectivo/i.test(nombre || 'Efectivo'); }
+function tarjetaEfectivo() {
+  if (!esDueno()) return '';
+  const c = metodosEf();
+  return `<div class="pd-card"><h3>💵 ¿Qué cuenta como efectivo?</h3>
+    <p class="tl-muted">Marca los métodos que son dinero en mano. Eso es lo que cada cobrador debe entregar al final del día. ${c ? '' : 'Ahora se usa el nombre: los que dicen “efectivo”.'}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">${MF.metodos.map(m => `<label class="mf-chk" style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="mf-ef-chk" value="${m.id}" ${esEfectivo(m.id, m.nombre) ? 'checked' : ''} style="width:17px;height:17px"> ${esc(m.nombre)}</label>`).join('')}</div>
+    <div class="pd-acciones"><button class="btn-primary" id="mf-ef-ok" onclick="guardarEfectivoCfg()">Guardar</button></div></div>`;
+}
+async function guardarEfectivoCfg() {
+  if (MF.ocupado) return;
+  const ids = [...document.querySelectorAll('.mf-ef-chk:checked')].map(x => x.value);
+  if (!ids.length && !confirm('No marcaste ninguno. Se volverá a usar el nombre (los que dicen “efectivo”). ¿Seguir?')) return;
+  MF.ocupado = true; const b = document.getElementById('mf-ef-ok'); if (b) b.disabled = true;
+  const r = await rpc('mf_efectivo_config', { p: { token: tk(), metodos: ids } });
+  MF.ocupado = false; if (b) b.disabled = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  MF.cfg.mf_metodos_efectivo = r.metodos || null; showToast('Guardado.');
+  pintarEquipo(document.getElementById('pd-vista'));
 }
 function tarjetaMora() {
   const c = MF.cfg, t = c.mf_mora_tipo || 'ninguna';
@@ -1211,7 +1234,7 @@ async function cargarEquipo() {
     MF.perfiles = (data || []).filter(p => p.activo !== false).map(p => ({ id: p.id, nombre: p.nombre, tipo: p.tipo, color: p.avatar_color, modulos: Array.isArray(p.modulos) ? p.modulos : [] }));
   } catch (_) { MF.perfiles = []; }
   try {
-    const { data } = await sb.from('mf_equipo').select('perfil_id,rol,puede_vender,activo').eq('auth_user_id', MF.userId);
+    const { data } = await sb.from('mf_equipo').select('perfil_id,rol,puede_vender,activo,pin_puesto').eq('auth_user_id', MF.userId);
     MF.equipo = (data || []).map(e => ({ ...e, nombre: (MF.perfiles.find(p => p.id === e.perfil_id) || {}).nombre || 'Usuario' }));
   } catch (_) { MF.equipo = []; }
 }
@@ -1333,13 +1356,15 @@ function pintarEquipo(v) {
     return `<div class="mf-item" style="flex-wrap:wrap"><div class="mf-item-n"><b>${esc(p.nombre)}</b></div>
       <select class="tl-sel" style="max-width:170px" id="eq-rol-${p.id}" aria-label="Rol de ${esc(p.nombre)}"><option value="" ${!rol ? 'selected' : ''}>🚫 No entra</option><option value="cobrador" ${rol === 'cobrador' ? 'selected' : ''}>🛵 Cobrador</option><option value="supervisor" ${rol === 'supervisor' ? 'selected' : ''}>🧑‍💼 Supervisor</option></select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="eq-ven-${p.id}" ${!e || e.puede_vender ? 'checked' : ''} style="width:17px;height:17px"> Puede vender</label>
+      <input class="tl-inp" style="max-width:130px" id="eq-pin-${p.id}" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="${e && e.pin_puesto ? 'PIN nuevo' : 'PIN (4-8)'}" aria-label="PIN del Panel de ${esc(p.nombre)}">
+      <span class="tl-muted" style="font-size:12px">${e && e.pin_puesto ? '🔑 PIN puesto' : (rol ? '⚠️ Falta PIN' : '')}</span>
       <button class="btn-secondary" style="padding:6px 10px;font-size:12.5px" onclick="guardarMiembro('${p.id}')">Guardar</button>
       ${rol ? (otrosModulos(p).length ? `<div class="tl-aviso" style="flex-basis:100%;margin:4px 0 0">⚠️ También entra a: ${esc(otrosModulos(p).map(nombreModulo).join(', '))}. Ahí podría ver lo de otros.
           <button class="btn-secondary" style="padding:5px 9px;font-size:12px;margin-left:6px" onclick="soloPanel('${p.id}')">🔒 Dejar solo el Panel</button></div>`
         : '<div class="tl-muted" style="flex-basis:100%">🔒 Solo entra al Panel</div>') : ''}</div>`; };
   const sinAsig = MF.creditos.filter(c => !c.mf_cobrador_id).length;
   const porCob = MF.equipo.filter(e => e.activo).map(e => { const cs = MF.creditos.filter(c => c.mf_cobrador_id === e.perfil_id); return { e, n: cs.length, saldo: r2(cs.reduce((a, c) => a + Number(c.saldo_pendiente || 0), 0)) }; });
-  v.innerHTML = tarjetaPrestar() + tarjetaMora() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
+  v.innerHTML = tarjetaPrestar() + tarjetaMora() + tarjetaEfectivo() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
       <p class="tl-muted">${on ? 'Cada persona entra al Panel con su PIN. Los cobradores ven y cobran solo su cartera, no pueden anular, y al final del día entregan el efectivo en “Caja del día”.'
         : 'Enciéndelo si tienes cobradores o vendedores. Cada uno entrará con su PIN, cobrará solo su cartera y cada cobro quedará a su nombre. Mientras esté apagado, el Panel funciona como siempre.'}</p>
       <div class="pd-acciones"><button class="${on ? 'btn-secondary' : 'btn-primary'}" onclick="abrirEncender(${!on})">${on ? 'Apagar trabajo en equipo' : '✅ Encender trabajo en equipo'}</button></div>
@@ -1404,14 +1429,16 @@ async function soloPanel(perfilId, sinPreguntar) {
 async function guardarMiembro(perfilId) {
   if (MF.ocupado) return;
   const rol = document.getElementById('eq-rol-' + perfilId).value, vende = document.getElementById('eq-ven-' + perfilId).checked;
+  const pin = (document.getElementById('eq-pin-' + perfilId)?.value || '').trim();
+  if (pin && !/^[0-9]{4,8}$/.test(pin)) { showToast('El PIN debe tener de 4 a 8 números.', 'error'); return; }
   const e = MF.equipo.find(x => x.perfil_id === perfilId);
   if (!rol && !e) { showToast('Esa persona no está en el equipo.', 'error'); return; }
   if (!rol && e && MF.creditos.some(c => c.mf_cobrador_id === perfilId) && !confirm('Esta persona tiene créditos asignados. Si la sacas, no podrá cobrarlos hasta que los pases a otro. ¿Sacarla del equipo?')) return;
   MF.ocupado = true;
-  const r = await rpc('mf_equipo_guardar', { p: { token: tk(), perfil_id: perfilId, rol: rol || (e ? e.rol : 'cobrador'), puede_vender: vende, activo: !!rol } });
+  const r = await rpc('mf_equipo_guardar', { p: { token: tk(), perfil_id: perfilId, rol: rol || (e ? e.rol : 'cobrador'), puede_vender: vende, activo: !!rol, pin: rol ? pin : '' } });
   MF.ocupado = false;
   if (!r.ok) { showToast(r.msg, 'error'); return; }
-  showToast(rol ? 'Guardado.' : 'Ya no entra al Panel.');
+  showToast(rol ? (pin ? 'Guardado. PIN nuevo listo: díselo solo a esa persona.' : 'Guardado.') : 'Ya no entra al Panel.');
   await cargarEquipo();
   const pf = MF.perfiles.find(x => x.id === perfilId);
   if (rol && !e && pf && otrosModulos(pf).length && confirm(`Recomendado: ¿dejar a ${pf.nombre} con acceso SOLO al Panel? Así no ve Caja, Créditos ni lo de otros cobradores.`)) { await soloPanel(perfilId, true); return; }

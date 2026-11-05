@@ -3551,6 +3551,10 @@
       if (!credito) throw new Error('Crédito no encontrado');
 
       if (pago.estado === 'anulado') throw new Error('Este pago ya estaba anulado');
+      // 🔒 Cobro hecho en el Panel Microfinanciera: solo se anula desde el Panel (la base también lo bloquea).
+      if (pago.mf_ref || pago.mf_cobrador_id || pago.mf_entrega_id || /^R-\d{6}$/.test(pago.comprobante_numero || '')) {
+        throw new Error(pago.mf_entrega_id ? 'Este cobro ya fue entregado por el cobrador en el Panel Microfinanciera: no se puede anular.' : 'Este cobro se hizo en el Panel Microfinanciera: anúlalo desde el Panel.');
+      }
       const motivoAnulacion = `Pago de crédito ${credito.numero_credito || ''} anulado`.trim();
 
       // 1. Anular (no borrar) el movimiento de Caja que generó este pago:

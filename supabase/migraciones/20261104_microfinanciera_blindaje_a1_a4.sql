@@ -389,3 +389,8 @@ grant execute on function public.mf_gestion(jsonb) to authenticated;
 grant execute on function public.mf_efectivo_config(jsonb) to authenticated;
 grant execute on function public.mf_caja_pendiente(jsonb) to authenticated;
 grant execute on function public.mf_entrega_registrar(jsonb) to authenticated;
+
+-- El candado de configuración también vigila la lista de métodos de efectivo
+drop trigger if exists trg_mf_guard on public.configuracion_empresa;
+create trigger trg_mf_guard before update of mf_con_equipo, mf_mora_tipo, mf_mora_valor, mf_mora_gracia, mf_mora_tope_pct, mf_mora_perdona_cobrador, mf_limite_defecto, mf_bloq_atraso_dias, mf_metodos_efectivo
+  on public.configuracion_empresa for each row execute function public._mf_guard();
