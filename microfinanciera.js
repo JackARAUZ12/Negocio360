@@ -191,6 +191,7 @@ async function mfTab(t) {
   if (t === 'clientes') return pintarClientes(v);
   if (t === 'caja') return pintarCajaDia(v);
   if (t === 'cierre') return pintarCierre(v);
+  if (t === 'reportes') return pintarReportes(v);
   if (t === 'equipo') return pintarEquipo(v);
   return pintarResumen(v);
 }
@@ -1055,6 +1056,112 @@ async function guardarPrestarCfg() {
   showToast('Guardado.');
 }
 
+/* ---------- 📈 REPORTES DE CARTERA (dueño / supervisor) ----------
+   Solo leen: no cambian nada. Cartera por antigüedad del atraso, por cobrador, lo que viene y la colocación. */
+const TRAMOS = [['al_dia', 'Al día', 0, 0], ['t1', '1 a 30 días', 1, 30], ['t2', '31 a 60 días', 31, 60], ['t3', '61 a 90 días', 61, 90], ['t4', 'Más de 90 días', 91, 1e9]];
+function tramoDe(d) { return (TRAMOS.find(t => d >= t[2] && d <= t[3]) || TRAMOS[4])[0]; }
+function rangoReporte() {
+  const h = hoyISO(), d = new Date(h + 'T12:00:00'), p = MF.repPeriodo || 'mes';
+  if (p === 'semana') { const w = (d.getDay() + 6) % 7; return [masDias(h, -w), h]; }
+  if (p === 'mes_ant') { const a = new Date(d.getFullYear(), d.getMonth() - 1, 1), b = new Date(d.getFullYear(), d.getMonth(), 0); return [ymd(a), ymd(b)]; }
+  if (p === 'otro' && MF.repDesde && MF.repHasta) return [MF.repDesde, MF.repHasta];
+  return [ymd(new Date(d.getFullYear(), d.getMonth(), 1)), h];
+}
+async function pintarReportes(v) {
+  v.innerHTML = '<p class="tln-sub">Armando los reportes…</p>';
+  const u = MF.userId, [desde, hasta] = rangoReporte(), hoy = hoyISO();
+  let pagos = [], moras = [], cuotasP = [], nuevos = [], credMap = {};
+  try {
+    [pagos, cuotasP, nuevos] = await Promise.all([
+      leerTodo(() => sb.from('creditos_pagos').select('id,credito_id,monto,fecha,mf_cobrador_nombre').eq('auth_user_id', u).eq('estado', 'completado').gte('fecha', desde).lte('fecha', hasta).order('id')),
+      leerTodo(() => sb.from('creditos_cuotas').select('credito_id,monto_total,monto_pagado,fecha_vencimiento').eq('auth_user_id', u).gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta).order('credito_id')),
+      leerTodo(() => sb.from('creditos').select('id,tipo,total_financiado,capital_financiado,created_at,mf_cobrador_nombre,mf_ref,estado').eq('auth_user_id', u).gte('created_at', new Date(desde + 'T00:00:00').toISOString()).lte('created_at', new Date(hasta + 'T23:59:59').toISOString()).order('id')),
+    ]);
+    try { moras = (await sb.from('mf_moras').select('cobrada,perdonada,cobrador_nombre,fecha').eq('auth_user_id', u).eq('estado', 'completado').gte('fecha', desde).lte('fecha', hasta).limit(10000)).data || []; } catch (_) { moras = []; }
+    MF.creditos.forEach(c => { credMap[c.id] = c; });
+    const faltan = [...new Set(cuotasP.map(q => q.credito_id).concat(pagos.map(p => p.credito_id)))].filter(id => !credMap[id]);
+    for (let i = 0; i < faltan.length; i += 150) {
+      const { data } = await sb.from('creditos').select('id,cliente_id,mf_cobrador_id,mf_cobrador_nombre,estado').in('id', faltan.slice(i, i + 150));
+      (data || []).forEach(c => { credMap[c.id] = c; });
+    }
+  } catch (e) { console.error(e); v.innerHTML = '<div class="tl-aviso">No se pudieron armar los reportes. Revisa tu conexión.</div>'; return; }
+  // 1) Antigüedad de la cartera (créditos vigentes)
+  const sit = MF.creditos.map(cr => ({ cr, s: situacion(cr), c: cliPorId(cr.cliente_id) }));
+  const tot = r2(sit.reduce((a, x) => a + x.s.saldo, 0));
+  const porTramo = {}; TRAMOS.forEach(t => { porTramo[t[0]] = { n: 0, saldo: 0, atr: 0, lista: [] }; });
+  sit.forEach(x => { const k = porTramo[tramoDe(x.s.dias)]; k.n++; k.saldo = r2(k.saldo + x.s.saldo); k.atr = r2(k.atr + x.s.atrasado); k.lista.push(x); });
+  const enMora = r2(tot - porTramo.al_dia.saldo), pctMora = tot > 0 ? Math.round(enMora / tot * 1000) / 10 : 0;
+  // 2) Por cobrador
+  const nomCob = cr => (cr && cr.mf_cobrador_nombre) || 'Sin cobrador (dueño)';
+  const cob = {}; const C = n => cob[n] || (cob[n] = { creditos: 0, saldo: 0, atr: 0, enMora: 0, esperado: 0, cobradoCuotas: 0, cobrado: 0, mora: 0 });
+  sit.forEach(x => { const k = C(nomCob(x.cr)); k.creditos++; k.saldo = r2(k.saldo + x.s.saldo); k.atr = r2(k.atr + x.s.atrasado); if (x.s.dias > 0) k.enMora = r2(k.enMora + x.s.saldo); });
+  cuotasP.forEach(q => { const k = C(nomCob(credMap[q.credito_id])); k.esperado = r2(k.esperado + Number(q.monto_total)); k.cobradoCuotas = r2(k.cobradoCuotas + Math.min(Number(q.monto_pagado || 0), Number(q.monto_total))); });
+  pagos.forEach(p => { const k = C(p.mf_cobrador_nombre || nomCob(credMap[p.credito_id])); k.cobrado = r2(k.cobrado + Number(p.monto)); });
+  moras.forEach(m => { const k = C(m.cobrador_nombre || 'Sin cobrador (dueño)'); k.mora = r2(k.mora + Number(m.cobrada || 0)); });
+  const filasCob = Object.entries(cob).sort((a, b) => b[1].saldo - a[1].saldo);
+  // 3) Lo que viene (cuotas pendientes)
+  const prox = []; for (let i = 0; i < 7; i++) prox.push({ f: masDias(hoy, i), m: 0, n: 0 });
+  let p30 = 0;
+  MF.creditos.forEach(cr => (MF.cuotas[cr.id] || []).forEach(q => {
+    const f = String(q.fecha_vencimiento).slice(0, 10), falta = r2(Number(q.monto_total) - Number(q.monto_pagado || 0)); if (falta <= 0.004 || f < hoy) return;
+    const d = prox.find(x => x.f === f); if (d) { d.m = r2(d.m + falta); d.n++; }
+    if (f <= masDias(hoy, 29)) p30 = r2(p30 + falta);
+  }));
+  const vencidoHoy = r2(sit.reduce((a, x) => a + x.s.atrasado, 0));
+  // 4) Riesgo: muy atrasados o con promesa incumplida
+  const riesgo = sit.filter(x => x.s.dias > 60 || (x.s.dias > 0 && MF.promesas[x.cr.id] && MF.promesas[x.cr.id].tipo === 'promesa' && MF.promesas[x.cr.id].fecha_promesa < hoy))
+    .sort((a, b) => b.s.dias - a.s.dias).slice(0, 30);
+  // 5) Colocación
+  const colV = nuevos.filter(c => c.tipo === 'venta'), colP = nuevos.filter(c => c.tipo !== 'venta');
+  const esperadoTot = r2(filasCob.reduce((a, [, k]) => a + k.esperado, 0)), cobCuotasTot = r2(filasCob.reduce((a, [, k]) => a + k.cobradoCuotas, 0));
+  const efect = esperadoTot > 0 ? Math.round(cobCuotasTot / esperadoTot * 100) : null;
+  MF.repCSV = [['Cliente', 'Crédito', 'Cobrador', 'Tramo', 'Días de atraso', 'Atrasado', 'Saldo']].concat(sit.sort((a, b) => b.s.dias - a.s.dias)
+    .map(x => [nombreCli(x.c), x.cr.numero_credito, nomCob(x.cr), (TRAMOS.find(t => t[0] === tramoDe(x.s.dias)) || [])[1], x.s.dias, x.s.atrasado, x.s.saldo]));
+  const barra = (val, max, mal) => `<div class="vd-barra" style="margin-top:4px"><i style="width:${max > 0 ? Math.min(100, Math.round(val / max * 100)) : 0}%;${mal ? 'background:var(--danger,#dc2626)' : ''}"></i></div>`;
+  v.innerHTML = `<div class="vd-filtros mf-ruta-op">
+      <select class="tl-sel" aria-label="Período" onchange="MF.repPeriodo=this.value;pintarReportes(document.getElementById('pd-vista'))">
+        ${[['semana', 'Esta semana'], ['mes', 'Este mes'], ['mes_ant', 'Mes pasado'], ['otro', 'Otras fechas']].map(([k, t]) => `<option value="${k}" ${(MF.repPeriodo || 'mes') === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      ${(MF.repPeriodo === 'otro') ? `<input type="date" class="tl-inp" value="${desde}" max="${hoy}" onchange="MF.repDesde=this.value;pintarReportes(document.getElementById('pd-vista'))" aria-label="Desde">
+        <input type="date" class="tl-inp" value="${hasta}" max="${hoy}" onchange="MF.repHasta=this.value;pintarReportes(document.getElementById('pd-vista'))" aria-label="Hasta">` : ''}
+      <button class="btn-secondary" onclick="descargarCartera()">⬇️ Cartera en Excel (CSV)</button><button class="btn-secondary" onclick="window.print()">🖨️ Imprimir</button></div>
+    <p class="tl-muted">Período: ${fCorta(desde)} al ${fCorta(hasta)}. La cartera y la antigüedad son de hoy.</p>
+    <div class="pd-kpis">
+      <div class="pd-kpi"><div class="pd-kpi-l">💰 Cartera total</div><div class="pd-kpi-v">${fmt(tot)}</div><div class="pd-kpi-s">${MF.creditos.length} crédito(s) vigentes</div></div>
+      <div class="pd-kpi"><div class="pd-kpi-l">⏰ Cartera en mora</div><div class="pd-kpi-v pd-rojo">${pctMora}%</div><div class="pd-kpi-s">${fmt(enMora)} con algún atraso</div></div>
+      <div class="pd-kpi"><div class="pd-kpi-l">💵 Cobrado en el período</div><div class="pd-kpi-v pd-verde">${fmt(r2(pagos.reduce((a, p) => a + Number(p.monto), 0)))}</div><div class="pd-kpi-s">+ mora ${fmt(r2(moras.reduce((a, m) => a + Number(m.cobrada || 0), 0)))}</div></div>
+      <div class="pd-kpi"><div class="pd-kpi-l">🎯 Efectividad</div><div class="pd-kpi-v">${efect == null ? '—' : efect + '%'}</div><div class="pd-kpi-s">de lo que vencía en el período</div></div></div>
+    <div class="pd-card"><h3>⏳ Cartera por antigüedad del atraso</h3><div class="pd-tw"><table class="tl-tabla"><thead><tr><th>Tramo</th><th class="tl-num">Créditos</th><th class="tl-num">Saldo</th><th class="tl-num">% cartera</th><th class="tl-num">Atrasado</th><th></th></tr></thead><tbody>
+      ${TRAMOS.map(([k, t]) => { const x = porTramo[k]; return `<tr><td data-t="Tramo"><b>${t}</b>${barra(x.saldo, tot, k !== 'al_dia')}</td><td class="tl-num" data-t="Créditos">${x.n}</td><td class="tl-num" data-t="Saldo">${fmt(x.saldo)}</td>
+        <td class="tl-num" data-t="% cartera">${tot > 0 ? Math.round(x.saldo / tot * 1000) / 10 : 0}%</td><td class="tl-num ${x.atr > 0 ? 'pd-rojo' : ''}" data-t="Atrasado">${fmt(x.atr)}</td>
+        <td class="tl-ac">${x.n && k !== 'al_dia' ? `<button class="btn-secondary" style="padding:5px 9px;font-size:12px" onclick="verTramo('${k}')">Ver</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div><div id="rep-tramo"></div></div>
+    <div class="pd-card"><h3>👤 Por cobrador</h3><div class="pd-tw"><table class="tl-tabla"><thead><tr><th>Cobrador</th><th class="tl-num">Créditos</th><th class="tl-num">Cartera</th><th class="tl-num">% en mora</th><th class="tl-num">Vencía</th><th class="tl-num">Cobrado</th><th class="tl-num">Mora cobrada</th><th class="tl-num">Efectividad</th></tr></thead><tbody>
+      ${filasCob.map(([n, k]) => `<tr><td data-t="Cobrador"><b>${esc(n)}</b></td><td class="tl-num" data-t="Créditos">${k.creditos}</td><td class="tl-num" data-t="Cartera">${fmt(k.saldo)}</td>
+        <td class="tl-num ${k.enMora > 0 ? 'pd-rojo' : ''}" data-t="% en mora">${k.saldo > 0 ? Math.round(k.enMora / k.saldo * 100) : 0}%</td><td class="tl-num" data-t="Vencía">${fmt(k.esperado)}</td>
+        <td class="tl-num" data-t="Cobrado">${fmt(k.cobrado)}</td><td class="tl-num" data-t="Mora cobrada">${fmt(k.mora)}</td><td class="tl-num" data-t="Efectividad">${k.esperado > 0 ? Math.round(k.cobradoCuotas / k.esperado * 100) + '%' : '—'}</td></tr>`).join('') || '<tr><td colspan="8" class="tl-muted">Sin datos.</td></tr>'}</tbody></table></div>
+      <p class="tl-muted">Efectividad = de las cuotas que vencían en el período, cuánto ya está pagado.</p></div>
+    <div class="pd-card"><h3>📅 Lo que viene</h3><div class="mf-montos"><div><span>Vencido sin pagar (hoy)</span><b class="pd-rojo">${fmt(vencidoHoy)}</b></div><div><span>Próximos 7 días</span><b>${fmt(r2(prox.reduce((a, x) => a + x.m, 0)))}</b></div><div><span>Próximos 30 días</span><b>${fmt(p30)}</b></div></div>
+      <div class="pd-tw" style="margin-top:8px"><table class="tl-tabla"><tbody>${prox.map(x => `<tr><td data-t="Día">${x.f === hoy ? '<b>Hoy</b>' : fCorta(x.f)}</td><td class="tl-num" data-t="Cuotas">${x.n} cuota(s)</td><td class="tl-num" data-t="Monto">${fmt(x.m)}</td><td style="width:40%">${barra(x.m, Math.max(...prox.map(y => y.m)), false)}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="pd-card"><h3>🚩 En riesgo</h3><p class="tl-muted">Más de 60 días de atraso o que prometieron pagar y no cumplieron.</p>
+      ${riesgo.length ? `<div class="pd-tw"><table class="tl-tabla"><tbody>${riesgo.map(x => { const g = MF.promesas[x.cr.id]; return `<tr><td data-t="Cliente"><b>${esc(nombreCli(x.c))}</b><div class="tl-muted">${esc(x.cr.numero_credito)} · ${esc(nomCob(x.cr))}${x.c?.telefono ? ' · ' + esc(x.c.telefono) : ''}</div></td>
+        <td class="tl-num pd-rojo" data-t="Días">${x.s.dias} días</td><td class="tl-num" data-t="Debe">${fmt(x.s.saldo)}</td><td data-t="Nota">${g && g.tipo === 'promesa' && g.fecha_promesa < hoy ? '🤝 No cumplió (' + fCorta(g.fecha_promesa) + ')' : ''}</td>
+        <td class="tl-ac"><button class="btn-secondary" style="padding:5px 9px;font-size:12px" onclick="abrirTarjeta('${x.cr.cliente_id}')">📒</button></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="tl-muted">🎉 Nadie en riesgo.</p>'}</div>
+    <div class="pd-card"><h3>🛒 Colocación en el período</h3><div class="mf-montos"><div><span>Ventas al crédito</span><b>${colV.length} · ${fmt(r2(colV.reduce((a, c) => a + Number(c.total_financiado || 0), 0)))}</b></div>
+      <div><span>Préstamos en efectivo</span><b>${colP.length} · ${fmt(r2(colP.reduce((a, c) => a + Number(c.capital_financiado || 0), 0)))}</b></div>
+      <div><span>Ya pagados (de esos)</span><b>${nuevos.filter(c => c.estado === 'cancelado').length}</b></div></div></div>`;
+  MF.repTramos = porTramo;
+}
+function verTramo(k) {
+  const x = MF.repTramos && MF.repTramos[k], el = document.getElementById('rep-tramo'); if (!x || !el) return;
+  el.innerHTML = `<h4 style="margin:10px 0 4px">${esc((TRAMOS.find(t => t[0] === k) || [])[1])}</h4><div class="pd-tw"><table class="tl-tabla"><tbody>${x.lista.sort((a, b) => b.s.dias - a.s.dias).map(y => `<tr>
+    <td data-t="Cliente"><b>${esc(nombreCli(y.c))}</b><div class="tl-muted">${esc(y.cr.numero_credito)}${y.cr.mf_cobrador_nombre ? ' · ' + esc(y.cr.mf_cobrador_nombre) : ''}</div></td><td class="tl-num" data-t="Días">${y.s.dias} días</td>
+    <td class="tl-num" data-t="Atrasado">${fmt(y.s.atrasado)}</td><td class="tl-num" data-t="Saldo">${fmt(y.s.saldo)}</td><td class="tl-ac"><button class="btn-primary" style="padding:5px 9px;font-size:12px" onclick="abrirCobro('${y.cr.id}')">💵</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+function descargarCartera() {
+  const filas = MF.repCSV || []; if (filas.length < 2) { showToast('No hay cartera para descargar.', 'error'); return; }
+  const csv = '﻿' + filas.map(f => f.map(c => { const t = String(c == null ? '' : c); return /[",;\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }).join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `cartera_${hoyISO()}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
 /* ---------- 🏘️ ZONAS (para ordenar la ruta) ---------- */
 function limpiarZona(z) { return String(z || '').trim().replace(/\s+/g, ' ').slice(0, 60); }
 function datalistZonas() { const zs = [...new Set(MF.clientes.map(zonaDe).filter(Boolean))].sort((a, b) => a.localeCompare(b)); return `<datalist id="mf-zonas-dl">${zs.map(z => `<option value="${esc(z)}">`).join('')}</datalist>`; }
@@ -1085,7 +1192,7 @@ function puedeAdministrar() { return !conEquipo() || ['dueno', 'supervisor'].inc
 function esDueno() { return !conEquipo() || MF.ses?.rol === 'dueno'; }
 function tabPermitida(t) {
   if (t === 'caja') return conEquipo();
-  if (t === 'cierre') return puedeAdministrar();
+  if (t === 'cierre' || t === 'reportes') return puedeAdministrar();
   if (t === 'equipo') return esDueno();
   if (t === 'vender') return !esCobrador() || MF.ses?.puede_vender === true;
   return true;
@@ -1470,7 +1577,7 @@ async function mfInit() {
     if (conEquipo() && !MF.ses) { pantallaEntrar(); return; }
     await cargarDatos();
     const ini = (location.hash || '').replace('#', '');
-    await mfTab(['ruta', 'vender', 'clientes', 'resumen', 'caja', 'cierre', 'equipo'].includes(ini) ? ini : 'ruta');
+    await mfTab(['ruta', 'vender', 'clientes', 'resumen', 'caja', 'cierre', 'reportes', 'equipo'].includes(ini) ? ini : 'ruta');
     if (colaPendientes().length) enviarCola();
   } catch (e) {
     console.error('mfInit:', e);
