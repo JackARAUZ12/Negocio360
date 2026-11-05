@@ -76,7 +76,7 @@ const MOTIVOS = {
   nada: 'Esa persona no tiene cobros pendientes de entregar.', propia: 'No puedes recibir tu propia entrega: que la reciba otra persona.',
   cobrador: 'Esa persona no está en el equipo (o está desactivada).', perfil: 'Ese usuario no existe o está desactivado.',
   sin_acceso: 'Ese usuario no está en el equipo del Panel. Pídele al dueño que lo agregue.', formato: 'El PIN debe tener al menos 4 dígitos.',
-  admin: 'Elige un administrador.', sin_pin: 'Todavía no tienes PIN del Panel. Pídele al dueño que te ponga uno en “Equipo y mora”.',
+  admin: 'Elige un administrador.', admin_pin: 'El administrador entra con su PIN.', sin_pin: 'Todavía no tienes PIN del Panel. Pídele al dueño que te ponga uno en “Equipo y mora”.',
   pin_falta: 'Ponle un PIN del Panel (4 a 8 números) a esta persona.', pin_debil: 'Ese PIN es muy fácil de adivinar (ej. 1234 o 7777). Usa 4 a 8 números distintos.',
   version: 'Tu Panel está desactualizado. Recarga la página y vuelve a intentar.',
   mora_regla: 'Revisa la regla de mora: el valor debe ser mayor que cero (y el % por día máximo 10), gracia de 0 a 60 días y tope de 0 a 100%.',
@@ -111,7 +111,7 @@ async function rpc(n, a) {
       return { ok: false, msg: 'El servidor no aceptó la operación: ' + String(error.message || 'error').slice(0, 160) };
     }
     if (!data || data.ok !== true) {
-      if (data && data.motivo === 'sesion' && n !== 'mf_sesion_abrir') { sesBorrar(); setTimeout(() => { cerrarModal(true); pantallaEntrar(); }, 50); }
+      if (data && data.motivo === 'sesion' && n !== 'mf_sesion_abrir') { sesBorrar(); setTimeout(async () => { cerrarModal(true); if (await autoEntrar()) await recargar(); else pantallaEntrar(); }, 50); }
       return { ...(data || {}), ok: false, msg: mensaje(data) };
     }
     return data;
@@ -182,7 +182,7 @@ function situacion(cr) {
 /* ---------- pestañas ---------- */
 async function mfTab(t) {
   MF.tab = t;
-  if (conEquipo() && !MF.ses) return pantallaEntrar();
+  if (conEquipo() && !MF.ses && !(await autoEntrar())) return pantallaEntrar();
   if (!tabPermitida(t)) t = MF.tab = 'ruta';
   pintarBarraEquipo(); pintarBarraCola();
   document.querySelectorAll('.pd-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === t));
@@ -1243,8 +1243,22 @@ async function vigilarPerfil() {
   if (id === mfPerfilVisto) return;
   mfPerfilVisto = id; cerrarModal(true); MF.venta = null;
   sesLeer();
-  if (conEquipo() && !MF.ses) { pantallaEntrar(); return; }
+  if (conEquipo() && !MF.ses && !(await autoEntrar())) { pantallaEntrar(); return; }
   await cargarEquipo(); await recargar();
+}
+// Cobradores y supervisores entran solos con el usuario elegido en el sistema (sin otro PIN).
+// El dueño/administrador entra con su PIN de administrador de siempre.
+let mfAutoMotivo = '';
+async function autoEntrar() {
+  mfAutoMotivo = '';
+  const ps = perfilSis(); if (!ps || ps.tipo === 'admin') return false;
+  try {
+    const { data, error } = await sb.rpc('mf_sesion_perfil', { p_perfil_id: ps.id });
+    if (error || !data) { mfAutoMotivo = 'red'; return false; }
+    if (!data.ok) { mfAutoMotivo = data.motivo || ''; return false; }
+    sesGuardar({ token: data.token, rol: data.rol, nombre: data.nombre, perfil_id: data.perfil_id, puede_vender: data.puede_vender === true, expira: data.expira, auto: true });
+    return true;
+  } catch (_) { mfAutoMotivo = 'red'; return false; }
 }
 function sesBorrar() { MF.ses = null; try { sessionStorage.removeItem(sesKey()); } catch (_) {} }
 async function cargarEquipo() {
@@ -1275,7 +1289,7 @@ function pintarBarraEquipo() {
   if (!conEquipo() || !MF.ses) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
   bar.style.display = '';
   bar.innerHTML = `<span>👤 <b>${esc(MF.ses.nombre)}</b> · ${ROL_TXT[MF.ses.rol] || ''}${esCobrador() ? ' · ves solo tu cartera' : ''}</span>
-    <button class="btn-secondary" style="padding:5px 10px;font-size:12.5px" onclick="salirPanel()">🔒 Salir / cambiar de usuario</button>`;
+    ${MF.ses.auto ? '<span class="tl-muted" style="font-size:12px">Para cambiar de usuario usa el menú de usuarios del sistema.</span>' : '<button class="btn-secondary" style="padding:5px 10px;font-size:12.5px" onclick="salirPanel()">🔒 Salir</button>'}`;
 }
 function pantallaEntrar() {
   const tabs = document.querySelector('.pd-tabs[role=tablist]'); if (tabs) tabs.style.display = 'none';
@@ -1284,22 +1298,25 @@ function pantallaEntrar() {
   const enEq = new Set(MF.equipo.filter(e => e.activo).map(e => e.perfil_id));
   const lista = MF.perfiles.filter(p => p.tipo === 'admin' || enEq.has(p.id));
   const ps = perfilSis(), actual = ps?.id || null;
-  if (ps && !lista.find(p => p.id === actual)) {
-    v.innerHTML = `<div class="pd-card mf-entrar"><h3>🔐 Panel Microfinanciera</h3>
-      <div class="tl-aviso">Estás como <b>${esc(ps.nombre || 'otro usuario')}</b> y ese usuario no está en el equipo del Panel. Pídele al dueño que lo agregue en “Equipo y mora”, o cambia de usuario arriba.</div></div>`;
+  if (ps && ps.tipo !== 'admin') {
+    const txt = mfAutoMotivo === 'red' ? 'No se pudo conectar. Revisa tu señal y recarga la página.'
+      : `Estás como <b>${esc(ps.nombre || 'otro usuario')}</b> y ese usuario no está en el equipo del Panel. Pídele al dueño que lo agregue en “Equipo y mora”, o cambia de usuario arriba.`;
+    v.innerHTML = `<div class="pd-card mf-entrar"><h3>🔐 Panel Microfinanciera</h3><div class="tl-aviso">${txt}</div></div>`;
     return;
   }
+  // Sin usuario elegido en el sistema, aquí solo entra un administrador (los demás eligen su usuario arriba).
+  for (let i = lista.length - 1; i >= 0; i--) if (lista[i].tipo !== 'admin') lista.splice(i, 1);
   // Con un usuario elegido en el sistema, solo esa persona puede entrar aquí (no se elige a otro).
   if (ps) { const p = lista.find(x => x.id === actual); lista.length = 0; lista.push(p); }
   const sel = lista.find(p => p.id === actual) ? actual : '';
   v.innerHTML = `<div class="pd-card mf-entrar"><h3>🔐 ¿Quién eres?</h3>
-      <p class="tl-muted">El trabajo en equipo está encendido: cada persona entra con <b>su PIN</b>. Así cada cobro queda a su nombre.</p>
+      <p class="tl-muted">El trabajo en equipo está encendido. El dueño entra con su <b>PIN de administrador</b>. Cobradores y supervisores: elijan su usuario arriba (menú de usuarios del sistema) y entran solos.</p>
       ${lista.length ? `<div class="tl-f"><label for="mf-quien">Tu nombre</label><select class="tl-sel" id="mf-quien"><option value="">Elige tu nombre</option>
         ${lista.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.nombre)}${p.tipo === 'admin' ? ' · Dueño' : ' · ' + (ROL_TXT[(MF.equipo.find(e => e.perfil_id === p.id) || {}).rol] || '')}</option>`).join('')}</select></div>
-      <div class="tl-f"><label for="mf-pin">Tu PIN</label><input class="tl-inp mf-monto-inp" id="mf-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="32" onkeydown="if(event.key==='Enter')entrarPanel()"></div>
+      <div class="tl-f"><label for="mf-pin">PIN de administrador</label><input class="tl-inp mf-monto-inp" id="mf-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="32" onkeydown="if(event.key==='Enter')entrarPanel()"></div>
       <div class="tl-aviso" id="mf-eerr" style="display:none"></div>
       <div class="pd-acciones"><button class="btn-primary mf-grande" id="mf-eok" onclick="entrarPanel()">Entrar</button></div>`
-      : '<div class="tl-aviso">No hay usuarios con acceso. Un administrador debe entrar y agregar al equipo.</div>'}</div>`;
+      : '<div class="tl-aviso">No hay administradores con PIN. Configura el PIN de administrador en el sistema.</div>'}</div>`;
   setTimeout(() => document.getElementById(sel ? 'mf-pin' : 'mf-quien')?.focus(), 60);
 }
 async function entrarPanel() {
@@ -1389,8 +1406,6 @@ function pintarEquipo(v) {
     return `<div class="mf-item" style="flex-wrap:wrap"><div class="mf-item-n"><b>${esc(p.nombre)}</b></div>
       <select class="tl-sel" style="max-width:170px" id="eq-rol-${p.id}" aria-label="Rol de ${esc(p.nombre)}"><option value="" ${!rol ? 'selected' : ''}>🚫 No entra</option><option value="cobrador" ${rol === 'cobrador' ? 'selected' : ''}>🛵 Cobrador</option><option value="supervisor" ${rol === 'supervisor' ? 'selected' : ''}>🧑‍💼 Supervisor</option></select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="eq-ven-${p.id}" ${!e || e.puede_vender ? 'checked' : ''} style="width:17px;height:17px"> Puede vender</label>
-      <input class="tl-inp" style="max-width:130px" id="eq-pin-${p.id}" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="${e && e.pin_puesto ? 'PIN nuevo' : 'PIN (4-8)'}" aria-label="PIN del Panel de ${esc(p.nombre)}">
-      <span class="tl-muted" style="font-size:12px">${e && e.pin_puesto ? '🔑 PIN puesto' : (rol ? '⚠️ Falta PIN' : '')}</span>
       <button class="btn-secondary" style="padding:6px 10px;font-size:12.5px" onclick="guardarMiembro('${p.id}')">Guardar</button>
       ${rol ? (otrosModulos(p).length ? `<div class="tl-aviso" style="flex-basis:100%;margin:4px 0 0">⚠️ También entra a: ${esc(otrosModulos(p).map(nombreModulo).join(', '))}. Ahí podría ver lo de otros.
           <button class="btn-secondary" style="padding:5px 9px;font-size:12px;margin-left:6px" onclick="soloPanel('${p.id}')">🔒 Dejar solo el Panel</button></div>`
@@ -1398,8 +1413,8 @@ function pintarEquipo(v) {
   const sinAsig = MF.creditos.filter(c => !c.mf_cobrador_id).length;
   const porCob = MF.equipo.filter(e => e.activo).map(e => { const cs = MF.creditos.filter(c => c.mf_cobrador_id === e.perfil_id); return { e, n: cs.length, saldo: r2(cs.reduce((a, c) => a + Number(c.saldo_pendiente || 0), 0)) }; });
   v.innerHTML = tarjetaPrestar() + tarjetaMora() + tarjetaEfectivo() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
-      <p class="tl-muted">${on ? 'Cada persona entra al Panel con su PIN. Los cobradores ven y cobran solo su cartera, no pueden anular, y al final del día entregan el efectivo en “Caja del día”.'
-        : 'Enciéndelo si tienes cobradores o vendedores. Cada uno entrará con su PIN, cobrará solo su cartera y cada cobro quedará a su nombre. Mientras esté apagado, el Panel funciona como siempre.'}</p>
+      <p class="tl-muted">${on ? 'Cada persona entra al Panel con su usuario del sistema. Los cobradores ven y cobran solo su cartera, no pueden anular, y al final del día entregan el efectivo en “Caja del día”.'
+        : 'Enciéndelo si tienes cobradores o vendedores. Cada uno entrará con su usuario del sistema, cobrará solo su cartera y cada cobro quedará a su nombre. Mientras esté apagado, el Panel funciona como siempre.'}</p>
       <div class="pd-acciones"><button class="${on ? 'btn-secondary' : 'btn-primary'}" onclick="abrirEncender(${!on})">${on ? 'Apagar trabajo en equipo' : '✅ Encender trabajo en equipo'}</button></div>
       <p class="tl-muted" style="margin-top:6px">🔐 Encender o apagar pide el PIN de un administrador.</p></div>
     ${on ? `<div class="pd-card"><h3>Personas del equipo</h3>
@@ -1471,7 +1486,7 @@ async function guardarMiembro(perfilId) {
   const r = await rpc('mf_equipo_guardar', { p: { token: tk(), perfil_id: perfilId, rol: rol || (e ? e.rol : 'cobrador'), puede_vender: vende, activo: !!rol, pin: rol ? pin : '' } });
   MF.ocupado = false;
   if (!r.ok) { showToast(r.msg, 'error'); return; }
-  showToast(rol ? (pin ? 'Guardado. PIN nuevo listo: díselo solo a esa persona.' : 'Guardado.') : 'Ya no entra al Panel.');
+  showToast(rol ? 'Guardado. Entra eligiendo su usuario en el sistema.' : 'Ya no entra al Panel.');
   await cargarEquipo();
   const pf = MF.perfiles.find(x => x.id === perfilId);
   if (rol && !e && pf && otrosModulos(pf).length && confirm(`Recomendado: ¿dejar a ${pf.nombre} con acceso SOLO al Panel? Así no ve Caja, Créditos ni lo de otros cobradores.`)) { await soloPanel(perfilId, true); return; }
@@ -1480,7 +1495,7 @@ async function guardarMiembro(perfilId) {
 function abrirEncender(activar) {
   const admins = MF.perfiles.filter(p => p.tipo === 'admin');
   modal(`<div class="tl-modal-cab"><h2>${activar ? '✅ Encender' : 'Apagar'} trabajo en equipo</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
-    <div class="tl-modal-cuerpo"><p class="tl-muted">${activar ? 'Desde ahora cada persona entrará al Panel con su PIN. Tú entrarás como Dueño.' : 'El Panel volverá a funcionar sin usuarios: cualquiera que lo abra podrá cobrar y anular. Las sesiones abiertas se cierran.'}</p>
+    <div class="tl-modal-cuerpo"><p class="tl-muted">${activar ? 'Desde ahora cada persona entrará al Panel con su usuario del sistema. Tú entrarás como Dueño.' : 'El Panel volverá a funcionar sin usuarios: cualquiera que lo abra podrá cobrar y anular. Las sesiones abiertas se cierran.'}</p>
       ${admins.length ? `<div class="tl-f"><label for="en-adm">Administrador</label><select class="tl-sel" id="en-adm">${admins.map(a => `<option value="${a.id}">${esc(a.nombre)}</option>`).join('')}</select></div>
       <div class="tl-f"><label for="en-pin">PIN del administrador</label><input class="tl-inp" id="en-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="32" onkeydown="if(event.key==='Enter')confirmarEncender(${activar})"></div>` : '<div class="tl-aviso">No hay administradores con PIN. Configura el PIN de administrador primero.</div>'}
       <div class="tl-aviso" id="en-err" style="display:none"></div></div>
@@ -1547,7 +1562,7 @@ function pintarBarraCola() {
   el.style.display = '';
   el.innerHTML = `<div>${sinRed ? '📡 <b>Sin señal.</b> Puedes seguir cobrando: los cobros se guardan en este teléfono. ' : ''}
       ${pend.length ? `⏳ <b>${pend.length} cobro(s) sin enviar</b> (${fmt(pend.reduce((a, c) => a + c.monto, 0))}).${sinRed ? '' : ' Se están enviando…'}` : ''}
-      ${ajenos.length ? `<div class="tl-muted">${ajenos.length} son de ${esc([...new Set(ajenos.map(a => a.cobrador || 'otra persona'))].join(', '))}: se envían cuando esa persona entre con su PIN.</div>` : ''}
+      ${ajenos.length ? `<div class="tl-muted">${ajenos.length} son de ${esc([...new Set(ajenos.map(a => a.cobrador || 'otra persona'))].join(', '))}: se envían cuando esa persona entre al Panel con su usuario.</div>` : ''}
       ${rech.length ? `<div style="color:var(--danger,#dc2626)">⚠️ <b>${rech.length} cobro(s) guardado(s) no se pudieron registrar.</b> Revísalos.</div>` : ''}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${pend.length && !sinRed ? `<button class="btn-secondary" style="padding:5px 10px;font-size:12.5px" onclick="enviarCola(true)" ${MF.enviando ? 'disabled' : ''}>📤 Enviar ahora</button>` : ''}
       ${pend.length || rech.length ? `<button class="btn-secondary" style="padding:5px 10px;font-size:12.5px" onclick="verCola()">Ver</button>` : ''}</div>`;
@@ -1576,7 +1591,7 @@ async function enviarCola(manual) {
   colaGuardar();
   if (enviados) { showToast(`📤 Se enviaron ${enviados} cobro(s) guardados sin señal.`); await cargarDatos().catch(() => {}); if (!document.getElementById('pd-modal').classList.contains('abierto')) mfTab(MF.tab); }
   if (rechazados) showToast(`⚠️ ${rechazados} cobro(s) guardado(s) no se pudieron registrar. Toca "Ver".`, 'error');
-  if (manual && !enviados && !rechazados) showToast(sinRed ? 'Todavía no hay señal.' : saltados ? 'Los cobros pendientes son de otra persona: se envían cuando ella entre con su PIN.' : 'Nada que enviar.', sinRed || saltados ? 'error' : 'success');
+  if (manual && !enviados && !rechazados) showToast(sinRed ? 'Todavía no hay señal.' : saltados ? 'Los cobros pendientes son de otra persona: se envían cuando ella entre al Panel con su usuario.' : 'Nada que enviar.', sinRed || saltados ? 'error' : 'success');
   pintarBarraCola();
 }
 function verCola() {
@@ -1636,7 +1651,7 @@ async function mfInit() {
     window.addEventListener('offline', pintarBarraCola);
     setInterval(() => { if (colaPendientes().length) enviarCola(); }, 30000);
     await cargarEquipo();
-    if (conEquipo() && !MF.ses) { pantallaEntrar(); return; }
+    if (conEquipo() && !MF.ses && !(await autoEntrar())) { pantallaEntrar(); return; }
     await cargarDatos();
     const ini = (location.hash || '').replace('#', '');
     await mfTab(['ruta', 'vender', 'clientes', 'resumen', 'caja', 'cierre', 'reportes', 'equipo'].includes(ini) ? ini : 'ruta');
