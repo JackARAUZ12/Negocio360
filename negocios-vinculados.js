@@ -139,8 +139,10 @@ document.addEventListener('DOMContentLoaded', () => {
 ===================================================== */
 async function cargarNegocios() {
   try {
-    const { data, error } = await sb.from('negocios_vinculados')
-      .select('*').eq('auth_user_id_principal', STATE.userId).eq('activo', true).order('created_at');
+    // Todos los negocios del grupo, vistos desde cualquiera de ellos (principal o adicional).
+    let { data, error } = await sb.rpc('mis_negocios_grupo');
+    if (error) ({ data, error } = await sb.from('negocios_vinculados')
+      .select('id,auth_user_id_negocio,nombre_negocio,es_principal').eq('auth_user_id_principal', STATE.userId).eq('activo', true).order('created_at'));
     if (error) throw error;
 
     const vinculados = data || [];
@@ -183,6 +185,8 @@ function renderNegocios() {
    formulario; si ya se alcanzo, muestra el paywall en vez.
 ===================================================== */
 function intentarAgregarNegocio() {
+  const principal = STATE.negocios.find(x => x.es_principal);
+  if (principal && principal.auth_user_id_negocio !== STATE.userId) { showToast(`Para crear otro negocio, pasa primero a "${principal.nombre_negocio}" (el principal).`, 'error'); return; }
   if (STATE.negocios.length >= STATE.limiteNegocios) {
     document.getElementById('pw-subtitulo').textContent =
       `Tu cuenta permite hasta ${STATE.limiteNegocios} negocio${STATE.limiteNegocios===1?'':'s'}. Para agregar otro, elige una opción:`;
@@ -256,6 +260,9 @@ async function crearNegocioVinculado() {
 async function entrarANegocio(negocioId) {
   const n = STATE.negocios.find(x => x.id === negocioId);
   if (!n) return;
+  // Paso rápido y seguro (sin contraseñas): el mismo de las empresas vinculadas. Solo administrador.
+  if (typeof window.N360IrANegocio === 'function') { window.N360IrANegocio({ auth_user_id: n.auth_user_id_negocio, nombre_negocio: n.nombre_negocio }); return; }
+  if (STATE.negocios.find(x => x.es_principal)?.auth_user_id_negocio !== STATE.userId) { showToast('Para volver a este negocio, entra con su correo y contraseña.', 'error'); return; }
   if (!confirm(`Vas a entrar a "${n.nombre_negocio}". ¿Continuar?`)) return;
 
   try {

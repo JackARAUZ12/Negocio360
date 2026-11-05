@@ -1485,10 +1485,22 @@
       if (error || !Array.isArray(data) || !data.length) return;
       PG.empresaNegocios = data;
       if (!PG.empresaSoloLectura) vigilarCambioDeCuentaEnOtraPestana();
+      // Negocios creados en "Mis negocios": solo el administrador (o la cuenta sin usuarios) pasa de uno a otro.
+      try { const r = await PG.client.rpc('empresa_solo_admin'); PG.empresaSoloAdmin = r.data === true; } catch (_) { PG.empresaSoloAdmin = false; }
+      window.N360IrANegocio = (n) => {
+        if (!puedeCambiarNegocio()) { alert('Solo el administrador puede pasar a otro negocio.'); return; }
+        confirmarCambioNegocio({ auth_user_id: n.auth_user_id, nombre_negocio: n.nombre_negocio });
+      };
+      if (!puedeCambiarNegocio()) return;
       ponerBotonesEmpresa(data, 0);
     } catch (_) { /* si falla, simplemente no aparece el botón */ }
   }
 
+  function puedeCambiarNegocio() {
+    if (!PG.empresaSoloAdmin) return true;
+    const p = getSesion();
+    return !p || p.tipo === 'admin';
+  }
   function ponerBotonesEmpresa(negocios, intento) {
     const nav = document.querySelector('#sidebar .sidebar-nav, .sidebar-nav');
     if (!nav) {
