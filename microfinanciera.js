@@ -1,7 +1,9 @@
 /* ============================================================
-   MICROFINANCIERA.JS — NEGOCIO360 · Panel Microfinanciera (Nivel 1)
+   MICROFINANCIERA.JS — NEGOCIO360 · Panel Microfinanciera (Nivel 1 + Nivel 2: trabajo en equipo)
    Vender al crédito (productos o efectivo), ruta de cobro del día, cobrar con recibo,
-   tarjeta del cliente y resumen.
+   tarjeta del cliente y resumen. Nivel 2 (opcional, apagado por defecto): cada persona entra
+   con SU PIN; el servidor le da una llave del día y valida qué puede hacer (cobrador solo su
+   cartera, no anula; dueño/supervisor reciben la entrega del día con cuadre en Caja).
    CANDADOS: esta pantalla NO escribe dinero directamente. Vender, cobrar y anular pasan
    por funciones del servidor (mf_credito_crear, mf_cobrar, mf_anular_pago, mf_gestion) que
    validan todo y guardan en UNA operación (venta, inventario, crédito, cuotas, Caja, pago).
@@ -18,6 +20,7 @@ const MF = {
   userId: null, cfg: {}, tab: 'ruta', ocupado: false,
   clientes: [], creditos: [], cuotas: {}, metodos: [], bancos: [], productos: [], pagosHoy: [], pagosSemana: [], promesas: {},
   venta: null, cobro: null, filtroCli: '', filtroRuta: '',
+  ses: null, perfiles: [], equipo: [], selAsig: {},
 };
 
 /* ---------- utilidades ---------- */
@@ -68,6 +71,12 @@ const MOTIVOS = {
   cantidad: 'Revisa las cantidades.', precio: 'Revisa los precios.', total_cero: 'El total debe ser mayor que cero.', monto: 'Escribe un monto válido.',
   metodo: 'Elige cómo pagó.', banco: 'Ese banco no existe en tu negocio.', banco_moneda: 'Ese banco es de otra moneda: ese cobro regístralo en Créditos.',
   no_existe: 'No se encontró. Recarga la pantalla.', pagado: 'Ese crédito ya está pagado.', con_impuestos: 'Este crédito tiene impuestos: cóbralo en el módulo Créditos.',
+  sesion: 'Tu sesión del Panel terminó. Entra otra vez con tu PIN.', permiso: 'Tu usuario no tiene permiso para hacer eso.',
+  no_es_tuyo: 'Ese crédito no está en tu cartera.', entregado: 'Ese cobro ya fue entregado y cuadrado: ya no se puede anular.',
+  nada: 'Esa persona no tiene cobros pendientes de entregar.', propia: 'No puedes recibir tu propia entrega: que la reciba otra persona.',
+  cobrador: 'Esa persona no está en el equipo (o está desactivada).', perfil: 'Ese usuario no existe o está desactivado.',
+  sin_acceso: 'Ese usuario no está en el equipo del Panel. Pídele al dueño que lo agregue.', formato: 'El PIN debe tener al menos 4 dígitos.',
+  admin: 'Elige un administrador.',
   motivo: 'Escribe el motivo (mínimo 3 letras).', ya_anulado: 'Ese cobro ya estaba anulado.', de_creditos: 'Ese pago se hizo en Créditos: anúlalo allá.', nota: 'Escribe la nota.',
 };
 function mensaje(d) {
@@ -75,13 +84,19 @@ function mensaje(d) {
   if (d.motivo === 'sin_stock') return `No hay suficiente "${d.producto}": hay ${Number(d.hay)} y necesitas ${Number(d.necesita)}.`;
   if (d.motivo === 'fondos') return `No hay suficiente dinero en Caja para prestar. Caja tiene ${fmt(d.caja)}.`;
   if (d.motivo === 'excede') return `Es más de lo que debe. Saldo: ${fmt(d.saldo)}.`;
+  if (d.motivo === 'incorrecto') return `PIN incorrecto.${d.restantes != null ? ' Te quedan ' + d.restantes + ' intento(s).' : ''}`;
+  if (d.motivo === 'bloqueado') return `Demasiados intentos. Espera ${Math.max(1, Math.ceil((d.bloqueado_seg || 900) / 60))} minuto(s).`;
+  if (d.motivo === 'cambio') return `Llegaron cobros nuevos mientras contabas. Ahora debe entregar ${fmt(d.esperado)} en efectivo: vuelve a contar.`;
   return MOTIVOS[d.motivo] || 'No se pudo completar.';
 }
 async function rpc(n, a) {
   try {
     const { data, error } = await sb.rpc(n, a);
     if (error) { console.warn(n, error); return { ok: false, red: true, msg: 'No se pudo completar. Revisa tu conexión e intenta de nuevo (no se cobra dos veces).' }; }
-    if (!data || data.ok !== true) return { ...(data || {}), ok: false, msg: mensaje(data) };
+    if (!data || data.ok !== true) {
+      if (data && data.motivo === 'sesion' && n !== 'mf_sesion_abrir') { sesBorrar(); setTimeout(() => { cerrarModal(true); pantallaEntrar(); }, 50); }
+      return { ...(data || {}), ok: false, msg: mensaje(data) };
+    }
     return data;
   } catch (e) { return { ok: false, red: true, msg: 'Sin conexión. Intenta de nuevo (no se cobra dos veces).' }; }
 }
@@ -94,16 +109,19 @@ async function leerTodo(fn) {
 /* ---------- datos ---------- */
 async function cargarDatos() {
   const u = MF.userId, hoy = hoyISO();
-  const [cli, cred, met, ban, prod, pagos] = await Promise.all([
+  let [cli, cred, met, ban, prod, pagos] = await Promise.all([
     leerTodo(() => sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,direccion').eq('auth_user_id', u).eq('activo', true).order('nombre').order('id')),
-    leerTodo(() => sb.from('creditos').select('id,numero_credito,cliente_id,tipo,total_financiado,saldo_pendiente,frecuencia,valor_cuota_aprox,estado,created_at,observaciones,mf_ref')
+    leerTodo(() => sb.from('creditos').select('id,numero_credito,cliente_id,tipo,total_financiado,saldo_pendiente,frecuencia,valor_cuota_aprox,estado,created_at,observaciones,mf_ref,mf_cobrador_id,mf_cobrador_nombre')
       .eq('auth_user_id', u).in('estado', ['activo', 'al_dia', 'con_atraso', 'en_proceso']).gt('saldo_pendiente', 0.004).order('id')),
     sb.from('metodos_pago').select('id,nombre').eq('auth_user_id', u).eq('activo', true).order('nombre'),
     sb.from('bancos').select('id,nombre,moneda').eq('auth_user_id', u).eq('activo', true).order('nombre'),
     leerTodo(() => sb.from('productos').select('id,nombre,precio,stock_actual,tipo,sku,codigo_barras').eq('auth_user_id', u).eq('activo', true).in('tipo', ['producto', 'servicio']).order('nombre').order('id')),
-    sb.from('creditos_pagos').select('id,credito_id,monto,fecha,estado,comprobante_numero').eq('auth_user_id', u).eq('estado', 'completado').gte('fecha', masDias(hoy, -6)).limit(5000),
+    sb.from('creditos_pagos').select('id,credito_id,monto,fecha,estado,comprobante_numero,mf_cobrador_id').eq('auth_user_id', u).eq('estado', 'completado').gte('fecha', masDias(hoy, -6)).limit(5000),
   ]);
-  MF.clientes = cli; MF.creditos = cred;
+  MF.clientes = cli;
+  // Cobrador: solo ve SU cartera y SUS cobros (el servidor además rechaza cobrar lo ajeno)
+  if (esCobrador()) { const yo = MF.ses.perfil_id; cred = cred.filter(c => c.mf_cobrador_id === yo); if (pagos.data) pagos.data = pagos.data.filter(p => p.mf_cobrador_id === yo); }
+  MF.creditos = cred;
   MF.metodos = (met.data || []); MF.bancos = (ban.data || []).filter(b => (b.moneda || 'NIO') === (MF.cfg.moneda || 'NIO'));
   MF.productos = prod;
   MF.pagosSemana = pagos.data || []; MF.pagosHoy = MF.pagosSemana.filter(p => String(p.fecha).slice(0, 10) === hoy);
@@ -141,12 +159,17 @@ function situacion(cr) {
 /* ---------- pestañas ---------- */
 async function mfTab(t) {
   MF.tab = t;
+  if (conEquipo() && !MF.ses) return pantallaEntrar();
+  if (!tabPermitida(t)) t = MF.tab = 'ruta';
+  pintarBarraEquipo();
   document.querySelectorAll('.pd-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === t));
   try { history.replaceState(null, '', '#' + t); } catch (_) {}
   const v = document.getElementById('pd-vista');
   if (t === 'ruta') return pintarRuta(v);
   if (t === 'vender') return pintarVender(v);
   if (t === 'clientes') return pintarClientes(v);
+  if (t === 'caja') return pintarCajaDia(v);
+  if (t === 'equipo') return pintarEquipo(v);
   return pintarResumen(v);
 }
 async function recargar() { try { await cargarDatos(); } catch (e) { console.error(e); showToast('No se pudieron cargar los datos. Revisa tu conexión.', 'error'); } mfTab(MF.tab); }
@@ -233,7 +256,7 @@ async function confirmarCobro() {
   if (bancoW && bancoW.style.display !== 'none' && !banco) { err.textContent = 'Elige a qué banco entró.'; err.style.display = ''; return; }
   MF.ocupado = true; const ok = document.getElementById('mf-ok'); ok.disabled = true; ok.textContent = 'Cobrando…';
   const r = await rpc('mf_cobrar', { p: { credito_id: k.cr.id, monto: m, metodo_pago_id: met ? met.id : null, metodo_pago_nombre: met ? met.nombre : 'Efectivo',
-    banco_id: banco || null, nota: document.getElementById('mf-nota').value.trim(), ref: k.ref, creado_por: perfilNombre() } });
+    banco_id: banco || null, nota: document.getElementById('mf-nota').value.trim(), ref: k.ref, creado_por: perfilNombre(), token: tk() } });
   MF.ocupado = false;
   if (!r.ok) { err.textContent = r.msg; err.style.display = ''; ok.disabled = false; ok.textContent = `✅ Cobrar ${fmt(m)}`; return; }
   mostrarRecibo(r, k.cr, met ? met.nombre : 'Efectivo');
@@ -241,12 +264,12 @@ async function confirmarCobro() {
 }
 function mostrarRecibo(r, cr, metodo) {
   const c = cliPorId(cr.cliente_id), tel = c?.whatsapp || c?.telefono || '', neg = MF.cfg.nombre_comercial || 'Mi negocio';
-  const txt = `🧾 *Recibo ${r.recibo}* — ${neg}\nCliente: ${nombreCli(c)}\nCrédito: ${r.numero_credito || cr.numero_credito}\nFecha: ${new Date().toLocaleDateString('es-NI')}\nPagó: ${fmt(r.monto)} (${metodo})\nDebía: ${fmt(r.saldo_anterior)}\nAhora debe: ${fmt(r.saldo)}${r.proxima_fecha ? `\nPróximo pago: ${fCorta(r.proxima_fecha)} · ${fmt(r.proxima_monto)}` : ''}${r.cancelado ? '\n🎉 ¡Crédito pagado completo! Gracias.' : '\n¡Gracias por su pago!'}`;
+  const txt = `🧾 *Recibo ${r.recibo}* — ${neg}${conEquipo() && r.cobrador ? '\nCobró: ' + r.cobrador : ''}\nCliente: ${nombreCli(c)}\nCrédito: ${r.numero_credito || cr.numero_credito}\nFecha: ${new Date().toLocaleDateString('es-NI')}\nPagó: ${fmt(r.monto)} (${metodo})\nDebía: ${fmt(r.saldo_anterior)}\nAhora debe: ${fmt(r.saldo)}${r.proxima_fecha ? `\nPróximo pago: ${fCorta(r.proxima_fecha)} · ${fmt(r.proxima_monto)}` : ''}${r.cancelado ? '\n🎉 ¡Crédito pagado completo! Gracias.' : '\n¡Gracias por su pago!'}`;
   MF.ultimoRecibo = { txt, r, cr, metodo };
   modal(`<div class="tl-modal-cab"><h2>✅ Cobrado</h2><button class="tl-x" onclick="cerrarModal();mfTab(MF.tab)" aria-label="Cerrar">✕</button></div>
     <div class="tl-modal-cuerpo"><div class="mf-recibo">
       <div class="mf-recibo-num">${esc(r.recibo)}${r.repetido ? ' <span class="pd-pill">ya estaba registrado</span>' : ''}</div>
-      <div class="mf-recibo-monto">${fmt(r.monto)}</div><div>${esc(nombreCli(c))} · ${esc(metodo)}</div>
+      <div class="mf-recibo-monto">${fmt(r.monto)}</div><div>${esc(nombreCli(c))} · ${esc(metodo)}${conEquipo() && r.cobrador ? ' · Cobró: ' + esc(r.cobrador) : ''}</div>
       <div class="mf-montos" style="margin-top:10px"><div><span>Debía</span><b>${fmt(r.saldo_anterior)}</b></div><div><span>Ahora debe</span><b>${fmt(r.saldo)}</b></div>
         <div><span>Próximo pago</span><b>${r.proxima_fecha ? fCorta(r.proxima_fecha) + ' · ' + fmt(r.proxima_monto) : '—'}</b></div></div>
       ${r.cancelado ? '<div class="tl-aviso ok">🎉 ¡Terminó de pagar este crédito!</div>' : ''}</div></div>
@@ -273,7 +296,7 @@ function abrirGestion(creditoId, tipo) {
 async function guardarGestion(creditoId, tipo) {
   if (MF.ocupado) return; MF.ocupado = true;
   const b = document.getElementById('mf-gok'); b.disabled = true;
-  const r = await rpc('mf_gestion', { p: { credito_id: creditoId, tipo, fecha_promesa: tipo === 'promesa' ? document.getElementById('mf-gf').value : null, nota: document.getElementById('mf-gn').value.trim(), creado_por: perfilNombre() } });
+  const r = await rpc('mf_gestion', { p: { credito_id: creditoId, tipo, fecha_promesa: tipo === 'promesa' ? document.getElementById('mf-gf').value : null, nota: document.getElementById('mf-gn').value.trim(), creado_por: perfilNombre(), token: tk() } });
   MF.ocupado = false;
   if (!r.ok) { const e = document.getElementById('mf-gerr'); e.textContent = r.msg; e.style.display = ''; b.disabled = false; return; }
   cerrarModal(); showToast('Anotado.'); await recargar();
@@ -283,7 +306,7 @@ async function guardarGestion(creditoId, tipo) {
 function ventaNueva() {
   const hoy = hoyISO();
   MF.venta = { ref: ref(), tipo: 'productos', clienteId: '', items: [], monto: '', interes: '', recargo: '', prima: '', primaMetodo: (MF.metodos.find(m => /efectivo/i.test(m.nombre)) || MF.metodos[0] || {}).id || '',
-    frec: 'semanal', n: 4, primera: masDias(hoy, 7), sinDom: true, nota: '', busca: '', buscaCli: '' };
+    frec: 'semanal', n: 4, primera: masDias(hoy, 7), sinDom: true, nota: '', busca: '', buscaCli: '', cobrador: '' };
 }
 function primeraPorFrec(f) { const h = hoyISO(); return f === 'diaria' ? masDias(h, 1) : f === 'semanal' ? masDias(h, 7) : f === 'quincenal' ? masDias(h, 15) : masMeses(h, 1); }
 function calcVenta() {
@@ -327,6 +350,8 @@ function pintarVender(v) {
       <div class="tl-grid"><div class="tl-f"><label for="mf-n">¿Cuántas cuotas?</label><input class="tl-inp" id="mf-n" type="number" inputmode="numeric" min="1" max="365" step="1" value="${esc(V.n)}" oninput="MF.venta.n=this.value;pintarResumenVenta()"></div>
         <div class="tl-f"><label for="mf-pf">Primer pago</label><input class="tl-inp" id="mf-pf" type="date" min="${hoyISO()}" value="${esc(V.primera)}" onchange="MF.venta.primera=this.value;pintarResumenVenta()"></div>
         ${V.frec === 'diaria' ? `<label class="tl-f full" style="flex-direction:row;align-items:center;gap:8px;font-weight:600"><input type="checkbox" ${V.sinDom ? 'checked' : ''} onchange="MF.venta.sinDom=this.checked;pintarResumenVenta()" style="width:18px;height:18px"> No cobrar los domingos</label>` : ''}
+        ${conEquipo() && MF.ses?.rol === 'dueno' && MF.equipo.some(e => e.activo) ? `<div class="tl-f full"><label for="mf-vcob">¿Quién lo cobra?</label><select class="tl-sel" id="mf-vcob" onchange="MF.venta.cobrador=this.value">
+          <option value="">Sin cobrador (lo cobra el dueño)</option>${MF.equipo.filter(e => e.activo).map(e => `<option value="${e.perfil_id}" ${V.cobrador === e.perfil_id ? 'selected' : ''}>${esc(e.nombre)} · ${e.rol === 'supervisor' ? 'Supervisor' : 'Cobrador'}</option>`).join('')}</select></div>` : ''}
         <div class="tl-f full"><label for="mf-vnota">Nota (opcional)</label><input class="tl-inp" id="mf-vnota" maxlength="300" value="${esc(V.nota)}" oninput="MF.venta.nota=this.value"></div></div></div>
     <div class="pd-card mf-resumen-card" id="mf-resumen"></div>`;
   if (!c) pintarCliOpc();
@@ -401,7 +426,8 @@ async function confirmarVenta() {
   if (!confirm(pregunta)) return;
   MF.ocupado = true; const b = document.getElementById('mf-vok'); b.disabled = true; b.textContent = 'Guardando…';
   const p = { tipo: V.tipo, cliente_id: V.clienteId, frecuencia: V.frec, num_cuotas: k.n, primera_fecha: V.primera, sin_domingos: V.frec === 'diaria' ? !!V.sinDom : false,
-    nota: V.nota, ref: V.ref, creado_por: perfilNombre() };
+    nota: V.nota, ref: V.ref, creado_por: perfilNombre(), token: tk() };
+  if (conEquipo() && MF.ses?.rol === 'dueno' && V.cobrador) p.cobrador_id = V.cobrador;
   if (V.tipo === 'productos') Object.assign(p, { items: V.items.map(i => ({ producto_id: i.producto_id, cantidad: r2(i.cantidad), precio: r2(i.precio) })), recargo_pct: Number(V.recargo) || 0,
     prima: k.prima, prima_metodo_id: met ? met.id : null, prima_metodo_nombre: met ? met.nombre : 'Efectivo' });
   else Object.assign(p, { monto: k.cap, interes_pct: Number(V.interes) || 0 });
@@ -468,13 +494,14 @@ async function abrirTarjeta(clienteId) {
   const c = cliPorId(clienteId) || { id: clienteId, nombre: 'Cliente' };
   modal(`<div class="tl-modal-cab"><h2>📒 ${esc(nombreCli(c))}</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div><div class="tl-modal-cuerpo"><p class="tl-muted">Cargando la tarjeta…</p></div>`);
   try {
-    const { data: creds, error } = await sb.from('creditos').select('id,numero_credito,tipo,total_financiado,saldo_pendiente,estado,frecuencia,valor_cuota_aprox,created_at,venta_id')
+    let { data: creds, error } = await sb.from('creditos').select('id,numero_credito,tipo,total_financiado,saldo_pendiente,estado,frecuencia,valor_cuota_aprox,created_at,venta_id,mf_cobrador_id,mf_cobrador_nombre')
       .eq('auth_user_id', MF.userId).eq('cliente_id', clienteId).order('created_at', { ascending: false }).limit(50);
     if (error) throw error;
+    if (esCobrador()) creds = (creds || []).filter(x => x.mf_cobrador_id === MF.ses.perfil_id);
     const ids = (creds || []).map(x => x.id);
     const [cu, pa] = ids.length ? await Promise.all([
       sb.from('creditos_cuotas').select('credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,estado').in('credito_id', ids).order('numero'),
-      sb.from('creditos_pagos').select('id,credito_id,fecha,monto,estado,comprobante_numero,metodo_pago_nombre,observaciones,anulado_motivo,created_at').in('credito_id', ids).order('created_at', { ascending: false }),
+      sb.from('creditos_pagos').select('id,credito_id,fecha,monto,estado,comprobante_numero,metodo_pago_nombre,observaciones,anulado_motivo,created_at,mf_cobrador_nombre,mf_entrega_id').in('credito_id', ids).order('created_at', { ascending: false }),
     ]) : [{ data: [] }, { data: [] }];
     const hoy = hoyISO();
     const html = (creds || []).map(cr => {
@@ -485,14 +512,17 @@ async function abrirTarjeta(clienteId) {
           ${activo ? `<button class="btn-primary" onclick="cerrarModal();abrirCobroDesdeTarjeta('${cr.id}')">💵 Cobrar</button>` : '<span class="pd-pill ok">✅ Pagado</span>'}</div>
         <div class="mf-montos"><div><span>Total</span><b>${fmt(cr.total_financiado)}</b></div><div><span>Pagado</span><b class="pd-verde">${fmt(pagado)}</b></div><div><span>Debe</span><b>${fmt(cr.saldo_pendiente)}</b></div></div>
         <div class="vd-barra" style="margin:8px 0"><i style="width:${Math.min(100, pct)}%"></i></div>
+        ${conEquipo() ? (puedeAdministrar() && activo ? `<div class="tl-f" style="margin-bottom:8px"><label>👤 Lo cobra</label><select class="tl-sel" onchange="asignarUno('${cr.id}',this.value,'${clienteId}')">
+            <option value="">Sin cobrador (dueño)</option>${MF.equipo.filter(e => e.activo || e.perfil_id === cr.mf_cobrador_id).map(e => `<option value="${e.perfil_id}" ${cr.mf_cobrador_id === e.perfil_id ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}</select></div>`
+          : `<div class="tl-muted" style="margin-bottom:6px">👤 Lo cobra: ${esc(cr.mf_cobrador_nombre || 'el dueño')}</div>`) : ''}
         <details><summary class="tl-muted" style="cursor:pointer">Ver cuotas (${qs.length})</summary><div class="pd-tw"><table class="tl-tabla"><thead><tr><th>#</th><th>Fecha</th><th class="tl-num">Cuota</th><th class="tl-num">Pagado</th><th>Estado</th></tr></thead><tbody>
           ${qs.map(q => { const vencida = q.estado !== 'pagada' && String(q.fecha_vencimiento).slice(0, 10) < hoy;
             return `<tr><td data-t="#">${q.numero}</td><td data-t="Fecha">${fCorta(q.fecha_vencimiento)}</td><td class="tl-num" data-t="Cuota">${fmt(q.monto_total)}</td><td class="tl-num" data-t="Pagado">${fmt(q.monto_pagado)}</td>
               <td data-t="Estado">${q.estado === 'pagada' ? '<span class="pd-pill ok">Pagada</span>' : vencida ? '<span class="pd-pill mal">Atrasada</span>' : q.estado === 'parcial' ? '<span class="pd-pill ambar">Parcial</span>' : '<span class="pd-pill">Pendiente</span>'}</td></tr>`; }).join('')}</tbody></table></div></details>
         <details open><summary class="tl-muted" style="cursor:pointer">Pagos (${ps.length})</summary>${ps.length ? `<div class="pd-tw"><table class="tl-tabla"><tbody>${ps.map(p => `<tr${p.estado === 'anulado' ? ' style="opacity:.55"' : ''}>
-          <td data-t="Recibo"><b>${esc(p.comprobante_numero || '—')}</b>${p.estado === 'anulado' ? ' <span class="pd-pill mal">Anulado</span>' : ''}<div class="tl-muted">${esc(p.observaciones || '')}${p.anulado_motivo ? ' · ' + esc(p.anulado_motivo) : ''}</div></td>
+          <td data-t="Recibo"><b>${esc(p.comprobante_numero || '—')}</b>${p.estado === 'anulado' ? ' <span class="pd-pill mal">Anulado</span>' : ''}<div class="tl-muted">${esc(p.observaciones || '')}${p.anulado_motivo ? ' · ' + esc(p.anulado_motivo) : ''}${conEquipo() && p.mf_cobrador_nombre ? ' · Cobró: ' + esc(p.mf_cobrador_nombre) : ''}${p.mf_entrega_id ? ' · <span class="pd-pill ok">entregado</span>' : ''}</div></td>
           <td data-t="Fecha">${fCorta(p.fecha)}</td><td class="tl-num" data-t="Monto">${fmt(p.monto)}</td><td data-t="Cómo">${esc(p.metodo_pago_nombre || '')}</td>
-          <td class="tl-ac">${p.estado !== 'anulado' && String(p.comprobante_numero || '').startsWith('R-') ? `<button class="btn-secondary" style="padding:5px 9px;font-size:12px" onclick="anularCobro('${p.id}','${esc(p.comprobante_numero)}','${clienteId}')">Anular</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="tl-muted">Sin pagos todavía.</p>'}</details></div>`;
+          <td class="tl-ac">${p.estado !== 'anulado' && !p.mf_entrega_id && puedeAdministrar() && String(p.comprobante_numero || '').startsWith('R-') ? `<button class="btn-secondary" style="padding:5px 9px;font-size:12px" onclick="anularCobro('${p.id}','${esc(p.comprobante_numero)}','${clienteId}')">Anular</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="tl-muted">Sin pagos todavía.</p>'}</details></div>`;
     }).join('');
     const tel = c.whatsapp || c.telefono || '';
     document.getElementById('pd-modal-box').innerHTML = `<div class="tl-modal-cab"><h2>📒 ${esc(nombreCli(c))}</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
@@ -509,7 +539,7 @@ async function anularCobro(pagoId, recibo, clienteId) {
   if (motivo == null) return;
   if (motivo.trim().length < 3) { showToast('Escribe el motivo (mínimo 3 letras).', 'error'); return; }
   if (MF.ocupado) return; MF.ocupado = true;
-  const r = await rpc('mf_anular_pago', { p_pago_id: pagoId, p_motivo: motivo.trim() });
+  const r = await rpc('mf_anular_pago', { p_pago_id: pagoId, p_motivo: motivo.trim(), p_token: tk() });
   MF.ocupado = false;
   if (!r.ok) { showToast(r.msg, 'error'); return; }
   showToast(`Cobro ${r.recibo} anulado. Saldo: ${fmt(r.saldo)}.`);
@@ -535,6 +565,251 @@ function pintarResumen(v) {
         <td class="tl-num" data-t="Atrasado">${fmt(x.s.atrasado)}</td><td class="tl-num" data-t="Debe">${fmt(x.s.saldo)}</td><td class="tl-ac"><button class="btn-primary" style="padding:6px 10px;font-size:12.5px" onclick="abrirCobro('${x.cr.id}')">💵 Cobrar</button></td></tr>`; }).join('')}</tbody></table></div>`
       : '<p class="tl-muted">🎉 Nadie está atrasado.</p>'}</div>
     <p class="tl-muted">Todo esto también está en <a href="creditos.html">Créditos</a>, <a href="caja.html">Caja</a> y <a href="ventas.html">Ventas</a>, como siempre.</p>`;
+}
+
+/* ---------- 👥 NIVEL 2: TRABAJO EN EQUIPO ----------
+   Si está apagado, nada de esto aparece y el Panel funciona igual que siempre.
+   Encendido: cada persona entra con SU PIN. La llave de sesión la da y la valida el SERVIDOR;
+   esta pantalla solo la guarda mientras la pestaña está abierta. */
+const ROL_TXT = { dueno: 'Dueño', supervisor: 'Supervisor', cobrador: 'Cobrador' };
+function conEquipo() { return MF.cfg.mf_con_equipo === true; }
+function tk() { return conEquipo() && MF.ses ? MF.ses.token : null; }
+function esCobrador() { return conEquipo() && MF.ses?.rol === 'cobrador'; }
+function puedeAdministrar() { return !conEquipo() || ['dueno', 'supervisor'].includes(MF.ses?.rol); }
+function esDueno() { return !conEquipo() || MF.ses?.rol === 'dueno'; }
+function tabPermitida(t) {
+  if (t === 'caja') return conEquipo();
+  if (t === 'equipo') return esDueno();
+  if (t === 'vender') return !esCobrador() || MF.ses?.puede_vender === true;
+  return true;
+}
+function sesKey() { return 'n360_mf_ses_' + MF.userId; }
+function sesLeer() {
+  MF.ses = null;
+  try { const s = JSON.parse(sessionStorage.getItem(sesKey()) || 'null'); if (s && s.token && new Date(s.expira) > new Date()) MF.ses = s; } catch (_) {}
+}
+function sesGuardar(s) { MF.ses = s; try { sessionStorage.setItem(sesKey(), JSON.stringify(s)); } catch (_) {} }
+function sesBorrar() { MF.ses = null; try { sessionStorage.removeItem(sesKey()); } catch (_) {} }
+async function cargarEquipo() {
+  try {
+    let { data, error } = await sb.rpc('listar_perfiles_del_grupo_v2');
+    if (error) ({ data, error } = await sb.rpc('listar_perfiles_del_grupo'));
+    MF.perfiles = (data || []).filter(p => p.activo !== false).map(p => ({ id: p.id, nombre: p.nombre, tipo: p.tipo, color: p.avatar_color }));
+  } catch (_) { MF.perfiles = []; }
+  try {
+    const { data } = await sb.from('mf_equipo').select('perfil_id,rol,puede_vender,activo').eq('auth_user_id', MF.userId);
+    MF.equipo = (data || []).map(e => ({ ...e, nombre: (MF.perfiles.find(p => p.id === e.perfil_id) || {}).nombre || 'Usuario' }));
+  } catch (_) { MF.equipo = []; }
+}
+async function releerCfg() {
+  const { data } = await sb.from('configuracion_empresa').select('mf_con_equipo').eq('auth_user_id', MF.userId).maybeSingle();
+  MF.cfg.mf_con_equipo = data?.mf_con_equipo === true;
+}
+function pintarBarraEquipo() {
+  const tabs = document.querySelector('.pd-tabs[role=tablist]'); if (tabs) tabs.style.display = '';
+  document.querySelectorAll('.pd-tab[data-tab]').forEach(b => { b.style.display = tabPermitida(b.dataset.tab) ? '' : 'none'; });
+  const bar = document.getElementById('mf-barra-eq'); if (!bar) return;
+  if (!conEquipo() || !MF.ses) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = '';
+  bar.innerHTML = `<span>👤 <b>${esc(MF.ses.nombre)}</b> · ${ROL_TXT[MF.ses.rol] || ''}${esCobrador() ? ' · ves solo tu cartera' : ''}</span>
+    <button class="btn-secondary" style="padding:5px 10px;font-size:12.5px" onclick="salirPanel()">🔒 Salir / cambiar de usuario</button>`;
+}
+function pantallaEntrar() {
+  const tabs = document.querySelector('.pd-tabs[role=tablist]'); if (tabs) tabs.style.display = 'none';
+  const bar = document.getElementById('mf-barra-eq'); if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+  const v = document.getElementById('pd-vista');
+  const enEq = new Set(MF.equipo.filter(e => e.activo).map(e => e.perfil_id));
+  const lista = MF.perfiles.filter(p => p.tipo === 'admin' || enEq.has(p.id));
+  let actual = null; try { actual = JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null')?.id || null; } catch (_) {}
+  const sel = lista.find(p => p.id === actual) ? actual : '';
+  v.innerHTML = `<div class="pd-card mf-entrar"><h3>🔐 ¿Quién eres?</h3>
+      <p class="tl-muted">El trabajo en equipo está encendido: cada persona entra con <b>su PIN</b>. Así cada cobro queda a su nombre.</p>
+      ${lista.length ? `<div class="tl-f"><label for="mf-quien">Tu nombre</label><select class="tl-sel" id="mf-quien"><option value="">Elige tu nombre</option>
+        ${lista.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.nombre)}${p.tipo === 'admin' ? ' · Dueño' : ' · ' + (ROL_TXT[(MF.equipo.find(e => e.perfil_id === p.id) || {}).rol] || '')}</option>`).join('')}</select></div>
+      <div class="tl-f"><label for="mf-pin">Tu PIN</label><input class="tl-inp mf-monto-inp" id="mf-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="32" onkeydown="if(event.key==='Enter')entrarPanel()"></div>
+      <div class="tl-aviso" id="mf-eerr" style="display:none"></div>
+      <div class="pd-acciones"><button class="btn-primary mf-grande" id="mf-eok" onclick="entrarPanel()">Entrar</button></div>`
+      : '<div class="tl-aviso">No hay usuarios con acceso. Un administrador debe entrar y agregar al equipo.</div>'}</div>`;
+  setTimeout(() => document.getElementById(sel ? 'mf-pin' : 'mf-quien')?.focus(), 60);
+}
+async function entrarPanel() {
+  if (MF.ocupado) return;
+  const id = document.getElementById('mf-quien').value, pin = document.getElementById('mf-pin').value.trim(), err = document.getElementById('mf-eerr');
+  err.style.display = 'none';
+  if (!id) { err.textContent = 'Elige tu nombre.'; err.style.display = ''; return; }
+  if (pin.length < 4) { err.textContent = 'Escribe tu PIN (mínimo 4 dígitos).'; err.style.display = ''; return; }
+  MF.ocupado = true; const b = document.getElementById('mf-eok'); b.disabled = true; b.textContent = 'Entrando…';
+  const r = await rpc('mf_sesion_abrir', { p_perfil_id: id, p_pin: pin });
+  MF.ocupado = false;
+  if (!r.ok) { err.textContent = r.msg; err.style.display = ''; b.disabled = false; b.textContent = 'Entrar'; document.getElementById('mf-pin').value = ''; return; }
+  sesGuardar({ token: r.token, rol: r.rol, nombre: r.nombre, perfil_id: r.perfil_id, puede_vender: r.puede_vender === true, expira: r.expira });
+  MF.venta = null;
+  document.getElementById('pd-vista').innerHTML = '<p class="tln-sub">Cargando…</p>';
+  await cargarEquipo(); await recargar();
+  showToast(`Hola, ${r.nombre}.`);
+}
+async function salirPanel() {
+  const t = tk(); sesBorrar(); MF.venta = null;
+  if (t) { try { await sb.rpc('mf_sesion_cerrar', { p_token: t }); } catch (_) {} }
+  pantallaEntrar();
+}
+
+/* ---------- 🧾 CAJA DEL DÍA (entregas de los cobradores) ---------- */
+async function pintarCajaDia(v) {
+  v.innerHTML = '<p class="tln-sub">Cargando la caja del día…</p>';
+  const r = await rpc('mf_caja_pendiente', { p: { token: tk() } });
+  if (!r.ok) { v.innerHTML = `<div class="tl-aviso">${esc(r.msg)}</div>`; return; }
+  MF.pendiente = r.pendiente || [];
+  let hist = [];
+  try { let q = sb.from('mf_entregas').select('created_at,cobrador_id,cobrador_nombre,cobros,esperado,otros,entregado,diferencia,recibido_por,nota').eq('auth_user_id', MF.userId).order('created_at', { ascending: false }).limit(20);
+    if (esCobrador()) q = q.eq('cobrador_id', MF.ses.perfil_id); hist = (await q).data || []; } catch (_) {}
+  const yo = MF.ses?.perfil_id;
+  const tarjetas = MF.pendiente.map(x => {
+    const ef = r2(x.efectivo), ot = r2(x.otros), propia = x.cobrador_id === yo;
+    const det = (x.detalle || []).map(d => `<tr><td data-t="Recibo">${esc(d.recibo || '—')}</td><td data-t="Hora">${new Date(d.hora).toLocaleString('es-NI', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</td><td data-t="Cómo">${esc(d.metodo || 'Efectivo')}</td><td class="tl-num" data-t="Monto">${fmt(d.monto)}</td></tr>`).join('');
+    return `<div class="pd-card"><div class="mf-card-cab"><div><b class="mf-nom">${esc(x.nombre || 'Cobrador')}</b><div class="tl-muted">${x.cobros} cobro(s) sin entregar · desde ${fCorta(String(x.desde).slice(0, 10))}</div></div></div>
+      <div class="mf-montos"><div><span>💵 Debe entregar en efectivo</span><b class="pd-verde">${fmt(ef)}</b></div><div><span>🏦 Otros (banco/tarjeta)</span><b>${fmt(ot)}</b></div></div>
+      <details><summary class="tl-muted" style="cursor:pointer">Ver los cobros</summary><div class="pd-tw"><table class="tl-tabla"><tbody>${det}</tbody></table></div></details>
+      ${esCobrador() ? '<div class="tl-aviso ok" style="margin-top:8px">Entrega este efectivo al dueño o supervisor. Él lo recibe aquí y el sistema cuadra.</div>'
+        : propia ? '<div class="tl-aviso" style="margin-top:8px">Es tu propia entrega: la debe recibir otra persona (dueño u otro supervisor).</div>'
+        : `<div class="tl-grid" style="margin-top:8px"><div class="tl-f"><label for="ent-${x.cobrador_id}">¿Cuánto efectivo entregó?</label><input class="tl-inp mf-monto-inp" id="ent-${x.cobrador_id}" type="number" inputmode="decimal" min="0" step="0.01" value="${ef}" oninput="previewEntrega('${x.cobrador_id}')"></div>
+            <div class="tl-f"><label for="entn-${x.cobrador_id}">Nota (opcional)</label><input class="tl-inp" id="entn-${x.cobrador_id}" maxlength="300" placeholder="Ej. faltó porque…"></div></div>
+          <div id="entp-${x.cobrador_id}"></div>
+          <div class="pd-acciones"><button class="btn-primary mf-grande" id="entb-${x.cobrador_id}" onclick="recibirEntrega('${x.cobrador_id}')">✅ Recibir entrega</button></div>`}</div>`;
+  }).join('');
+  v.innerHTML = `${tarjetas || `<div class="pd-vacio"><div class="ico">✅</div><b>${esCobrador() ? 'No tienes cobros pendientes de entregar.' : 'Nadie tiene cobros pendientes de entregar.'}</b><p class="tl-muted">Aquí sale lo que cada cobrador ha cobrado y todavía no ha entregado.</p></div>`}
+    <div class="pd-card"><h3>📜 Últimas entregas</h3>${hist.length ? `<div class="pd-tw"><table class="tl-tabla"><thead><tr><th>Fecha</th><th>Cobrador</th><th class="tl-num">Debía</th><th class="tl-num">Entregó</th><th class="tl-num">Diferencia</th><th>Recibió</th></tr></thead><tbody>
+      ${hist.map(h => `<tr><td data-t="Fecha">${new Date(h.created_at).toLocaleString('es-NI', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</td><td data-t="Cobrador">${esc(h.cobrador_nombre || '')}</td>
+        <td class="tl-num" data-t="Debía">${fmt(h.esperado)}</td><td class="tl-num" data-t="Entregó">${fmt(h.entregado)}</td>
+        <td class="tl-num ${Number(h.diferencia) < 0 ? 'pd-rojo' : Number(h.diferencia) > 0 ? 'pd-verde' : ''}" data-t="Diferencia">${Number(h.diferencia) === 0 ? '✅ Cuadró' : (Number(h.diferencia) < 0 ? 'Faltó ' : 'Sobró ') + fmt(Math.abs(h.diferencia))}</td>
+        <td data-t="Recibió">${esc(h.recibido_por || '')}${h.nota ? '<div class="tl-muted">' + esc(h.nota) + '</div>' : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="tl-muted">Todavía no hay entregas.</p>'}</div>`;
+  MF.pendiente.forEach(x => previewEntrega(x.cobrador_id));
+}
+function previewEntrega(id) {
+  const x = (MF.pendiente || []).find(p => p.cobrador_id === id), inp = document.getElementById('ent-' + id), el = document.getElementById('entp-' + id);
+  if (!x || !inp || !el) return;
+  const ent = r2(inp.value), dif = r2(ent - r2(x.efectivo)), b = document.getElementById('entb-' + id);
+  if (!(inp.value !== '' && ent >= 0)) { el.innerHTML = '<div class="tl-aviso">Escribe cuánto entregó.</div>'; if (b) b.disabled = true; return; }
+  if (b) b.disabled = false;
+  el.innerHTML = dif === 0 ? '<div class="tl-aviso ok">✅ Cuadra exacto.</div>'
+    : dif < 0 ? `<div class="tl-aviso">⚠️ Faltan <b>${fmt(-dif)}</b>. Al recibir, Caja baja ${fmt(-dif)} (queda anotado como faltante de ${esc(x.nombre)}).</div>`
+    : `<div class="tl-aviso ok">Sobran <b>${fmt(dif)}</b>. Al recibir, Caja sube ${fmt(dif)} (queda anotado como sobrante).</div>`;
+}
+async function recibirEntrega(id) {
+  if (MF.ocupado) return;
+  const x = (MF.pendiente || []).find(p => p.cobrador_id === id); if (!x) return;
+  const ent = r2(document.getElementById('ent-' + id).value), dif = r2(ent - r2(x.efectivo));
+  if (!(ent >= 0)) return;
+  if (!confirm(`¿Recibir ${fmt(ent)} en efectivo de ${x.nombre}?${dif !== 0 ? `\n${dif < 0 ? 'Faltante' : 'Sobrante'}: ${fmt(Math.abs(dif))} (se registra en Caja).` : '\nCuadra exacto.'}\nDespués de esto esos cobros ya no se pueden anular.`)) return;
+  MF.ocupado = true; const b = document.getElementById('entb-' + id); b.disabled = true; b.textContent = 'Guardando…';
+  const r = await rpc('mf_entrega_registrar', { p: { token: tk(), cobrador_id: id, entregado: ent, esperado_visto: r2(x.efectivo), nota: document.getElementById('entn-' + id).value.trim() } });
+  MF.ocupado = false;
+  if (!r.ok) { showToast(r.msg, 'error'); if (r.motivo === 'cambio' || r.motivo === 'nada') pintarCajaDia(document.getElementById('pd-vista')); else { b.disabled = false; b.textContent = '✅ Recibir entrega'; } return; }
+  showToast(r.diferencia === 0 ? `Entrega de ${r.cobrador} recibida: cuadró.` : `Entrega recibida. ${r.diferencia < 0 ? 'Faltante' : 'Sobrante'} ${fmt(Math.abs(r.diferencia))} registrado en Caja.`);
+  pintarCajaDia(document.getElementById('pd-vista'));
+}
+
+/* ---------- 👥 EQUIPO (solo el dueño) ---------- */
+function pintarEquipo(v) {
+  const on = conEquipo();
+  const admins = MF.perfiles.filter(p => p.tipo === 'admin'), otros = MF.perfiles.filter(p => p.tipo !== 'admin');
+  const fila = p => { const e = MF.equipo.find(x => x.perfil_id === p.id), rol = e && e.activo ? e.rol : '';
+    return `<div class="mf-item" style="flex-wrap:wrap"><div class="mf-item-n"><b>${esc(p.nombre)}</b></div>
+      <select class="tl-sel" style="max-width:170px" id="eq-rol-${p.id}" aria-label="Rol de ${esc(p.nombre)}"><option value="" ${!rol ? 'selected' : ''}>🚫 No entra</option><option value="cobrador" ${rol === 'cobrador' ? 'selected' : ''}>🛵 Cobrador</option><option value="supervisor" ${rol === 'supervisor' ? 'selected' : ''}>🧑‍💼 Supervisor</option></select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="eq-ven-${p.id}" ${!e || e.puede_vender ? 'checked' : ''} style="width:17px;height:17px"> Puede vender</label>
+      <button class="btn-secondary" style="padding:6px 10px;font-size:12.5px" onclick="guardarMiembro('${p.id}')">Guardar</button></div>`; };
+  const sinAsig = MF.creditos.filter(c => !c.mf_cobrador_id).length;
+  const porCob = MF.equipo.filter(e => e.activo).map(e => { const cs = MF.creditos.filter(c => c.mf_cobrador_id === e.perfil_id); return { e, n: cs.length, saldo: r2(cs.reduce((a, c) => a + Number(c.saldo_pendiente || 0), 0)) }; });
+  v.innerHTML = `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
+      <p class="tl-muted">${on ? 'Cada persona entra al Panel con su PIN. Los cobradores ven y cobran solo su cartera, no pueden anular, y al final del día entregan el efectivo en “Caja del día”.'
+        : 'Enciéndelo si tienes cobradores o vendedores. Cada uno entrará con su PIN, cobrará solo su cartera y cada cobro quedará a su nombre. Mientras esté apagado, el Panel funciona como siempre.'}</p>
+      <div class="pd-acciones"><button class="${on ? 'btn-secondary' : 'btn-primary'}" onclick="abrirEncender(${!on})">${on ? 'Apagar trabajo en equipo' : '✅ Encender trabajo en equipo'}</button></div>
+      <p class="tl-muted" style="margin-top:6px">🔐 Encender o apagar pide el PIN de un administrador.</p></div>
+    ${on ? `<div class="pd-card"><h3>Personas del equipo</h3>
+      <p class="tl-muted">Los usuarios y sus PIN se crean en el menú de <b>usuarios / perfiles</b> del sistema. Aquí decides quién entra al Panel y qué hace.
+        <b>Cobrador</b>: solo su cartera, no anula. <b>Supervisor</b>: ve todo, anula, asigna y recibe entregas. Los administradores entran como <b>Dueño</b>.</p>
+      ${otros.length ? `<div class="mf-items">${otros.map(fila).join('')}</div>` : '<div class="tl-aviso">Todavía no hay usuarios (perfiles) que no sean administradores. Créalos primero en el menú de perfiles.</div>'}
+      ${admins.length ? `<p class="tl-muted" style="margin-top:8px">Dueños: ${admins.map(a => esc(a.nombre)).join(', ')}</p>` : ''}</div>
+    <div class="pd-card"><h3>🗂️ Cartera de cada cobrador</h3>
+      <div class="mf-montos">${porCob.map(x => `<div><span>${esc(x.e.nombre)}</span><b>${x.n} crédito(s) · ${fmt(x.saldo)}</b></div>`).join('')}<div><span>Sin cobrador</span><b>${sinAsig} crédito(s)</b></div></div>
+      ${MF.equipo.some(e => e.activo) && MF.creditos.length ? `<div class="tl-grid" style="margin-top:10px"><div class="tl-f"><label for="eq-filtro">Mostrar</label><select class="tl-sel" id="eq-filtro" onchange="pintarListaAsig()"><option value="sin">Sin cobrador</option><option value="todos">Todos</option></select></div>
+        <div class="tl-f"><label for="eq-dest">Pasar los marcados a</label><select class="tl-sel" id="eq-dest"><option value="">Sin cobrador (dueño)</option>${MF.equipo.filter(e => e.activo).map(e => `<option value="${e.perfil_id}">${esc(e.nombre)}</option>`).join('')}</select></div></div>
+        <div id="eq-lista"></div>
+        <div class="pd-acciones"><button class="btn-primary" id="eq-asig" onclick="asignarSeleccion()">Asignar marcados</button></div>` : '<p class="tl-muted">Agrega primero cobradores al equipo para repartir la cartera.</p>'}</div>` : ''}`;
+  if (on) pintarListaAsig();
+}
+function pintarListaAsig() {
+  const el = document.getElementById('eq-lista'); if (!el) return;
+  const todos = document.getElementById('eq-filtro')?.value === 'todos';
+  const l = MF.creditos.filter(c => todos || !c.mf_cobrador_id).map(c => ({ c, cli: cliPorId(c.cliente_id) })).sort((a, b) => nombreCli(a.cli).localeCompare(nombreCli(b.cli)));
+  MF.selAsig = {};
+  el.innerHTML = l.length ? `<label style="display:flex;gap:8px;align-items:center;margin:8px 0;font-weight:600"><input type="checkbox" onchange="document.querySelectorAll('.eq-chk').forEach(x=>{x.checked=this.checked})" style="width:17px;height:17px"> Marcar todos (${l.length})</label>
+    <div class="mf-items" style="max-height:340px;overflow:auto">${l.map(x => `<label class="mf-item" style="cursor:pointer"><input type="checkbox" class="eq-chk" value="${x.c.id}" style="width:17px;height:17px">
+      <div class="mf-item-n"><b>${esc(nombreCli(x.cli))}</b><div class="tl-muted">${esc(x.c.numero_credito)} · debe ${fmt(x.c.saldo_pendiente)}${x.c.mf_cobrador_nombre ? ' · 👤 ' + esc(x.c.mf_cobrador_nombre) : ''}${x.cli?.direccion ? ' · 📍 ' + esc(x.cli.direccion) : ''}</div></div></label>`).join('')}</div>`
+    : '<p class="tl-muted">No hay créditos para mostrar.</p>';
+}
+async function asignarSeleccion() {
+  if (MF.ocupado) return;
+  const ids = [...document.querySelectorAll('.eq-chk:checked')].map(x => x.value);
+  if (!ids.length) { showToast('Marca al menos un crédito.', 'error'); return; }
+  const dest = document.getElementById('eq-dest').value, nom = dest ? (MF.equipo.find(e => e.perfil_id === dest) || {}).nombre : 'nadie (los cobra el dueño)';
+  if (!confirm(`¿Pasar ${ids.length} crédito(s) a ${nom}? Solo cambia quién los cobra; no cambia lo que deben.`)) return;
+  MF.ocupado = true; const b = document.getElementById('eq-asig'); b.disabled = true;
+  const r = await rpc('mf_asignar', { p: { token: tk(), credito_ids: ids, cobrador_id: dest || null } });
+  MF.ocupado = false; b.disabled = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  showToast(`${r.asignados} crédito(s) asignados.`);
+  await recargar();
+}
+async function asignarUno(creditoId, dest, clienteId) {
+  if (MF.ocupado) return; MF.ocupado = true;
+  const r = await rpc('mf_asignar', { p: { token: tk(), credito_ids: [creditoId], cobrador_id: dest || null } });
+  MF.ocupado = false;
+  if (!r.ok) { showToast(r.msg, 'error'); abrirTarjeta(clienteId); return; }
+  showToast('Listo: cambió quién lo cobra.');
+  await cargarDatos().catch(() => {});
+}
+async function guardarMiembro(perfilId) {
+  if (MF.ocupado) return;
+  const rol = document.getElementById('eq-rol-' + perfilId).value, vende = document.getElementById('eq-ven-' + perfilId).checked;
+  const e = MF.equipo.find(x => x.perfil_id === perfilId);
+  if (!rol && !e) { showToast('Esa persona no está en el equipo.', 'error'); return; }
+  if (!rol && e && MF.creditos.some(c => c.mf_cobrador_id === perfilId) && !confirm('Esta persona tiene créditos asignados. Si la sacas, no podrá cobrarlos hasta que los pases a otro. ¿Sacarla del equipo?')) return;
+  MF.ocupado = true;
+  const r = await rpc('mf_equipo_guardar', { p: { token: tk(), perfil_id: perfilId, rol: rol || (e ? e.rol : 'cobrador'), puede_vender: vende, activo: !!rol } });
+  MF.ocupado = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  showToast(rol ? 'Guardado.' : 'Ya no entra al Panel.');
+  await cargarEquipo(); pintarEquipo(document.getElementById('pd-vista'));
+}
+function abrirEncender(activar) {
+  const admins = MF.perfiles.filter(p => p.tipo === 'admin');
+  modal(`<div class="tl-modal-cab"><h2>${activar ? '✅ Encender' : 'Apagar'} trabajo en equipo</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
+    <div class="tl-modal-cuerpo"><p class="tl-muted">${activar ? 'Desde ahora cada persona entrará al Panel con su PIN. Tú entrarás como Dueño.' : 'El Panel volverá a funcionar sin usuarios: cualquiera que lo abra podrá cobrar y anular. Las sesiones abiertas se cierran.'}</p>
+      ${admins.length ? `<div class="tl-f"><label for="en-adm">Administrador</label><select class="tl-sel" id="en-adm">${admins.map(a => `<option value="${a.id}">${esc(a.nombre)}</option>`).join('')}</select></div>
+      <div class="tl-f"><label for="en-pin">PIN del administrador</label><input class="tl-inp" id="en-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="32" onkeydown="if(event.key==='Enter')confirmarEncender(${activar})"></div>` : '<div class="tl-aviso">No hay administradores con PIN. Configura el PIN de administrador primero.</div>'}
+      <div class="tl-aviso" id="en-err" style="display:none"></div></div>
+    <div class="tl-modal-pie"><button class="btn-secondary" onclick="cerrarModal()">Cancelar</button>${admins.length ? `<button class="btn-primary" id="en-ok" onclick="confirmarEncender(${activar})">${activar ? 'Encender' : 'Apagar'}</button>` : ''}</div>`);
+  setTimeout(() => document.getElementById('en-pin')?.focus(), 60);
+}
+async function confirmarEncender(activar) {
+  if (MF.ocupado) return;
+  const adm = document.getElementById('en-adm').value, pin = document.getElementById('en-pin').value.trim(), err = document.getElementById('en-err');
+  if (pin.length < 4) { err.textContent = 'Escribe el PIN.'; err.style.display = ''; return; }
+  MF.ocupado = true; const b = document.getElementById('en-ok'); b.disabled = true;
+  const r = await rpc('mf_equipo_config', { p_activo: !!activar, p_perfil_id: adm, p_pin: pin });
+  MF.ocupado = false;
+  if (!r.ok) { err.textContent = r.msg; err.style.display = ''; b.disabled = false; document.getElementById('en-pin').value = ''; return; }
+  cerrarModal(true);
+  await releerCfg();
+  if (activar) {
+    // El administrador que lo encendió entra de una vez como Dueño (con su mismo PIN, validado por el servidor)
+    const s = await rpc('mf_sesion_abrir', { p_perfil_id: adm, p_pin: pin });
+    if (s.ok) sesGuardar({ token: s.token, rol: s.rol, nombre: s.nombre, perfil_id: s.perfil_id, puede_vender: true, expira: s.expira });
+    showToast('Trabajo en equipo encendido. Agrega a tus cobradores.');
+    if (!MF.ses) return pantallaEntrar();
+    await recargar(); mfTab('equipo');
+  } else { sesBorrar(); showToast('Trabajo en equipo apagado.'); await recargar(); mfTab('equipo'); }
 }
 
 /* ---------- ventana ---------- */
@@ -569,9 +844,12 @@ async function mfInit() {
         <button class="btn-primary" onclick="navigate('configuracion.html')">Ir a Configuración</button></div>`;
       return;
     }
+    sesLeer();
+    await cargarEquipo();
+    if (conEquipo() && !MF.ses) { pantallaEntrar(); return; }
     await cargarDatos();
     const ini = (location.hash || '').replace('#', '');
-    await mfTab(['ruta', 'vender', 'clientes', 'resumen'].includes(ini) ? ini : 'ruta');
+    await mfTab(['ruta', 'vender', 'clientes', 'resumen', 'caja', 'equipo'].includes(ini) ? ini : 'ruta');
   } catch (e) {
     console.error('mfInit:', e);
     document.getElementById('loader').classList.add('hidden'); document.getElementById('app').style.display = 'flex';
