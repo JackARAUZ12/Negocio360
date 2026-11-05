@@ -55,7 +55,8 @@
   Object.entries(window.NEGOCIO360_MODULOS || {}).forEach(([archivo, m]) => {
     if (!m.obligatorio) {
       TODOS_MODULOS_OPCIONALES[m.key] = { key: m.key, archivo, label: m.label, icon: m.icon, desc: m.desc || '', flagPropio: m.flagPropio || null,
-        flagsAlternos: m.flagsAlternos || [], etiquetasPorFlag: m.etiquetasPorFlag || null, enPanel: m.enPanel || null };
+        flagsAlternos: m.flagsAlternos || [], etiquetasPorFlag: m.etiquetasPorFlag || null, enPanel: m.enPanel || null,
+        etiquetaHeladeria: m.etiquetaHeladeria || null, iconoHeladeria: m.iconoHeladeria || null };
     }
   });
   const MODULOS_OPCIONALES = {};
@@ -92,6 +93,7 @@
       cfg._flagsPropios = {
         usa_modulo_hotel: data?.usa_modulo_hotel === true,
         usa_modulo_restaurante: data?.usa_modulo_restaurante === true,
+        usa_modulo_heladeria: data?.usa_modulo_heladeria === true,
         usa_negocios_vinculados: data?.usa_negocios_vinculados === true,
         usa_modulo_farmacia: data?.usa_modulo_farmacia === true,
         usa_farmacia_fase2: data?.usa_farmacia_fase2 === true,
@@ -388,8 +390,9 @@
       if (yaExiste) return;
       // Un modulo compartido (p. ej. Lotes: Farmacia y Veterinaria) se muestra UNA sola vez, bajo el
       // primer flag activo y con la etiqueta de ese flag.
-      const etiqueta = (m.etiquetasPorFlag && m.etiquetasPorFlag[flagActivo]) || m.label;
-      (porFlag[flagActivo] = porFlag[flagActivo] || []).push({ ...m, label: etiqueta, compartido: flagActivo !== m.flagPropio });
+      const helado = cfg._flagsPropios && cfg._flagsPropios.usa_modulo_heladeria === true && m.etiquetaHeladeria;
+      const etiqueta = helado ? m.etiquetaHeladeria : ((m.etiquetasPorFlag && m.etiquetasPorFlag[flagActivo]) || m.label);
+      (porFlag[flagActivo] = porFlag[flagActivo] || []).push({ ...m, label: etiqueta, icon: (helado && m.iconoHeladeria) || m.icon, compartido: flagActivo !== m.flagPropio });
     });
     // Dentro de cada seccion, lo propio primero y lo compartido al final.
     Object.values(porFlag).forEach(lista => lista.sort((a, b) => (a.compartido ? 1 : 0) - (b.compartido ? 1 : 0)));

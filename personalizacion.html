@@ -1491,6 +1491,7 @@ async function finalizarOnboarding() {
     if (moduloEspecialActivo && ['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) modulosAuto.usa_modulo_restaurante = true;
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'veterinaria') { modulosAuto.usa_modulo_veterinaria = true; modulosAuto.maneja_lotes_vencimiento = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'transporte') { modulosAuto.usa_modulo_transporte = true; }
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'heladeria') { modulosAuto.usa_modulo_restaurante = true; modulosAuto.usa_modulo_heladeria = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'financiera') { modulosAuto.usa_modulo_microfinanciera = true; modulosSecundariosSeleccionados.add('creditos'); }
     if (moduloEspecialActivo && ['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) { modulosAuto.usa_modulo_diseno = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'insumos_medicos') { modulosAuto.usa_modulo_insumos = true; modulosAuto.maneja_lotes_vencimiento = true; }
@@ -1878,6 +1879,7 @@ function renderModuloEspecial() {
   else if (['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) especial = { icono:'🎨', nombre:'Módulo de Diseño', desc:'Marca de agua: pon tu logo o tu texto a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' };
   else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
   else if (tipoNegocioSeleccionado === 'fisioterapia') especial = { icono:'🏃', nombre:'Módulo de Clínica (terapias)', desc:'Pacientes y expediente con ficha de fisioterapia, quiropraxia y masajes (dolor antes y después, sesión 4 de 10, ejercicios para la casa), agenda y sala de espera, y cobro por Ventas.' };
+  else if (tipoNegocioSeleccionado === 'heladeria') especial = { icono:'🍦', nombre:'Módulo de Heladería', desc:'Mesas, comandas y barra (donde se preparan los pedidos), cobro por mesa y pantalla para que los clientes pidan solos desde una tablet del local.' };
   else if (tipoNegocioSeleccionado === 'financiera') especial = { icono:'💼', nombre:'Panel Microfinanciera', desc:'Préstamos y ventas al crédito, cobro en ruta, mora, cobradores con su cartera, cierre del día, documentos (pagaré, contrato, plan de pagos) y reportes de cartera.' };
   else if (tipoNegocioSeleccionado === 'clinica') especial = { icono:'🏥', nombre:'Módulo de Clínica', desc:'Pacientes y expediente clínico (médicos con su código de usuario), consultas firmadas, sala de espera sobre la Agenda y cobro por Ventas.' };
 

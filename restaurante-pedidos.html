@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Haz tu pedido</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+  <style>
+    :root {
+      --bg: #f6f7fb; --sup: #ffffff; --txt: #0f172a; --sub: #64748b; --borde: #e5e7eb;
+      --acento: #e11d48; --acento-2: #f43f5e; --acento-suave: #ffe4e6; --ok: #16a34a; --sombra: 0 10px 30px rgba(15,23,42,.08);
+      --radio: 18px;
+    }
+    body.helado { --acento: #db2777; --acento-2: #ec4899; --acento-suave: #fce7f3; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; height: 100%; }
+    body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: var(--bg); color: var(--txt); overscroll-behavior: none; }
+    button { font-family: inherit; cursor: pointer; }
+    .oculto { display: none !important; }
+
+    /* Encabezado */
+    .cab { position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--borde); }
+    .cab-in { max-width: 1280px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+    .logo { width: 46px; height: 46px; border-radius: 14px; object-fit: cover; background: var(--acento-suave); display: grid; place-items: center; font-size: 24px; flex-shrink: 0; }
+    .cab h1 { margin: 0; font-size: 19px; font-weight: 800; line-height: 1.1; }
+    .cab p { margin: 2px 0 0; font-size: 13px; color: var(--sub); }
+    .cats { max-width: 1280px; margin: 0 auto; padding: 0 16px 12px; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+    .cats::-webkit-scrollbar { display: none; }
+    .cat { flex-shrink: 0; border: 1px solid var(--borde); background: var(--sup); color: var(--txt); padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 700; }
+    .cat.on { background: var(--txt); color: #fff; border-color: var(--txt); }
+
+    /* Productos */
+    main { max-width: 1280px; margin: 0 auto; padding: 16px 16px 120px; }
+    .seccion { margin: 6px 0 22px; }
+    .seccion h2 { font-size: 17px; margin: 0 0 12px; font-weight: 800; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 14px; }
+    .prod { background: var(--sup); border: 1px solid var(--borde); border-radius: var(--radio); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--sombra); transition: transform .12s; text-align: left; padding: 0; color: inherit; }
+    .prod:active { transform: scale(.98); }
+    .prod-img { aspect-ratio: 4/3; background: linear-gradient(135deg, var(--acento-suave), #fff); display: grid; place-items: center; font-size: 46px; overflow: hidden; }
+    .prod-img img { width: 100%; height: 100%; object-fit: cover; }
+    .prod-cuerpo { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .prod-nom { font-weight: 700; font-size: 14.5px; line-height: 1.25; overflow-wrap: anywhere; }
+    .prod-desc { font-size: 12px; color: var(--sub); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .prod-pie { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 6px; }
+    .precio { font-weight: 800; font-size: 15.5px; white-space: nowrap; }
+    .mas { width: 36px; height: 36px; border-radius: 12px; border: 0; background: var(--acento); color: #fff; font-size: 22px; font-weight: 700; line-height: 1; flex-shrink: 0; display: grid; place-items: center; }
+    @media (min-width: 900px) { .grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
+    .en-carrito { position: absolute; }
+    .badge-cant { background: var(--acento); color: #fff; border-radius: 999px; font-size: 12px; font-weight: 800; padding: 2px 8px; }
+
+    /* Barra del carrito */
+    .barra { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(246,247,251,.96) 30%); }
+    .barra button { width: 100%; max-width: 720px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-radius: 18px; padding: 16px 20px; background: var(--acento); color: #fff; font-size: 17px; font-weight: 800; box-shadow: 0 12px 30px rgba(225,29,72,.35); }
+    .barra .cuenta { background: rgba(255,255,255,.22); border-radius: 999px; padding: 3px 11px; font-size: 14px; }
+
+    /* Panel del carrito */
+    .velo { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 40; }
+    .panel { position: fixed; z-index: 50; background: var(--sup); display: flex; flex-direction: column; box-shadow: var(--sombra);
+             left: 0; right: 0; bottom: 0; max-height: 92vh; border-radius: 24px 24px 0 0; }
+    @media (min-width: 900px) { .panel { left: auto; top: 0; bottom: 0; width: 440px; max-height: none; border-radius: 0; } }
+    .panel-cab { padding: 18px 20px 10px; display: flex; align-items: center; justify-content: space-between; }
+    .panel-cab h3 { margin: 0; font-size: 20px; }
+    .x { border: 0; background: var(--bg); width: 40px; height: 40px; border-radius: 12px; font-size: 18px; }
+    .panel-lista { overflow-y: auto; padding: 0 20px; flex: 1; }
+    .linea { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; padding: 12px 0; border-bottom: 1px solid var(--borde); }
+    .linea-nom { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+    .linea-pre { font-weight: 800; white-space: nowrap; }
+    .ctrl { display: flex; align-items: center; gap: 10px; }
+    .ctrl button { width: 36px; height: 36px; border-radius: 11px; border: 1px solid var(--borde); background: var(--sup); font-size: 18px; font-weight: 800; }
+    .ctrl b { min-width: 22px; text-align: center; }
+    .nota-inp { grid-column: 1 / -1; border: 1px dashed var(--borde); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 13px; }
+    .panel-pie { padding: 14px 20px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--borde); display: flex; flex-direction: column; gap: 10px; }
+    .campo { width: 100%; border: 1px solid var(--borde); border-radius: 12px; padding: 13px 14px; font: inherit; font-size: 15px; background: var(--sup); color: var(--txt); }
+    .total { display: flex; justify-content: space-between; font-size: 19px; font-weight: 800; }
+    .btn { border: 0; border-radius: 16px; padding: 16px; font-size: 17px; font-weight: 800; background: var(--acento); color: #fff; }
+    .btn:disabled { opacity: .6; }
+    .btn-sec { background: var(--bg); color: var(--txt); }
+    .error { color: #b91c1c; font-size: 14px; font-weight: 600; }
+
+    /* Pantallas completas */
+    .pantalla { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: grid; place-items: center; padding: 20px; }
+    .tarjeta { background: var(--sup); border-radius: 26px; box-shadow: var(--sombra); padding: 30px 26px; width: 100%; max-width: 440px; text-align: center; }
+    .tarjeta h2 { margin: 10px 0 6px; font-size: 24px; }
+    .tarjeta p { color: var(--sub); margin: 0 0 16px; line-height: 1.45; }
+    .tarjeta .campo { margin-bottom: 10px; text-align: left; }
+    .icono-grande { font-size: 64px; }
+    .numero { font-size: 64px; font-weight: 800; color: var(--acento); margin: 6px 0; }
+    .salir-oculto { position: fixed; top: 0; right: 0; width: 56px; height: 56px; z-index: 25; opacity: 0; }
+    .vacio { text-align: center; color: var(--sub); padding: 40px 10px; }
+  </style>
+</head>
+<body>
+  <!-- Carga -->
+  <div class="pantalla" id="p-carga"><div class="tarjeta"><div class="icono-grande">⏳</div><h2>Cargando…</h2></div></div>
+
+  <!-- Sin sesión del negocio en este equipo -->
+  <div class="pantalla oculto" id="p-login"><div class="tarjeta">
+    <div class="icono-grande">🔒</div><h2>Inicia sesión primero</h2>
+    <p>Esta pantalla funciona en un dispositivo del local con la cuenta del negocio abierta.</p>
+    <button class="btn" onclick="location.href='login.html'">Ir a iniciar sesión</button>
+  </div></div>
+
+  <!-- Autorizar dispositivo -->
+  <div class="pantalla oculto" id="p-autorizar"><div class="tarjeta">
+    <div class="icono-grande">📲</div><h2>Autorizar este dispositivo</h2>
+    <p>Solo un administrador puede dejar este equipo listo para que los clientes hagan sus pedidos. Los pedidos llegan directo a <b class="t-cocina">cocina</b>.</p>
+    <input class="campo" id="a-nombre" maxlength="60" placeholder="Nombre del dispositivo (ej. Tablet de la entrada)" />
+    <select class="campo" id="a-mesa"><option value="">Pedidos de autoservicio (mostrador)</option></select>
+    <div id="a-admin-wrap">
+      <select class="campo" id="a-admin"></select>
+      <input class="campo" id="a-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="32" placeholder="PIN del administrador" />
+    </div>
+    <div class="error" id="a-err"></div>
+    <button class="btn" id="a-ok" style="width:100%;margin-top:6px">Autorizar y abrir pedidos</button>
+    <button class="btn btn-sec" style="width:100%;margin-top:10px" onclick="history.length > 1 ? history.back() : location.href='dashboard.html'">Volver</button>
+  </div></div>
+
+  <!-- Pedido enviado -->
+  <div class="pantalla oculto" id="p-listo"><div class="tarjeta">
+    <div class="icono-grande">🎉</div><h2>¡Pedido enviado!</h2>
+    <p>Tu número de pedido es</p>
+    <div class="numero" id="l-num">#1</div>
+    <p id="l-txt">Ya está en preparación. Te llamaremos por tu número.</p>
+    <button class="btn" style="width:100%" onclick="nuevoPedido()">Hacer otro pedido</button>
+  </div></div>
+
+  <!-- Salir (administrador) -->
+  <div class="pantalla oculto" id="p-salir"><div class="tarjeta">
+    <div class="icono-grande">🛡️</div><h2>Salir del modo pedidos</h2>
+    <p>Este dispositivo dejará de recibir pedidos de clientes.</p>
+    <div id="s-admin-wrap">
+      <select class="campo" id="s-admin"></select>
+      <input class="campo" id="s-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="32" placeholder="PIN del administrador" />
+    </div>
+    <div class="error" id="s-err"></div>
+    <button class="btn" id="s-ok" style="width:100%">Salir</button>
+    <button class="btn btn-sec" style="width:100%;margin-top:10px" onclick="mostrar(null)">Cancelar</button>
+  </div></div>
+
+  <button class="salir-oculto" aria-label="Opciones del administrador" onclick="tocarEsquina()"></button>
+
+  <header class="cab" id="cab">
+    <div class="cab-in">
+      <div class="logo" id="c-logo">🍽️</div>
+      <div style="min-width:0"><h1 id="c-neg">Menú</h1><p id="c-sub">Elige lo que quieras y envía tu pedido</p></div>
+    </div>
+    <nav class="cats" id="cats"></nav>
+  </header>
+  <main id="menu"></main>
+
+  <div class="barra oculto" id="barra"><button onclick="abrirCarrito()"><span class="cuenta" id="b-cant">0</span><span>Ver mi pedido</span><span id="b-total">C$ 0.00</span></button></div>
+
+  <div class="velo oculto" id="velo" onclick="cerrarCarrito()"></div>
+  <aside class="panel oculto" id="panel" aria-label="Tu pedido">
+    <div class="panel-cab"><h3>Tu pedido</h3><button class="x" onclick="cerrarCarrito()" aria-label="Cerrar">✕</button></div>
+    <div class="panel-lista" id="lista"></div>
+    <div class="panel-pie">
+      <input class="campo" id="k-nombre" maxlength="60" placeholder="Tu nombre (para llamarte)" />
+      <input class="campo" id="k-nota" maxlength="200" placeholder="¿Alguna indicación? (opcional)" />
+      <div class="total"><span>Total</span><span id="k-total">C$ 0.00</span></div>
+      <div class="error" id="k-err"></div>
+      <button class="btn" id="k-ok" onclick="enviarPedido()">Enviar pedido</button>
+    </div>
+  </aside>
+
+  <script src="restaurante-pedidos.js?v=20261105a"></script>
+</body>
+</html>

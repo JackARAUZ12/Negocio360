@@ -181,7 +181,7 @@ function renderComandas() {
       <div class="hab-card-head">
         <div class="hab-card-titulo">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/></svg>
-          Mesa ${esc(c.restaurante_mesas?.numero || '—')}
+          ${c.kiosko_numero ? `🛎️ Pedido #${esc(String(c.kiosko_numero))}` : `Mesa ${esc(c.restaurante_mesas?.numero || '—')}`}
         </div>
         <span class="hab-estado-badge hab-estado-${ESTADO_BADGE[c.estado] || 'disponible'}">${ESTADO_TXT[c.estado] || c.estado}</span>
       </div>

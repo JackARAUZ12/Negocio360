@@ -202,10 +202,11 @@ function renderCocina() {
       <div class="hab-card-head">
         <div class="hab-card-titulo">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/></svg>
-          Mesa ${esc(c.restaurante_mesas?.numero || '—')}
+          ${c.kiosko_numero ? `🛎️ Pedido #${esc(String(c.kiosko_numero))}` : `Mesa ${esc(c.restaurante_mesas?.numero || '—')}`}
         </div>
         <span class="kd-tiempo ${alerta}">${t.texto}</span>
       </div>
+      ${c.kiosko_numero && c.notas ? `<div style="font-size:13px;font-weight:600;margin:-4px 0 8px;color:var(--text-secondary)">📲 ${esc(c.notas)}</div>` : ''}
       ${c.items.map(i => `
         <div class="kd-platillo">
           <div class="kd-platillo-info">

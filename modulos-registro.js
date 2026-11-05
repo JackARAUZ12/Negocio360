@@ -109,12 +109,14 @@
                                desc: 'Historial de estadías por huésped, conectado con Clientes.' },
 
     // ---- Restaurante (secundario -- mismo criterio que Hotel) ----
-    'restaurante-mesas.html':    { key: 'restaurante_mesas',    label: 'Restaurante · Mesas',    icon: '🍽️', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+    'restaurante-mesas.html':    { key: 'restaurante_mesas',    label: 'Restaurante · Mesas',    icon: '🍽️', obligatorio: false, flagPropio: 'usa_modulo_restaurante', etiquetaHeladeria: 'Heladería · Mesas',
                                desc: 'Mesas, zonas y estados en tiempo real.' },
-    'restaurante-comandas.html': { key: 'restaurante_comandas', label: 'Restaurante · Comandas', icon: '📝', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+    'restaurante-comandas.html': { key: 'restaurante_comandas', label: 'Restaurante · Comandas', icon: '📝', obligatorio: false, flagPropio: 'usa_modulo_restaurante', etiquetaHeladeria: 'Heladería · Comandas',
                                desc: 'Toma pedidos por mesa, envíalos a cocina, cobra y cierra la cuenta.' },
-    'restaurante-cocina.html':   { key: 'restaurante_cocina',   label: 'Restaurante · Cocina',   icon: '🍳', obligatorio: false, flagPropio: 'usa_modulo_restaurante',
+    'restaurante-cocina.html':   { key: 'restaurante_cocina',   label: 'Restaurante · Cocina',   icon: '🍳', obligatorio: false, flagPropio: 'usa_modulo_restaurante', etiquetaHeladeria: 'Heladería · Barra', iconoHeladeria: '🍨',
                                desc: 'Pantalla de cocina en tiempo real -- platillos por preparar y listos para servir.' },
+    'restaurante-pedidos.html':  { key: 'restaurante_pedidos',  label: 'Restaurante · Pedidos de clientes', icon: '📲', obligatorio: false, flagPropio: 'usa_modulo_restaurante', etiquetaHeladeria: 'Heladería · Pedidos de clientes',
+                               desc: 'Pantalla de autoservicio: los clientes piden solos desde un dispositivo del local autorizado por el administrador, y el pedido llega directo a cocina (o a la barra).' },
 
     // ---- Mis Negocios (secundario -- mismo criterio, aunque no es un
     // rubro de negocio sino una funcion de cuenta) ----
