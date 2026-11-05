@@ -222,8 +222,33 @@ async function crearNegocioVinculado() {
     return;
   }
 
+  // Doble clic = un solo intento.
+  if (STATE.creandoNegocio) return;
+  STATE.creandoNegocio = true;
   setBtnLoading('nn-btn-crear', true);
+  const clavePend = 'n360_negocio_pend_' + STATE.userId;
+  const leerPend = () => { try { return JSON.parse(localStorage.getItem(clavePend) || 'null'); } catch (_) { return null; } };
+  const guardarPend = (p) => { try { p ? localStorage.setItem(clavePend, JSON.stringify(p)) : localStorage.removeItem(clavePend); } catch (_) {} };
+  const vincular = (id, pass) => sb.rpc('crear_negocio_vinculado', {
+    p_nuevo: id, p_nombre: nombre, p_password: pass,
+    p_nombre_principal: STATE.negocios.find(n => n.es_principal)?.nombre_negocio || null,
+  });
   try {
+    // 🔒 1) Antes de crear NADA, el servidor revisa permiso y límite: si no se puede, no queda ninguna cuenta suelta.
+    const { data: rev, error: errRev } = await sb.rpc('negocio_nuevo_revisar');
+    // Si la revisión aún no existe en el servidor (función nueva), se sigue como antes; el servidor igual valida al vincular.
+    const sinRevision = errRev && /could not find|does not exist|PGRST202/i.test(String(errRev.message || errRev.code || ''));
+    if (errRev && !sinRevision) throw errRev;
+    if (!sinRevision && !rev?.ok) { errEl.textContent = rev?.mensaje || 'No se puede crear otro negocio.'; return; }
+
+    // 🔒 2) Si un intento anterior creó la cuenta pero no alcanzó a vincularla, se REUTILIZA (no se hace otra).
+    const pend = leerPend();
+    if (pend?.id && pend?.password) {
+      const { data: v0, error: e0 } = await vincular(pend.id, pend.password);
+      if (!e0 && v0?.ok) { guardarPend(null); showToast(`Negocio "${nombre}" creado`); closeModal('modal-nuevo-negocio'); await cargarNegocios(); return; }
+      guardarPend(null);   // esa cuenta ya no sirve (ya vinculada, borrada o ajena): se sigue con una nueva
+    }
+
     const idInterno = crypto.randomUUID().slice(0, 8);
     const emailInterno = `negocio-${idInterno}@negocio360.internal`;
     const passwordInterna = generarPasswordInterna();
@@ -239,16 +264,14 @@ async function crearNegocioVinculado() {
     if (errSignUp) throw errSignUp;
     const nuevoUserId = signUpData?.user?.id;
     if (!nuevoUserId) throw new Error('No se pudo crear el negocio nuevo.');
+    guardarPend({ id: nuevoUserId, password: passwordInterna });
 
     // El servidor vincula el negocio nuevo (con candados: solo la cuenta principal,
     // solo la cuenta que ella autorizó y respetando el límite de negocios).
-    // También deja listo el nombre y el inicio del negocio nuevo.
-    const { data: vin, error: errVin } = await sb.rpc('crear_negocio_vinculado', {
-      p_nuevo: nuevoUserId, p_nombre: nombre, p_password: passwordInterna,
-      p_nombre_principal: STATE.negocios.find(n => n.es_principal)?.nombre_negocio || null,
-    });
+    const { data: vin, error: errVin } = await vincular(nuevoUserId, passwordInterna);
     if (errVin) throw errVin;
     if (!vin?.ok) { errEl.textContent = vin?.mensaje || 'No se pudo crear el negocio.'; return; }
+    guardarPend(null);
 
     showToast(`Negocio "${nombre}" creado`);
     closeModal('modal-nuevo-negocio');
@@ -257,6 +280,7 @@ async function crearNegocioVinculado() {
     console.error('crearNegocioVinculado:', e);
     errEl.textContent = 'No se pudo crear el negocio. Intenta de nuevo.';
   } finally {
+    STATE.creandoNegocio = false;
     setBtnLoading('nn-btn-crear', false);
   }
 }
