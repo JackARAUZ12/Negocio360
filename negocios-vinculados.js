@@ -163,8 +163,17 @@ async function cargarNegocios() {
   }
 }
 
+const ELEGIR = new URLSearchParams(location.search).get('elegir') === '1';
 function renderNegocios() {
   const cont = document.getElementById('neg-grid');
+  // Recién entró con su correo y tiene 2 o más negocios: que elija a cuál entrar.
+  if (ELEGIR && STATE.negocios.length > 1 && !document.getElementById('neg-elegir')) {
+    const b = document.createElement('div');
+    b.id = 'neg-elegir';
+    b.style.cssText = 'margin:0 0 14px;padding:14px 16px;border-radius:12px;background:var(--bg-surface-2,rgba(0,0,0,.04));font-size:15px';
+    b.innerHTML = '<b>¿A qué negocio quieres entrar?</b><div style="font-size:13px;opacity:.75;margin-top:2px">Después puedes pasar de uno a otro con “Ir a …” en el menú.</div>';
+    cont.parentNode.insertBefore(b, cont);
+  }
   cont.innerHTML = STATE.negocios.map(n => `
     <div class="hab-card ${n.es_principal ? 'neg-card-central' : ''}">
       <div class="hab-card-head">
@@ -175,7 +184,7 @@ function renderNegocios() {
         ${n.es_principal ? '<span class="neg-badge-principal">Principal</span>' : ''}
       </div>
       ${n.auth_user_id_negocio === STATE.userId
-        ? `<button class="btn-secondary" style="width:100%" disabled>✅ Estás aquí</button>`
+        ? (ELEGIR ? `<button class="btn-primary" style="width:100%" onclick="location.href='dashboard.html'">Entrar a este negocio</button>` : `<button class="btn-secondary" style="width:100%" disabled>✅ Estás aquí</button>`)
         : `<button class="btn-primary" style="width:100%" onclick="entrarANegocio('${n.id}')">Entrar a este negocio</button>`}
     </div>`).join('');
 }

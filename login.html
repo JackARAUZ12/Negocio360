@@ -827,7 +827,7 @@
           .select('id', { count: 'exact', head: true })
           .eq('auth_user_id_principal', userId).eq('activo', true);
         if (count && count > 0) {
-          window.location.href = 'negocios-vinculados.html';
+          window.location.href = 'negocios-vinculados.html?elegir=1';
           return;
         }
       } catch (eNeg) {

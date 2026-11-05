@@ -1487,6 +1487,13 @@
       if (!PG.empresaSoloLectura) vigilarCambioDeCuentaEnOtraPestana();
       // Negocios creados en "Mis negocios": solo el administrador (o la cuenta sin usuarios) pasa de uno a otro.
       try { const r = await PG.client.rpc('empresa_solo_admin'); PG.empresaSoloAdmin = r.data === true; } catch (_) { PG.empresaSoloAdmin = false; }
+      PG.empresaPermitidos = [];
+      if (PG.empresaSoloAdmin) {
+        try {
+          const { data: cfgP } = await PG.client.from('configuracion_empresa').select('empresa_perfiles_cambio').eq('auth_user_id', PG.authUserId).maybeSingle();
+          PG.empresaPermitidos = Array.isArray(cfgP?.empresa_perfiles_cambio) ? cfgP.empresa_perfiles_cambio : [];
+        } catch (_) {}
+      }
       window.N360IrANegocio = (n) => {
         if (!puedeCambiarNegocio()) { alert('Solo el administrador puede pasar a otro negocio.'); return; }
         confirmarCambioNegocio({ auth_user_id: n.auth_user_id, nombre_negocio: n.nombre_negocio });
@@ -1496,10 +1503,48 @@
     } catch (_) { /* si falla, simplemente no aparece el botón */ }
   }
 
+  function esAdminActual() { const p = getSesion(); return !p || p.tipo === 'admin'; }
   function puedeCambiarNegocio() {
     if (!PG.empresaSoloAdmin) return true;
     const p = getSesion();
-    return !p || p.tipo === 'admin';
+    return !p || p.tipo === 'admin' || (PG.empresaPermitidos || []).includes(p.id);
+  }
+  // 🔑 Permisos de acceso: el administrador elige qué usuarios de este negocio pueden pasar a los otros.
+  // Al llegar al otro negocio, ahí se elige el usuario de ESE negocio con su PIN (sistema multiusuario).
+  async function abrirPermisosEmpresa() {
+    if (!esAdminActual()) { alert('Solo el administrador puede cambiar los permisos.'); return; }
+    showOverlay();
+    card().innerHTML = '<div class="pg-pin-wrap"><div class="pg-title">Cargando…</div></div>';
+    let perfiles = [];
+    try {
+      let { data, error } = await PG.client.rpc('listar_perfiles_del_grupo_v2');
+      if (error) ({ data } = await PG.client.rpc('listar_perfiles_del_grupo'));
+      perfiles = (data || []).filter(p => p.activo !== false && p.tipo !== 'admin');
+    } catch (_) {}
+    const sel = new Set(PG.empresaPermitidos || []);
+    const otros = (PG.empresaNegocios || []).map(n => esc(n.nombre_negocio)).join(', ');
+    card().innerHTML = `
+      <div class="pg-pin-wrap" style="text-align:left">
+        <div class="pg-title" style="text-align:center">🔑 Permisos de acceso</div>
+        <div class="pg-subtitle" style="margin-bottom:10px;text-align:center">¿Quién de este negocio puede pasar a: ${otros}? El administrador siempre puede. Al llegar, el otro negocio le pedirá su usuario y PIN.</div>
+        <div style="max-height:300px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+          ${perfiles.length ? perfiles.map(p => `<label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer"><input type="checkbox" class="pg-emp-perm" value="${esc(p.id)}" ${sel.has(p.id) ? 'checked' : ''} style="width:18px;height:18px"> ${esc(p.nombre)}</label>`).join('')
+            : '<div class="pg-subtitle">No hay otros usuarios en este negocio. Solo el administrador puede pasar.</div>'}
+        </div>
+        <div class="pg-error" id="pg-perm-error"></div>
+        <div class="pg-btn-row">
+          <button class="pg-btn pg-btn-ghost" id="pg-perm-cancel">Cancelar</button>
+          <button class="pg-btn pg-btn-primary" id="pg-perm-ok">Guardar</button>
+        </div>
+      </div>`;
+    document.getElementById('pg-perm-cancel').addEventListener('click', hideOverlay);
+    document.getElementById('pg-perm-ok').addEventListener('click', async (ev) => {
+      ev.currentTarget.disabled = true;
+      const ids = [...document.querySelectorAll('.pg-emp-perm:checked')].map(x => x.value);
+      const { error } = await PG.client.from('configuracion_empresa').update({ empresa_perfiles_cambio: ids.length ? ids : null }).eq('auth_user_id', PG.authUserId);
+      if (error) { document.getElementById('pg-perm-error').textContent = 'No se pudo guardar. Intenta de nuevo.'; ev.currentTarget.disabled = false; return; }
+      PG.empresaPermitidos = ids; hideOverlay();
+    });
   }
   function ponerBotonesEmpresa(negocios, intento) {
     const nav = document.querySelector('#sidebar .sidebar-nav, .sidebar-nav');
@@ -1519,6 +1564,14 @@
       item.addEventListener('click', () => confirmarCambioNegocio(n));
       cont.appendChild(item);
     });
+    if (PG.empresaSoloAdmin && esAdminActual() && !PG.empresaSoloLectura) {
+      const it = document.createElement('div');
+      it.className = 'nav-item pg-empresa-item';
+      it.setAttribute('data-tooltip', 'Permisos de acceso');
+      it.innerHTML = '<span style="width:18px;text-align:center">🔑</span><span class="nav-label">Permisos de acceso</span>';
+      it.addEventListener('click', abrirPermisosEmpresa);
+      cont.appendChild(it);
+    }
     nav.insertBefore(cont, nav.firstChild);
   }
 
@@ -1602,7 +1655,8 @@
       try {
         const { data: perfilesDestino } = await PG.client.from('perfiles_acceso')
           .select('id, nombre, tipo, modulos, activo').eq('auth_user_id', n.auth_user_id).eq('activo', true);
-        const iguales = (perfilesDestino || []).filter(p => normNombrePerfil(p.nombre) === normNombrePerfil(perfilActual.nombre));
+        let iguales = (perfilesDestino || []).filter(p => normNombrePerfil(p.nombre) === normNombrePerfil(perfilActual.nombre));
+        if (PG.empresaSoloAdmin && !(perfilActual.tipo === 'admin' && iguales.length === 1 && iguales[0].tipo === 'admin')) iguales = [];
         if (iguales.length === 1) {
           PG.authUserId = n.auth_user_id;
           setSesion(iguales[0]);
