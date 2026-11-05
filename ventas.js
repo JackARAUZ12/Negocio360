@@ -6924,6 +6924,8 @@ function abrirConfigVentaRapida(esAjusteManual, origen) {
   if (descargarPdf) descargarPdf.checked = c.descargar_pdf_automatico !== false;
   const mostrarCosto = document.getElementById('vrc-mostrar-costo');
   if (mostrarCosto) mostrarCosto.checked = !!c.mostrar_costo_venta;
+  const mostrarSku = document.getElementById('vrc-mostrar-sku');
+  if (mostrarSku) mostrarSku.checked = !!c.mostrar_sku_ticket;
 
   openModal('modal-vr-config');
 }
@@ -7192,6 +7194,7 @@ async function guardarConfigVentaRapida() {
     imprimir_automatico: document.getElementById('vrc-autoimprimir')?.checked ?? true,
     descargar_pdf_automatico: document.getElementById('vrc-descargar-pdf')?.checked ?? true,
     mostrar_costo_venta: document.getElementById('vrc-mostrar-costo')?.checked ?? false,
+    mostrar_sku_ticket:  document.getElementById('vrc-mostrar-sku')?.checked ?? false,
     updated_at:          new Date().toISOString(),
   };
 
@@ -8125,7 +8128,7 @@ function columnasImpresionDirecta(ancho) {
 }
 
 function construirDatosReciboDesdeVenta(cfg, venta, items) {
-  const lineasItems = (items||[]).map(i => `${cantTicket(i)}x ${i.nombre} ${fmt(round2(i.cantidad*i.precio))}`);
+  const lineasItems = (items||[]).map(i => `${cantTicket(i)}x ${i.nombre}${cfg.mostrar_sku_ticket && (i.sku || i.producto_sku) ? ` [${i.sku || i.producto_sku}]` : ''} ${fmt(round2(i.cantidad*i.precio))}`);
   return {
     nombreNegocio: cfg.nombre_ticket || S.empresaConfig?.nombre_comercial || 'Negocio360',
     encabezadoLineas: [
@@ -8172,6 +8175,7 @@ function elementosTicketVentaRawBT(cfg, venta, items, resumen) {
   (items || []).forEach(i => {
     const [nombreReal, ...detalle] = String(i.nombre || '').split('\n');
     e.push({ t: 'texto', texto: nombreReal + (i.escalaNombre ? ` (${i.escalaNombre})` : '') });
+    if (cfg.mostrar_sku_ticket && (i.sku || i.producto_sku)) e.push({ t: 'texto', texto: '  SKU: ' + (i.sku || i.producto_sku) });
     detalle.forEach(ln => e.push({ t: 'texto', texto: '  ' + ln }));
     e.push({ t: 'fila', izq: `${cantTicket(i)} x ${fmt(precioTicket(i))}`, der: fmt(i.subtotal != null ? i.subtotal : round2(i.cantidad * i.precio)) });
   });
@@ -8338,6 +8342,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
     const detalleHtml = lineasDetalle.map(ln => `<div style="font-size:10.5px;color:#666">${esc(ln)}</div>`).join('');
     return `
     <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
+    ${cfg.mostrar_sku_ticket && (i.sku || i.producto_sku) ? `<div style="font-size:10.5px;color:#444">SKU: ${esc(i.sku || i.producto_sku)}</div>` : ''}
     ${detalleHtml}
     <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(precioTicket(i))}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`;
   }).join('');
@@ -8368,6 +8373,10 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   .total-row td { font-weight: 700; font-size: ${fsTotal}px; padding-top: 4px; }
   .ticket-logo { max-width: ${logoMaxW}px; max-height: 60px; object-fit: contain; margin: 0 auto 4px; display: block; }
   .fila-dato { display: flex; justify-content: space-between; gap: 6px; }
+  /* Nombres largos: nunca empujan ni tapan el precio (el texto baja de línea; el monto queda fijo a la derecha). */
+  .fila-dato > :first-child { min-width: 0; overflow-wrap: anywhere; }
+  .fila-dato > :last-child { flex-shrink: 0; white-space: nowrap; text-align: right; }
+  body > div { overflow-wrap: anywhere; }
 </style></head>
 <body>
   ${logoUrl ? `<img class="ticket-logo" src="${esc(logoUrl)}" alt="" onerror="this.style.display='none'"/>` : ''}
@@ -8530,6 +8539,7 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
     const detalleHtml = lineasDetalle.map(ln => `<div style="font-size:10.5px;color:#666">${esc(ln)}</div>`).join('');
     return `
     <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
+    ${cfg.mostrar_sku_ticket && (i.sku || i.producto_sku) ? `<div style="font-size:10.5px;color:#444">SKU: ${esc(i.sku || i.producto_sku)}</div>` : ''}
     ${detalleHtml}
     <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(precioTicket(i))}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`;
   }).join('');
@@ -8558,6 +8568,10 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   .total-row td { font-weight: 700; font-size: ${fsTotal}px; padding-top: 4px; }
   .ticket-logo { max-width: ${logoMaxW}px; max-height: 60px; object-fit: contain; margin: 0 auto 4px; display: block; }
   .fila-dato { display: flex; justify-content: space-between; gap: 6px; }
+  /* Nombres largos: nunca empujan ni tapan el precio (el texto baja de línea; el monto queda fijo a la derecha). */
+  .fila-dato > :first-child { min-width: 0; overflow-wrap: anywhere; }
+  .fila-dato > :last-child { flex-shrink: 0; white-space: nowrap; text-align: right; }
+  body > div { overflow-wrap: anywhere; }
 </style></head>
 <body>
   ${logoUrl ? `<img class="ticket-logo" src="${esc(logoUrl)}" alt="" onerror="this.style.display='none'"/>` : ''}

@@ -1713,7 +1713,7 @@ function mostrarComprobanteProforma(v) {
   const anchoTicket = c?.ancho_ticket || '80mm';
   const logoMaxW = anchoTicket === '58mm' ? 70 : anchoTicket === '76mm' ? 85 : anchoTicket === 'carta' ? 130 : 95;
   const filasItems = (v.items || []).map(it => `
-    <div class="tp-row"><span>${esc(it.cantidad)} × ${esc(it.producto_nombre)}</span><b>${fmt(it.subtotal)}</b></div>
+    <div class="tp-row"><span>${esc(it.cantidad)} × ${esc(it.producto_nombre)}${c?.mostrar_sku_ticket && (it.producto_sku || it.sku) ? `<br><small>SKU: ${esc(it.producto_sku || it.sku)}</small>` : ''}</span><b>${fmt(it.subtotal)}</b></div>
   `).join('');
   document.getElementById('comprobante-body').innerHTML = `
     <div class="ticket-print">
@@ -1788,7 +1788,7 @@ function imprimirComprobanteProforma() {
   const fs = ancho === '58mm' ? 11 : 12.5;
   const w = window.open('', '_blank', 'width=380,height=600');
   w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
-    <style>@page{size:${ancho} auto;margin:0}*{box-sizing:border-box}body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+    <style>@page{size:${ancho} auto;margin:0}*{box-sizing:border-box}body{font-family:${fontFamily};font-size:${fs}px;padding:16px;max-width:${anchoPx};margin:0 auto${esEpson ? ';line-height:1.3' : ''}}.tp-row{display:flex;justify-content:space-between;gap:10px}.tp-row>:first-child{min-width:0;overflow-wrap:anywhere}.tp-row>:last-child{flex-shrink:0;white-space:nowrap;text-align:right}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
     </head><body>${html}<script>window.print();</script></body></html>`);
   w.document.close();
 }
