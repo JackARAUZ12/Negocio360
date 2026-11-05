@@ -708,6 +708,10 @@
     @media (max-width:640px){.pd-inp{width:72px}.pd-kpi-v{font-size:19px}}
     .mf-barra-eq{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--accent-soft,#eef);border:1px solid var(--border,#ddd);border-radius:12px;padding:8px 12px;margin:0 0 10px;font-size:14px}
   .mf-entrar{max-width:440px;margin:0 auto}
+  .mf-zona-tit{grid-column:1/-1;font-weight:700;margin:10px 2px 0;font-size:14px;border-bottom:1px solid var(--border,#e5e7eb);padding-bottom:4px}
+  .mf-chk{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;white-space:nowrap}
+  .mf-chk input{width:17px;height:17px}
+  .mf-ruta-op .tl-sel{flex:1;min-width:140px}
   .mf-cola{background:#fff7e6;border-color:#f5c26b;color:#7a4b00}
   [data-theme=dark] .mf-cola{background:rgba(245,194,107,.12);color:#f5d08a}
 </style>
@@ -902,6 +906,7 @@
         <button type="button" class="pd-tab" data-tab="clientes" onclick="mfTab('clientes')">📒 Clientes</button>
         <button type="button" class="pd-tab" data-tab="resumen" onclick="mfTab('resumen')">📊 Resumen</button>
         <button type="button" class="pd-tab" data-tab="caja" onclick="mfTab('caja')" style="display:none">🧾 Caja del día</button>
+        <button type="button" class="pd-tab" data-tab="cierre" onclick="mfTab('cierre')">📋 Cierre del día</button>
         <button type="button" class="pd-tab" data-tab="equipo" onclick="mfTab('equipo')">👥 Equipo</button>
       </div>
       <div id="pd-vista"><p class="tln-sub">Cargando…</p></div>
@@ -912,7 +917,7 @@
 <div class="tl-modal" id="pd-modal" role="dialog" aria-modal="true"><div class="tl-modal-box" id="pd-modal-box"></div></div>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="microfinanciera.js?v=20261104c"></script>
+<script src="microfinanciera.js?v=20261104d"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
 <script src="modulos-guard.js?v=20261104a"></script>

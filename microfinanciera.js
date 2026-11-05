@@ -19,7 +19,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const MF = {
   userId: null, cfg: {}, tab: 'ruta', ocupado: false,
   clientes: [], creditos: [], cuotas: {}, metodos: [], bancos: [], productos: [], pagosHoy: [], pagosSemana: [], promesas: {},
-  venta: null, cobro: null, filtroCli: '', filtroRuta: '',
+  venta: null, cobro: null, filtroCli: '', filtroRuta: '', rutaOrden: 'zona', rutaZona: '', ocultarVisitados: false,
   ses: null, perfiles: [], equipo: [], selAsig: {}, cola: [], enviando: false,
 };
 
@@ -119,7 +119,7 @@ async function leerTodo(fn) {
 async function cargarDatos() {
   const u = MF.userId, hoy = hoyISO();
   let [cli, cred, met, ban, prod, pagos] = await Promise.all([
-    leerTodo(() => sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,direccion').eq('auth_user_id', u).eq('activo', true).order('nombre').order('id')),
+    leerTodo(() => sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,direccion,zona').eq('auth_user_id', u).eq('activo', true).order('nombre').order('id')),
     leerTodo(() => sb.from('creditos').select('id,numero_credito,cliente_id,tipo,total_financiado,saldo_pendiente,frecuencia,valor_cuota_aprox,estado,created_at,observaciones,mf_ref,mf_cobrador_id,mf_cobrador_nombre')
       .eq('auth_user_id', u).in('estado', ['activo', 'al_dia', 'con_atraso', 'en_proceso']).gt('saldo_pendiente', 0.004).order('id')),
     sb.from('metodos_pago').select('id,nombre').eq('auth_user_id', u).eq('activo', true).order('nombre'),
@@ -179,39 +179,73 @@ async function mfTab(t) {
   if (t === 'vender') return pintarVender(v);
   if (t === 'clientes') return pintarClientes(v);
   if (t === 'caja') return pintarCajaDia(v);
+  if (t === 'cierre') return pintarCierre(v);
   if (t === 'equipo') return pintarEquipo(v);
   return pintarResumen(v);
 }
 async function recargar() { try { await cargarDatos(); } catch (e) { console.error(e); showToast('No se pudieron cargar los datos. Revisa tu conexión.', 'error'); } mfTab(MF.tab); }
 
 /* ---------- 🛵 RUTA DE HOY ---------- */
+function zonaDe(c) { return String(c?.zona || '').trim(); }
+function visitadoHoy(x, cobradosIds) {
+  if (cobradosIds.has(x.cr.id)) return true;
+  const g = x.g; return !!(g && g.created_at && ymd(new Date(g.created_at)) === hoyISO());
+}
 function pintarRuta(v) {
   const hoy = hoyISO();
   const lista = MF.creditos.map(cr => ({ cr, s: situacion(cr), c: cliPorId(cr.cliente_id), g: MF.promesas[cr.id] }))
     .filter(x => x.s.pagarHoy > 0.004 || x.s.enCola > 0 || (x.g && x.g.tipo === 'promesa' && x.g.fecha_promesa === hoy));
-  const f = MF.filtroRuta.trim().toLowerCase();
-  const vis = lista.filter(x => !f || nombreCli(x.c).toLowerCase().includes(f) || String(x.c?.direccion || '').toLowerCase().includes(f) || String(x.cr.numero_credito).toLowerCase().includes(f))
-    .sort((a, b) => (b.s.dias - a.s.dias) || nombreCli(a.c).localeCompare(nombreCli(b.c)));
-  const esperado = r2(lista.reduce((s, x) => s + x.s.pagarHoy, 0)), cobrado = r2(MF.pagosHoy.reduce((s, p) => s + Number(p.monto || 0), 0) + colaPendientes().reduce((s, c) => s + c.monto, 0));
   const cobradosIds = new Set(MF.pagosHoy.map(p => p.credito_id).concat(colaPendientes().map(c => c.credito_id)));
+  lista.forEach(x => { x.visto = visitadoHoy(x, cobradosIds); x.zona = zonaDe(x.c); });
+  const zonas = [...new Set(lista.map(x => x.zona).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  if (MF.rutaZona && MF.rutaZona !== '__sin' && !zonas.includes(MF.rutaZona)) MF.rutaZona = '';
+  const f = MF.filtroRuta.trim().toLowerCase();
+  const vis = lista.filter(x => (!f || nombreCli(x.c).toLowerCase().includes(f) || String(x.c?.direccion || '').toLowerCase().includes(f) || x.zona.toLowerCase().includes(f) || String(x.cr.numero_credito).toLowerCase().includes(f))
+      && (!MF.rutaZona || (MF.rutaZona === '__sin' ? !x.zona : x.zona === MF.rutaZona)) && (!MF.ocultarVisitados || !x.visto))
+    .sort((a, b) => MF.rutaOrden === 'zona'
+      ? ((a.visto - b.visto) || (!a.zona - !b.zona) || a.zona.localeCompare(b.zona) || String(a.c?.direccion || '').localeCompare(String(b.c?.direccion || '')) || nombreCli(a.c).localeCompare(nombreCli(b.c)))
+      : MF.rutaOrden === 'nombre' ? ((a.visto - b.visto) || nombreCli(a.c).localeCompare(nombreCli(b.c)))
+      : ((a.visto - b.visto) || (b.s.dias - a.s.dias) || nombreCli(a.c).localeCompare(nombreCli(b.c))));
+  const esperado = r2(lista.reduce((s, x) => s + x.s.pagarHoy, 0)), cobrado = r2(MF.pagosHoy.reduce((s, p) => s + Number(p.monto || 0), 0) + colaPendientes().reduce((s, c) => s + c.monto, 0));
+  const vistos = lista.filter(x => x.visto).length, pct = lista.length ? Math.round(vistos / lista.length * 100) : 0;
+  let html = '', zonaAct = null;
+  vis.forEach(x => {
+    if (MF.rutaOrden === 'zona' && !x.visto && x.zona !== zonaAct) {
+      zonaAct = x.zona; const enZ = lista.filter(y => y.zona === x.zona), faltan = enZ.filter(y => !y.visto);
+      html += `<div class="mf-zona-tit">📍 ${esc(x.zona || 'Sin zona')} <span class="tl-muted">· faltan ${faltan.length} de ${enZ.length} · ${fmt(faltan.reduce((a, y) => a + y.s.pagarHoy, 0))}</span></div>`;
+    }
+    if (x.visto && zonaAct !== '__vistos') { zonaAct = '__vistos'; html += `<div class="mf-zona-tit">✅ Ya visitados hoy <span class="tl-muted">· ${vistos}</span></div>`; }
+    html += tarjetaRuta(x, cobradosIds.has(x.cr.id));
+  });
   v.innerHTML = `<div class="pd-kpis">
       <div class="pd-kpi"><div class="pd-kpi-l">💵 Cobrado hoy</div><div class="pd-kpi-v pd-verde">${fmt(cobrado)}</div><div class="pd-kpi-s">${MF.pagosHoy.length} recibo(s)${colaPendientes().length ? ' + ' + colaPendientes().length + ' sin enviar' : ''}</div></div>
       <div class="pd-kpi"><div class="pd-kpi-l">🛵 Por cobrar hoy</div><div class="pd-kpi-v">${fmt(esperado)}</div><div class="pd-kpi-s">${lista.length} cliente(s) en la ruta</div></div>
+      <div class="pd-kpi"><div class="pd-kpi-l">🚶 Visitados</div><div class="pd-kpi-v">${vistos} de ${lista.length}</div><div class="vd-barra" style="margin-top:6px"><i style="width:${pct}%"></i></div></div>
       <div class="pd-kpi"><div class="pd-kpi-l">⏰ Atrasados</div><div class="pd-kpi-v pd-rojo">${lista.filter(x => x.s.dias > 0).length}</div><div class="pd-kpi-s">con cuotas vencidas</div></div></div>
-    <div class="vd-filtros"><input type="search" class="tl-inp" style="flex:1;min-width:0" placeholder="🔎 Buscar cliente, barrio o crédito" value="${esc(MF.filtroRuta)}" oninput="MF.filtroRuta=this.value;pintarRuta(document.getElementById('pd-vista'))" aria-label="Buscar en la ruta">
+    <div class="vd-filtros"><input type="search" class="tl-inp" style="flex:1;min-width:0" placeholder="🔎 Buscar cliente, zona, dirección o crédito" value="${esc(MF.filtroRuta)}" oninput="MF.filtroRuta=this.value;pintarRuta(document.getElementById('pd-vista'))" aria-label="Buscar en la ruta">
       <button class="btn-secondary" onclick="recargar()">🔄 Actualizar</button></div>
-    ${vis.length ? `<div class="mf-lista">${vis.map(x => tarjetaRuta(x, cobradosIds.has(x.cr.id))).join('')}</div>`
-      : `<div class="pd-vacio"><div class="ico">🎉</div><b>${lista.length ? 'Nadie con ese nombre en la ruta.' : 'Nadie tiene que pagar hoy.'}</b><p class="tl-muted">Aquí salen los clientes con cuota de hoy, atrasados o que prometieron pagar hoy.</p></div>`}`;
+    <div class="vd-filtros mf-ruta-op">
+      <select class="tl-sel" aria-label="Ordenar la ruta" onchange="MF.rutaOrden=this.value;guardarPrefRuta();pintarRuta(document.getElementById('pd-vista'))">
+        <option value="zona" ${MF.rutaOrden === 'zona' ? 'selected' : ''}>📍 Por zona</option><option value="atraso" ${MF.rutaOrden === 'atraso' ? 'selected' : ''}>⏰ Más atrasados primero</option><option value="nombre" ${MF.rutaOrden === 'nombre' ? 'selected' : ''}>🔤 Por nombre</option></select>
+      <select class="tl-sel" aria-label="Ver una zona" onchange="MF.rutaZona=this.value;guardarPrefRuta();pintarRuta(document.getElementById('pd-vista'))">
+        <option value="">Todas las zonas</option>${zonas.map(z => `<option value="${esc(z)}" ${MF.rutaZona === z ? 'selected' : ''}>${esc(z)}</option>`).join('')}<option value="__sin" ${MF.rutaZona === '__sin' ? 'selected' : ''}>Sin zona</option></select>
+      <label class="mf-chk"><input type="checkbox" ${MF.ocultarVisitados ? 'checked' : ''} onchange="MF.ocultarVisitados=this.checked;guardarPrefRuta();pintarRuta(document.getElementById('pd-vista'))"> Ocultar visitados</label></div>
+    ${!zonas.length && lista.length ? '<p class="tl-muted" style="margin:0 0 8px">💡 Ponle <b>zona</b> a tus clientes (en su tarjeta 📒) para recorrer la ruta barrio por barrio.</p>' : ''}
+    ${vis.length ? `<div class="mf-lista">${html}</div>`
+      : `<div class="pd-vacio"><div class="ico">🎉</div><b>${lista.length ? (MF.ocultarVisitados && vistos === lista.length ? '¡Ya visitaste a todos!' : 'Nadie con ese filtro en la ruta.') : 'Nadie tiene que pagar hoy.'}</b><p class="tl-muted">Aquí salen los clientes con cuota de hoy, atrasados o que prometieron pagar hoy.</p></div>`}`;
   if (document.activeElement && document.activeElement.type === 'search') { const i = v.querySelector('input[type=search]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
+function guardarPrefRuta() { try { localStorage.setItem('n360_mf_ruta_' + MF.userId, JSON.stringify({ o: MF.rutaOrden, z: MF.rutaZona, v: MF.ocultarVisitados })); } catch (_) {} }
+function leerPrefRuta() { try { const p = JSON.parse(localStorage.getItem('n360_mf_ruta_' + MF.userId) || 'null'); if (p) { if (['zona', 'atraso', 'nombre'].includes(p.o)) MF.rutaOrden = p.o; MF.rutaZona = typeof p.z === 'string' ? p.z : ''; MF.ocultarVisitados = !!p.v; } } catch (_) {} }
 function tarjetaRuta(x, cobradoHoy) {
   const { cr, s, c, g } = x, tel = c?.whatsapp || c?.telefono || '';
   const est = s.enCola > 0 && s.pagarHoy <= 0.004 ? '<span class="pd-pill ambar">⏳ Cobrado sin señal</span>' : s.dias > 0 ? `<span class="pd-pill mal">⏰ ${s.dias} día${s.dias === 1 ? '' : 's'} de atraso</span>` : s.hoy > 0 ? '<span class="pd-pill ambar">📅 Le toca hoy</span>' : '<span class="pd-pill">🤝 Prometió hoy</span>';
-  return `<div class="mf-card${cobradoHoy ? ' cobrado' : ''}">
+  return `<div class="mf-card${cobradoHoy || x.visto ? ' cobrado' : ''}">
     <div class="mf-card-cab"><div style="min-width:0"><b class="mf-nom">${esc(nombreCli(c))}</b>
-      <div class="tl-muted">${esc(cr.numero_credito)}${c?.direccion ? ' · 📍 ' + esc(c.direccion) : ''}</div></div>${est}</div>
+      <div class="tl-muted">${esc(cr.numero_credito)}${zonaDe(c) ? ' · 🏘️ ' + esc(zonaDe(c)) : ''}${c?.direccion ? ' · 📍 ' + esc(c.direccion) : ''}</div></div>${est}</div>
     <div class="mf-montos"><div><span>Cobrar hoy</span><b>${fmt(s.pagarHoy)}</b></div><div><span>Cuota</span><b>${fmt(s.cuota)}</b></div><div><span>Debe en total</span><b>${fmt(s.saldo)}</b></div></div>
-    ${g ? `<div class="tl-muted">📝 ${g.tipo === 'promesa' ? 'Prometió pagar el ' + fCorta(g.fecha_promesa) : g.tipo === 'no_estaba' ? 'No estaba (' + fCorta(String(g.created_at).slice(0, 10)) + ')' : esc(g.nota || '')}${g.tipo !== 'nota' && g.nota ? ' · ' + esc(g.nota) : ''}</div>` : ''}
+    ${g ? `<div class="tl-muted">📝 ${g.tipo === 'promesa' ? 'Prometió pagar el ' + fCorta(g.fecha_promesa) : g.tipo === 'no_estaba' ? 'No estaba (' + fCorta(ymd(new Date(g.created_at))) + ')' : esc(g.nota || '')}${g.tipo !== 'nota' && g.nota ? ' · ' + esc(g.nota) : ''}</div>` : ''}
+    ${x.visto && !cobradoHoy ? `<div class="tl-aviso ok">🚶 Visitado hoy${g && g.tipo === 'no_estaba' ? ' (no estaba)' : g && g.tipo === 'promesa' ? ' (prometió)' : ''}</div>` : ''}
     ${s.enCola > 0 ? `<div class="tl-aviso">⏳ Cobro de ${fmt(s.enCola)} guardado sin señal: se envía solo al volver la señal.</div>` : cobradoHoy ? '<div class="tl-aviso ok">✅ Ya pagó hoy</div>' : ''}
     <div class="mf-acc">
       <button class="btn-primary mf-grande" onclick="abrirCobro('${cr.id}')">💵 Cobrar</button>
@@ -467,6 +501,7 @@ function abrirNuevoCliente() {
     <div class="tl-modal-cuerpo"><div class="tl-grid"><div class="tl-f full"><label for="nc-nom">Nombre completo *</label><input class="tl-inp" id="nc-nom" maxlength="120" value="${esc(MF.venta?.buscaCli || '')}"></div>
       <div class="tl-f"><label for="nc-tel">Teléfono / WhatsApp</label><input class="tl-inp" id="nc-tel" inputmode="tel" maxlength="30"></div>
       <div class="tl-f"><label for="nc-ced">Cédula (opcional)</label><input class="tl-inp" id="nc-ced" maxlength="30"></div>
+      <div class="tl-f"><label for="nc-zona">Zona / barrio</label><input class="tl-inp" id="nc-zona" maxlength="60" list="mf-zonas-dl" placeholder="Ej. San Judas"></div>${datalistZonas()}
       <div class="tl-f full"><label for="nc-dir">Dirección (para la ruta)</label><input class="tl-inp" id="nc-dir" maxlength="250" placeholder="Barrio, de la iglesia 2c al sur…"></div></div>
       <div class="tl-aviso" id="nc-err" style="display:none"></div></div>
     <div class="tl-modal-pie"><button class="btn-secondary" onclick="cerrarModal()">Cancelar</button><button class="btn-primary" id="nc-ok" onclick="guardarNuevoCliente()">Guardar cliente</button></div>`);
@@ -483,8 +518,9 @@ async function guardarNuevoCliente() {
   try {
     const fila = { auth_user_id: MF.userId, nombre: nom, telefono: tel || null, direccion: document.getElementById('nc-dir').value.trim() || null, activo: true };
     const ced = document.getElementById('nc-ced').value.trim(); if (ced) fila.cedula = ced;
-    let { data, error } = await sb.from('clientes').insert(fila).select('id,nombre,apellido,telefono,whatsapp,direccion').single();
-    if (error && /cedula/.test(error.message || '')) { delete fila.cedula; ({ data, error } = await sb.from('clientes').insert(fila).select('id,nombre,apellido,telefono,whatsapp,direccion').single()); }
+    const zona = limpiarZona(document.getElementById('nc-zona').value); if (zona) fila.zona = MF.clientes.map(zonaDe).find(x => x && x.toLowerCase() === zona.toLowerCase()) || zona;
+    let { data, error } = await sb.from('clientes').insert(fila).select('id,nombre,apellido,telefono,whatsapp,direccion,zona').single();
+    if (error && /cedula/.test(error.message || '')) { delete fila.cedula; ({ data, error } = await sb.from('clientes').insert(fila).select('id,nombre,apellido,telefono,whatsapp,direccion,zona').single()); }
     if (error) throw error;
     MF.clientes.push(data); MF.venta.clienteId = data.id; MF.venta.buscaCli = '';
     cerrarModal(true); showToast('Cliente guardado.'); pintarVender(document.getElementById('pd-vista'));
@@ -544,6 +580,8 @@ async function abrirTarjeta(clienteId) {
     const tel = c.whatsapp || c.telefono || '';
     document.getElementById('pd-modal-box').innerHTML = `<div class="tl-modal-cab"><h2>📒 ${esc(nombreCli(c))}</h2><button class="tl-x" onclick="cerrarModal()">✕</button></div>
       <div class="tl-modal-cuerpo"><div class="tl-muted">${esc(c.telefono || '')}${c.direccion ? ' · 📍 ' + esc(c.direccion) : ''}${tel ? ` · <a href="https://wa.me/${waNum(tel)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}</div>
+      ${cliPorId(clienteId) ? `<div class="vd-filtros" style="margin:8px 0"><label for="tz-zona" style="font-weight:600;font-size:13px">🏘️ Zona</label><input class="tl-inp" style="flex:1;min-width:0" id="tz-zona" maxlength="60" list="mf-zonas-dl" value="${esc(zonaDe(c))}" placeholder="Ej. San Judas">${datalistZonas()}
+        <button class="btn-secondary" id="tz-ok" onclick="guardarZona('${clienteId}')">Guardar zona</button></div>` : ''}
       ${html || '<div class="pd-vacio"><b>Sin créditos.</b></div>'}</div>`;
   } catch (e) { console.error(e); document.getElementById('pd-modal-box').innerHTML = '<div class="tl-modal-cuerpo"><div class="tl-aviso">No se pudo cargar la tarjeta. Revisa tu conexión.</div><button class="btn-secondary" onclick="cerrarModal()">Cerrar</button></div>'; }
 }
@@ -584,6 +622,94 @@ function pintarResumen(v) {
     <p class="tl-muted">Todo esto también está en <a href="creditos.html">Créditos</a>, <a href="caja.html">Caja</a> y <a href="ventas.html">Ventas</a>, como siempre.</p>`;
 }
 
+/* ---------- 📋 CIERRE DEL DÍA (dueño / supervisor) ----------
+   Solo lee: no cambia dinero. Junta en una hoja lo cobrado (por persona y forma de pago), lo anulado,
+   lo vendido/prestado, las visitas y las entregas del día elegido. */
+function rangoDia(iso) { const a = new Date(iso + 'T00:00:00'), b = new Date(a); b.setDate(b.getDate() + 1); return [a.toISOString(), b.toISOString()]; }
+async function pintarCierre(v) {
+  const dia = MF.cierreDia || hoyISO(); MF.cierreDia = dia;
+  v.innerHTML = '<p class="tln-sub">Armando el cierre…</p>';
+  const u = MF.userId, [ini, fin] = rangoDia(dia);
+  let pagos = [], creds = [], gest = [], ents = [];
+  try {
+    const [p1, c1, g1, e1] = await Promise.all([
+      leerTodo(() => sb.from('creditos_pagos').select('id,credito_id,cliente_id,monto,estado,comprobante_numero,metodo_pago_nombre,mf_cobrador_nombre,created_at').eq('auth_user_id', u).eq('fecha', dia).order('created_at').order('id')),
+      leerTodo(() => sb.from('creditos').select('id,numero_credito,tipo,cliente_id,total_financiado,capital_financiado,mf_cobrador_nombre,mf_ref,created_at').eq('auth_user_id', u).gte('created_at', ini).lt('created_at', fin).order('created_at').order('id')),
+      sb.from('mf_gestiones').select('tipo,creado_por,credito_id,created_at').eq('auth_user_id', u).gte('created_at', ini).lt('created_at', fin).limit(5000),
+      sb.from('mf_entregas').select('cobrador_nombre,cobros,esperado,entregado,diferencia,recibido_por,created_at').eq('auth_user_id', u).gte('created_at', ini).lt('created_at', fin).order('created_at'),
+    ]);
+    pagos = p1; creds = c1.filter(c => c.mf_ref); gest = g1.data || []; ents = e1.data || [];
+  } catch (e) { console.error(e); v.innerHTML = '<div class="tl-aviso">No se pudo armar el cierre. Revisa tu conexión.</div>'; return; }
+  const ok = pagos.filter(p => p.estado === 'completado'), anul = pagos.filter(p => p.estado === 'anulado');
+  const esEf = p => /efectivo/i.test(p.metodo_pago_nombre || 'Efectivo');
+  const suma = l => r2(l.reduce((a, p) => a + Number(p.monto || 0), 0));
+  const quien = p => p.mf_cobrador_nombre || 'Dueño / módulo Créditos';
+  const personas = {};
+  const P = n => personas[n] || (personas[n] = { cobros: 0, ef: 0, ot: 0, noEstaba: 0, promesa: 0 });
+  ok.forEach(p => { const k = P(quien(p)); k.cobros++; if (esEf(p)) k.ef = r2(k.ef + Number(p.monto)); else k.ot = r2(k.ot + Number(p.monto)); });
+  gest.forEach(g => { const k = P(g.creado_por || 'Usuario'); if (g.tipo === 'no_estaba') k.noEstaba++; if (g.tipo === 'promesa') k.promesa++; });
+  const ventas = creds.filter(c => c.tipo === 'venta'), prest = creds.filter(c => c.tipo !== 'venta');
+  const totV = r2(ventas.reduce((a, c) => a + Number(c.total_financiado || 0), 0)), totP = r2(prest.reduce((a, c) => a + Number(c.capital_financiado || 0), 0));
+  const difs = r2(ents.reduce((a, e) => a + Number(e.diferencia || 0), 0));
+  const esHoy = dia === hoyISO();
+  let ruta = null;
+  if (esHoy) {
+    const cobr = new Set(MF.pagosHoy.map(p => p.credito_id));
+    const l = MF.creditos.map(cr => ({ cr, s: situacion(cr), g: MF.promesas[cr.id] })).filter(x => x.s.pagarHoy > 0.004 || x.s.enCola > 0 || (x.g && x.g.tipo === 'promesa' && x.g.fecha_promesa === dia));
+    l.forEach(x => { x.visto = visitadoHoy(x, cobr); });
+    ruta = { total: l.length, vistos: l.filter(x => x.visto).length, falta: r2(l.filter(x => !x.visto).reduce((a, x) => a + x.s.pagarHoy, 0)) };
+  }
+  const neg = MF.cfg.nombre_comercial || 'Mi negocio', fechaTxt = new Date(dia + 'T12:00:00').toLocaleDateString('es-NI', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const filasP = Object.entries(personas).sort((a, b) => (b[1].ef + b[1].ot) - (a[1].ef + a[1].ot));
+  MF.cierreTxt = `📋 *Cierre del día — ${neg}*\n${fechaTxt}\n\n💵 Cobrado: ${fmt(suma(ok))} (${ok.length} recibos)\n   Efectivo: ${fmt(suma(ok.filter(esEf)))} · Otros: ${fmt(suma(ok.filter(p => !esEf(p))))}`
+    + (anul.length ? `\n❌ Anulados: ${anul.length} (${fmt(suma(anul))})` : '')
+    + (filasP.length ? '\n\n👤 Por persona:' + filasP.map(([n, k]) => `\n• ${n}: ${k.cobros} cobro(s) ${fmt(k.ef + k.ot)}${k.noEstaba ? ` · ${k.noEstaba} no estaba` : ''}${k.promesa ? ` · ${k.promesa} promesa(s)` : ''}`).join('') : '')
+    + (creds.length ? `\n\n🛒 Nuevos: ${ventas.length} venta(s) al crédito ${fmt(totV)} · ${prest.length} préstamo(s) ${fmt(totP)}` : '')
+    + (ents.length ? `\n\n🧾 Entregas: ${ents.length} · ${difs === 0 ? 'todo cuadró ✅' : (difs < 0 ? 'faltante ' : 'sobrante ') + fmt(Math.abs(difs))}` : '')
+    + (ruta ? `\n\n🛵 Ruta: visitados ${ruta.vistos} de ${ruta.total} · quedó por cobrar ${fmt(ruta.falta)}` : '');
+  v.innerHTML = `<div class="vd-filtros"><label for="ci-dia" style="font-weight:600">Día</label><input type="date" class="tl-inp" id="ci-dia" value="${dia}" max="${hoyISO()}" onchange="MF.cierreDia=this.value||hoyISO();pintarCierre(document.getElementById('pd-vista'))">
+      <button class="btn-secondary" onclick="imprimirCierre()">🖨️ Imprimir</button><a class="btn-secondary" href="https://wa.me/?text=${encodeURIComponent(MF.cierreTxt)}" target="_blank" rel="noopener">💬 Enviar por WhatsApp</a></div>
+    <div class="pd-kpis">
+      <div class="pd-kpi"><div class="pd-kpi-l">💵 Cobrado</div><div class="pd-kpi-v pd-verde">${fmt(suma(ok))}</div><div class="pd-kpi-s">${ok.length} recibo(s)</div></div>
+      <div class="pd-kpi"><div class="pd-kpi-l">💵 En efectivo</div><div class="pd-kpi-v">${fmt(suma(ok.filter(esEf)))}</div><div class="pd-kpi-s">Otros: ${fmt(suma(ok.filter(p => !esEf(p))))}</div></div>
+      <div class="pd-kpi"><div class="pd-kpi-l">❌ Anulados</div><div class="pd-kpi-v ${anul.length ? 'pd-rojo' : ''}">${anul.length}</div><div class="pd-kpi-s">${fmt(suma(anul))}</div></div>
+      ${ruta ? `<div class="pd-kpi"><div class="pd-kpi-l">🛵 Ruta de hoy</div><div class="pd-kpi-v">${ruta.vistos} de ${ruta.total}</div><div class="pd-kpi-s">visitados · faltó ${fmt(ruta.falta)}</div></div>` : ''}</div>
+    <div class="pd-card"><h3>👤 Por persona</h3>${filasP.length ? `<div class="pd-tw"><table class="tl-tabla"><thead><tr><th>Quién</th><th class="tl-num">Cobros</th><th class="tl-num">Efectivo</th><th class="tl-num">Otros</th><th class="tl-num">No estaba</th><th class="tl-num">Promesas</th></tr></thead><tbody>
+      ${filasP.map(([n, k]) => `<tr><td data-t="Quién"><b>${esc(n)}</b></td><td class="tl-num" data-t="Cobros">${k.cobros}</td><td class="tl-num" data-t="Efectivo">${fmt(k.ef)}</td><td class="tl-num" data-t="Otros">${fmt(k.ot)}</td><td class="tl-num" data-t="No estaba">${k.noEstaba}</td><td class="tl-num" data-t="Promesas">${k.promesa}</td></tr>`).join('')}</tbody></table></div>` : '<p class="tl-muted">Sin cobros ni visitas este día.</p>'}</div>
+    <div class="pd-card"><h3>🛒 Vendido y prestado</h3>${creds.length ? `<div class="mf-montos"><div><span>Ventas al crédito (${ventas.length})</span><b>${fmt(totV)}</b></div><div><span>Préstamos entregados (${prest.length})</span><b>${fmt(totP)}</b></div></div>
+      <div class="pd-tw" style="margin-top:8px"><table class="tl-tabla"><tbody>${creds.map(c => `<tr><td data-t="Crédito"><b>${esc(c.numero_credito)}</b> <span class="tl-muted">${c.tipo === 'venta' ? '🛍️ Venta' : '💵 Préstamo'}</span></td><td data-t="Cliente">${esc(nombreCli(cliPorId(c.cliente_id)))}</td><td class="tl-num" data-t="Total">${fmt(c.tipo === 'venta' ? c.total_financiado : c.capital_financiado)}</td><td data-t="Lo cobra">${esc(c.mf_cobrador_nombre || '')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="tl-muted">Nada nuevo este día.</p>'}</div>
+    <div class="pd-card"><h3>🧾 Entregas de cobradores</h3>${ents.length ? `<div class="pd-tw"><table class="tl-tabla"><tbody>${ents.map(e => `<tr><td data-t="Cobrador"><b>${esc(e.cobrador_nombre || '')}</b><div class="tl-muted">recibió ${esc(e.recibido_por || '')}</div></td><td class="tl-num" data-t="Debía">${fmt(e.esperado)}</td><td class="tl-num" data-t="Entregó">${fmt(e.entregado)}</td>
+      <td class="tl-num ${Number(e.diferencia) < 0 ? 'pd-rojo' : ''}" data-t="Diferencia">${Number(e.diferencia) === 0 ? '✅ Cuadró' : (Number(e.diferencia) < 0 ? 'Faltó ' : 'Sobró ') + fmt(Math.abs(e.diferencia))}</td></tr>`).join('')}</tbody></table></div>` : `<p class="tl-muted">${conEquipo() ? 'Nadie entregó este día.' : 'Las entregas se usan con el trabajo en equipo encendido.'}</p>`}</div>
+    ${anul.length ? `<div class="pd-card"><h3>❌ Cobros anulados</h3><div class="pd-tw"><table class="tl-tabla"><tbody>${anul.map(p => `<tr><td data-t="Recibo">${esc(p.comprobante_numero || '—')}</td><td data-t="Cliente">${esc(nombreCli(cliPorId(p.cliente_id)))}</td><td class="tl-num" data-t="Monto">${fmt(p.monto)}</td><td data-t="Cobró">${esc(quien(p))}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
+    ${esHoy && colaPendientes().length ? `<div class="tl-aviso">⏳ Hay ${colaPendientes().length} cobro(s) guardados sin señal en este teléfono que todavía no aparecen aquí.</div>` : ''}
+    <p class="tl-muted">Incluye también los pagos registrados desde el módulo Créditos.</p>`;
+}
+function imprimirCierre() {
+  if (!MF.cierreTxt) return;
+  const w = window.open('', '_blank', 'width=420,height=700'); if (!w) { showToast('Permite las ventanas emergentes para imprimir.', 'error'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cierre ${esc(MF.cierreDia)}</title><style>body{font-family:monospace;font-size:13px;width:72mm;margin:0 auto;padding:6px}pre{white-space:pre-wrap;font-family:inherit}</style></head>
+    <body><pre>${esc(MF.cierreTxt.replace(/\*/g, ''))}</pre><p style="text-align:center">_____________________<br>Revisado por</p><script>window.onload=()=>{window.print()}<\/script></body></html>`);
+  w.document.close();
+}
+
+/* ---------- 🏘️ ZONAS (para ordenar la ruta) ---------- */
+function limpiarZona(z) { return String(z || '').trim().replace(/\s+/g, ' ').slice(0, 60); }
+function datalistZonas() { const zs = [...new Set(MF.clientes.map(zonaDe).filter(Boolean))].sort((a, b) => a.localeCompare(b)); return `<datalist id="mf-zonas-dl">${zs.map(z => `<option value="${esc(z)}">`).join('')}</datalist>`; }
+async function guardarZona(clienteId) {
+  if (MF.ocupado) return;
+  const c = cliPorId(clienteId); if (!c) return;
+  let z = limpiarZona(document.getElementById('tz-zona').value);
+  const igual = MF.clientes.map(zonaDe).find(x => x && x.toLowerCase() === z.toLowerCase()); if (igual) z = igual;
+  MF.ocupado = true; const b = document.getElementById('tz-ok'); b.disabled = true;
+  try {
+    const { error } = await sb.from('clientes').update({ zona: z || null }).eq('id', clienteId).eq('auth_user_id', MF.userId);
+    if (error) throw error;
+    c.zona = z || null; document.getElementById('tz-zona').value = z;
+    showToast(z ? `Zona guardada: ${z}.` : 'Zona quitada.');
+  } catch (e) { console.error(e); showToast('No se pudo guardar la zona. Revisa tu conexión.', 'error'); }
+  finally { MF.ocupado = false; b.disabled = false; }
+}
+
 /* ---------- 👥 NIVEL 2: TRABAJO EN EQUIPO ----------
    Si está apagado, nada de esto aparece y el Panel funciona igual que siempre.
    Encendido: cada persona entra con SU PIN. La llave de sesión la da y la valida el SERVIDOR;
@@ -596,6 +722,7 @@ function puedeAdministrar() { return !conEquipo() || ['dueno', 'supervisor'].inc
 function esDueno() { return !conEquipo() || MF.ses?.rol === 'dueno'; }
 function tabPermitida(t) {
   if (t === 'caja') return conEquipo();
+  if (t === 'cierre') return puedeAdministrar();
   if (t === 'equipo') return esDueno();
   if (t === 'vender') return !esCobrador() || MF.ses?.puede_vender === true;
   return true;
@@ -952,7 +1079,7 @@ async function mfInit() {
         <button class="btn-primary" onclick="navigate('configuracion.html')">Ir a Configuración</button></div>`;
       return;
     }
-    sesLeer(); colaLeer();
+    sesLeer(); colaLeer(); leerPrefRuta();
     window.addEventListener('online', () => { pintarBarraCola(); enviarCola(); });
     window.addEventListener('offline', pintarBarraCola);
     setInterval(() => { if (colaPendientes().length) enviarCola(); }, 30000);
@@ -960,7 +1087,7 @@ async function mfInit() {
     if (conEquipo() && !MF.ses) { pantallaEntrar(); return; }
     await cargarDatos();
     const ini = (location.hash || '').replace('#', '');
-    await mfTab(['ruta', 'vender', 'clientes', 'resumen', 'caja', 'equipo'].includes(ini) ? ini : 'ruta');
+    await mfTab(['ruta', 'vender', 'clientes', 'resumen', 'caja', 'cierre', 'equipo'].includes(ini) ? ini : 'ruta');
     if (colaPendientes().length) enviarCola();
   } catch (e) {
     console.error('mfInit:', e);
