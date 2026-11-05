@@ -1303,6 +1303,7 @@ const TIPOS_TRANSACCION = {
   ajuste_inventario_entrada: { label: 'Ajuste de existencia que SUBE (conteo, devolución, corrección…)', ejemplo: 'Debe: Inventario — Haber: Otros Ingresos (4200). Solo los cambios de existencia hechos desde la ficha del producto CON motivo; si el motivo es "Inventario inicial", va contra Capital usando la línea de arriba. Incluye bodegas y sucursales del grupo.' },
   ajuste_inventario_salida: { label: 'Ajuste de existencia que BAJA (conteo, daño, vencimiento, robo…)', ejemplo: 'Debe: Otros Gastos (6190) — Haber: Inventario. Solo los cambios de existencia hechos desde la ficha del producto CON motivo (las bajas de "Movimientos especiales" ya se registran como gasto de merma). Incluye bodegas y sucursales del grupo.' },
   faltante_caja: { label: 'Faltante de caja al cerrar Caja Chica', ejemplo: 'Debe: Otros Gastos (6190) — Haber: Caja General. Se asienta solo con la diferencia que quedó guardada en el cierre; no cambia el saldo del módulo Caja.' },
+  mora_credito: { label: 'Mora por atraso cobrada (Panel Microfinanciera)', ejemplo: 'Debe: Caja General — Haber: Otros Ingresos (4200). Es el recargo por atraso que se cobra junto con la cuota; no cambia lo que el cliente debe. Si se anula el cobro, su asiento se anula.' },
   sobrante_caja: { label: 'Sobrante de caja al cerrar Caja Chica', ejemplo: 'Debe: Caja General — Haber: Otros Ingresos (4200). Se asienta solo con la diferencia que quedó guardada en el cierre; no cambia el saldo del módulo Caja.' },
 };
 let STATE_MAPEO = [];
@@ -1324,6 +1325,7 @@ const REGLAS_TIPO_CUENTA = {
   pago_cxp:           { debe: ['pasivo'],                 haber: ['activo'],           porque: 'baja la deuda con el proveedor (Pasivo) y sale dinero (Activo)' },
   pago_salario:       { debe: ['gasto', 'costo', 'pasivo'], haber: ['activo'],         porque: 'se registra el sueldo y sale dinero (Activo)' },
   capital_inicial:    { debe: ['activo'],                 haber: ['capital', 'pasivo'], porque: 'entra dinero y lo aporta el dueño (Capital)' },
+  mora_credito:       { debe: ['activo'],                 haber: ['ingreso'],          porque: 'entra dinero (Activo) por el recargo de atraso, que es un ingreso; no baja lo que el cliente debe' },
   credito_existente:  { debe: ['activo'],                 haber: ['capital'],          porque: 'son deudas de clientes que ya existían: Cuentas por Cobrar contra Capital (no contra Inventario)' },
   inventario_inicial: { debe: ['activo'],                 haber: ['capital'],          porque: 'mercadería que ya existía: Inventario contra Capital' },
 };
@@ -1734,6 +1736,7 @@ async function anularAsientosDeOrigenAnulado() {
     { tabla: 'gastos',  filtro: q => q.eq('estado', 'cancelado').gte('cancelado_en', FECHA_INICIO_ANULA_ASIENTOS), tipos: ['gasto'],                     motivo: 'Gasto cancelado' },
     { tabla: 'compras', filtro: q => q.eq('estado', 'anulada').gte('anulada_en', FECHA_INICIO_ANULA_ASIENTOS),     tipos: ['compra'],                    motivo: 'Compra anulada' },
     { tabla: 'cuentas_por_pagar', filtro: q => q.eq('estado', 'anulado'),                                            tipos: ['cxp_generada'],              motivo: 'Cuenta por pagar anulada (su compra se anuló)' },
+    { tabla: 'mf_moras', filtro: q => q.eq('estado', 'anulado'),                                                     tipos: ['mora_credito'],              motivo: 'Mora anulada (se anuló su cobro)' },
   ];
   let total = 0;
   // Contabilidad del grupo: los documentos de bodegas/sucursales también tienen su asiento en
@@ -2243,6 +2246,28 @@ async function generarAsientosAutomaticosInterno() {
         await procesarTipo('sobrante_caja', 'caja_chica_sesiones', 'diferencia', 'cerrada', 'estado', 'Sobrante de caja — cierre de Caja Chica',
           q => q.gt('diferencia', 0), null, 'fecha', null,
           { omitirFila: omitirCierreViejo, obtenerMonto: async f => Math.abs(Number(f.diferencia || 0)) });
+      }
+    }
+
+    // Panel Microfinanciera: mora cobrada (ingreso aparte, no baja la deuda) y faltantes/sobrantes
+    // al recibir la entrega de un cobrador (ya movieron Caja; aquí se asientan con las mismas
+    // cuentas de faltante/sobrante de caja). Solo se LEE; si no hay nada, no avisa "sin configurar".
+    {
+      let hayMoras = !!mapeo.get('mora_credito');
+      if (!hayMoras) {
+        try { const { count } = await F.lector.from('mf_moras').select('id', { count: 'exact', head: true }).eq('auth_user_id', F.uid).eq('estado', 'completado').gt('cobrada', 0); hayMoras = (count || 0) > 0; } catch (_) { hayMoras = false; }
+      }
+      if (hayMoras) {
+        await procesarTipo('mora_credito', 'mf_moras', 'cobrada', 'completado', 'estado', 'Mora por atraso cobrada — ',
+          null, null, 'fecha', null, { concepto: () => 'Panel Microfinanciera' });
+      }
+      if (mapeo.get('faltante_caja')) {
+        await procesarTipo('faltante_caja', 'mf_entregas', 'diferencia', null, null, 'Faltante en entrega de cobros — ',
+          q => q.lt('diferencia', 0), null, 'created_at', null, { obtenerMonto: async f => Math.abs(Number(f.diferencia || 0)), concepto: f => f.cobrador_nombre || 'cobrador' });
+      }
+      if (mapeo.get('sobrante_caja')) {
+        await procesarTipo('sobrante_caja', 'mf_entregas', 'diferencia', null, null, 'Sobrante en entrega de cobros — ',
+          q => q.gt('diferencia', 0), null, 'created_at', null, { obtenerMonto: async f => Math.abs(Number(f.diferencia || 0)), concepto: f => f.cobrador_nombre || 'cobrador' });
       }
     }
 

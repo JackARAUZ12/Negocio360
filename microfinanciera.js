@@ -77,6 +77,7 @@ const MOTIVOS = {
   cobrador: 'Esa persona no está en el equipo (o está desactivada).', perfil: 'Ese usuario no existe o está desactivado.',
   sin_acceso: 'Ese usuario no está en el equipo del Panel. Pídele al dueño que lo agregue.', formato: 'El PIN debe tener al menos 4 dígitos.',
   admin: 'Elige un administrador.',
+  mora_regla: 'Revisa la regla de mora: el valor debe ser mayor que cero (y el % por día máximo 10), gracia de 0 a 60 días y tope de 0 a 100%.',
   motivo: 'Escribe el motivo (mínimo 3 letras).', ya_anulado: 'Ese cobro ya estaba anulado.', de_creditos: 'Ese pago se hizo en Créditos: anúlalo allá.', nota: 'Escribe la nota.',
 };
 function mensaje(d) {
@@ -86,6 +87,8 @@ function mensaje(d) {
   if (d.motivo === 'excede') return `Es más de lo que debe. Saldo: ${fmt(d.saldo)}.`;
   if (d.motivo === 'incorrecto') return `PIN incorrecto.${d.restantes != null ? ' Te quedan ' + d.restantes + ' intento(s).' : ''}`;
   if (d.motivo === 'bloqueado') return `Demasiados intentos. Espera ${Math.max(1, Math.ceil((d.bloqueado_seg || 900) / 60))} minuto(s).`;
+  if (d.motivo === 'mora_excede') return `La mora cambió: ahora es ${fmt(d.mora)}. Revisa y vuelve a cobrar.`;
+  if (d.motivo === 'perdon') return `No tienes permiso para perdonar mora: debes cobrar ${fmt(d.mora)} de mora. Si el cliente no puede, avisa al dueño.`;
   if (d.motivo === 'cambio') return `Llegaron cobros nuevos mientras contabas. Ahora debe entregar ${fmt(d.esperado)} en efectivo: vuelve a contar.`;
   return MOTIVOS[d.motivo] || 'No se pudo completar.';
 }
@@ -137,7 +140,7 @@ async function cargarDatos() {
   MF.cuotas = {};
   const ids = cred.map(c => c.id);
   for (let i = 0; i < ids.length; i += 150) {
-    const { data, error } = await sb.from('creditos_cuotas').select('credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,estado')
+    const { data, error } = await sb.from('creditos_cuotas').select('credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,estado,mf_mora_hasta')
       .in('credito_id', ids.slice(i, i + 150)).neq('estado', 'pagada').order('numero');
     if (error) throw error;
     (data || []).forEach(q => { (MF.cuotas[q.credito_id] = MF.cuotas[q.credito_id] || []).push(q); });
@@ -243,6 +246,7 @@ function tarjetaRuta(x, cobradoHoy) {
   return `<div class="mf-card${cobradoHoy || x.visto ? ' cobrado' : ''}">
     <div class="mf-card-cab"><div style="min-width:0"><b class="mf-nom">${esc(nombreCli(c))}</b>
       <div class="tl-muted">${esc(cr.numero_credito)}${zonaDe(c) ? ' · 🏘️ ' + esc(zonaDe(c)) : ''}${c?.direccion ? ' · 📍 ' + esc(c.direccion) : ''}</div></div>${est}</div>
+    ${moraEstimada(cr) > 0 && !cobradoHoy ? `<div class="tl-muted" style="color:var(--danger,#dc2626)">⏰ + mora aprox. ${fmt(moraEstimada(cr))}</div>` : ''}
     <div class="mf-montos"><div><span>Cobrar hoy</span><b>${fmt(s.pagarHoy)}</b></div><div><span>Cuota</span><b>${fmt(s.cuota)}</b></div><div><span>Debe en total</span><b>${fmt(s.saldo)}</b></div></div>
     ${g ? `<div class="tl-muted">📝 ${g.tipo === 'promesa' ? 'Prometió pagar el ' + fCorta(g.fecha_promesa) : g.tipo === 'no_estaba' ? 'No estaba (' + fCorta(ymd(new Date(g.created_at))) + ')' : esc(g.nota || '')}${g.tipo !== 'nota' && g.nota ? ' · ' + esc(g.nota) : ''}</div>` : ''}
     ${x.visto && !cobradoHoy ? `<div class="tl-aviso ok">🚶 Visitado hoy${g && g.tipo === 'no_estaba' ? ' (no estaba)' : g && g.tipo === 'promesa' ? ' (prometió)' : ''}</div>` : ''}
@@ -275,11 +279,35 @@ function abrirCobro(creditoId) {
       <div class="mf-rapidos">${rapidos.map(([t, m]) => `<button type="button" class="pd-tab" onclick="document.getElementById('mf-monto').value='${r2(m)}';previewCobro()">${esc(t)}</button>`).join('')}</div>
       <div class="tl-grid"><div class="tl-f"><label for="mf-met">¿Cómo pagó?</label><select class="tl-sel" id="mf-met" onchange="MF.cobro.metodoId=this.value;previewCobro()">${opcionesMetodo(MF.cobro.metodoId) || '<option value="">Efectivo</option>'}</select></div>
         <div class="tl-f" id="mf-banco-w" style="display:none"><label for="mf-banco">¿A qué banco?</label><select class="tl-sel" id="mf-banco"><option value="">Elige el banco</option>${MF.bancos.map(b => `<option value="${b.id}">🏦 ${esc(b.nombre)}</option>`).join('')}</select></div></div>
+      <div id="mf-mora-w"></div>
       <div class="tl-f"><label for="mf-nota">Nota (opcional)</label><input class="tl-inp" id="mf-nota" maxlength="300" placeholder="Ej. pagó la vecina"></div>
       <div id="mf-prev"></div><div class="tl-aviso" id="mf-err" style="display:none"></div></div>
     <div class="tl-modal-pie"><button class="btn-secondary" onclick="cerrarModal()">Cancelar</button><button class="btn-primary mf-grande" id="mf-ok" onclick="confirmarCobro()">✅ Cobrar</button></div>`);
   previewCobro();
+  cargarMoraCobro();
   setTimeout(() => { const i = document.getElementById('mf-monto'); if (i) { i.focus(); i.select(); } }, 60);
+}
+// Mora del crédito: la calcula el servidor. Sin señal no se cobra mora (queda para la próxima visita, sin perderse).
+async function cargarMoraCobro() {
+  const k = MF.cobro; if (!k || !moraActiva()) return;
+  const w = document.getElementById('mf-mora-w'); if (!w) return;
+  if (moraEstimada(k.cr) <= 0) return;
+  w.innerHTML = '<p class="tl-muted">Calculando la mora…</p>';
+  const r = await rpc('mf_mora_ver', { p: { credito_id: k.cr.id, token: tk() } });
+  if (MF.cobro !== k || !document.getElementById('mf-mora-w')) return;
+  if (!r.ok) { w.innerHTML = r.red ? '<div class="tl-aviso">📡 Sin señal: la mora no se calcula ahora; queda pendiente para la próxima visita (no se pierde).</div>' : ''; return; }
+  const mo = r2(r.mora); k.moraCalc = mo;
+  if (!(mo > 0)) { w.innerHTML = ''; previewCobro(); return; }
+  const puede = puedeAdministrar() || MF.cfg.mf_mora_perdona_cobrador === true;
+  w.innerHTML = `<div class="tl-f"><label for="mf-mora">⏰ Mora por atraso${Number(r.dias) > 0 ? ` (${r.dias} día${Number(r.dias) === 1 ? '' : 's'})` : ''}</label>
+      <input class="tl-inp" id="mf-mora" type="number" inputmode="decimal" min="0" max="${mo}" step="0.01" value="${mo}" ${puede ? '' : 'readonly'} oninput="previewCobro()"></div>
+    <p class="tl-muted" style="margin:-4px 0 8px">${puede ? 'Puedes bajarla o ponerla en 0 para perdonarla (queda anotado).' : 'La mora la fija el negocio.'} No cambia lo que debe del crédito.</p>`;
+  previewCobro();
+}
+function moraDelModal() {
+  const k = MF.cobro; if (!k || k.moraCalc == null || !(k.moraCalc > 0)) return null;
+  const i = document.getElementById('mf-mora'); if (!i) return null;
+  return r2(Math.min(Math.max(0, Number(i.value) || 0), k.moraCalc));
 }
 function previewCobro() {
   const k = MF.cobro; if (!k) return;
@@ -288,8 +316,10 @@ function previewCobro() {
   const prev = document.getElementById('mf-prev'), ok = document.getElementById('mf-ok');
   if (!(m > 0)) { prev.innerHTML = ''; ok.disabled = true; return; }
   if (m > s.saldo + 0.004) { prev.innerHTML = `<div class="tl-aviso">Es más de lo que debe (${fmt(s.saldo)}).</div>`; ok.disabled = true; return; }
-  ok.disabled = false; ok.textContent = `✅ Cobrar ${fmt(m)}`;
-  prev.innerHTML = `<div class="tl-aviso ok">Queda debiendo <b>${fmt(r2(s.saldo - m))}</b>${r2(s.saldo - m) <= 0.004 ? ' · 🎉 ¡termina de pagar!' : ''}</div>`;
+  const mo = moraDelModal() || 0, mi = document.getElementById('mf-mora');
+  if (mi && Number(mi.value) > k.moraCalc + 0.004) { prev.innerHTML = `<div class="tl-aviso">La mora no puede ser más de ${fmt(k.moraCalc)}.</div>`; ok.disabled = true; return; }
+  ok.disabled = false; ok.textContent = `✅ Cobrar ${fmt(r2(m + mo))}`;
+  prev.innerHTML = `<div class="tl-aviso ok">${mo > 0 ? `Recibe <b>${fmt(r2(m + mo))}</b> (${fmt(m)} del crédito + ${fmt(mo)} de mora). ` : ''}Queda debiendo <b>${fmt(r2(s.saldo - m))}</b>${r2(s.saldo - m) <= 0.004 ? ' · 🎉 ¡termina de pagar!' : ''}${k.moraCalc > 0 && mo < k.moraCalc ? ` · se perdonan ${fmt(r2(k.moraCalc - mo))} de mora` : ''}</div>`;
 }
 async function confirmarCobro() {
   const k = MF.cobro; if (!k || MF.ocupado) return;
@@ -298,32 +328,38 @@ async function confirmarCobro() {
   const bancoW = document.getElementById('mf-banco-w'), banco = bancoW && bancoW.style.display !== 'none' ? document.getElementById('mf-banco').value : '';
   if (!(m > 0)) return;
   if (bancoW && bancoW.style.display !== 'none' && !banco) { err.textContent = 'Elige a qué banco entró.'; err.style.display = ''; return; }
+  const mora = moraDelModal();
+  if (mora != null && mora < k.moraCalc - 0.004 && !confirm(`¿Perdonar ${fmt(r2(k.moraCalc - mora))} de mora? Queda anotado a tu nombre.`)) return;
   MF.ocupado = true; const ok = document.getElementById('mf-ok'); ok.disabled = true; ok.textContent = 'Cobrando…';
-  const r = await rpc('mf_cobrar', { p: { credito_id: k.cr.id, monto: m, metodo_pago_id: met ? met.id : null, metodo_pago_nombre: met ? met.nombre : 'Efectivo',
-    banco_id: banco || null, nota: document.getElementById('mf-nota').value.trim(), ref: k.ref, creado_por: perfilNombre(), token: tk() } });
+  const pc = { credito_id: k.cr.id, monto: m, metodo_pago_id: met ? met.id : null, metodo_pago_nombre: met ? met.nombre : 'Efectivo',
+    banco_id: banco || null, nota: document.getElementById('mf-nota').value.trim(), ref: k.ref, creado_por: perfilNombre(), token: tk() };
+  if (mora != null) pc.mora = mora;
+  const r = await rpc('mf_cobrar', { p: pc });
   MF.ocupado = false;
   if (!r.ok && r.red) {
     const item = { ref: k.ref, credito_id: k.cr.id, monto: m, metodo_pago_id: met ? met.id : null, metodo_pago_nombre: met ? met.nombre : 'Efectivo', banco_id: banco || null,
       nota: document.getElementById('mf-nota').value.trim(), creado_por: perfilNombre(), perfil_id: conEquipo() ? (MF.ses?.perfil_id || null) : null,
       cobrador: conEquipo() ? (MF.ses?.nombre || '') : '', cliente: nombreCli(cliPorId(k.cr.cliente_id)), numero_credito: k.cr.numero_credito, hora: new Date().toISOString(), estado: 'pendiente' };
+    if (mora != null) item.mora = mora;
     if (colaAgregar(item)) { mostrarGuardadoSinSenal(item, k.cr); return; }
     err.textContent = 'No hay señal y este teléfono no deja guardar el cobro. NO se cobró: anótalo en papel y regístralo al volver la señal.'; err.style.display = ''; ok.disabled = false; ok.textContent = `✅ Cobrar ${fmt(m)}`; return;
   }
-  if (!r.ok) { err.textContent = r.msg; err.style.display = ''; ok.disabled = false; ok.textContent = `✅ Cobrar ${fmt(m)}`; return; }
+  if (!r.ok) { err.textContent = r.msg; err.style.display = ''; ok.disabled = false; ok.textContent = `✅ Cobrar ${fmt(m)}`; if (r.motivo === 'mora_excede') cargarMoraCobro(); return; }
   mostrarRecibo(r, k.cr, met ? met.nombre : 'Efectivo');
   await cargarDatos().catch(() => {});
 }
 function mostrarRecibo(r, cr, metodo) {
   const c = cliPorId(cr.cliente_id), tel = c?.whatsapp || c?.telefono || '', neg = MF.cfg.nombre_comercial || 'Mi negocio';
-  const txt = `🧾 *Recibo ${r.recibo}* — ${neg}${conEquipo() && r.cobrador ? '\nCobró: ' + r.cobrador : ''}\nCliente: ${nombreCli(c)}\nCrédito: ${r.numero_credito || cr.numero_credito}\nFecha: ${new Date().toLocaleDateString('es-NI')}\nPagó: ${fmt(r.monto)} (${metodo})\nDebía: ${fmt(r.saldo_anterior)}\nAhora debe: ${fmt(r.saldo)}${r.proxima_fecha ? `\nPróximo pago: ${fCorta(r.proxima_fecha)} · ${fmt(r.proxima_monto)}` : ''}${r.cancelado ? '\n🎉 ¡Crédito pagado completo! Gracias.' : '\n¡Gracias por su pago!'}`;
+  const txt = `🧾 *Recibo ${r.recibo}* — ${neg}${conEquipo() && r.cobrador ? '\nCobró: ' + r.cobrador : ''}\nCliente: ${nombreCli(c)}\nCrédito: ${r.numero_credito || cr.numero_credito}\nFecha: ${new Date().toLocaleDateString('es-NI')}\nPagó: ${fmt(r.monto)} (${metodo})${Number(r.mora) > 0 ? `\nMora por atraso: ${fmt(r.mora)}\nTotal recibido: ${fmt(r2(Number(r.monto) + Number(r.mora)))}` : ''}\nDebía: ${fmt(r.saldo_anterior)}\nAhora debe: ${fmt(r.saldo)}${r.proxima_fecha ? `\nPróximo pago: ${fCorta(r.proxima_fecha)} · ${fmt(r.proxima_monto)}` : ''}${r.cancelado ? '\n🎉 ¡Crédito pagado completo! Gracias.' : '\n¡Gracias por su pago!'}`;
   MF.ultimoRecibo = { txt, r, cr, metodo };
   modal(`<div class="tl-modal-cab"><h2>✅ Cobrado</h2><button class="tl-x" onclick="cerrarModal();mfTab(MF.tab)" aria-label="Cerrar">✕</button></div>
     <div class="tl-modal-cuerpo"><div class="mf-recibo">
       <div class="mf-recibo-num">${esc(r.recibo)}${r.repetido ? ' <span class="pd-pill">ya estaba registrado</span>' : ''}</div>
-      <div class="mf-recibo-monto">${fmt(r.monto)}</div><div>${esc(nombreCli(c))} · ${esc(metodo)}${conEquipo() && r.cobrador ? ' · Cobró: ' + esc(r.cobrador) : ''}</div>
+      <div class="mf-recibo-monto">${fmt(r2(Number(r.monto) + Number(r.mora || 0)))}</div>${Number(r.mora) > 0 ? `<div class="tl-muted">${fmt(r.monto)} del crédito + ${fmt(r.mora)} de mora</div>` : ''}<div>${esc(nombreCli(c))} · ${esc(metodo)}${conEquipo() && r.cobrador ? ' · Cobró: ' + esc(r.cobrador) : ''}</div>
       <div class="mf-montos" style="margin-top:10px"><div><span>Debía</span><b>${fmt(r.saldo_anterior)}</b></div><div><span>Ahora debe</span><b>${fmt(r.saldo)}</b></div>
         <div><span>Próximo pago</span><b>${r.proxima_fecha ? fCorta(r.proxima_fecha) + ' · ' + fmt(r.proxima_monto) : '—'}</b></div></div>
-      ${r.cancelado ? '<div class="tl-aviso ok">🎉 ¡Terminó de pagar este crédito!</div>' : ''}</div></div>
+      ${r.cancelado ? '<div class="tl-aviso ok">🎉 ¡Terminó de pagar este crédito!</div>' : ''}
+      ${Number(r.mora_perdonada) > 0 ? `<div class="tl-muted">Mora perdonada: ${fmt(r.mora_perdonada)}</div>` : ''}${Number(r.mora_pendiente) > 0 ? `<div class="tl-muted">Mora pendiente: ${fmt(r.mora_pendiente)} (se cobra en la próxima visita)</div>` : ''}</div></div>
     <div class="tl-modal-pie">${tel ? `<a class="btn-secondary" href="https://wa.me/${waNum(tel)}?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener">💬 Recibo por WhatsApp</a>` : ''}
       <button class="btn-secondary" onclick="imprimirRecibo()">🖨️ Imprimir</button><button class="btn-primary" onclick="cerrarModal();mfTab(MF.tab)">Listo</button></div>`);
 }
@@ -553,7 +589,7 @@ async function abrirTarjeta(clienteId) {
     if (esCobrador()) creds = (creds || []).filter(x => x.mf_cobrador_id === MF.ses.perfil_id);
     const ids = (creds || []).map(x => x.id);
     const [cu, pa] = ids.length ? await Promise.all([
-      sb.from('creditos_cuotas').select('credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,estado').in('credito_id', ids).order('numero'),
+      sb.from('creditos_cuotas').select('credito_id,numero,fecha_vencimiento,monto_total,monto_pagado,estado,mf_mora_hasta').in('credito_id', ids).order('numero'),
       sb.from('creditos_pagos').select('id,credito_id,fecha,monto,estado,comprobante_numero,metodo_pago_nombre,observaciones,anulado_motivo,created_at,mf_cobrador_nombre,mf_entrega_id').in('credito_id', ids).order('created_at', { ascending: false }),
     ]) : [{ data: [] }, { data: [] }];
     const hoy = hoyISO();
@@ -630,7 +666,7 @@ async function pintarCierre(v) {
   const dia = MF.cierreDia || hoyISO(); MF.cierreDia = dia;
   v.innerHTML = '<p class="tln-sub">Armando el cierre…</p>';
   const u = MF.userId, [ini, fin] = rangoDia(dia);
-  let pagos = [], creds = [], gest = [], ents = [];
+  let pagos = [], creds = [], gest = [], ents = [], moras = [];
   try {
     const [p1, c1, g1, e1] = await Promise.all([
       leerTodo(() => sb.from('creditos_pagos').select('id,credito_id,cliente_id,monto,estado,comprobante_numero,metodo_pago_nombre,mf_cobrador_nombre,created_at').eq('auth_user_id', u).eq('fecha', dia).order('created_at').order('id')),
@@ -639,6 +675,7 @@ async function pintarCierre(v) {
       sb.from('mf_entregas').select('cobrador_nombre,cobros,esperado,entregado,diferencia,recibido_por,created_at').eq('auth_user_id', u).gte('created_at', ini).lt('created_at', fin).order('created_at'),
     ]);
     pagos = p1; creds = c1.filter(c => c.mf_ref); gest = g1.data || []; ents = e1.data || [];
+    try { const { data } = await sb.from('mf_moras').select('cobrada,perdonada,estado,cobrador_nombre').eq('auth_user_id', u).eq('fecha', dia).eq('estado', 'completado').limit(5000); moras = data || []; } catch (_) { moras = []; }
   } catch (e) { console.error(e); v.innerHTML = '<div class="tl-aviso">No se pudo armar el cierre. Revisa tu conexión.</div>'; return; }
   const ok = pagos.filter(p => p.estado === 'completado'), anul = pagos.filter(p => p.estado === 'anulado');
   const esEf = p => /efectivo/i.test(p.metodo_pago_nombre || 'Efectivo');
@@ -651,6 +688,7 @@ async function pintarCierre(v) {
   const ventas = creds.filter(c => c.tipo === 'venta'), prest = creds.filter(c => c.tipo !== 'venta');
   const totV = r2(ventas.reduce((a, c) => a + Number(c.total_financiado || 0), 0)), totP = r2(prest.reduce((a, c) => a + Number(c.capital_financiado || 0), 0));
   const difs = r2(ents.reduce((a, e) => a + Number(e.diferencia || 0), 0));
+  const moraC = r2(moras.reduce((a, m) => a + Number(m.cobrada || 0), 0)), moraP = r2(moras.reduce((a, m) => a + Number(m.perdonada || 0), 0));
   const esHoy = dia === hoyISO();
   let ruta = null;
   if (esHoy) {
@@ -662,6 +700,7 @@ async function pintarCierre(v) {
   const neg = MF.cfg.nombre_comercial || 'Mi negocio', fechaTxt = new Date(dia + 'T12:00:00').toLocaleDateString('es-NI', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const filasP = Object.entries(personas).sort((a, b) => (b[1].ef + b[1].ot) - (a[1].ef + a[1].ot));
   MF.cierreTxt = `📋 *Cierre del día — ${neg}*\n${fechaTxt}\n\n💵 Cobrado: ${fmt(suma(ok))} (${ok.length} recibos)\n   Efectivo: ${fmt(suma(ok.filter(esEf)))} · Otros: ${fmt(suma(ok.filter(p => !esEf(p))))}`
+    + (moraC || moraP ? `\n⏰ Mora cobrada: ${fmt(moraC)}${moraP ? ' · perdonada: ' + fmt(moraP) : ''}` : '')
     + (anul.length ? `\n❌ Anulados: ${anul.length} (${fmt(suma(anul))})` : '')
     + (filasP.length ? '\n\n👤 Por persona:' + filasP.map(([n, k]) => `\n• ${n}: ${k.cobros} cobro(s) ${fmt(k.ef + k.ot)}${k.noEstaba ? ` · ${k.noEstaba} no estaba` : ''}${k.promesa ? ` · ${k.promesa} promesa(s)` : ''}`).join('') : '')
     + (creds.length ? `\n\n🛒 Nuevos: ${ventas.length} venta(s) al crédito ${fmt(totV)} · ${prest.length} préstamo(s) ${fmt(totP)}` : '')
@@ -673,6 +712,7 @@ async function pintarCierre(v) {
       <div class="pd-kpi"><div class="pd-kpi-l">💵 Cobrado</div><div class="pd-kpi-v pd-verde">${fmt(suma(ok))}</div><div class="pd-kpi-s">${ok.length} recibo(s)</div></div>
       <div class="pd-kpi"><div class="pd-kpi-l">💵 En efectivo</div><div class="pd-kpi-v">${fmt(suma(ok.filter(esEf)))}</div><div class="pd-kpi-s">Otros: ${fmt(suma(ok.filter(p => !esEf(p))))}</div></div>
       <div class="pd-kpi"><div class="pd-kpi-l">❌ Anulados</div><div class="pd-kpi-v ${anul.length ? 'pd-rojo' : ''}">${anul.length}</div><div class="pd-kpi-s">${fmt(suma(anul))}</div></div>
+      ${moraC || moraP || moraActiva() ? `<div class="pd-kpi"><div class="pd-kpi-l">⏰ Mora cobrada</div><div class="pd-kpi-v">${fmt(moraC)}</div><div class="pd-kpi-s">perdonada: ${fmt(moraP)}</div></div>` : ''}
       ${ruta ? `<div class="pd-kpi"><div class="pd-kpi-l">🛵 Ruta de hoy</div><div class="pd-kpi-v">${ruta.vistos} de ${ruta.total}</div><div class="pd-kpi-s">visitados · faltó ${fmt(ruta.falta)}</div></div>` : ''}</div>
     <div class="pd-card"><h3>👤 Por persona</h3>${filasP.length ? `<div class="pd-tw"><table class="tl-tabla"><thead><tr><th>Quién</th><th class="tl-num">Cobros</th><th class="tl-num">Efectivo</th><th class="tl-num">Otros</th><th class="tl-num">No estaba</th><th class="tl-num">Promesas</th></tr></thead><tbody>
       ${filasP.map(([n, k]) => `<tr><td data-t="Quién"><b>${esc(n)}</b></td><td class="tl-num" data-t="Cobros">${k.cobros}</td><td class="tl-num" data-t="Efectivo">${fmt(k.ef)}</td><td class="tl-num" data-t="Otros">${fmt(k.ot)}</td><td class="tl-num" data-t="No estaba">${k.noEstaba}</td><td class="tl-num" data-t="Promesas">${k.promesa}</td></tr>`).join('')}</tbody></table></div>` : '<p class="tl-muted">Sin cobros ni visitas este día.</p>'}</div>
@@ -682,7 +722,7 @@ async function pintarCierre(v) {
       <td class="tl-num ${Number(e.diferencia) < 0 ? 'pd-rojo' : ''}" data-t="Diferencia">${Number(e.diferencia) === 0 ? '✅ Cuadró' : (Number(e.diferencia) < 0 ? 'Faltó ' : 'Sobró ') + fmt(Math.abs(e.diferencia))}</td></tr>`).join('')}</tbody></table></div>` : `<p class="tl-muted">${conEquipo() ? 'Nadie entregó este día.' : 'Las entregas se usan con el trabajo en equipo encendido.'}</p>`}</div>
     ${anul.length ? `<div class="pd-card"><h3>❌ Cobros anulados</h3><div class="pd-tw"><table class="tl-tabla"><tbody>${anul.map(p => `<tr><td data-t="Recibo">${esc(p.comprobante_numero || '—')}</td><td data-t="Cliente">${esc(nombreCli(cliPorId(p.cliente_id)))}</td><td class="tl-num" data-t="Monto">${fmt(p.monto)}</td><td data-t="Cobró">${esc(quien(p))}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
     ${esHoy && colaPendientes().length ? `<div class="tl-aviso">⏳ Hay ${colaPendientes().length} cobro(s) guardados sin señal en este teléfono que todavía no aparecen aquí.</div>` : ''}
-    <p class="tl-muted">Incluye también los pagos registrados desde el módulo Créditos.</p>`;
+    <p class="tl-muted">Incluye también los pagos registrados desde el módulo Créditos. ${moraC ? 'La mora va aparte del cobro (Caja la suma como ingreso).' : ''}</p>`;
 }
 function imprimirCierre() {
   if (!MF.cierreTxt) return;
@@ -690,6 +730,61 @@ function imprimirCierre() {
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cierre ${esc(MF.cierreDia)}</title><style>body{font-family:monospace;font-size:13px;width:72mm;margin:0 auto;padding:6px}pre{white-space:pre-wrap;font-family:inherit}</style></head>
     <body><pre>${esc(MF.cierreTxt.replace(/\*/g, ''))}</pre><p style="text-align:center">_____________________<br>Revisado por</p><script>window.onload=()=>{window.print()}<\/script></body></html>`);
   w.document.close();
+}
+
+/* ---------- ⏰ MORA POR ATRASO ----------
+   La que vale es la del SERVIDOR (al cobrar). Aquí solo se estima para mostrarla en la ruta. */
+const MORA_TXT = { ninguna: 'Sin mora', fija_dia: 'Monto fijo por cada día de atraso', pct_dia: '% por día sobre lo atrasado', fija_cuota: 'Monto fijo por cada cuota atrasada' };
+function moraActiva() { return MF.cfg.mf_mora_tipo && MF.cfg.mf_mora_tipo !== 'ninguna' && Number(MF.cfg.mf_mora_valor) > 0; }
+function moraEstimada(cr) {
+  if (!moraActiva()) return 0;
+  const t = MF.cfg.mf_mora_tipo, v = Number(MF.cfg.mf_mora_valor), g = Number(MF.cfg.mf_mora_gracia || 0), tp = MF.cfg.mf_mora_tope_pct == null ? 100 : Number(MF.cfg.mf_mora_tope_pct), hoy = hoyISO();
+  let m = 0, atr = 0, maxd = 0;
+  (MF.cuotas[cr.id] || []).slice().sort((a, b) => a.numero - b.numero).forEach(q => {
+    const venc = String(q.fecha_vencimiento).slice(0, 10), lim = masDias(venc, g), falta = r2(Number(q.monto_total) - Number(q.monto_pagado || 0));
+    if (q.estado === 'pagada' || falta <= 0.005 || !(lim < hoy)) return;
+    atr = r2(atr + falta);
+    const desde = q.mf_mora_hasta && String(q.mf_mora_hasta).slice(0, 10) > lim ? String(q.mf_mora_hasta).slice(0, 10) : lim, d = diasEntre(desde, hoy);
+    if (t === 'fija_cuota') { if (!q.mf_mora_hasta) m += v; }
+    else if (d > 0) { if (t === 'pct_dia') m += falta * v / 100 * d; maxd = Math.max(maxd, d); }
+  });
+  if (t === 'fija_dia') m = v * maxd;
+  return r2(Math.min(m, atr * tp / 100));
+}
+function tarjetaMora() {
+  const c = MF.cfg, t = c.mf_mora_tipo || 'ninguna';
+  return `<div class="pd-card"><h3>⏰ Mora por atraso: ${t === 'ninguna' ? '<span class="pd-pill">Sin mora</span>' : '<span class="pd-pill ok">Activa</span>'}</h3>
+    <p class="tl-muted">Recargo que se cobra junto con la cuota cuando el cliente se atrasa. Entra a Caja como ingreso aparte y <b>no cambia lo que el cliente debe</b>. Nunca se cobra dos veces el mismo día de atraso.</p>
+    <div class="tl-grid"><div class="tl-f"><label for="mo-tipo">Cómo se cobra</label><select class="tl-sel" id="mo-tipo" onchange="previewMoraCfg()">${Object.entries(MORA_TXT).map(([k, x]) => `<option value="${k}" ${k === t ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+      <div class="tl-f"><label for="mo-valor" id="mo-valor-l">Valor</label><input class="tl-inp" id="mo-valor" type="number" inputmode="decimal" min="0" step="0.01" value="${Number(c.mf_mora_valor || 0) || ''}" oninput="previewMoraCfg()"></div>
+      <div class="tl-f"><label for="mo-gracia">Días de gracia</label><input class="tl-inp" id="mo-gracia" type="number" inputmode="numeric" min="0" max="60" step="1" value="${Number(c.mf_mora_gracia || 0)}" oninput="previewMoraCfg()"></div>
+      <div class="tl-f"><label for="mo-tope">Tope (% de lo atrasado)</label><input class="tl-inp" id="mo-tope" type="number" inputmode="decimal" min="0" max="100" step="1" value="${c.mf_mora_tope_pct == null ? 20 : Number(c.mf_mora_tope_pct)}" oninput="previewMoraCfg()"></div>
+      <label class="tl-f full mf-chk"><input type="checkbox" id="mo-perdona" ${c.mf_mora_perdona_cobrador ? 'checked' : ''}> Los cobradores pueden bajar o perdonar la mora (queda anotado quién)</label></div>
+    <div id="mo-prev" style="margin-top:8px"></div>
+    <div class="pd-acciones"><button class="btn-primary" id="mo-ok" onclick="guardarMoraCfg()">Guardar regla de mora</button></div></div>`;
+}
+function previewMoraCfg() {
+  const t = document.getElementById('mo-tipo')?.value, v = Number(document.getElementById('mo-valor').value) || 0, g = parseInt(document.getElementById('mo-gracia').value) || 0, tp = Number(document.getElementById('mo-tope').value);
+  const lbl = document.getElementById('mo-valor-l'); if (lbl) lbl.textContent = t === 'pct_dia' ? 'Porcentaje por día (%)' : t === 'fija_cuota' ? `Monto por cuota (${sym()})` : `Monto por día (${sym()})`;
+  ['mo-valor', 'mo-gracia', 'mo-tope', 'mo-perdona'].forEach(id => { const e = document.getElementById(id); if (e) e.disabled = t === 'ninguna'; });
+  const el = document.getElementById('mo-prev'); if (!el) return;
+  if (t === 'ninguna') { el.innerHTML = '<div class="tl-aviso ok">No se cobra mora.</div>'; return; }
+  // Ejemplo con una cuota de 100 atrasada 10 días
+  const d = Math.max(0, 10 - g), base = t === 'fija_dia' ? v * d : t === 'pct_dia' ? 100 * v / 100 * d : (10 > g ? v : 0), ej = r2(Math.min(base, 100 * (isNaN(tp) ? 100 : tp) / 100));
+  el.innerHTML = `<div class="tl-aviso ok">Ejemplo: una cuota de ${fmt(100)} con 10 días de atraso paga <b>${fmt(ej)}</b> de mora${g ? ` (los primeros ${g} día${g === 1 ? '' : 's'} no cuentan)` : ''}${!isNaN(tp) && tp < 100 ? `; nunca más del ${tp}% de lo atrasado` : ''}.</div>`;
+}
+async function guardarMoraCfg() {
+  if (MF.ocupado) return;
+  const p = { token: tk(), tipo: document.getElementById('mo-tipo').value, valor: Number(document.getElementById('mo-valor').value) || 0, gracia: parseInt(document.getElementById('mo-gracia').value) || 0,
+    tope_pct: document.getElementById('mo-tope').value === '' ? 100 : Number(document.getElementById('mo-tope').value), perdona_cobrador: document.getElementById('mo-perdona').checked };
+  if (p.tipo !== 'ninguna' && !(p.valor > 0)) { showToast('Escribe el valor de la mora.', 'error'); return; }
+  MF.ocupado = true; const b = document.getElementById('mo-ok'); b.disabled = true;
+  const r = await rpc('mf_mora_config', { p });
+  MF.ocupado = false; b.disabled = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  Object.assign(MF.cfg, { mf_mora_tipo: p.tipo, mf_mora_valor: p.valor, mf_mora_gracia: p.gracia, mf_mora_tope_pct: p.tope_pct, mf_mora_perdona_cobrador: p.perdona_cobrador });
+  showToast(p.tipo === 'ninguna' ? 'Mora desactivada.' : 'Regla de mora guardada.');
+  pintarEquipo(document.getElementById('pd-vista'));
 }
 
 /* ---------- 🏘️ ZONAS (para ordenar la ruta) ---------- */
@@ -866,7 +961,7 @@ function pintarEquipo(v) {
       <button class="btn-secondary" style="padding:6px 10px;font-size:12.5px" onclick="guardarMiembro('${p.id}')">Guardar</button></div>`; };
   const sinAsig = MF.creditos.filter(c => !c.mf_cobrador_id).length;
   const porCob = MF.equipo.filter(e => e.activo).map(e => { const cs = MF.creditos.filter(c => c.mf_cobrador_id === e.perfil_id); return { e, n: cs.length, saldo: r2(cs.reduce((a, c) => a + Number(c.saldo_pendiente || 0), 0)) }; });
-  v.innerHTML = `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
+  v.innerHTML = tarjetaMora() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
       <p class="tl-muted">${on ? 'Cada persona entra al Panel con su PIN. Los cobradores ven y cobran solo su cartera, no pueden anular, y al final del día entregan el efectivo en “Caja del día”.'
         : 'Enciéndelo si tienes cobradores o vendedores. Cada uno entrará con su PIN, cobrará solo su cartera y cada cobro quedará a su nombre. Mientras esté apagado, el Panel funciona como siempre.'}</p>
       <div class="pd-acciones"><button class="${on ? 'btn-secondary' : 'btn-primary'}" onclick="abrirEncender(${!on})">${on ? 'Apagar trabajo en equipo' : '✅ Encender trabajo en equipo'}</button></div>
@@ -883,6 +978,7 @@ function pintarEquipo(v) {
         <div id="eq-lista"></div>
         <div class="pd-acciones"><button class="btn-primary" id="eq-asig" onclick="asignarSeleccion()">Asignar marcados</button></div>` : '<p class="tl-muted">Agrega primero cobradores al equipo para repartir la cartera.</p>'}</div>` : ''}`;
   if (on) pintarListaAsig();
+  previewMoraCfg();
 }
 function pintarListaAsig() {
   const el = document.getElementById('eq-lista'); if (!el) return;
@@ -978,12 +1074,12 @@ function colaAgregar(item) {
 }
 function mostrarGuardadoSinSenal(item, cr) {
   const s = situacion(cr), neg = MF.cfg.nombre_comercial || 'Mi negocio';
-  const txt = `🧾 Comprobante provisional — ${neg}\nCliente: ${item.cliente}\nCrédito: ${item.numero_credito}\nFecha: ${new Date(item.hora).toLocaleString('es-NI')}\nPagó: ${fmt(item.monto)} (${item.metodo_pago_nombre})\nAhora debe: ${fmt(s.saldo)}${item.cobrador ? '\nCobró: ' + item.cobrador : ''}\nCódigo: ${item.ref.slice(0, 8).toUpperCase()}\n(El recibo oficial llega al volver la señal.)`;
+  const txt = `🧾 Comprobante provisional — ${neg}\nCliente: ${item.cliente}\nCrédito: ${item.numero_credito}\nFecha: ${new Date(item.hora).toLocaleString('es-NI')}\nPagó: ${fmt(item.monto)} (${item.metodo_pago_nombre})${item.mora > 0 ? '\nMora: ' + fmt(item.mora) : ''}\nAhora debe: ${fmt(s.saldo)}${item.cobrador ? '\nCobró: ' + item.cobrador : ''}\nCódigo: ${item.ref.slice(0, 8).toUpperCase()}\n(El recibo oficial llega al volver la señal.)`;
   MF.ultimoRecibo = { txt, r: { recibo: 'Provisional ' + item.ref.slice(0, 8).toUpperCase() } };
   modal(`<div class="tl-modal-cab"><h2>📡 Guardado sin señal</h2><button class="tl-x" onclick="cerrarModal(true);mfTab(MF.tab)" aria-label="Cerrar">✕</button></div>
     <div class="tl-modal-cuerpo"><div class="mf-recibo">
       <div class="mf-recibo-num">Código ${esc(item.ref.slice(0, 8).toUpperCase())} <span class="pd-pill ambar">pendiente de enviar</span></div>
-      <div class="mf-recibo-monto">${fmt(item.monto)}</div><div>${esc(item.cliente)} · ${esc(item.metodo_pago_nombre)}</div>
+      <div class="mf-recibo-monto">${fmt(r2(item.monto + (item.mora || 0)))}</div>${item.mora > 0 ? `<div class="tl-muted">${fmt(item.monto)} + ${fmt(item.mora)} de mora</div>` : ''}<div>${esc(item.cliente)} · ${esc(item.metodo_pago_nombre)}</div>
       <div class="mf-montos" style="margin-top:10px"><div><span>Ahora debe</span><b>${fmt(s.saldo)}</b></div></div></div>
       <div class="tl-aviso ok" style="margin-top:10px">El cobro quedó guardado en este teléfono. Se envía solo cuando vuelva la señal y ahí sale el recibo oficial.
         <b>No cierres sesión ni borres los datos del navegador</b> hasta que se envíe.</div></div>
@@ -1014,7 +1110,8 @@ async function enviarCola(manual) {
       // Con equipo: cada cobro se envía con la llave de QUIEN lo cobró (si es otra persona, espera a que ella entre)
       if (conEquipo() && (!MF.ses || (it.perfil_id && it.perfil_id !== MF.ses.perfil_id))) { saltados++; continue; }
       const r = await rpc('mf_cobrar', { p: { credito_id: it.credito_id, monto: it.monto, metodo_pago_id: it.metodo_pago_id, metodo_pago_nombre: it.metodo_pago_nombre,
-        banco_id: it.banco_id, nota: [it.nota, 'cobrado sin señal ' + new Date(it.hora).toLocaleString('es-NI')].filter(Boolean).join(' · ').slice(0, 300), ref: it.ref, creado_por: it.creado_por, token: tk() } });
+        banco_id: it.banco_id, nota: [it.nota, 'cobrado sin señal ' + new Date(it.hora).toLocaleString('es-NI')].filter(Boolean).join(' · ').slice(0, 300), ref: it.ref, creado_por: it.creado_por, token: tk(),
+        ...(it.mora != null ? { mora: it.mora } : {}) } });
       const x = MF.cola.find(c => c.ref === it.ref); if (!x) continue;
       if (r.ok) { MF.cola = MF.cola.filter(c => c.ref !== it.ref); enviados++; }
       else if (r.red) { sinRed = true; break; }
