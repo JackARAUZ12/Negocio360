@@ -1,0 +1,279 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Cómo usar Negocio360</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --ink: #0B1736; --muted: #56627a; --acc: #5a5af4; --blue: #2563EB; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #EEF2F9; font-family: 'Plus Jakarta Sans', sans-serif; color: var(--ink); }
+#bg { position: absolute; inset: 0; overflow: hidden; }
+.blob { position: absolute; border-radius: 50%; filter: blur(110px); opacity: .5; }
+#dots { position: absolute; inset: 0; background-image: radial-gradient(rgba(37,99,235,.12) 1.6px, transparent 1.7px); background-size: 40px 40px; }
+#brand { position: absolute; left: 44px; top: 34px; display: flex; align-items: center; gap: 12px; }
+#brand img.i { width: 44px; } #brand img.w { height: 28px; }
+#brand span { margin-left: 14px; padding: 6px 14px; border-radius: 999px; background: #fff; border: 1.5px solid #dfe3f0; font-weight: 700; font-size: 17px; color: var(--muted); }
+/* browser window */
+#win { position: absolute; left: 40px; top: 118px; width: 1270px; border-radius: 18px; background: #fff; box-shadow: 0 40px 100px rgba(15,23,42,.22), 0 0 0 1px rgba(15,23,42,.06); overflow: hidden; }
+#bar { height: 52px; background: #F3F4F8; border-bottom: 1px solid #e3e6ef; display: flex; align-items: center; gap: 9px; padding: 0 18px; }
+#bar i { width: 13px; height: 13px; border-radius: 50%; display: inline-block; }
+#url { margin-left: 22px; flex: 1; max-width: 640px; height: 32px; border-radius: 16px; background: #fff; border: 1px solid #e1e4ee; display: flex; align-items: center; padding: 0 16px; font-size: 16px; color: #475569; font-weight: 500; }
+#url b { color: #0f172a; font-weight: 600; }
+.view { position: relative; overflow: hidden; background: #fff; }
+.cam { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.cam img { position: absolute; left: 0; top: 0; display: block; }
+.ring { position: absolute; border: 4px solid #f59e0b; border-radius: 12px; box-shadow: 0 0 0 6px rgba(245,158,11,.25), 0 10px 30px rgba(245,158,11,.35); pointer-events: none; }
+.tag { position: absolute; white-space: nowrap; padding: 10px 18px; border-radius: 12px; background: var(--ink); color: #fff; font-weight: 700; font-size: 22px; box-shadow: 0 14px 30px rgba(11,23,54,.35); transform-origin: 0 50%; }
+.cursor { position: absolute; width: 34px; height: 34px; pointer-events: none; filter: drop-shadow(0 4px 8px rgba(0,0,0,.35)); transform-origin: 0 0; }
+.ripple { position: absolute; width: 70px; height: 70px; margin: -35px 0 0 -35px; border-radius: 50%; border: 4px solid var(--acc); background: rgba(90,90,244,.18); pointer-events: none; }
+.tap { position: absolute; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: rgba(15,23,42,.25); border: 3px solid rgba(255,255,255,.95); box-shadow: 0 6px 18px rgba(0,0,0,.25); pointer-events: none; }
+/* phone */
+#phone { position: absolute; width: 430px; height: 884px; left: 445px; top: 112px; background: #0F172A; border-radius: 64px; padding: 20px; box-shadow: 0 40px 100px rgba(15,23,42,.3), inset 0 0 0 3px #334155; }
+#phone .view { width: 390px; height: 844px; border-radius: 46px; }
+#notch { position: absolute; left: 50%; top: 34px; width: 26px; height: 26px; margin-left: -13px; border-radius: 50%; background: #0F172A; z-index: 5; }
+/* panel */
+#panel { position: absolute; left: 1350px; top: 118px; width: 530px; height: 852px; background: #fff; border-radius: 30px; box-shadow: 0 30px 80px rgba(15,23,42,.14); padding: 44px 42px; overflow: hidden; }
+#pchip { display: inline-flex; padding: 9px 18px; border-radius: 999px; background: #EEF0FF; color: var(--acc); font-weight: 800; font-size: 19px; letter-spacing: 2px; }
+#ptitle { font-size: 50px; font-weight: 800; line-height: 1.08; margin-top: 18px; letter-spacing: -1px; }
+#pdev { margin-top: 12px; font-size: 20px; font-weight: 700; color: var(--muted); }
+#ptips { margin-top: 30px; }
+.tip { display: flex; gap: 16px; align-items: flex-start; font-size: 25px; line-height: 1.32; font-weight: 600; color: #94a3b8; margin-bottom: 20px; }
+.tip .n { flex: none; width: 40px; height: 40px; border-radius: 12px; background: #eef0f6; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; }
+.tip.on { color: var(--ink); } .tip.on .n { background: var(--acc); color: #fff; }
+.tip.done { color: #64748b; } .tip.done .n { background: #22c55e; color: #fff; }
+/* chapters */
+#chaps { position: absolute; left: 40px; right: 40px; bottom: 26px; height: 50px; display: flex; gap: 8px; }
+#chaps div { flex: 1; border-radius: 12px; background: rgba(255,255,255,.7); border: 1.5px solid #e1e5f0; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 700; color: #94a3b8; position: relative; overflow: hidden; }
+#chaps div b { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(90,90,244,.14); }
+#chaps div.on { color: var(--acc); border-color: rgba(90,90,244,.5); background: #fff; }
+#chaps div.done { color: #16a34a; }
+/* intro / outro */
+.full { position: absolute; inset: 0; display: none; }
+.big { position: absolute; left: 0; right: 0; text-align: center; font-weight: 800; letter-spacing: -2px; }
+#fade { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+</style></head><body>
+<div id="bg"><div class="blob" id="b1" style="width:900px;height:900px;background:#93C5FD"></div><div class="blob" id="b2" style="width:800px;height:800px;background:#C7D2FE"></div><div id="dots"></div></div>
+<div id="main">
+  <div id="brand"><img class="i" src="iso.png"><img class="w" src="wordmark_dark.png"><span>Guía rápida de uso</span></div>
+  <div id="win"><div id="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div id="url"></div></div><div class="view" id="dview" style="width:1270px;height:747px"><div class="cam" id="dcam"></div></div></div>
+  <div id="phone"><div id="notch"></div><div class="view" id="mview"><div class="cam" id="mcam"></div></div></div>
+  <div id="panel"><div id="pchip"></div><div id="ptitle"></div><div id="pdev"></div><div id="ptips"></div></div>
+  <div id="chaps"></div>
+</div>
+<div class="full" id="intro">
+  <div id="ilogo" style="position:absolute;left:760px;top:170px;width:400px;height:400px"></div>
+  <div class="big" id="it1" style="top:610px;font-size:92px">Cómo usar <span style="color:#5a5af4">Negocio360</span></div>
+  <div class="big" id="it2" style="top:740px;font-size:38px;font-weight:600;color:#56627a;letter-spacing:0">Desde que entras hasta moverte por todo el sistema</div>
+  <div class="big" id="it3" style="top:820px;font-size:32px;font-weight:700;letter-spacing:0">💻 Computadora &nbsp;·&nbsp; 📱 Celular</div>
+</div>
+<div class="full" id="outro">
+  <div class="big" id="ot1" style="top:170px;font-size:84px">¡Listo! Ya sabes moverte<br>en <span style="color:#5a5af4">Negocio360</span></div>
+  <div id="orec" style="position:absolute;left:560px;top:430px;width:800px"></div>
+  <div id="olk" style="position:absolute;left:0;right:0;top:820px;display:flex;align-items:center;justify-content:center;gap:20px"><img src="iso.png" style="width:90px"><img src="wordmark_dark.png" style="height:52px"></div>
+  <div id="ourl" style="position:absolute;left:710px;width:500px;top:935px;text-align:center;padding:18px 0;border-radius:999px;background:#5a5af4;color:#fff;font-size:32px;font-weight:800;box-shadow:0 18px 40px rgba(90,90,244,.35)">negocio360oficial.com</div>
+</div>
+<div id="fade"></div>
+<script>
+const $ = s => document.querySelector(s);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eOut = k => 1 - Math.pow(1 - clamp(k), 3);
+const eIO = k => { k = clamp(k); return k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; };
+const eBack = k => { k = clamp(k); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const P = (t, a, d) => clamp((t - a) / d);
+let RC = {};
+const R = (shot, key) => { const r = RC[shot] && RC[shot][key]; return r ? [r.x, r.y, r.width, r.height] : null; };
+const C = r => r ? [r[0] + r[2] / 2, r[1] + r[3] / 2] : null;
+
+// ---------- device engine ----------
+function makeDev(view, cam, iw, ih, vw, vh, phone) {
+  const k = vw / iw;
+  cam.style.width = iw * k + 'px'; cam.style.height = ih * k + 'px';
+  const A = document.createElement('img'), B = document.createElement('img'), Rv = document.createElement('img');
+  [A, B, Rv].forEach(im => { im.style.width = iw * k + 'px'; cam.appendChild(im); });
+  const ring = document.createElement('div'); ring.className = 'ring'; cam.appendChild(ring);
+  const tag = document.createElement('div'); tag.className = 'tag'; cam.appendChild(tag);
+  const rip = document.createElement('div'); rip.className = phone ? 'tap' : 'ripple'; cam.appendChild(rip);
+  const cur = document.createElement('div'); cur.className = 'cursor'; cur.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34"><path d="M4 2l15 12-6.6.8 3.9 7.4-2.9 1.5-3.9-7.5L4 21z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>'; cam.appendChild(cur);
+  return { view, cam, iw, ih, vw, vh, k, A, B, Rv, ring, tag, rip, cur, phone, z: 1 };
+}
+const D = makeDev($('#dview'), $('#dcam'), 1700, 1000, 1270, 747, false);
+const M = makeDev($('#mview'), $('#mcam'), 390, 844, 390, 844, true);
+function setImg(im, name) { const src = 'shots/' + name + '.png'; if (im._n !== name) { im.src = src; im._n = name; } }
+// timeline helpers
+function stateAt(list, t) { let cur = list[0], prev = null; for (const s of list) if (t >= s[0]) { prev = cur; cur = s; } return { cur, prev: prev === cur ? null : prev }; }
+function key3(t, keys) { let i = 0; while (i < keys.length - 1 && t >= keys[i + 1][0]) i++; if (i === keys.length - 1 || t < keys[0][0]) return keys[i].slice(1); const a = keys[i], b = keys[i + 1], m = Math.min(.7, b[0] - a[0]), q = eIO((t - (b[0] - m)) / m); return a.slice(1).map((v, j) => lerp(v, b[j + 1], q)); }
+function drive(dev, t, T) {
+  // screens with crossfade
+  const { cur, prev } = stateAt(T.shots, t);
+  setImg(dev.A, cur[1]);
+  const xf = prev ? P(t, cur[0], .25) : 1;
+  if (prev && xf < 1) { setImg(dev.B, prev[1]); dev.B.style.display = 'block'; dev.B.style.opacity = 1 - xf; dev.B.style.zIndex = 2; } else dev.B.style.display = 'none';
+  // typing reveal: [t0,t1,toShot,rect]
+  dev.Rv.style.display = 'none';
+  for (const rv of (T.reveal || [])) if (t >= rv[0] && t < rv[1] + .05) {
+    const r = rv[3]; if (!r) continue; setImg(dev.Rv, rv[2]); const p = P(t, rv[0], rv[1] - rv[0]);
+    const k = dev.k; dev.Rv.style.display = 'block'; dev.Rv.style.zIndex = 3;
+    dev.Rv.style.clipPath = `inset(${r[1] * k}px ${(dev.iw - (r[0] + 14 + (r[2] - 14) * p)) * k}px ${(dev.ih - r[1] - r[3]) * k}px ${r[0] * k}px)`;
+  }
+  // zoom
+  const [z, fx, fy] = key3(t, T.zoom || [[0, 1, dev.iw / 2, dev.ih / 2]]);
+  const k = dev.k; let tx = dev.vw / 2 - fx * k * z, ty = dev.vh / 2 - fy * k * z;
+  tx = Math.min(0, Math.max(dev.vw - dev.iw * k * z, tx)); ty = Math.min(0, Math.max(dev.vh - dev.ih * k * z, ty));
+  dev.cam.style.transform = `translate(${tx}px,${ty}px) scale(${z})`; dev.z = z;
+  // rings: [t0,t1,rect,label,side]
+  dev.ring.style.display = dev.tag.style.display = 'none';
+  for (const rg of (T.rings || [])) if (t >= rg[0] && t < rg[1] && rg[2]) {
+    const r = rg[2], a = eOut(P(t, rg[0], .3)) * (1 - P(t, rg[1] - .25, .25)), pad = 8 / z;
+    dev.ring.style.display = 'block'; dev.ring.style.opacity = a;
+    Object.assign(dev.ring.style, { left: (r[0] - pad) * k + 'px', top: (r[1] - pad) * k + 'px', width: (r[2] + 2 * pad) * k + 'px', height: (r[3] + 2 * pad) * k + 'px', borderWidth: 4 / z + 'px', borderRadius: 12 / z + 'px' });
+    if (rg[3]) {
+      dev.tag.style.display = 'block'; dev.tag.style.opacity = a; dev.tag.textContent = rg[3];
+      const side = rg[4] || 'below'; const s = 1 / z * eBack(P(t, rg[0], .35));
+      let x = r[0] * k, y = (r[1] + r[3] + 14 / z) * k;
+      if (side === 'right') { x = (r[0] + r[2] + 18 / z) * k; y = (r[1] + r[3] / 2) * k - 24 / z; }
+      if (side === 'left') { x = (r[0] - 18 / z) * k; y = (r[1] + r[3] / 2) * k - 24 / z; dev.tag.style.transformOrigin = '100% 50%'; } else dev.tag.style.transformOrigin = '0 50%';
+      if (side === 'above') { y = (r[1] - 14 / z) * k - 50 / z; }
+      dev.tag.style.left = x + 'px'; dev.tag.style.top = y + 'px';
+      dev.tag.style.transform = `scale(${s})` + (side === 'left' ? ' translateX(-100%)' : '');
+      if (side === 'left') { dev.tag.style.transform = `translateX(-100%) scale(${s})`; }
+    }
+  }
+  // pointer: keys [t, x, y] ; clicks
+  const ck = (T.clicks || []).map(c => t - c).find(d => d >= 0 && d < .45);
+  if (T.cursor && T.cursor.length && t >= T.cursor[0][0] && (!T.cursorOff || t < T.cursorOff)) {
+    const [x, y] = key3(t, T.cursor.map(c => [c[0], ...(Array.isArray(c[1]) ? c[1] : [c[1], c[2]])]));
+    if (dev.phone) {
+      dev.cur.style.display = 'none';
+      const near = (T.clicks || []).some(c => t > c - .5 && t < c + .35);
+      dev.rip.style.display = near ? 'block' : 'none'; dev.rip.style.left = x * k + 'px'; dev.rip.style.top = y * k + 'px';
+      dev.rip.style.transform = `scale(${(ck != null ? .8 + ck * .8 : 1) / z})`; dev.rip.style.opacity = ck != null ? 1 - ck / .45 : .9;
+    } else {
+      dev.cur.style.display = 'block'; dev.cur.style.left = x * k + 'px'; dev.cur.style.top = y * k + 'px';
+      dev.cur.style.transform = `translate(-6px,-4px) scale(${(ck != null && ck < .15 ? .85 : 1) / z})`;
+      if (ck != null) { dev.rip.style.display = 'block'; dev.rip.style.left = x * k + 'px'; dev.rip.style.top = y * k + 'px'; dev.rip.style.transform = `scale(${(.4 + ck * 2) / z})`; dev.rip.style.opacity = 1 - ck / .45; } else dev.rip.style.display = 'none';
+    }
+  } else { dev.cur.style.display = 'none'; dev.rip.style.display = 'none'; }
+  [dev.ring, dev.tag, dev.rip, dev.cur].forEach(e => e.style.zIndex = 10);
+}
+
+// ---------- chapters ----------
+const CH = ['Entrar', 'Tu usuario', 'Tu pantalla', 'Moverte', 'Modo noche', 'Configuración', 'Cambiar usuario', 'En el celular', 'Ayuda'];
+CH.forEach((c, i) => { const d = document.createElement('div'); d.innerHTML = `<b></b><span>${i + 1}</span> ${c}`; $('#chaps').appendChild(d); });
+let TL = null; // built after rects load
+function build() {
+  const d = (s, k) => R(s, k), c = (s, k) => C(R(s, k));
+  const nav = (i) => { const a = R('dash_d', 'dashboard'), b = R('dash_d', 'ventas'); const p = b[1] - a[1]; return [a[0], a[1] + p * i, a[2], a[3]]; }; // sidebar items by index
+  const kpis = (() => { const r = R('dash_d', 'kpi'); return [r[0], r[1], 1400, r[3]]; })();
+  const FULL = [1, 850, 500];
+  const DESK = {
+    shots: [[0, 'login_0_d'], [12.3, 'login_3_d'], [13.4, 'login_2_d'], [16.6, 'who_d'], [19.8, 'pin_0_d'], [20.6, 'pin_1_d'], [21.0, 'pin_2_d'], [21.4, 'pin_3_d'], [21.8, 'pin_4_d'], [23.0, 'dash_d'],
+      [54.5, 'ventas_d'], [57.9, 'productos_d'], [61.3, 'clientes_d'], [64.5, 'dash_d'], [67.25, 'search_d'], [70.0, 'dash_d'], [71.8, 'collapsed_d'], [75.3, 'dash_d'],
+      [80.2, 'dark_d'], [85.7, 'dash_d'], [89.8, 'cfgpin_0_d'], [90.9, 'cfgpin_2_d'], [91.5, 'cfgpin_4_d'], [92.8, 'cfg_d'], [97.0, 'cfg2_d'], [109.0, 'dash_d'], [112.3, 'who_again_d'], [150, 'ventas_d'], [152.4, 'help_d']],
+    reveal: [[8.5, 9.7, 'login_1_d', d('login_0_d', 'email')], [10.6, 11.4, 'login_2_d', d('login_0_d', 'pass')], [66.4, 67.2, 'search_d', d('dash_d', 'buscar')]],
+    zoom: [[0, ...FULL], [6.2, ...FULL], [7.4, 1.6, 850, 460], [15.9, 1.6, 850, 460], [16.6, 1.5, 850, 500], [22.8, 1.5, 850, 500], [23.4, ...FULL],
+      [28.6, ...FULL], [29.4, 2.3, 200, 140], [31.2, 2.3, 200, 140], [31.9, 2.3, 420, 120], [33.8, 2.3, 420, 120], [34.5, 2.0, 1380, 140], [44.0, 2.0, 1380, 140], [44.8, 1.2, 1000, 260], [46.8, 1.2, 1000, 260], [47.5, 2.2, 260, 880], [49.3, 2.2, 260, 880], [50.0, 2.0, 1450, 860], [52.0, ...FULL],
+      [65.7, ...FULL], [66.2, 2.0, 220, 200], [69.8, 2.0, 220, 200], [70.3, ...FULL],
+      [78.6, ...FULL], [79.4, 2.2, 1500, 120], [80.9, 2.2, 1500, 120], [81.6, ...FULL], [84.6, ...FULL], [85.2, 2.2, 1500, 120], [86.6, 2.2, 1500, 120], [87.2, ...FULL],
+      [88.6, 2.2, 1500, 120], [89.6, 2.2, 1500, 120], [90.1, 1.5, 850, 500], [92.6, 1.5, 850, 500], [93.1, ...FULL], [93.6, 1.45, 998, 800], [96.6, 1.45, 998, 800], [97.2, 1.45, 998, 430], [107.5, 1.45, 998, 430], [108.5, ...FULL],
+      [109.6, 2.2, 260, 880], [112.0, 2.2, 260, 880], [112.6, 1.5, 850, 500], [117, 1.5, 850, 500],
+      [150, ...FULL], [150.5, 1.8, 1450, 800], [152.2, 1.8, 1450, 800], [152.8, 1.5, 850, 450]],
+    rings: [[14.0, 15.3, d('login_0_d', 'olvide'), '¿Olvidaste tu contraseña?'], [15.3, 16.5, d('login_0_d', 'btn'), null],
+      [17.3, 19.2, d('who_d', 'card'), null], [22.0, 22.8, d('pin_0_d', 'ok'), null],
+      [26.5, 29.0, d('dash_d', 'sidebar'), '1 · Menú con todos tus módulos', 'right'], [29.2, 31.6, d('dash_d', 'buscar'), '2 · Buscar módulo', 'right'], [31.8, 34.2, d('dash_d', 'titulo'), '3 · Dónde estás', 'right'],
+      [34.4, 36.8, d('dash_d', 'fecha'), '4 · Fecha del resumen'], [37.0, 39.4, d('dash_d', 'moneda'), '5 · Moneda', 'left'], [39.6, 42.0, d('dash_d', 'tema'), '6 · Modo noche', 'left'], [42.2, 44.6, d('dash_d', 'config'), '7 · Configuración', 'left'],
+      [44.8, 47.2, kpis, '8 · Resumen de tu negocio'], [47.4, 49.8, d('dash_d', 'cambiar'), '9 · Tu usuario · cambiar', 'right'], [50.0, 52.4, d('ventas_d', 'ayuda'), '10 · Ayuda', 'left'],
+      [53.4, 54.4, nav(1), 'Ventas', 'right'], [56.8, 57.8, d('ventas_d', 'productos'), 'Productos', 'right'], [60.2, 61.2, d('ventas_d', 'clientes'), 'Clientes', 'right'], [63.4, 64.4, nav(0), 'Dashboard', 'right'],
+      [67.4, 69.6, d('search_d', 'caja'), 'Toca el resultado', 'right'], [70.8, 71.7, d('dash_d', 'toggle'), null], [72.2, 74.6, [0, 0, 64, 1000], 'Menú compacto', 'right'],
+      [79.4, 80.1, d('dash_d', 'tema'), null], [85.2, 85.6, d('dash_d', 'tema'), null], [88.6, 89.6, d('dash_d', 'config'), null],
+      [93.8, 96.6, d('cfg_d', 'multi'), 'Sistema multiusuario', 'below'], [97.6, 100.8, d('cfg2_d', 'perfil'), 'Editar Perfil', 'below'], [101.0, 104.4, d('cfg2_d', 'modulos'), 'Editar módulos', 'below'],
+      [109.8, 112.0, d('dash_d', 'cambiar'), 'Toca aquí para cambiar', 'right'], [150.6, 152.2, d('ventas_d', 'ayuda'), '¿Dudas? Toca aquí', 'left']],
+    cursor: [[6.4, 1000, 760], [8.0, c('login_0_d', 'email')], [10.2, c('login_0_d', 'pass')], [11.9, c('login_0_d', 'ojo')], [13.1, c('login_0_d', 'ojo')], [14.2, [960, 494]], [15.7, c('login_0_d', 'btn')],
+      [17.6, 1000, 760], [19.3, c('who_d', 'rosa')], [22.3, c('pin_0_d', 'ok')], [24.5, 1100, 700],
+      [26.6, 600, 600], [52.8, 600, 600], [54.0, C(nav(1))], [57.4, c('ventas_d', 'productos')], [60.8, c('ventas_d', 'clientes')], [64.0, C(nav(0))], [65.9, c('dash_d', 'buscar')], [68.6, c('search_d', 'caja')], [71.3, c('dash_d', 'toggle')], [74.8, c('dash_d', 'toggle')], [76.5, 900, 500],
+      [79.6, c('dash_d', 'tema')], [85.3, c('dash_d', 'tema')], [89.2, c('dash_d', 'config')], [92.2, c('pin_0_d', 'ok')], [94.0, 1400, 500], [111.5, c('dash_d', 'cambiar')], [113.5, 1100, 640],
+      [150.5, 1300, 700], [151.9, c('ventas_d', 'ayuda')], [154, 1300, 600]],
+    clicks: [8.1, 10.3, 12.0, 13.2, 15.85, 19.55, 22.45, 54.2, 57.6, 61.0, 64.2, 66.05, 71.5, 75.0, 80.0, 85.5, 89.5, 92.4, 112.0, 152.1],
+  };
+  const PH = {
+    shots: [[0, 'login_0_m'], [123.6, 'who_m'], [125.8, 'pin_0_m'], [126.6, 'pin_1_m'], [127.0, 'pin_2_m'], [127.4, 'pin_3_m'], [127.8, 'pin_4_m'], [129.0, 'dash_m'], [132.3, 'drawer_m'], [135.0, 'drawer_search_m'], [137.1, 'ventas_m'], [139.5, 'dash_m'], [141.2, 'dark_m'], [145.3, 'cfg_m']],
+    reveal: [[120.0, 121.0, 'login_1_m', d('login_0_m', 'email')], [121.5, 122.3, 'login_2_m', d('login_0_m', 'pass')], [134.3, 134.95, 'drawer_search_m', d('drawer_m', 'buscar')]],
+    zoom: [[0, 1, 195, 422]],
+    rings: [[132.5, 134.0, d('drawer_m', 'sidebar'), null], [135.2, 136.7, d('drawer_search_m', 'ventas'), null], [140.4, 141.0, d('dash_m', 'tema'), null], [144.3, 145.0, d('dash_m', 'config'), null]],
+    cursor: [[119.5, c('login_0_m', 'email')], [121.4, c('login_0_m', 'pass')], [123.0, c('login_0_m', 'btn')], [125.3, c('who_m', 'rosa')], [126.6, [148, 700]], [127.0, [195, 700]], [127.4, [242, 700]], [127.8, [195, 760]], [128.5, c('pin_0_m', 'ok')],
+      [131.8, c('dash_m', 'toggle')], [133.9, c('drawer_m', 'buscar')], [136.6, c('drawer_search_m', 'ventas')], [140.8, c('dash_m', 'tema')], [144.8, c('dash_m', 'config')]],
+    clicks: [119.8, 121.4, 123.2, 125.5, 126.6, 127.0, 127.4, 127.8, 128.6, 132.0, 134.0, 136.8, 141.0, 145.0],
+  };
+  const PANEL = [
+    [6, 16.6, 0, 'Inicia sesión', '💻 Computadora', [[6.5, 'Abre negocio360oficial.com'], [8.0, 'Escribe el correo de tu negocio'], [10.2, 'Escribe tu contraseña'], [12.0, '👁️ Toca el ojo para ver lo que escribiste'], [14.0, '¿La olvidaste? Toca «¿Olvidaste tu contraseña?»'], [15.6, 'Toca «Iniciar sesión»']]],
+    [16.6, 26.5, 1, 'Elige tu usuario', '💻 Computadora', [[17.2, 'Si tu negocio tiene varios usuarios, aparece «¿Quién eres?»'], [19.3, 'Toca tu nombre'], [20.4, 'Escribe tu código (PIN)'], [22.3, 'Toca «Entrar» y listo'], [24.0, 'Si eres el único usuario, entras directo']]],
+    [26.5, 52.5, 2, 'Conoce tu pantalla', '💻 Computadora', [[26.5, 'Menú con todos tus módulos'], [29.2, 'Buscar módulo'], [31.8, 'Dónde estás'], [34.4, 'Fecha del resumen'], [37.0, 'Moneda de visualización'], [39.6, 'Modo noche'], [42.2, 'Configuración'], [44.8, 'Resumen de tu negocio'], [47.4, 'Tu usuario · cambiar'], [50.0, '? Ayuda de cada módulo']], true],
+    [52.5, 78.2, 3, 'Muévete entre módulos', '💻 Computadora', [[53.0, 'Toca un módulo del menú para abrirlo'], [57.0, 'Cada módulo se abre con su propia pantalla'], [63.4, 'Para volver al inicio, toca «Dashboard»'], [65.9, '¿No lo encuentras? Escríbelo en «Buscar módulo»'], [70.8, '☰ Oculta o muestra el menú para tener más espacio']]],
+    [78.2, 88.2, 4, 'Modo noche', '💻 Computadora', [[79.0, 'Toca la luna 🌙 arriba a la derecha'], [81.6, 'Más cómodo de noche: cansa menos la vista'], [84.8, 'Toca el sol ☀️ para volver al modo claro']]],
+    [88.2, 109, 5, 'Configuración', '💻 Computadora', [[88.6, 'Toca el engrane ⚙️ arriba a la derecha'], [90.0, 'Pide el código del administrador'], [93.6, 'Usuarios: activa el sistema multiusuario'], [97.4, 'Editar Perfil: nombre, logo, colores y contacto'], [100.8, 'Editar módulos: enciende o apaga módulos'], [104.6, 'Al final: Cambiar contraseña y Cerrar sesión']]],
+    [109, 118, 6, 'Cambiar de usuario', '💻 Computadora', [[109.6, 'Abajo a la izquierda está tu nombre'], [111.6, 'Toca «Tu nombre · cambiar»'], [113.0, 'Otra persona elige su nombre y su código']]],
+    [118, 150, 7, 'En el celular', '📱 Celular', [[118.5, 'Mismo correo y contraseña'], [123.4, 'Elige tu usuario y escribe tu código'], [131.4, '☰ Abre el menú con las tres rayas'], [133.8, 'Busca el módulo o tócalo en la lista'], [140.4, '🌙 El modo noche también está arriba'], [144.4, '⚙️ Configuración, igual que en la computadora']]],
+    [150, 158, 8, '¿Necesitas ayuda?', '💻 Computadora · 📱 Celular', [[150.5, 'En cada módulo, toca «?» para ver su tutorial'], [153.4, 'En el menú: Tutoriales y Chat con Negocio360']]],
+  ];
+  const URLS = [[0, 'login.html'], [16.6, 'dashboard.html'], [54.5, 'ventas.html'], [57.9, 'productos.html'], [61.3, 'clientes.html'], [64.5, 'dashboard.html'], [92.8, 'configuracion.html'], [109, 'dashboard.html'], [150, 'ventas.html']];
+  TL = { DESK, PH, PANEL, URLS };
+}
+let lastP = '';
+function panel(t) {
+  const p = TL.PANEL.find(x => t >= x[0] && t < x[1]) || TL.PANEL[TL.PANEL.length - 1];
+  const key = p[3];
+  if (lastP !== key) {
+    $('#pchip').textContent = `PASO ${p[2] + 1} DE ${CH.length}`; $('#ptitle').textContent = p[3]; $('#pdev').textContent = p[4];
+    $('#ptips').innerHTML = p[5].map((x, i) => `<div class="tip"><div class="n">${i + 1}</div><div>${x[1]}</div></div>`).join('');
+    if (p[6]) $('#ptips').querySelectorAll('.tip').forEach(e => { e.style.fontSize = '21px'; e.style.marginBottom = '12px'; e.querySelector('.n').style.width = e.querySelector('.n').style.height = '34px'; });
+    lastP = key;
+  }
+  const a = eOut(P(t, p[0], .45)) * (1 - P(t, p[1] - .3, .3));
+  $('#panel').style.opacity = 1; $('#ptitle').style.opacity = a; $('#pchip').style.opacity = a; $('#pdev').style.opacity = a;
+  $('#ptitle').style.transform = `translateY(${(1 - a) * 20}px)`;
+  [...$('#ptips').children].forEach((e, i) => {
+    const t0 = p[5][i][0], t1 = p[5][i + 1] ? p[5][i + 1][0] : p[1];
+    const v = eOut(P(t, t0, .4)); e.style.opacity = t < t0 ? .0 : 1; e.style.transform = `translateX(${(1 - v) * 30}px)`;
+    e.className = 'tip' + (t >= t0 && t < t1 ? ' on' : t >= t1 ? ' done' : '');
+    if (t < t0) e.style.opacity = 0;
+  });
+  [...$('#chaps').children].forEach((e, i) => { e.className = i === p[2] ? 'on' : i < p[2] ? 'done' : ''; e.firstChild.style.width = (i < p[2] ? 100 : i === p[2] ? clamp((t - p[0]) / (p[1] - p[0])) * 100 : 0) + '%'; });
+}
+function logo(el, t0, t) {
+  if (!el._p) { el._p = [0, 1, 2, 3].map(i => { const im = document.createElement('img'); im.src = `piece${i}.png`; im.style.cssText = 'position:absolute;left:0;top:0;width:400px;height:400px'; el.appendChild(im); return im; }); }
+  const DIR = [[.53, .28], [-.32, .49], [-.54, -.32], [.29, -.54]];
+  el._p.forEach((im, i) => { const p = eBack(P(t, t0 + i * .2, .8)), d = DIR[i]; im.style.opacity = clamp(P(t, t0 + i * .2, .2)); im.style.transform = `translate(${d[0] * 800 * (1 - p)}px,${d[1] * 800 * (1 - p)}px) rotate(${(1 - p) * (i % 2 ? 160 : -160) + eIO(P(t, t0 + 1.6, 1)) * 90}deg) scale(${lerp(.4, 1, clamp(p, 0, 1.1))})`; });
+}
+window.ready = fetch('rects.json').then(r => r.json()).then(r => { RC = r; build(); return Promise.all([document.fonts.ready]); });
+const END = 166;
+window.render = t => {
+  $('#b1').style.transform = `translate(${-200 + Math.sin(t * .15) * 160}px, ${-200 + Math.cos(t * .12) * 120}px)`;
+  $('#b2').style.transform = `translate(${1300 + Math.cos(t * .13) * 160}px, ${500 + Math.sin(t * .11) * 140}px)`;
+  const intro = t < 6, outro = t >= 158;
+  $('#intro').style.display = intro ? 'block' : 'none'; $('#outro').style.display = outro ? 'block' : 'none'; $('#main').style.display = intro || outro ? 'none' : 'block';
+  if (intro) {
+    logo($('#ilogo'), 0.2, t);
+    ['#it1', '#it2', '#it3'].forEach((s, i) => { const p = eOut(P(t, 2.0 + i * .4, .6)); $(s).style.opacity = p; $(s).style.transform = `translateY(${(1 - p) * 40}px)`; });
+    $('#intro').style.opacity = 1 - P(t, 5.6, .4);
+  } else if (outro) {
+    const u = t - 158; const items = ['Inicia sesión y elige tu usuario', 'Usa el menú o «Buscar módulo»', 'Modo noche con la luna 🌙', 'Configuración con el engrane ⚙️', 'Funciona igual en celular'];
+    if (!$('#orec').children.length) $('#orec').innerHTML = items.map(s => `<div style="display:flex;align-items:center;gap:22px;font-size:36px;font-weight:700;margin-bottom:22px"><div style="width:52px;height:52px;border-radius:16px;background:#22c55e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800">✓</div>${s}</div>`).join('');
+    const a = eOut(P(u, .1, .6)); $('#ot1').style.opacity = a; $('#ot1').style.transform = `translateY(${(1 - a) * 30}px)`;
+    [...$('#orec').children].forEach((e, i) => { const p = eBack(P(u, .7 + i * .35, .45)); e.style.opacity = clamp(p); e.style.transform = `translateX(${(1 - clamp(p)) * -60}px)`; });
+    const l = eBack(P(u, 3.0, .6)); $('#olk').style.opacity = clamp(l); $('#olk').style.transform = `scale(${clamp(l, 0, 1.1)})`;
+    const v = eBack(P(u, 3.5, .5)); $('#ourl').style.opacity = clamp(v); $('#ourl').style.transform = `scale(${clamp(v, 0, 1.1)})`;
+  } else {
+    const phone = t >= 118 && t < 150;
+    $('#win').style.display = phone ? 'none' : 'block'; $('#phone').style.display = phone ? 'block' : 'none';
+    if (phone) { const a = eOut(P(t, 118, .6)); $('#phone').style.transform = `translateY(${(1 - a) * 300}px)`; drive(M, t, TL.PH); }
+    else {
+      const a = eOut(P(t, 6, .7)), b = t >= 150 ? eOut(P(t, 150, .6)) : 1; $('#win').style.transform = `translateY(${(1 - a * b) * 260}px) scale(${lerp(.92, 1, a)})`; $('#win').style.opacity = clamp(a * b * 1.2);
+      drive(D, t, TL.DESK);
+      const { cur } = stateAt(TL.URLS, t); $('#url').innerHTML = `🔒&nbsp;<b>negocio360oficial.com</b>/${cur[1]}`;
+    }
+    panel(t);
+  }
+  // scene-change fade (desk ↔ phone, intro, outro)
+  let f = 0; for (const x of [6, 118, 150, 158]) f = Math.max(f, 1 - Math.abs(t - x) / .35);
+  $('#fade').style.opacity = clamp(f) * .9; if (t > END - 1) $('#fade').style.opacity = P(t, END - 1, 1);
+};
+window.TOTAL = END;
+</script></body></html>
