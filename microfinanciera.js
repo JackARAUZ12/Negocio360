@@ -1101,7 +1101,7 @@ async function cargarEquipo() {
   try {
     let { data, error } = await sb.rpc('listar_perfiles_del_grupo_v2');
     if (error) ({ data, error } = await sb.rpc('listar_perfiles_del_grupo'));
-    MF.perfiles = (data || []).filter(p => p.activo !== false).map(p => ({ id: p.id, nombre: p.nombre, tipo: p.tipo, color: p.avatar_color }));
+    MF.perfiles = (data || []).filter(p => p.activo !== false).map(p => ({ id: p.id, nombre: p.nombre, tipo: p.tipo, color: p.avatar_color, modulos: Array.isArray(p.modulos) ? p.modulos : [] }));
   } catch (_) { MF.perfiles = []; }
   try {
     const { data } = await sb.from('mf_equipo').select('perfil_id,rol,puede_vender,activo').eq('auth_user_id', MF.userId);
@@ -1226,7 +1226,10 @@ function pintarEquipo(v) {
     return `<div class="mf-item" style="flex-wrap:wrap"><div class="mf-item-n"><b>${esc(p.nombre)}</b></div>
       <select class="tl-sel" style="max-width:170px" id="eq-rol-${p.id}" aria-label="Rol de ${esc(p.nombre)}"><option value="" ${!rol ? 'selected' : ''}>🚫 No entra</option><option value="cobrador" ${rol === 'cobrador' ? 'selected' : ''}>🛵 Cobrador</option><option value="supervisor" ${rol === 'supervisor' ? 'selected' : ''}>🧑‍💼 Supervisor</option></select>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="eq-ven-${p.id}" ${!e || e.puede_vender ? 'checked' : ''} style="width:17px;height:17px"> Puede vender</label>
-      <button class="btn-secondary" style="padding:6px 10px;font-size:12.5px" onclick="guardarMiembro('${p.id}')">Guardar</button></div>`; };
+      <button class="btn-secondary" style="padding:6px 10px;font-size:12.5px" onclick="guardarMiembro('${p.id}')">Guardar</button>
+      ${rol ? (otrosModulos(p).length ? `<div class="tl-aviso" style="flex-basis:100%;margin:4px 0 0">⚠️ También entra a: ${esc(otrosModulos(p).map(nombreModulo).join(', '))}. Ahí podría ver lo de otros.
+          <button class="btn-secondary" style="padding:5px 9px;font-size:12px;margin-left:6px" onclick="soloPanel('${p.id}')">🔒 Dejar solo el Panel</button></div>`
+        : '<div class="tl-muted" style="flex-basis:100%">🔒 Solo entra al Panel</div>') : ''}</div>`; };
   const sinAsig = MF.creditos.filter(c => !c.mf_cobrador_id).length;
   const porCob = MF.equipo.filter(e => e.activo).map(e => { const cs = MF.creditos.filter(c => c.mf_cobrador_id === e.perfil_id); return { e, n: cs.length, saldo: r2(cs.reduce((a, c) => a + Number(c.saldo_pendiente || 0), 0)) }; });
   v.innerHTML = tarjetaPrestar() + tarjetaMora() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
@@ -1279,6 +1282,18 @@ async function asignarUno(creditoId, dest, clienteId) {
   showToast('Listo: cambió quién lo cobra.');
   await cargarDatos().catch(() => {});
 }
+function otrosModulos(p) { return (p.modulos || []).filter(k => k !== 'microfinanciera' && k !== 'chat'); }
+function nombreModulo(k) { const m = Object.values(window.NEGOCIO360_MODULOS || {}).find(x => x.key === k); return m ? String(m.label || k).replace(/ · .*/, '') : k; }
+async function soloPanel(perfilId, sinPreguntar) {
+  const p = MF.perfiles.find(x => x.id === perfilId); if (!p || MF.ocupado) return;
+  if (!sinPreguntar && !confirm(`¿Dejar a ${p.nombre} con acceso SOLO al Panel Microfinanciera? Ya no podrá abrir: ${otrosModulos(p).map(nombreModulo).join(', ')}.`)) return;
+  MF.ocupado = true;
+  const r = await rpc('mf_solo_panel', { p: { token: tk(), perfil_id: perfilId } });
+  MF.ocupado = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  p.modulos = ['microfinanciera']; showToast(`${p.nombre} ahora solo entra al Panel.`);
+  pintarEquipo(document.getElementById('pd-vista'));
+}
 async function guardarMiembro(perfilId) {
   if (MF.ocupado) return;
   const rol = document.getElementById('eq-rol-' + perfilId).value, vende = document.getElementById('eq-ven-' + perfilId).checked;
@@ -1290,7 +1305,10 @@ async function guardarMiembro(perfilId) {
   MF.ocupado = false;
   if (!r.ok) { showToast(r.msg, 'error'); return; }
   showToast(rol ? 'Guardado.' : 'Ya no entra al Panel.');
-  await cargarEquipo(); pintarEquipo(document.getElementById('pd-vista'));
+  await cargarEquipo();
+  const pf = MF.perfiles.find(x => x.id === perfilId);
+  if (rol && !e && pf && otrosModulos(pf).length && confirm(`Recomendado: ¿dejar a ${pf.nombre} con acceso SOLO al Panel? Así no ve Caja, Créditos ni lo de otros cobradores.`)) { await soloPanel(perfilId, true); return; }
+  pintarEquipo(document.getElementById('pd-vista'));
 }
 function abrirEncender(activar) {
   const admins = MF.perfiles.filter(p => p.tipo === 'admin');
