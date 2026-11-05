@@ -89,6 +89,86 @@ async function onCambiarMetodoPagoHotel(prefijo) {
 // el IVA no es ingreso del negocio, es dinero recaudado para el
 // fisco. Devuelve el monto neto, que es lo que se debe registrar en
 // Caja en vez del monto completo.
+// Mismo cálculo que registrarIvaHotel, SIN anotar nada (para repartir el pago separado antes).
+function netoHotelSinAnotar(montoConIva) {
+  const ivaPct = STATE.empresaConfig?.iva_porcentaje_default ? Number(STATE.empresaConfig.iva_porcentaje_default) : 15;
+  if (STATE.empresaConfig?.iva_activo === false || ivaPct <= 0) return montoConIva;
+  const neto = round2(montoConIva / (1 + ivaPct/100));
+  return round2(montoConIva - neto) <= 0 ? montoConIva : neto;
+}
+
+/* ➗ PAGO SEPARADO en el check-out (Fase 4.4). Solo se usa si se toca el enlace;
+   si no, el check-out funciona exactamente igual que siempre. */
+const PSH = { activo: false, lineas: [] };
+function _pshMetodos() {
+  const sel = document.getElementById('est-metodo-pago'); if (!sel) return [];
+  return [...sel.options].filter(o => o.value).map(o => ({ id: o.value, nombre: o.dataset.nombre || o.textContent.trim() }));
+}
+const _pshNecesitaBanco = n => /tarjeta|transferencia/i.test(n || '');
+function pshMontar() {
+  const sel = document.getElementById('est-metodo-pago'); if (!sel || document.getElementById('psh-link')) return;
+  const grupo = sel.closest('.form-group') || sel.parentElement;
+  grupo.insertAdjacentHTML('afterend', `<div id="psh-zona" style="margin:-4px 0 10px">
+    <button type="button" id="psh-link" onclick="pshActivar()" style="background:none;border:none;color:var(--accent);font-weight:700;font-size:13px;cursor:pointer;padding:4px 0">➗ Pago separado (pagar con varios métodos)</button>
+    <div id="psh-wrap" style="display:none;padding:12px;border:1.5px dashed var(--accent);border-radius:12px;margin-top:6px"></div></div>`);
+}
+function pshReset() {
+  PSH.activo = false; PSH.lineas = [];
+  const sel = document.getElementById('est-metodo-pago'); if (sel) { sel.disabled = false; (sel.closest('.form-group') || sel).style.opacity = ''; }
+  const w = document.getElementById('psh-wrap'); if (w) { w.style.display = 'none'; w.innerHTML = ''; }
+  const l = document.getElementById('psh-link'); if (l) l.style.display = '';
+}
+async function pshActivar() {
+  const ms = _pshMetodos();
+  if (ms.length < 2) { showToast('Necesitas al menos 2 métodos de pago activos para pagar separado', 'error'); return; }
+  const ef = ms.find(m => /efectivo/i.test(m.nombre)) || ms[0], ot = ms.find(m => m.id !== ef.id) || ms[1];
+  PSH.activo = true; PSH.lineas = [{ metodoId: ef.id, bancoId: '', monto: 0 }, { metodoId: ot.id, bancoId: '', monto: 0 }];
+  const sel = document.getElementById('est-metodo-pago'); sel.disabled = true; (sel.closest('.form-group') || sel).style.opacity = '.45';
+  const wb = document.getElementById('est-wrap-banco'); if (wb) wb.style.display = 'none';
+  document.getElementById('psh-link').style.display = 'none'; document.getElementById('psh-wrap').style.display = '';
+  await pshPintar();
+}
+async function pshPintar() {
+  const w = document.getElementById('psh-wrap'); if (!w) return;
+  const ms = _pshMetodos(), bks = await cargarBancosDisponiblesHotel(), nom = id => (ms.find(m => m.id === id) || {}).nombre || '';
+  w.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:13.5px">➗ Pago separado</b>
+      <button type="button" onclick="pshReset();onCambiarMetodoPagoHotel('est')" style="background:none;border:none;color:var(--accent);font-weight:700;font-size:12.5px;cursor:pointer">Usar un solo método</button></div>
+    ${PSH.lineas.map((l, i) => `<div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1fr) auto;gap:6px;align-items:center;margin-bottom:6px">
+      <select aria-label="Método" onchange="PSH.lineas[${i}].metodoId=this.value;PSH.lineas[${i}].bancoId='';pshPintar()">${ms.map(m => `<option value="${m.id}" ${m.id === l.metodoId ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select>
+      ${_pshNecesitaBanco(nom(l.metodoId)) && bks.length ? `<select aria-label="Banco" onchange="PSH.lineas[${i}].bancoId=this.value;pshSuma()"><option value="">¿A qué banco?</option>${bks.map(b => `<option value="${b.id}" ${b.id === l.bancoId ? 'selected' : ''}>🏦 ${esc(b.nombre)}</option>`).join('')}</select>` : '<span style="font-size:12px;color:var(--text-muted)">—</span>'}
+      <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="Monto" aria-label="Monto" value="${l.monto || ''}" oninput="PSH.lineas[${i}].monto=round2(parseFloat(this.value)||0);pshSuma()">
+      <button type="button" title="Quitar" onclick="if(PSH.lineas.length>2){PSH.lineas.splice(${i},1);pshPintar()}" ${PSH.lineas.length <= 2 ? 'disabled style="opacity:.35"' : ''} style="border:1px solid var(--border);background:none;border-radius:8px;width:32px;height:32px;cursor:pointer;color:var(--danger)">✕</button></div>`).join('')}
+    <button type="button" onclick="PSH.lineas.push({metodoId:_pshMetodos()[0].id,bancoId:'',monto:0});pshPintar()" style="background:none;border:none;color:var(--accent);font-weight:700;font-size:13px;cursor:pointer;padding:4px 0">＋ Agregar otro método</button>
+    <div id="psh-suma" style="margin-top:6px;padding:8px 10px;border-radius:9px;font-size:13px;font-weight:700"></div>`;
+  pshSuma();
+}
+function pshTotal() {
+  const id = document.getElementById('est-reservacion-id')?.value, r = STATE.reservaciones.find(x => x.id === id);
+  if (!r) return 0;
+  const hab = noches(r.fecha_entrada, r.fecha_salida) * Number(r.tarifa_acordada || 0), cargos = (STATE.cargosEstadia || []).reduce((a, c) => a + Number(c.monto || 0), 0);
+  const ant = r.tipo_pago === 'anticipo' ? Number(r.monto_anticipo || 0) : 0;
+  return round2(Math.max(0, hab + cargos - ant));
+}
+function pshSuma() {
+  const el = document.getElementById('psh-suma'); if (!el) return;
+  const t = pshTotal(), s = round2(PSH.lineas.reduce((a, l) => a + (Number(l.monto) || 0), 0)), d = round2(t - s), ok = Math.abs(d) < 0.005;
+  el.style.background = ok ? 'var(--success-soft,#dcfce7)' : '#fef3c7'; el.style.color = ok ? 'var(--success,#16a34a)' : '#b45309';
+  if (ok) { const e = document.getElementById('est-error'); if (e) e.textContent = ''; }
+  el.textContent = `Suma: ${fmt(s)} de ${fmt(t)} · ${ok ? '✅ Cuadra' : d > 0 ? 'Falta ' + fmt(d) : 'Sobra ' + fmt(-d)}`;
+}
+// Revisión final. Devuelve las líneas listas o el motivo.
+async function pshValidar(total) {
+  const ms = _pshMetodos(), bks = await cargarBancosDisponiblesHotel(), nom = id => (ms.find(m => m.id === id) || {}).nombre || '';
+  const ls = PSH.lineas.map(l => ({ ...l, monto: round2(l.monto), metodoNombre: nom(l.metodoId) }));
+  if (ls.length < 2) return { ok: false, msg: 'El pago separado necesita al menos 2 líneas.' };
+  if (ls.some(l => !(l.monto > 0))) return { ok: false, msg: 'Cada línea del pago separado debe tener un monto mayor a cero.' };
+  const sinB = ls.find(l => _pshNecesitaBanco(l.metodoNombre) && bks.length && !l.bancoId);
+  if (sinB) return { ok: false, msg: `Elige a qué banco entra la línea de ${sinB.metodoNombre}.` };
+  const s = round2(ls.reduce((a, l) => a + l.monto, 0));
+  if (Math.abs(s - round2(total)) >= 0.005) return { ok: false, msg: `Las líneas suman ${fmt(s)} y el total a cobrar es ${fmt(total)}: deben ser iguales.` };
+  return { ok: true, lineas: ls.map(l => ({ ...l, bancoId: _pshNecesitaBanco(l.metodoNombre) ? (l.bancoId || null) : null })) };
+}
+
 async function registrarIvaHotel(montoConIva, concepto, referenciaId) {
   const ivaPct = STATE.empresaConfig?.iva_porcentaje_default ? Number(STATE.empresaConfig.iva_porcentaje_default) : 15;
   if (STATE.empresaConfig?.iva_activo === false || ivaPct <= 0) return montoConIva; // negocio sin IVA activo: no se desglosa nada
@@ -691,6 +771,7 @@ async function abrirModalEstadia(id) {
   document.getElementById('est-huesped-info').textContent =
     `${r.cliente_nombre} — Habitación ${r.hotel_habitaciones?.numero || ''} · Entrada ${fmtFechaCorta(r.fecha_entrada)}`;
   poblarSelectMetodoPagoHotel('est-metodo-pago');
+  try { pshMontar(); pshReset(); } catch (_) {}
   document.getElementById('est-wrap-banco').style.display = 'none';
   document.getElementById('est-banco').value = '';
 
@@ -761,8 +842,16 @@ async function hacerCheckOut() {
   const anticipo = r.tipo_pago === 'anticipo' ? Number(r.monto_anticipo || 0) : 0;
   const totalCobrar = Math.max(0, montoHabitacion + totalCargos - anticipo);
 
+  // ➗ Pago separado (opcional)
+  let psLineas = null;
+  if (PSH.activo && totalCobrar > 0) {
+    const v = await pshValidar(totalCobrar);
+    if (!v.ok) { errEl.textContent = v.msg; return; }
+    psLineas = v.lineas;
+  }
+
   let bancoCheckoutId = null;
-  if (totalCobrar > 0 && document.getElementById('est-wrap-banco').style.display !== 'none') {
+  if (!psLineas && totalCobrar > 0 && document.getElementById('est-wrap-banco').style.display !== 'none') {
     bancoCheckoutId = document.getElementById('est-banco').value || null;
     if (!bancoCheckoutId) { errEl.textContent = 'Indica de qué banco entra el cobro.'; return; }
   }
@@ -773,7 +862,38 @@ async function hacerCheckOut() {
     // C$0.00 (ej. un anticipo que ya cubrio todo) -- para dejar
     // rastro del cierre; un movimiento de C$0 es simplemente
     // ignorado por CajaAPI si el monto no cambia nada relevante.
-    if (totalCobrar > 0 && window.CajaAPI) {
+    if (psLineas && window.CajaAPI) {
+      // ➗ Pago separado: PRIMERO entra cada línea a Caja (lo neto, repartido en proporción; la
+      // última se lleva el resto para cuadrar exacto). Si una falla, se anulan las que entraron y
+      // no se anota el IVA ni se cierra la estadía. Después se anota el IVA una sola vez, como siempre.
+      const conceptoCheckout = `Check-out — ${r.cliente_nombre} (Habitación ${r.hotel_habitaciones?.numero || ''})`;
+      const marca = `PS-${Date.now().toString().slice(-7)}`;
+      const neto = netoHotelSinAnotar(totalCobrar);
+      let asignado = 0;
+      for (let i = 0; i < psLineas.length; i++) {
+        const l = psLineas[i], ultima = i === psLineas.length - 1;
+        const montoLinea = ultima ? round2(neto - asignado) : round2(l.monto * neto / totalCobrar);
+        asignado = round2(asignado + montoLinea);
+        // Una línea que al repartir quede en cero no se registra: se revierte todo y se avisa.
+        const cr = !(montoLinea > 0) ? { ok: false } : await window.CajaAPI.registrarMovimiento({
+          auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'COBRO',
+          concepto: `${conceptoCheckout} · pago separado ${marca} (${i + 1}/${psLineas.length} ${l.metodoNombre})`,
+          monto: montoLinea, referencia_tipo: 'hotel_reservacion', referencia_id: id,
+          metodo_pago_id: l.metodoId || null, metodo_pago_nombre: l.metodoNombre, banco_id: l.bancoId || null,
+        });
+        if (!cr.ok) {
+          try {
+            const { data: hechos } = await sb.from('movimientos_financieros').select('id').eq('auth_user_id', STATE.userId)
+              .eq('referencia_id', id).eq('estado', 'completado').ilike('concepto', `%${marca}%`);
+            for (const h of (hechos || [])) await sb.from('movimientos_financieros').update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: 'Pago separado incompleto: se revirtió' }).eq('id', h.id).eq('auth_user_id', STATE.userId).eq('estado', 'completado');
+          } catch (e) { console.warn('revertir pago separado hotel:', e); }
+          errEl.textContent = `No se pudo registrar en Caja la línea de ${l.metodoNombre}. No se cobró nada; intenta de nuevo.`;
+          setBtnLoading('est-btn-checkout', false);
+          return;
+        }
+      }
+      await registrarIvaHotel(totalCobrar, conceptoCheckout, id);
+    } else if (totalCobrar > 0 && window.CajaAPI) {
       const conceptoCheckout = `Check-out — ${r.cliente_nombre} (Habitación ${r.hotel_habitaciones?.numero || ''})`;
       const montoNeto = await registrarIvaHotel(totalCobrar, conceptoCheckout, id);
       const selMetodoCheckout = document.getElementById('est-metodo-pago');

@@ -440,6 +440,252 @@ canvas.hw-sky { z-index: 0; } canvas.hw-fx { z-index: 6; }
     agenda(T.salir, function () { cerrar(false); });
   }
 
+  /* ============================================================
+     ESCENA BLANCA "Apertura" (normal, todo el año salvo Halloween y
+     Octubre Rosa): fondo blanco, estilo apertura de cine (~7.4 s).
+     MISMAS reglas que siempre: solo en pantallas de entrada, una vez
+     por sesion y usuario, boton "Saltar", tecla Esc, cierre de
+     seguridad a los 10 s, respeta "reducir animaciones" y, si algo
+     falla, se quita sola. No guarda nada ni llama al servidor.
+     GUION:
+       0.0 s  Blanco limpio, luz suave y particulas de polvo en el aire.
+       0.3 s  Un haz de luz horizontal cruza la pantalla.
+       0.7 s  Las 4 piezas del logotipo vuelan y encajan en el centro.
+       1.7 s  Onda de choque, destello que barre el logo y se dibuja
+              el aro de 360 grados; sombra de suelo bajo el logo.
+       2.3 s  El nombre se abre desde el logo; "360" cuenta de 000 a 360.
+       3.9 s  Titulos: "Controla tu negocio" / "Vende más" / "Gana más".
+       6.0 s  Saludo segun la hora y el mes en curso.
+       6.9 s  Cierre con desvanecimiento suave que revela el sistema.
+     ============================================================ */
+  function escenaBlanca(REDUCIDO) {
+    var T = { haz: 300, piezas: 700, lock: 1750, nombre: 2300, cuentaIni: 2500, cuentaFin: 3700,
+              fraseA: 4000, fraseB: 4900, fraseC: 5700, saludo: 6300, salir: 7200, seguridad: 10000 };
+    var LOGO = 'negocio360-isotipo.png';
+    var style = document.createElement('style');
+    style.id = 'n360-welcome-style';
+    style.textContent = `
+#n360-welcome { --navy: #06215f; --blue: #1f6bff; --sky: #8db8ff; --ink: #0b1b3f; --mute: #5b6b8f; --ease: cubic-bezier(.16,1,.3,1);
+  position: fixed; inset: 0; z-index: 100000; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink);
+  background: radial-gradient(ellipse 85% 75% at 50% 45%, #ffffff 0%, #ffffff 60%, #f4f7fd 100%); transition: opacity .8s ease; }
+#n360-welcome.nb-exit { opacity: 0; pointer-events: none; }
+#n360-welcome *, #n360-welcome *::before, #n360-welcome *::after { box-sizing: border-box; }
+.nb-grain { position: absolute; inset: 0; pointer-events: none; opacity: .05; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+.nb-leak { position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity 2.4s ease;
+  background: radial-gradient(circle, rgba(31,107,255,.08) 0%, rgba(31,107,255,0) 62%); }
+.nb-leak.a { left: -22vmax; top: -30vmax; } .nb-leak.b { right: -26vmax; bottom: -34vmax; background: radial-gradient(circle, rgba(141,184,255,.12) 0%, rgba(141,184,255,0) 62%); }
+#n360-welcome.nb-on .nb-leak { opacity: 1; }
+#n360-welcome.nb-on .nb-leak.a { animation: nb-drift 9s ease-in-out infinite alternate; }
+#n360-welcome.nb-on .nb-leak.b { animation: nb-drift 11s ease-in-out infinite alternate-reverse; }
+@keyframes nb-drift { from { transform: translate3d(0,0,0); } to { transform: translate3d(3vmax,2vmax,0); } }
+canvas.nb-dust { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1.6s ease; }
+#n360-welcome.nb-on canvas.nb-dust { opacity: 1; }
+.nb-vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 48%, transparent 62%, rgba(14,34,84,.045) 100%); }
+/* haz de luz horizontal (anamorfico) */
+.nb-streak { position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; pointer-events: none; opacity: 0; transform: scaleX(0);
+  background: linear-gradient(90deg, transparent 0%, rgba(31,107,255,.0) 8%, rgba(31,107,255,.55) 50%, rgba(31,107,255,0) 92%, transparent 100%); }
+.nb-streak::after { content: ''; position: absolute; left: 20%; right: 20%; top: -9px; height: 20px; background: radial-gradient(ellipse at center, rgba(141,184,255,.35), transparent 70%); }
+#n360-welcome.nb-haz .nb-streak { animation: nb-haz 1.5s cubic-bezier(.3,.1,.2,1) forwards; }
+@keyframes nb-haz { 0% { opacity: 0; transform: scaleX(0); } 25% { opacity: 1; } 70% { opacity: 1; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1.15); } }
+/* camara: empuje lento hacia adelante */
+.nb-cam { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; padding: 0 20px; will-change: transform; }
+#n360-welcome.nb-on .nb-cam { animation: nb-push 7.6s cubic-bezier(.25,.1,.25,1) forwards; }
+@keyframes nb-push { from { transform: scale(.965); } to { transform: scale(1.045); } }
+.nb-lockup { display: flex; align-items: center; justify-content: center; position: relative; }
+.nb-mark { position: relative; width: var(--M); height: var(--M); flex: none; }
+#n360-welcome { --M: clamp(92px, 15vmin, 150px); }
+.nb-floor { position: absolute; left: 50%; bottom: -26%; width: 92%; height: 16%; margin-left: -46%; border-radius: 50%; opacity: 0; transform: scale(.4);
+  background: radial-gradient(ellipse at center, rgba(6,33,95,.30), rgba(6,33,95,0) 70%); transition: opacity 1s ease, transform 1.2s var(--ease); }
+#n360-welcome.nb-lock .nb-floor { opacity: 1; transform: scale(1); }
+.nb-piece { position: absolute; inset: 0; opacity: 0; will-change: transform, opacity;
+  transition: transform 1.15s var(--ease), opacity .5s ease; }
+.nb-piece img, .nb-whole img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.nb-piece.q0 { clip-path: inset(0 49.6% 49.6% 0); transform: translate(-70px,-60px) rotate(-22deg) scale(1.35); }
+.nb-piece.q1 { clip-path: inset(0 0 49.6% 49.6%); transform: translate(70px,-60px) rotate(22deg) scale(1.35); }
+.nb-piece.q2 { clip-path: inset(49.6% 49.6% 0 0); transform: translate(-70px,60px) rotate(22deg) scale(1.35); }
+.nb-piece.q3 { clip-path: inset(49.6% 0 0 49.6%); transform: translate(70px,60px) rotate(-22deg) scale(1.35); }
+.nb-piece.go { opacity: 1; transform: none; }
+.nb-whole { position: absolute; inset: 0; opacity: 0; }
+#n360-welcome.nb-lock .nb-whole { opacity: 1; } #n360-welcome.nb-lock .nb-piece { opacity: 0; transition: none; }
+/* destello que barre el logo (solo donde hay logo, usando su silueta) */
+.nb-sheen { position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  -webkit-mask: url(__LOGO__) center / contain no-repeat; mask: url(__LOGO__) center / contain no-repeat;
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.95) 50%, transparent 62%) -160% 0 / 260% 100% no-repeat; }
+#n360-welcome.nb-lock .nb-sheen { animation: nb-sheen 1.3s cubic-bezier(.4,.1,.2,1) .1s forwards; }
+@keyframes nb-sheen { 0% { opacity: 1; background-position: -160% 0; } 100% { opacity: 1; background-position: 160% 0; } }
+.nb-shock { position: absolute; left: 50%; top: 50%; width: 100%; height: 100%; margin: -50% 0 0 -50%; border-radius: 50%; border: 1.5px solid rgba(31,107,255,.5); opacity: 0; pointer-events: none; }
+#n360-welcome.nb-lock .nb-shock { animation: nb-shock 1.3s cubic-bezier(.15,.7,.2,1) forwards; }
+@keyframes nb-shock { 0% { opacity: .85; transform: scale(.9); } 100% { opacity: 0; transform: scale(3.1); } }
+.nb-ring { position: absolute; left: -17%; top: -17%; width: 134%; height: 134%; pointer-events: none; transform: rotate(-90deg); overflow: visible; }
+.nb-ring circle { fill: none; stroke: var(--blue); stroke-width: 1.4; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: .8; }
+#n360-welcome.nb-lock .nb-ring circle { animation: nb-ring 1.6s cubic-bezier(.5,0,.15,1) .15s forwards; }
+@keyframes nb-ring { to { stroke-dashoffset: 0; } }
+/* nombre: se abre desde el logo */
+.nb-word { display: flex; align-items: baseline; overflow: hidden; max-width: 0; opacity: 0; white-space: nowrap; padding: .1em 0;
+  font-size: calc(var(--M) * .62); font-weight: 800; letter-spacing: -.04em; line-height: 1.1; color: var(--navy);
+  transition: max-width 1.25s var(--ease), margin-left 1.25s var(--ease), opacity .5s ease; }
+#n360-welcome.nb-nombre .nb-word { max-width: 9.2em; margin-left: calc(var(--M) * .22); opacity: 1; }
+.nb-word .ch { display: inline-block; transform: translateX(-.6em); opacity: 0; transition: transform .9s var(--ease), opacity .6s ease; }
+#n360-welcome.nb-nombre .nb-word .ch { transform: none; opacity: 1; }
+.nb-num { display: inline-block; min-width: 3ch; margin-left: .05em; font-variant-numeric: tabular-nums; color: var(--blue); text-align: left; }
+.nb-num i { font-style: normal; opacity: .32; }
+/* titulos tipo cine */
+.nb-say { position: relative; height: 3.2em; width: min(680px, 92vw); margin-top: clamp(18px, 4vh, 36px); font-size: clamp(15px, 2.1vw, 20px); }
+.nb-say p { position: absolute; inset: 0; margin: 0; display: flex; align-items: flex-start; justify-content: center; text-align: center;
+  font-weight: 300; letter-spacing: .5em; color: var(--ink); opacity: 0; transform: translateY(6px); text-transform: none;
+  transition: opacity .7s ease, letter-spacing 1.6s cubic-bezier(.2,.7,.2,1), transform .9s var(--ease); }
+.nb-say p.in { opacity: 1; letter-spacing: .16em; transform: none; }
+.nb-say p.out { opacity: 0; letter-spacing: .09em; transform: translateY(-6px); transition: opacity .45s ease, letter-spacing .6s ease, transform .5s ease; }
+.nb-say p.fin { font-weight: 600; background: linear-gradient(92deg, var(--navy), var(--blue)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.nb-greet { margin: 0; min-height: 22px; font-size: 14px; font-weight: 500; color: var(--mute); opacity: 0; transform: translateY(8px); transition: opacity .8s ease, transform .8s ease; }
+.nb-greet.on { opacity: 1; transform: none; }
+.nb-foot { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(6,33,95,.06); z-index: 3; }
+.nb-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--navy), var(--blue)); }
+.nb-skip { position: absolute; top: 20px; right: 20px; z-index: 5; padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(6,33,95,.16);
+  background: rgba(255,255,255,.7); color: var(--mute); font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer;
+  opacity: 0; transition: opacity .5s ease 1s, background .2s, color .2s, border-color .2s; }
+#n360-welcome.nb-on .nb-skip { opacity: 1; }
+.nb-skip:hover { background: #fff; color: var(--navy); border-color: rgba(6,33,95,.32); }
+.nb-skip:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+@media (max-width: 560px) { #n360-welcome { --M: clamp(70px, 20vmin, 96px); } .nb-lockup { flex-direction: column; } #n360-welcome.nb-nombre .nb-word { margin-left: 0; margin-top: calc(var(--M) * .16); }
+  .nb-word { max-width: 0; } #n360-welcome.nb-nombre .nb-word { max-width: 9.2em; } .nb-say p { letter-spacing: .3em; } .nb-say p.in { letter-spacing: .1em; } .nb-skip { top: 14px; right: 14px; } }
+/* Reducir animaciones: composicion final fija */
+#n360-welcome.nb-quieto *, #n360-welcome.nb-quieto *::before, #n360-welcome.nb-quieto *::after { animation: none !important; transition: none !important; }
+#n360-welcome.nb-quieto .nb-whole { opacity: 1; } #n360-welcome.nb-quieto .nb-piece { opacity: 0; }
+#n360-welcome.nb-quieto .nb-word { max-width: 9.2em; opacity: 1; margin-left: calc(var(--M) * .22); } #n360-welcome.nb-quieto .nb-word .ch { opacity: 1; transform: none; }
+#n360-welcome.nb-quieto .nb-greet, #n360-welcome.nb-quieto .nb-skip, #n360-welcome.nb-quieto .nb-floor { opacity: 1; transform: none; }
+#n360-welcome.nb-quieto .nb-ring circle { stroke-dashoffset: 0; } #n360-welcome.nb-quieto .nb-sheen, #n360-welcome.nb-quieto .nb-shock, #n360-welcome.nb-quieto .nb-streak { display: none; }
+`;
+    style.textContent = style.textContent.split('__LOGO__').join(LOGO);
+    document.head.appendChild(style);
+
+    var letras = 'Negocio'.split('').map(function (c, i) { return '<span class="ch" style="transition-delay:' + (i * 55) + 'ms">' + c + '</span>'; }).join('');
+    var piezas = [0, 1, 2, 3].map(function (q) { return '<div class="nb-piece q' + q + '"><img src="' + LOGO + '" alt="" /></div>'; }).join('');
+    var cont = document.createElement('div');
+    cont.innerHTML =
+      '<div id="n360-welcome" role="dialog" aria-modal="true" aria-label="Bienvenido a Negocio360">' +
+        '<span class="nb-leak a"></span><span class="nb-leak b"></span><canvas class="nb-dust"></canvas><div class="nb-grain"></div><div class="nb-vig"></div>' +
+        '<div class="nb-streak"></div>' +
+        '<div class="nb-cam">' +
+          '<div class="nb-lockup">' +
+            '<div class="nb-mark">' +
+              '<span class="nb-floor"></span>' + piezas +
+              '<div class="nb-whole"><img src="' + LOGO + '" alt="" /></div><span class="nb-sheen"></span><span class="nb-shock"></span>' +
+              '<svg class="nb-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="49" pathLength="1"/></svg>' +
+            '</div>' +
+            '<h1 class="nb-word" aria-label="Negocio360" style="margin-top:0;margin-bottom:0">' + letras + '<span class="nb-num" id="nbNum"><i>00</i>0</span></h1>' +
+          '</div>' +
+          '<div class="nb-say" aria-hidden="true"><p>Controla tu negocio</p><p>Vende más</p><p class="fin">Gana más</p></div>' +
+          '<p class="nb-greet" id="nbGreet"></p>' +
+        '</div>' +
+        '<div class="nb-foot"><div class="nb-fill" id="nbFill"></div></div>' +
+        '<button type="button" class="nb-skip" id="nbSkip">Saltar</button>' +
+      '</div>';
+    var el = cont.firstElementChild;
+    document.body.appendChild(el);
+
+    var timers = [], raf = 0, cerrada = false, t0 = 0;
+    var $ = function (s) { return el.querySelector(s); };
+    var numEl = $('#nbNum'), fillEl = $('#nbFill'), greet = $('#nbGreet');
+    var frases = Array.prototype.slice.call(el.querySelectorAll('.nb-say p'));
+    var piezasEl = Array.prototype.slice.call(el.querySelectorAll('.nb-piece'));
+    function agenda(ms, fn) { timers.push(setTimeout(function () { if (!cerrada) { try { fn(); } catch (e) { /* un paso no rompe el resto */ } } }, ms)); }
+    function pintaNumero(v) {
+      var s = String(Math.max(0, Math.min(360, Math.round(v))));
+      var ceros = 3 - s.length;
+      numEl.innerHTML = (ceros > 0 ? '<i>' + '0'.repeat(ceros) + '</i>' : '') + s;
+    }
+    function saludo() {
+      var h = new Date().getHours();
+      var s = h < 12 ? 'Buenos días' : (h < 19 ? 'Buenas tardes' : 'Buenas noches');
+      var f = '';
+      try { f = new Date().toLocaleDateString('es-NI', { month: 'long', year: 'numeric' }); } catch (_) {}
+      greet.textContent = f ? s + '. Bienvenido a ' + f + '.' : s + '.';
+    }
+    function mostrarFrase(i) {
+      frases.forEach(function (p, j) {
+        if (j !== i && p.classList.contains('in')) { p.classList.remove('in'); p.classList.add('out'); }
+      });
+      agenda(i === 0 ? 0 : 380, function () { frases[i].classList.remove('out'); frases[i].classList.add('in'); });   // la anterior sale primero: nunca se montan
+    }
+
+    /* Polvo en el aire (canvas): pocas particulas suaves, se pausa al cerrar */
+    var cv = $('canvas.nb-dust'), ctx = null, W = 0, H = 0, P = [];
+    function iniciaPolvo() {
+      try {
+        ctx = cv.getContext('2d'); if (!ctx) return;
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        W = el.clientWidth; H = el.clientHeight;
+        cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        var n = Math.max(22, Math.min(46, Math.floor(W * H / 30000)));
+        for (var i = 0; i < n; i++) P.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .12, vy: -(Math.random() * .22 + .05), r: Math.random() * 1.8 + .6, a: Math.random() * .35 + .12, f: Math.random() * 6.28 });
+      } catch (e) { ctx = null; }
+    }
+    function dibujaPolvo(t) {
+      if (!ctx) return;
+      ctx.clearRect(0, 0, W, H);
+      for (var i = 0; i < P.length; i++) {
+        var p = P[i]; p.x += p.vx + Math.sin(t / 1800 + p.f) * .05; p.y += p.vy;
+        if (p.y < -4) { p.y = H + 4; p.x = Math.random() * W; }
+        ctx.fillStyle = 'rgba(31,107,255,' + (p.a * (.6 + .4 * Math.sin(t / 900 + p.f))).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.2832); ctx.fill();
+      }
+    }
+    /* Un solo reloj: cuenta 0->360, progreso y polvo */
+    function cuadro(now) {
+      if (cerrada) return;
+      var t = now - t0;
+      var p = Math.max(0, Math.min(1, (t - T.cuentaIni) / (T.cuentaFin - T.cuentaIni)));
+      if (t >= T.cuentaIni) pintaNumero((1 - Math.pow(1 - p, 3)) * 360);
+      fillEl.style.width = (Math.min(1, t / T.salir) * 100).toFixed(1) + '%';
+      dibujaPolvo(now);
+      raf = requestAnimationFrame(cuadro);
+    }
+    function quitar() {
+      if (el.parentNode) el.parentNode.removeChild(el);
+      var s = document.getElementById('n360-welcome-style'); if (s && s.parentNode) s.parentNode.removeChild(s);
+    }
+    function cerrar(rapido) {
+      if (cerrada) return;
+      cerrada = true;
+      timers.forEach(clearTimeout); cancelAnimationFrame(raf);
+      document.removeEventListener('keydown', alTeclado);
+      el.classList.add('nb-exit');
+      setTimeout(quitar, rapido ? 500 : 900);
+    }
+    function alTeclado(ev) { if (ev.key === 'Escape') cerrar(true); }
+
+    $('#nbSkip').addEventListener('click', function () { cerrar(true); });
+    document.addEventListener('keydown', alTeclado);
+    setTimeout(function () { if (!cerrada) { cerrada = true; quitar(); } }, T.seguridad);   // cierre de seguridad
+    saludo();
+    var imgs = el.querySelectorAll('img');
+    for (var k = 0; k < imgs.length; k++) imgs[k].onerror = function () { this.style.visibility = 'hidden'; };   // sin logo: no queda un icono roto
+
+    if (REDUCIDO) {
+      el.classList.add('nb-on', 'nb-quieto', 'nb-lock', 'nb-nombre');
+      pintaNumero(360); frases[2].classList.add('in', 'fin'); greet.classList.add('on');
+      fillEl.style.width = '100%';
+      setTimeout(function () { cerrar(true); }, 1800);
+      return;
+    }
+    iniciaPolvo();
+    t0 = performance.now();
+    raf = requestAnimationFrame(cuadro);
+    requestAnimationFrame(function () { el.classList.add('nb-on'); });
+    agenda(T.haz, function () { el.classList.add('nb-haz'); });
+    piezasEl.forEach(function (p, i) { agenda(T.piezas + i * 110, function () { p.classList.add('go'); }); });
+    agenda(T.lock, function () { el.classList.add('nb-lock'); });
+    agenda(T.nombre, function () { el.classList.add('nb-nombre'); });
+    agenda(T.fraseA, function () { mostrarFrase(0); });
+    agenda(T.fraseB, function () { mostrarFrase(1); });
+    agenda(T.fraseC, function () { mostrarFrase(2); });
+    agenda(T.saludo, function () { greet.classList.add('on'); });
+    agenda(T.salir, function () { cerrar(false); });
+  }
+
   try {
     // 1. Solo en las pantallas de ENTRADA al sistema.
     var archivo = (location.pathname.split('/').pop() || 'dashboard.html').toLowerCase();
@@ -471,6 +717,11 @@ canvas.hw-sky { z-index: 0; } canvas.hw-fx { z-index: 6; }
 
     // Temporada de Halloween (20 oct – 2 nov): escena propia, mismas reglas.
     if (esHalloween()) { escenaHalloween(REDUCIDO); return; }
+
+    // Resto del año (fuera de Halloween y Octubre Rosa): escena blanca de apertura.
+    // Para ver la anterior (dial azul): agregar ?bienvenida=dial a la URL.
+    var verDial = false; try { verDial = (location.search || '').toLowerCase().indexOf('bienvenida=dial') !== -1; } catch (_) {}
+    if (!ROSA && !verDial) { escenaBlanca(REDUCIDO); return; }
 
     /* ---------------- Tiempos (ms) ---------------- */
     var T = {

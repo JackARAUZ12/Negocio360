@@ -186,8 +186,14 @@ async function loadMetodosPago() {
 
 async function loadClientes() {
   try {
-    const { data } = await N360Leer.todo(() => sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos')
-      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre'), 'clientes');
+    const baseC = () => sbClient.from('clientes').select('id,nombre,apellido,telefono,correo,total_compras,num_compras,contactos,activo,updated_at').eq('auth_user_id', STATE.userId);
+    const completoC = () => N360Leer.todo(() => baseC().eq('activo', true).order('nombre'), 'clientes');
+    const { data } = window.N360Cache
+      ? await N360Cache.lista({ clave: 'proformas_clientes', userId: STATE.userId, completo: completoC,
+          delta: (desde) => N360Leer.todo(() => baseC().gte('updated_at', desde), 'clientes'),
+          contar: () => sbClient.from('clientes').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId).eq('activo', true),
+          filtro: (f) => f.activo === true, camposOrden: ['nombre'] })
+      : await completoC();
     STATE.clientes = data || [];
     llenarSelectClientes();
   } catch (e) { console.warn('loadClientes:', e); }
@@ -859,7 +865,9 @@ function actualizarIVAPorcentajeProf() {
 // MISMA fórmula exacta que calcularResumen() en ventas.js.
 function calcularResumenProf() {
   const subtotal  = round2(STATE.carrito.reduce((s,l) => s + l.cantidad*l.precio, 0));
-  const descuento = round2(STATE.carrito.reduce((s,l) => s + (l.descuento||0), 0));
+  const descuentoLineas = round2(STATE.carrito.reduce((s,l) => s + (l.descuento||0), 0));
+  // Descuento general del documento (mismo de Ventas): sobre lo que queda tras los descuentos por producto.
+  const descuento = round2(descuentoLineas + (window.N360DescDoc ? N360DescDoc.calcular(subtotal, descuentoLineas) : 0));
   const baseImponible = Math.max(subtotal - descuento, 0);
   const impuesto  = STATE.ivaActivo ? round2(baseImponible * (STATE.ivaPorcentaje/100)) : 0;
   const total     = round2(subtotal - descuento + impuesto);
@@ -973,6 +981,7 @@ async function guardarPersonalizarProforma() {
 
 function abrirNuevaProforma() {
   STATE.proformaActual = null;
+  if (window.N360DescDoc) N360DescDoc.reset();
   document.getElementById('np-modal-title').textContent = 'Nueva Proforma';
   document.getElementById('np-id').value = '';
   STATE.carrito = [];
@@ -1004,6 +1013,7 @@ function abrirEditarProforma(id) {
   if (window.N360ProfProd?.bloqueada(p.id)) { showToast('Esta proforma ya tiene producción: no se edita. Cancela las órdenes pendientes en Producción si necesitas cambiarla.', 'error'); return; }
   abrirNuevaProforma();
   STATE.proformaActual = p;
+  if (window.N360DescDoc) N360DescDoc.cargar(p);
   document.getElementById('np-modal-title').textContent = `Editar Proforma ${p.numero_proforma}`;
   document.getElementById('np-id').value = p.id;
   document.getElementById('np-fecha').value = p.fecha;
@@ -1085,6 +1095,7 @@ async function guardarProforma() {
       cliente_nombre: STATE.clienteSeleccionado?.nombre || 'Cliente final',
       fecha, fecha_vencimiento: fechaVenc,
       subtotal: r.subtotal, descuento: r.descuento, impuesto: r.impuesto,
+      ...(window.N360DescDoc ? N360DescDoc.payload() : {}),
       iva_activo: STATE.ivaActivo, iva_porcentaje: STATE.ivaActivo ? STATE.ivaPorcentaje : 0,
       total: r.total, costo_total: r.costoTotal, estado, observaciones,
       updated_at: new Date().toISOString(),
@@ -1181,8 +1192,14 @@ async function loadProformas() {
   const tbody = document.getElementById('prof-tbody');
   if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Cargando proformas…</td></tr>`;
   try {
-    const { data, error } = await N360Leer.todo(() => sbClient.from('proformas').select('*')
-      .eq('auth_user_id', STATE.userId).order('created_at', { ascending:false }), 'proformas');
+    const baseP = () => sbClient.from('proformas').select('*').eq('auth_user_id', STATE.userId);
+    const completoP = () => N360Leer.todo(() => baseP().order('created_at', { ascending:false }), 'proformas');
+    const { data, error } = window.N360Cache
+      ? await N360Cache.lista({ clave: 'proformas_lista', userId: STATE.userId, completo: completoP,
+          delta: (desde) => N360Leer.todo(() => baseP().gte('updated_at', desde), 'proformas'),
+          contar: () => sbClient.from('proformas').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.userId),
+          camposOrden: ['created_at'] })
+      : await completoP();
     if (error) throw error;
 
     const lista = data || [];
@@ -1290,6 +1307,7 @@ async function duplicarProforma(id) {
       cliente_id: p.cliente_id, cliente_nombre: p.cliente_nombre,
       fecha: todayISO(), fecha_vencimiento: null,
       subtotal: p.subtotal, descuento: p.descuento, impuesto: p.impuesto,
+      ...(window.N360DescDoc ? N360DescDoc.paraVenta(p) : {}),
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_porcentaje,
       total: p.total, costo_total: p.costo_total, estado: 'borrador',
       observaciones: p.observaciones,
@@ -1905,6 +1923,8 @@ async function confirmarConvertirAVenta() {
         : (p.observaciones || null),
       iva_activo: p.iva_activo, iva_porcentaje: p.iva_activo ? p.iva_porcentaje : 0,
       proforma_id: p.id,
+      // Descuento general de la proforma: pasa a la venta (el total ya lo incluye).
+      ...(window.N360DescDoc ? N360DescDoc.paraVenta(p) : {}),
       ...(totalAnticipo > 0 ? { certificados_aplicados: certsAnticipo.map(c => ({ certificado_id: c.certificado_id, monto: c.monto })) } : {}),
       creado_por_nombre: obtenerNombrePerfilActivo(),
     };
@@ -2409,10 +2429,8 @@ async function generarPDFProforma(p, items, cliente) {
 
   return doc;
 }
-async function descargarPdfProformaActual() {
-  const p = STATE.proformaActual;
-  if (!p) return;
-  try {
+// Arma el PDF de la proforma abierta (el mismo de siempre). Lo usan "Descargar PDF" y "Enviar".
+async function pdfProformaActualDoc(p) {
     // Siempre se pide fresco por proforma_id — nunca se reutiliza
     // STATE.detalleActual (podría ser el de OTRA proforma vista antes).
     const { data: itemsFrescos } = await sbClient.from('proforma_detalles').select('*').eq('proforma_id', p.id);
@@ -2420,10 +2438,17 @@ async function descargarPdfProformaActual() {
     await window.N360ProfVarios?.cargarDestinatarios?.(p);
     let cliente = null;
     if (p.cliente_id) {
-      const { data } = await sbClient.from('clientes').select('telefono,correo,direccion,direccion_factura,ciudad').eq('id', p.cliente_id).maybeSingle();
+      const { data } = await sbClient.from('clientes').select('telefono,whatsapp,correo,direccion,direccion_factura,ciudad').eq('id', p.cliente_id).maybeSingle();
       cliente = data || null;
     }
     const doc = await generarPDFProforma(p, items, cliente);
+  return { doc, cliente };
+}
+async function descargarPdfProformaActual() {
+  const p = STATE.proformaActual;
+  if (!p) return;
+  try {
+    const { doc } = await pdfProformaActualDoc(p);
     doc.save(`Proforma_${(p.numero_proforma||'proforma').replace(/[^\w\-]/g,'')}.pdf`);
   } catch (e) {
     console.error('descargarPdfProformaActual:', e);
@@ -2433,6 +2458,30 @@ async function descargarPdfProformaActual() {
 async function compartirProformaActual() {
   const p = STATE.proformaActual;
   if (!p) return;
+  // 📤 Enviar al cliente con el PDF (celular: compartir el archivo; computadora: WhatsApp o correo)
+  if (window.N360Enviar) {
+    const negocio = STATE.empresaConfig?.nombre_comercial || '';
+    const primer = String(p.cliente_nombre || '').trim().split(' ')[0];
+    N360Enviar.abrir({
+      titulo: `proforma ${p.numero_proforma || ''}`.trim(),
+      archivo: `Proforma_${(p.numero_proforma||'proforma').replace(/[^\w\-]/g,'')}.pdf`,
+      asunto: `Proforma ${p.numero_proforma || ''}${negocio ? ' — ' + negocio : ''}`,
+      texto: `Hola${primer ? ' ' + primer : ''} 👋 Te compartimos la proforma ${p.numero_proforma || ''} por un total de ${fmt(p.total)}. Cualquier consulta, con gusto te atendemos.${negocio ? '\n— ' + negocio : ''}`,
+      cliente: { nombre: p.cliente_nombre || '' },
+      generar: async () => (await pdfProformaActualDoc(p)).doc,
+      alEnviar: async () => { await marcarProformaEnviada(p); },
+    });
+    // Teléfono y correo del cliente (si los tiene) se ponen solos
+    if (p.cliente_id) {
+      try {
+        const { data } = await sbClient.from('clientes').select('telefono,whatsapp,correo').eq('id', p.cliente_id).maybeSingle();
+        const w = document.getElementById('n360env-wa'), c = document.getElementById('n360env-correo');
+        if (data && w && !w.value) w.value = data.whatsapp || data.telefono || '';
+        if (data && c && !c.value) c.value = data.correo || '';
+      } catch (e) { /* sin datos del cliente: se escriben a mano */ }
+    }
+    return;
+  }
   const texto = `Proforma ${p.numero_proforma} — ${p.cliente_nombre||'Cliente'} — Total: ${fmt(p.total)}`;
   let compartida = false;
   try {

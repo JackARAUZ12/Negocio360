@@ -20,7 +20,7 @@
 <script src="reloj-sesion.js?v=20261028b"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261030a"></script>
-<script src="modulos-registro.js?v=20261031a"></script>
+<script src="modulos-registro.js?v=20261104a"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
@@ -1684,6 +1684,69 @@
             </label>
           </div>
           <div class="cfg-status" id="transporte-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="vendedores-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🧑‍💼</div>
+            <div>
+              <div class="cfg-card-title">Vendedores</div>
+              <div class="cfg-card-desc">Elige “¿Quién vendió?” en cada venta, aunque esa persona no tenga usuario en el sistema, y mira el reporte de cuánto vendió y ganó cada uno. Es solo un dato de la venta: no cambia montos, Caja ni inventario.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar Vendedores</div>
+              <div class="cfg-row-sub" id="vendedores-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="vendedores-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleVendedoresClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="vendedores-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="microfinanciera-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">💼</div>
+            <div>
+              <div class="cfg-card-title">Panel Microfinanciera</div>
+              <div class="cfg-card-desc">Para quien vende o presta al crédito y cobra de casa en casa: vender al crédito (productos o efectivo) con cuotas diarias, semanales, quincenales o mensuales, la ruta de cobro del día, cobrar con recibo numerado y la tarjeta de cada cliente. Usa Créditos, Caja e Inventario de siempre.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar Panel Microfinanciera</div>
+              <div class="cfg-row-sub" id="microfinanciera-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="microfinanciera-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleMicrofinancieraClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="microfinanciera-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="panaderia-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🥖</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Panadería</div>
+              <div class="cfg-card-desc">Para panaderías y reposterías: qué hornear hoy según la vitrina y lo que se vende, los ingredientes que se van a usar (con tus recetas de Producción) y el cierre del día con lo que sobró, se botó o faltó. No toca Caja.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Panadería</div>
+              <div class="cfg-row-sub" id="panaderia-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="panaderia-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onTogglePanaderiaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="panaderia-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="taller-card">
@@ -3494,6 +3557,123 @@ async function guardarModuloMensajeria(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Vendedores: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloVendedores() {
+  const toggle = document.getElementById('vendedores-toggle');
+  const sub = document.getElementById('vendedores-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_vendedores').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_vendedores === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — en Ventas aparece “¿Quién vendió?” y en el menú “Vendedores”.' : 'Desactivado — no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloVendedores:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleVendedoresClick(evt) {
+  const toggle = document.getElementById('vendedores-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloVendedores(toggle.checked);
+}
+async function guardarModuloVendedores(activo) {
+  const toggle = document.getElementById('vendedores-toggle');
+  const sub = document.getElementById('vendedores-row-sub');
+  const statusEl = document.getElementById('vendedores-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_vendedores: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — en Ventas aparece “¿Quién vendió?” y en el menú “Vendedores”.' : 'Desactivado — no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Vendedores activado. Recarga la página para ver el menú.' : 'Vendedores desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloVendedores:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Panel Microfinanciera: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloMicrofinanciera() {
+  const toggle = document.getElementById('microfinanciera-toggle');
+  const sub = document.getElementById('microfinanciera-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_microfinanciera').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_microfinanciera === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el Panel Microfinanciera aparece en el menú.' : 'Desactivado — el Panel Microfinanciera no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloMicrofinanciera:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleMicrofinancieraClick(evt) {
+  const toggle = document.getElementById('microfinanciera-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloMicrofinanciera(toggle.checked);
+}
+async function guardarModuloMicrofinanciera(activo) {
+  const toggle = document.getElementById('microfinanciera-toggle');
+  const sub = document.getElementById('microfinanciera-row-sub');
+  const statusEl = document.getElementById('microfinanciera-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_microfinanciera: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el Panel Microfinanciera aparece en el menú.' : 'Desactivado — el Panel Microfinanciera no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Panel Microfinanciera activado. Recarga la página para ver el menú.' : 'Panel Microfinanciera desactivado (tus créditos y cobros se conservan en Créditos).', true);
+  } catch (e) {
+    console.error('guardarModuloMicrofinanciera:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
+// Modulo de Panaderia: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloPanaderia() {
+  const toggle = document.getElementById('panaderia-toggle');
+  const sub = document.getElementById('panaderia-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_panaderia').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_panaderia === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Panadería aparece en el menú.' : 'Desactivado — el módulo de Panadería no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloPanaderia:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onTogglePanaderiaClick(evt) {
+  const toggle = document.getElementById('panaderia-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloPanaderia(toggle.checked);
+}
+async function guardarModuloPanaderia(activo) {
+  const toggle = document.getElementById('panaderia-toggle');
+  const sub = document.getElementById('panaderia-row-sub');
+  const statusEl = document.getElementById('panaderia-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_panaderia: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Panadería aparece en el menú.' : 'Desactivado — el módulo de Panadería no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Módulo de Panadería activado. Recarga la página para ver el menú.' : 'Módulo de Panadería desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloPanaderia:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Modulo de Taller mecanico: se activa/desactiva desde aqui. Apagado por defecto.
 async function cargarModuloTaller() {
   const toggle = document.getElementById('taller-toggle');
@@ -4162,6 +4342,9 @@ async function initConfiguracion() {
       cargarModuloTransporte();
       cargarModuloTaller();
       cargarModuloMensajeria();
+      cargarModuloPanaderia();
+      cargarModuloMicrofinanciera();
+      cargarModuloVendedores();
       cargarModuloComisiones();
       cargarDatosFiscalesCR();
       cargarModuloDiseno();
@@ -4195,7 +4378,7 @@ document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
 <script src="perfiles-guard.js?v=20261029a"></script>
-<script src="modulos-guard.js?v=20261031a"></script>
+<script src="modulos-guard.js?v=20261104a"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>

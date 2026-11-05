@@ -992,6 +992,7 @@ async function abrirDetalle(ventaId) {
           <div class="detalle-label">Descuento</div>
           <div class="detalle-value">${fmt(venta.descuento)}</div>
         </div>
+        ${window.N360Vendedor ? N360Vendedor.htmlDetalle(venta) : ''}
         ${Number(venta.descuento_general) > 0 ? `<div class="detalle-item">
           <div class="detalle-label">Incluye descuento general</div>
           <div class="detalle-value">${fmt(venta.descuento_general)} <span style="font-size:12px;color:var(--text-muted)">(${venta.descuento_general_modo === 'porcentaje' ? Number(venta.descuento_general_valor) + '%' : 'monto fijo'}${venta.descuento_general_motivo ? ' · ' + esc(venta.descuento_general_motivo) : ''})</span></div>
@@ -1165,8 +1166,19 @@ async function loadProductosCache() {
     // se vende desde aqui -- solo desde Farmacia > Control de
     // Sustancias, que crea la venta real por su cuenta y ya aparece
     // en el historial de Ventas igual que cualquier otra.
-    const { data } = await N360Leer.todo(() => sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
-      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre'), 'productos');
+    // Lectura con copia en la pestaña: solo se piden los productos que cambiaron desde la última vez
+    // (ante cualquier duda se lee el catálogo completo, igual que antes; ver cache-productos.js).
+    const baseVR = () => sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo,updated_at')
+      .eq('auth_user_id', S.userId);
+    const completoVR = () => N360Leer.todo(() => baseVR().eq('activo', true).order('nombre'), 'productos');
+    const { data } = window.N360Cache
+      ? await N360Cache.lista({
+          clave: 'ventas_productos', userId: S.userId, completo: completoVR,
+          delta: (desde) => N360Leer.todo(() => baseVR().gte('updated_at', desde), 'productos'),
+          contar: () => sb.from('productos').select('id', { count: 'exact', head: true }).eq('auth_user_id', S.userId).eq('activo', true),
+          filtro: (f) => f.activo === true, camposOrden: ['nombre'],
+        })
+      : await completoVR();
     const productos = (data || []).filter(p => p.es_sustancia_controlada !== true);
 
     // Combos: se agregan al MISMO catálogo de búsqueda/carrito que los
@@ -1223,8 +1235,14 @@ async function loadProductosCache() {
 
 async function loadClientesCache() {
   try {
-    const { data } = await N360Leer.todo(() => sb.from('clientes').select('id,nombre,apellido,telefono,correo')
-      .eq('auth_user_id', S.userId).eq('activo', true).order('nombre'), 'clientes');
+    const baseC = () => sb.from('clientes').select('id,nombre,apellido,telefono,correo,activo,updated_at').eq('auth_user_id', S.userId);
+    const completoC = () => N360Leer.todo(() => baseC().eq('activo', true).order('nombre'), 'clientes');
+    const { data } = window.N360Cache
+      ? await N360Cache.lista({ clave: 'ventas_clientes', userId: S.userId, completo: completoC,
+          delta: (desde) => N360Leer.todo(() => baseC().gte('updated_at', desde), 'clientes'),
+          contar: () => sb.from('clientes').select('id', { count: 'exact', head: true }).eq('auth_user_id', S.userId).eq('activo', true),
+          filtro: (f) => f.activo === true, camposOrden: ['nombre'] })
+      : await completoC();
     S.clientesCache = data || [];
   } catch(e) { S.clientesCache = []; }
 }
@@ -2073,6 +2091,7 @@ function validarPasoActual() {
       return false;
     }
     if (!validarPagoSeparado()) return false;
+    if (window.N360Vendedor && !N360Vendedor.validar('normal')) return false;
     if (S.metodoPagoId === 'fiado' && S.clienteOpcion === 'final') {
       showToast('Para fiar necesitas un cliente: vuelve al primer paso y elige o crea uno', 'error');
       return false;
@@ -5773,12 +5792,10 @@ async function reimprimirTicketVenta() {
 }
 window.reimprimirTicketVenta = reimprimirTicketVenta;
 
-async function descargarComprobanteCartaVenta() {
-  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
-  if (!venta) return;
-  try {
+// Arma el comprobante tamaño carta de una venta (el mismo de siempre). Lo usan "Comprobante" y "Enviar".
+async function pdfComprobanteCartaVentaDoc(venta) {
     const { data: items } = await sb.from('venta_detalles').select('*')
-      .eq('venta_id', S.ventaDetalleId).eq('auth_user_id', S.userId);
+      .eq('venta_id', venta.id).eq('auth_user_id', S.userId);
 
     const doc = await generarComprobanteCartaPDF('venta', {
       userId: S.userId,
@@ -5805,6 +5822,13 @@ async function descargarComprobanteCartaVenta() {
       sku: it.producto_sku || null, producto_id: it.producto_id || null,
     })));
 
+    return doc;
+}
+async function descargarComprobanteCartaVenta() {
+  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
+  if (!venta) return;
+  try {
+    const doc = await pdfComprobanteCartaVentaDoc(venta);
     doc.save(`Comprobante_${venta.numero_venta}.pdf`);
   } catch (e) {
     console.error('descargarComprobanteCartaVenta:', e);
@@ -5812,6 +5836,34 @@ async function descargarComprobanteCartaVenta() {
   }
 }
 window.descargarComprobanteCartaVenta = descargarComprobanteCartaVenta;
+
+/* 📤 Enviar al cliente (Fase 3): comprobante tamaño carta por WhatsApp o correo.
+   Solo genera el PDF de siempre: no toca la venta, Caja ni inventario. */
+async function enviarVentaActual() {
+  const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
+  if (!venta) return;
+  if (!window.N360Enviar) { descargarComprobanteCartaVenta(); return; }
+  const negocio = S.empresaConfig?.nombre_comercial || '';
+  const primer = String(venta.cliente_nombre || '').trim().split(' ')[0];
+  const generico = /^(cliente|consumidor)/i.test(primer);
+  N360Enviar.abrir({
+    titulo: `factura ${venta.numero_venta || ''}`.trim(),
+    archivo: `Factura_${String(venta.numero_venta || 'venta').replace(/[^\w\-]/g, '')}.pdf`,
+    asunto: `Factura ${venta.numero_venta || ''}${negocio ? ' — ' + negocio : ''}`,
+    texto: `Hola${primer && !generico ? ' ' + primer : ''} 👋 Te compartimos tu factura ${venta.numero_venta || ''} por ${fmt(venta.total)}. ¡Gracias por tu compra!${negocio ? '\n— ' + negocio : ''}`,
+    cliente: { nombre: venta.cliente_nombre || '' },
+    generar: () => pdfComprobanteCartaVentaDoc(venta),
+  });
+  if (venta.cliente_id) {
+    try {
+      const { data } = await sb.from('clientes').select('telefono,whatsapp,correo').eq('id', venta.cliente_id).eq('auth_user_id', S.userId).maybeSingle();
+      const w = document.getElementById('n360env-wa'), c = document.getElementById('n360env-correo');
+      if (data && w && !w.value) w.value = data.whatsapp || data.telefono || '';
+      if (data && c && !c.value) c.value = data.correo || '';
+    } catch (e) { /* sin datos del cliente: se escriben a mano */ }
+  }
+}
+window.enviarVentaActual = enviarVentaActual;
 
 /* ============================================================
    CONFIRMAR VENTA — TRANSACCIÓN COMPLETA
@@ -6404,6 +6456,8 @@ async function _confirmarVentaInterno(conImpresion) {
       // columnas de IVA tambien lo lleve (nunca debe haber descuento sin canje).
       ...((S.canje && S.canje.clienteId === S.clienteId && (r.descuentoPuntos || 0) > 0)
         ? { canje_recompensa_id: S.canje.id, canje_descuento: r.descuentoPuntos } : {}),
+      // Vendedor (solo si el negocio activó Vendedores y se eligió uno): es solo un dato, no cambia montos.
+      ...(window.N360Vendedor ? N360Vendedor.payload('normal') : {}),
     };
 
     // Campos opcionales de IVA (si la columna no existe en la tabla, Supabase
@@ -7805,6 +7859,7 @@ async function _confirmarVentaRapidaInterno() {
   if (VR.procesando) return;
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
   if (!validarPagoSeparadoVR()) return;
+  if (window.N360Vendedor && !N360Vendedor.validar('vr')) return;
 
   // Aviso (no bloquea): costo 0 o venta por debajo del costo -> ganancia incorrecta.
   try {
@@ -7906,6 +7961,7 @@ async function _confirmarVentaRapidaInterno() {
       estado:             'completada',
       observaciones:      'Venta rápida (escáner)',
       categoria:          'venta_rapida',
+      ...(window.N360Vendedor ? N360Vendedor.payload('vr') : {}),
     };
     const ventaPayloadConIva = {
       ...ventaPayload,

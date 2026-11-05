@@ -52,3 +52,71 @@
 .tl-card.urg{border-left:4px solid var(--danger)}
 .ms-ubic{color:var(--accent);font-weight:700;text-decoration:none;font-size:12.5px}.ms-ubic:hover{text-decoration:underline}
 .ms-chip.portal{background:var(--accent-soft);color:var(--accent)}
+/* Mapa en vivo (Despacho) */
+button.ms-ubic{background:none;border:0;padding:0;cursor:pointer;text-align:left;font:inherit;font-size:12.5px}
+.ms-mapa-caja{border:1px solid var(--border);border-radius:14px;background:var(--bg-surface);margin-bottom:12px;overflow:hidden}
+.ms-mapa-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px}
+.ms-mapa-cab .ms-mapa-res{flex:1 1 160px;font-size:12.5px}
+.ms-mapa{height:clamp(280px,48vh,460px);width:100%;position:relative;z-index:0;background:var(--bg-secondary,#e9edf2)}
+.ms-mapa.vacio{height:auto;display:flex;align-items:center;justify-content:center;padding:18px 14px;text-align:center}
+.ms-mapa.vacio>div{display:flex;flex-direction:column;gap:4px;max-width:440px;font-size:13.5px}
+.ms-mapa.vacio span{color:var(--text-secondary)}
+.ms-moto{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:3px 9px 3px 4px;border-radius:999px;background:#fff;color:#111;border:3px solid #16a34a;box-shadow:0 2px 8px rgba(0,0,0,.3);font:700 12.5px/1.2 system-ui,sans-serif;transform:translate(-4px,-4px)}
+.ms-moto span{font-size:17px}
+.ms-moto.rato{border-color:#d97706}.ms-moto.viejo{border-color:#9ca3af;opacity:.85}
+.ms-moto.vivo{animation:msLatido 2s infinite}
+@keyframes msLatido{0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.55),0 2px 8px rgba(0,0,0,.3)}50%{box-shadow:0 0 0 8px rgba(22,163,74,0),0 2px 8px rgba(0,0,0,.3)}}
+@media (prefers-reduced-motion:reduce){.ms-moto.vivo{animation:none}}
+.ms-pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;background:#fff;border:3px solid #2563eb;box-shadow:0 2px 6px rgba(0,0,0,.3);font-size:14px}
+.ms-pin>*{transform:rotate(45deg)}.ms-pin{line-height:1}
+.ms-pin.en_ruta{border-color:#16a34a}.ms-pin.no_entregado{border-color:#dc2626}.ms-pin.asignado{border-color:#7c3aed}.ms-pin.urg{background:#fee2e2}
+.ms-pin.sel{border-color:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.45),0 2px 6px rgba(0,0,0,.3)}
+.ms-pop{font-size:13px;line-height:1.45;color:#111}
+.ms-pop .tl-muted{color:#555}
+.ms-pop-acc{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ms-pop-acc a,.ms-pop-acc button{font-size:12.5px;padding:6px 10px;min-height:34px;text-decoration:none;display:inline-flex;align-items:center}
+.ms-ubic-hace.vivo{color:#16a34a;font-weight:700}.ms-ubic-hace.rato{color:#d97706;font-weight:700}.ms-ubic-hace.viejo{color:#6b7280}
+.leaflet-container{font:inherit}
+/* Panel: inicio "Hoy" */
+.ms-nuevo{background:var(--accent)!important;color:#fff!important}
+.ms-hoy{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+@media (max-width:900px){.ms-hoy{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ms-hoy-c{display:grid;grid-template-columns:auto 1fr;grid-template-areas:"ico n" "t t" "s s";align-items:center;gap:2px 8px;text-align:left;min-width:0;padding:12px 14px;border-radius:14px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-primary);font:inherit;cursor:pointer;transition:transform .12s,box-shadow .12s;min-height:96px}
+.ms-hoy-c:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.08)}
+.ms-hoy-c:disabled{opacity:.5;cursor:not-allowed}
+.ms-hoy-ico{grid-area:ico;font-size:22px}
+.ms-hoy-n{grid-area:n;font-size:26px;line-height:1.1;font-weight:800;overflow-wrap:anywhere}
+.ms-hoy-c.dinero .ms-hoy-n{font-size:19px}
+.ms-hoy-t{grid-area:t;font-weight:800;font-size:14px}
+.ms-hoy-s{grid-area:s;font-size:12.5px;color:var(--text-secondary);overflow-wrap:anywhere}
+.ms-hoy-c.ambar{border-color:#f59e0b;box-shadow:inset 4px 0 0 #f59e0b}
+.ms-hoy-c.rojo{border-color:var(--danger);box-shadow:inset 4px 0 0 var(--danger)}
+.ms-hoy-c.verde{border-color:#16a34a;box-shadow:inset 4px 0 0 #16a34a}
+.ms-hoy-dos{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:10px;margin-bottom:12px}
+@media (max-width:760px){.ms-hoy-dos{grid-template-columns:minmax(0,1fr)}}
+.ms-mini{display:flex;flex-direction:column;gap:8px;min-width:0}
+.ms-mini-cab{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.ms-mapa.ms-mapa-mini{height:clamp(200px,32vh,280px);border-radius:10px;overflow:hidden;cursor:pointer}
+.ms-mapa.ms-mapa-mini.vacio{height:auto;min-height:90px;cursor:default;border:1px dashed var(--border);font-size:13px}
+.tln-guia{border:1px solid var(--border);border-radius:14px;background:var(--bg-surface);padding:4px 12px;margin-top:4px}
+.tln-guia>summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0;list-style:none}
+.tln-guia>summary::-webkit-details-marker{display:none}
+.tln-guia[open]>summary{border-bottom:1px solid var(--border);margin-bottom:10px}
+#tln-preparar{margin-bottom:12px}
+/* Envíos: registro rápido */
+.ms-rapido-acc{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.ms-igual{max-width:100%;overflow-wrap:anywhere;text-align:left}
+.ms-conocido{border-radius:10px;padding:8px 10px;background:var(--accent-soft);color:var(--accent);font-size:13px;font-weight:700}
+.ms-mas>summary{cursor:pointer;list-style:none;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.ms-mas>summary::-webkit-details-marker{display:none}
+.ms-mas>summary b::before{content:''}
+/* Despacho: asignar en un toque */
+.ms-chips{flex:1 1 100%;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ms-chips:empty{display:none}
+.ms-chips-t{font-size:12.5px;font-weight:700;color:var(--text-secondary)}
+.ms-chip-rep{border:2px solid var(--border);background:var(--bg-surface);color:var(--text-primary);border-radius:999px;padding:7px 12px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;min-height:40px;white-space:nowrap}
+.ms-chip-rep b{background:var(--bg-hover);border-radius:999px;padding:0 7px;margin-left:2px}
+.ms-chip-rep:hover{border-color:var(--accent)}
+.ms-chip-rep.va{border-color:#16a34a;background:rgba(22,163,74,.08)}
+.ms-chip-rep.pasa{border-color:var(--danger);opacity:.8}
+.tln-barra .ms-nuevo span{display:inline!important}

@@ -80,9 +80,14 @@
   // dedicado de cada uno (no este sistema generico) los enciende.
   async function cargarConfigModulos(client, authUserId) {
     try {
-      const { data } = await client.from('configuracion_empresa')
-        .select('metadata, usa_modulo_hotel, usa_modulo_restaurante, usa_negocios_vinculados, usa_modulo_farmacia, usa_farmacia_fase2, usa_puntos, usa_modulo_veterinaria')
-        .eq('auth_user_id', authUserId).maybeSingle();
+      // Una sola lectura de la fila de configuración (antes eran ~15 consultas seguidas, una por interruptor).
+      // Con '*' una columna que falte nunca rompe a las demás: simplemente queda en falso, igual que antes.
+      let fila = null;
+      try {
+        const r0 = await client.from('configuracion_empresa').select('*').eq('auth_user_id', authUserId).maybeSingle();
+        fila = (r0 && r0.data) || null;
+      } catch (_) { fila = null; }
+      const data = fila;
       const cfg = (data?.metadata && typeof data.metadata === 'object' && data.metadata.modulosOpcionales) || {};
       cfg._flagsPropios = {
         usa_modulo_hotel: data?.usa_modulo_hotel === true,
@@ -96,62 +101,66 @@
       // Insumos Medicos: se consulta aparte para que, pase lo que pase con
       // esta columna, jamas afecte a los flags de los demas modulos.
       try {
-        const { data: ins } = await client.from('configuracion_empresa')
-          .select('usa_modulo_insumos').eq('auth_user_id', authUserId).maybeSingle();
+        const ins = fila;
         cfg._flagsPropios.usa_modulo_insumos = ins?.usa_modulo_insumos === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_insumos = false; }
       // Transporte de carga: consulta aparte, mismo criterio que Insumos.
       try {
-        const { data: tr } = await client.from('configuracion_empresa')
-          .select('usa_modulo_transporte').eq('auth_user_id', authUserId).maybeSingle();
+        const tr = fila;
         cfg._flagsPropios.usa_modulo_transporte = tr?.usa_modulo_transporte === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_transporte = false; }
       // Taller mecánico: consulta aparte, mismo criterio.
       try {
-        const { data: ta } = await client.from('configuracion_empresa')
-          .select('usa_modulo_taller').eq('auth_user_id', authUserId).maybeSingle();
+        const ta = fila;
         cfg._flagsPropios.usa_modulo_taller = ta?.usa_modulo_taller === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_taller = false; }
       // Mensajería / Delivery: consulta aparte, mismo criterio.
       try {
-        const { data: ms } = await client.from('configuracion_empresa')
-          .select('usa_modulo_mensajeria').eq('auth_user_id', authUserId).maybeSingle();
+        const ms = fila;
         cfg._flagsPropios.usa_modulo_mensajeria = ms?.usa_modulo_mensajeria === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_mensajeria = false; }
+      // Vendedores: consulta aparte, mismo criterio.
+      try {
+        const vd = fila;
+        cfg._flagsPropios.usa_vendedores = vd?.usa_vendedores === true;
+      } catch (_) { cfg._flagsPropios.usa_vendedores = false; }
+      // Microfinanciera: consulta aparte, mismo criterio.
+      try {
+        cfg._flagsPropios.usa_modulo_microfinanciera = fila?.usa_modulo_microfinanciera === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_microfinanciera = false; }
+      // Panadería: consulta aparte, mismo criterio.
+      try {
+        const pa = fila;
+        cfg._flagsPropios.usa_modulo_panaderia = pa?.usa_modulo_panaderia === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_panaderia = false; }
       // Comisiones: consulta aparte, mismo criterio.
       try {
-        const { data: co } = await client.from('configuracion_empresa')
-          .select('usa_modulo_comisiones').eq('auth_user_id', authUserId).maybeSingle();
+        const co = fila;
         cfg._flagsPropios.usa_modulo_comisiones = co?.usa_modulo_comisiones === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_comisiones = false; }
       // Diseño: consulta aparte, mismo criterio.
       try {
-        const { data: di } = await client.from('configuracion_empresa')
-          .select('usa_modulo_diseno').eq('auth_user_id', authUserId).maybeSingle();
+        const di = fila;
         cfg._flagsPropios.usa_modulo_diseno = di?.usa_modulo_diseno === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_diseno = false; }
       // Fiados: consulta aparte, mismo criterio.
       try {
-        const { data: fi } = await client.from('configuracion_empresa')
-          .select('usa_modulo_fiados').eq('auth_user_id', authUserId).maybeSingle();
+        const fi = fila;
         cfg._flagsPropios.usa_modulo_fiados = fi?.usa_modulo_fiados === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_fiados = false; }
       // Clínica: consulta aparte, mismo criterio.
       try {
-        const { data: cl } = await client.from('configuracion_empresa')
-          .select('usa_modulo_clinica').eq('auth_user_id', authUserId).maybeSingle();
+        const cl = fila;
         cfg._flagsPropios.usa_modulo_clinica = cl?.usa_modulo_clinica === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_clinica = false; }
       // Cotizaciones: consulta aparte, mismo criterio.
       try {
-        const { data: co } = await client.from('configuracion_empresa')
-          .select('usa_modulo_cotizaciones').eq('auth_user_id', authUserId).maybeSingle();
+        const co = fila;
         cfg._flagsPropios.usa_modulo_cotizaciones = co?.usa_modulo_cotizaciones === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_cotizaciones = false; }
       // Certificados de regalo: consulta aparte, mismo criterio.
       try {
-        const { data: ce } = await client.from('configuracion_empresa')
-          .select('usa_modulo_certificados').eq('auth_user_id', authUserId).maybeSingle();
+        const ce = fila;
         cfg._flagsPropios.usa_modulo_certificados = ce?.usa_modulo_certificados === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_certificados = false; }
       return cfg;
@@ -630,7 +639,7 @@
      Si el negocio activó "generar asientos automáticamente" (casilla en Contabilidad), mientras trabaja en otros
      módulos se abre —oculta— la misma pantalla de Contabilidad que genera los asientos pendientes. Es la misma
      función y las mismas reglas que el botón manual (no se duplica nada; hay candado entre ventanas).
-     Solo corre con el perfil administrador o sin perfiles, con la pestaña a la vista y cada ~10 minutos. */
+     Corre con cualquier perfil (administrador, restringido o sin perfiles), con la pestaña a la vista y cada ~10 minutos. */
   function iniciarContabilidadEnFondo(client, userId) {
     const archivo = (location.pathname.split('/').pop() || '').toLowerCase();
     if (archivo === 'contabilidad.html' || window.self !== window.top) return;
@@ -652,7 +661,7 @@
         const raw = sessionStorage.getItem('n360_perfil_activo');
         if (!raw) return true;
         const p = JSON.parse(raw);
-        return !p || p.tipo === 'admin';
+        return !p || p.tipo === 'admin' || p.tipo === 'restringido';
       } catch (_) { return false; }
     }
     function lanzar() {

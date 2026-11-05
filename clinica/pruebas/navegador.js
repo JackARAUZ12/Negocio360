@@ -78,6 +78,8 @@ async function nuevaPagina(browser, base, ancho, alto, conSemilla = true) {
     const u = ruta.request().url();
     if (u.startsWith(base)) return ruta.continue();
     if (u.includes('supabase-js')) return ruta.fulfill({ contentType: 'application/javascript', body: MOCK });
+    if (/unpkg\.com\/leaflet@[^/]+\/dist\/leaflet\.(js|css)$/.test(u)) return ruta.fulfill({ contentType: u.endsWith('.js') ? 'application/javascript' : 'text/css', body: fs.readFileSync(path.join(__dirname, 'vendor', 'leaflet.' + (u.endsWith('.js') ? 'js' : 'css'))) });   // mapa real (copia local)
+    if (/tile\.openstreetmap\.org/.test(u)) return ruta.fulfill({ contentType: 'image/png', body: PNG_PRUEBA });
     if (u.includes('/storage/v1/object/public/')) return ruta.fulfill({ contentType: 'image/png', body: PNG_PRUEBA });   // fotos subidas: imagen real (si no, se ocultan al no cargar)
     if (u.endsWith('.js') || u.includes('lucide')) return ruta.fulfill({ contentType: 'application/javascript', body: '' });
     return ruta.fulfill({ contentType: 'text/css', body: '' });
@@ -2872,7 +2874,7 @@ async function pruebaMensajeria(browser, base) {
     await page.waitForFunction(() => /100/.test(document.getElementById('f-tarifa').textContent) && /600/.test(document.getElementById('f-tarifa').textContent), null, { timeout: 8000 });
     verificar(true, `${tag}: la tarifa sale sola (80 + 20 urgente = 100) y avisa que el repartidor cobra 600`);
     if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-envio-${ancho}.png` });
-    await page.fill('#f-ubic', 'esto no es un lugar'); await page.click('#e-guardar');
+    await page.click('#f-mas > summary'); await page.fill('#f-ubic', 'esto no es un lugar'); await page.click('#e-guardar');
     verificar((await page.textContent('#e-aviso')).includes('ubicación'), `${tag}: una ubicación mal escrita no se guarda`);
     await page.fill('#f-ubic', 'https://www.google.com/maps/@12.1364,-86.2514,17z'); await page.click('#e-guardar');
     await page.waitForSelector('#e-listo.abierto', { timeout: 10000 });
@@ -3154,6 +3156,76 @@ async function pruebaMensajeriaFase3(browser, base) {
   }
 }
 
+async function pruebaMensajeriaHoy(browser, base) {
+  console.log('\n▶ Mensajería más práctica: inicio "Hoy", ➕ Envío, registro rápido y asignar en un toque');
+  const semillaHoy = () => { const db = semillaMensajeriaDinero();
+    Object.assign(db.mensajeria_envios.find(e => e.id === 'm-a'), { destinatario_telefono: '88990011', referencia: 'Portón verde' });
+    Object.assign(db.mensajeria_repartidores[0], { ubic_lat: 12.1364, ubic_lng: -86.2514, ubic_at: new Date().toISOString(), telefono: '88880000' });
+    return db; };
+  const marco = async (page, re) => { let fr = null; for (let i = 0; i < 150 && !fr; i++) { fr = page.frames().find(f => re.test(f.url())); if (!fr) await page.waitForTimeout(100); } return fr; };
+  for (const [ancho, alto] of [[360, 740], [1280, 900]]) {
+    const tag = ancho < 500 ? 'celular' : 'computadora';
+    const { ctx, page } = await nuevaPagina(browser, base, ancho, alto);
+    const leer = () => page.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    await page.goto(base + '/mensajeria.html');
+    await page.evaluate(db => { sessionStorage.setItem('__DB', JSON.stringify(db)); sessionStorage.setItem('__LOG', '[]'); }, semillaHoy());
+    await page.goto(base + '/mensajeria.html'); await page.waitForSelector('#tln-hoy .ms-hoy-c', { timeout: 20000 });
+    // 1) Inicio "Hoy"
+    const hoy = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#tln-hoy .ms-hoy-c')].map(b => [b.dataset.hoy, b.textContent.replace(/\s+/g, ' ').trim()])));
+    verificar(Object.keys(hoy).length === 6 && /1\s*Por asignar/.test(hoy.asignar) && /Entregados hoy/.test(hoy.entregados) && /C\$/.test(hoy.calle) && /Comercios por liquidar/.test(hoy.liquidar),
+      `${tag}: el inicio muestra los 6 cuadros del día (por asignar 1, en camino, entregados, no entregados, efectivo en la calle, por liquidar)`);
+    const guia = await page.evaluate(() => ({ guia: document.getElementById('tln-guia').open, prep: getComputedStyle(document.getElementById('tln-preparar')).display }));
+    verificar(guia.guia === false && guia.prep === 'none', `${tag}: con la empresa ya preparada, la explicación queda cerrada (a un toque) y "Prepara tu empresa" no estorba`);
+    await page.waitForSelector('#tln-mapa .ms-moto', { timeout: 10000 });
+    verificar((await page.textContent('#tln-mapa')).includes('Pedro'), `${tag}: el inicio muestra el mini mapa con el repartidor en vivo`);
+    await sinDesborde(page, `${tag} inicio Hoy`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-hoy-${ancho}.png`, fullPage: true });
+    await page.click('#tln-hoy [data-hoy="asignar"]');
+    verificar(!!(await marco(page, /mensajeria-despacho\.html/)), `${tag}: tocar "Por asignar" abre Despacho dentro del panel`);
+    // 2) ➕ Envío desde cualquier parte
+    await page.click('#tln-nuevo');
+    let fe = await marco(page, /mensajeria-envios\.html/); await fe.waitForSelector('#e-modal.abierto', { timeout: 15000 });
+    verificar(true, `${tag}: "➕ Envío" abre el formulario de envío nuevo desde cualquier parte del panel`);
+    // 3) Registro rápido: lo esencial a la vista, el resto en "Más opciones"
+    const vis = { ubic: await fe.isVisible('#f-ubic'), notas: await fe.isVisible('#f-notas'), zona: await fe.isVisible('#f-zona'), cobrar: await fe.isVisible('#f-cobrar') };
+    verificar(!vis.ubic && !vis.notas && vis.zona && vis.cobrar, `${tag}: el formulario muestra solo lo esencial; ubicación y notas quedan en "Más opciones"`);
+    await fe.selectOption('#f-comercio', 'cli-1');
+    verificar(await fe.evaluate(() => document.getElementById('f-rem-wrap').style.display === 'none'), `${tag}: con comercio elegido no pide de nuevo quién envía`);
+    await fe.fill('#f-destel', '88990011');
+    await fe.waitForFunction(() => document.getElementById('f-des').value === 'Ana', null, { timeout: 8000 });
+    const auto = await fe.evaluate(() => ({ dir: document.getElementById('f-dir').value, ref: document.getElementById('f-ref').value, zona: document.getElementById('f-zona').value, nota: document.getElementById('f-conocido').textContent }));
+    verificar(auto.dir === 'Calle 1' && auto.ref === 'Portón verde' && auto.zona === 'z-1' && auto.nota.includes('Ya recibió antes'), `${tag}: al escribir el teléfono de alguien que ya recibió, se llenan su nombre, dirección, referencia y zona`);
+    await fe.fill('#f-cobrar', '300'); await fe.click('#e-guardar'); await fe.waitForSelector('#e-listo.abierto', { timeout: 10000 });
+    await modalesSinDesborde(fe, `${tag} registro rápido`);
+    await fe.click('#e-listo [data-cerrar]');
+    await fe.click('#e-nuevo'); await fe.waitForSelector('#e-modal.abierto');
+    verificar(await fe.inputValue('#f-comercio') === '' && await fe.locator('#f-igual button').count() === 1, `${tag}: el envío nuevo NO queda solo a nombre del comercio anterior; aparece "Igual que el anterior" para tocarlo`);
+    await fe.click('#f-igual button');
+    verificar(await fe.inputValue('#f-comercio') === 'cli-1', `${tag}: "Igual que el anterior" pone el comercio en un toque`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-rapido-${ancho}.png` });
+    await fe.click('#e-modal .tl-x');
+    let db = await leer(); const nuevo = db.mensajeria_envios.find(e => e.destinatario_telefono === '88990011' && e.id !== 'm-a');
+    verificar(nuevo && nuevo.comercio_id === 'cli-1' && nuevo.destinatario_nombre === 'Ana' && Number(nuevo.tarifa) === 80 && Number(nuevo.monto_cobrar) === 300, `${tag}: el envío rápido se guardó con comercio, datos, tarifa 80 y cobro 300`);
+    // 4) Asignar en un toque
+    await page.click('#tln-tabs [data-sub="despacho"]');
+    const fd = await marco(page, /mensajeria-despacho\.html/); await fd.waitForSelector('#d-tablero .tl-ot', { timeout: 15000 });
+    await fd.locator('#d-tablero .tl-ot', { hasText: nuevo.numero }).locator('input.ms-sel').check();
+    await fd.waitForSelector('#d-chips .ms-chip-rep', { timeout: 8000 });
+    verificar((await fd.textContent('#d-chips')).includes('Pedro'), `${tag}: al marcar envíos aparecen los repartidores para asignar en un toque`);
+    await fd.click('#d-chips .ms-chip-rep[data-rep="r-1"]');
+    await fd.waitForFunction(n => !document.querySelector('.ms-asignar') || document.getElementById('d-asignar').style.display === 'none', null, { timeout: 8000 });
+    await page.waitForTimeout(300);
+    db = await fd.evaluate(() => JSON.parse(sessionStorage.getItem('__DB')));
+    const asig = db.mensajeria_envios.find(e => e.id === nuevo.id);
+    verificar(asig.estado === 'asignado' && asig.repartidor_id === 'r-1', `${tag}: un toque en "Pedro" asigna el envío marcado`);
+    await sinDesborde(page, `${tag} despacho en el panel`);
+    // 5) Nada de dinero se movió por registrar o asignar
+    verificar(db.ventas.length === 0 && db.movimientos_financieros.length === 0, `${tag}: registrar y asignar no tocan Ventas ni Caja`);
+    verificar(page.__errores.length === 0, `${tag} panel Hoy: sin errores (${page.__errores.join(' | ')})`);
+    await ctx.close();
+  }
+}
+
 async function pruebaMensajeriaFase4(browser, base) {
   console.log('\n▶ Mensajería Fase 4: portal del comercio, ubicación del repartidor y cuenta demo');
   for (const [ancho, alto] of [[360, 740], [1280, 900]]) {
@@ -3203,6 +3275,22 @@ async function pruebaMensajeriaFase4(browser, base) {
     // 3) En Envíos aparece marcado "Portal"
     await poner(page, db); await page.goto(base + '/mensajeria-envios.html'); await page.waitForSelector('#e-lista .tl-card', { timeout: 20000 });
     verificar(await page.locator('.tl-card', { hasText: 'Lucía Méndez' }).locator('.ms-chip.portal').count() === 1, `${tag}: en Envíos, el pedido del comercio se ve con la marca "🌐 Portal"`);
+    // 3b) Envío sin zona: avisa que la tarifa quedaría en cero; si dice que no, no se guarda
+    await page.click('#e-nuevo'); await page.waitForSelector('#e-modal.abierto');
+    await page.selectOption('#f-comercio', 'cli-1'); await page.fill('#f-des', 'Sin Zona Prueba'); await page.fill('#f-dir', 'Calle sin zona'); await page.fill('#f-cobrar', '50000');
+    let pregunta = ''; page.removeAllListeners('dialog'); page.once('dialog', d => { pregunta = d.message(); d.dismiss(); });
+    await page.click('#e-guardar'); await page.waitForTimeout(400);
+    let db2 = await leer();
+    verificar(/tarifa/.test(pregunta) && !db2.mensajeria_envios.some(e => e.destinatario_nombre === 'Sin Zona Prueba') && (await page.textContent('#e-aviso')).includes('Elige la zona'),
+      `${tag}: sin zona, pregunta antes de guardar (la tarifa quedaría en cero) y si dice que no, no se guarda`);
+    page.on('dialog', d => d.accept());
+    await page.selectOption('#f-zona', 'z-1'); await page.click('#e-guardar'); await page.waitForSelector('#e-listo.abierto', { timeout: 10000 });
+    const listo = await page.textContent('#e-listo');
+    verificar(listo.includes('lo que tú ganas') && listo.includes('80.00') && listo.includes('50,000.00') && listo.includes('el producto es del comercio'),
+      `${tag}: al registrar, separa la tarifa (lo que ganas, 80) de lo que cobra el repartidor (producto 50,000 del comercio)`);
+    await modalesSinDesborde(page, `${tag} envío registrado`);
+    await page.click('#e-listo [data-cerrar]');
+    db = await leer();
     // 4) Repartidor comparte su ubicación (GPS del celular) y Despacho la ve en Google Maps
     await ctx.grantPermissions(['geolocation'], { origin: base }); await ctx.setGeolocation({ latitude: 12.1364, longitude: -86.2514 });
     await page.goto(base + '/mensajeria-repartidor.html'); await page.waitForSelector('#r-rep', { timeout: 20000 });
@@ -3211,9 +3299,26 @@ async function pruebaMensajeriaFase4(browser, base) {
     db = await leer(); const rep = db.mensajeria_repartidores.find(r => r.id === 'r-1');
     verificar(rep && Math.abs(rep.ubic_lat - 12.1364) < 1e-6 && Math.abs(rep.ubic_lng + 86.2514) < 1e-6, `${tag}: "Compartir mi ubicación" guarda dónde va el repartidor`);
     await sinDesborde(page, `${tag} repartidor con ubicación`);
+    // Un envío por asignar con ubicación, para verlo en el mapa
+    db = await leer(); Object.assign(db.mensajeria_envios.find(e => e.numero === 'ENV-000004'), { lat: 12.1402, lng: -86.2611 });
+    await poner(page, db);
     await page.goto(base + '/mensajeria-despacho.html'); await page.waitForSelector('#d-reps .ms-rep', { timeout: 20000 });
-    const mapa = await page.getAttribute('#d-reps .ms-ubic', 'href');
-    verificar(/google\.com\/maps\/search\/\?api=1&query=12\.1364%2C-86\.2514/.test(mapa || '') && (await page.textContent('#d-reps')).includes('Ver en el mapa'), `${tag}: Despacho muestra "📍 Ver en el mapa" con la ubicación del repartidor`);
+    await page.waitForSelector('#d-mapa.leaflet-container .ms-moto', { timeout: 15000 });
+    const mp = await page.evaluate(() => ({ moto: document.querySelector('.ms-moto').textContent, vivo: document.querySelector('.ms-moto').classList.contains('vivo'), pins: document.querySelectorAll('.ms-pin').length,
+      cab: document.getElementById('d-mapa-cab').textContent, alto: document.getElementById('d-mapa').getBoundingClientRect().height, ancho: document.getElementById('d-mapa').getBoundingClientRect().width }));
+    verificar(mp.moto.includes('Pedro') && mp.vivo && mp.pins === 1 && mp.cab.includes('1 repartidor') && mp.alto >= 260 && mp.ancho <= ancho,
+      `${tag}: Despacho muestra el mapa en vivo con el repartidor (verde, recién enviado) y el envío con ubicación (${mp.alto}px de alto)`);
+    await page.click('#d-reps .ms-ubic'); await page.waitForSelector('.leaflet-popup-content .ms-pop', { timeout: 8000 });
+    verificar((await page.textContent('.leaflet-popup-content')).includes('Pedro Ruiz') && (await page.textContent('.leaflet-popup-content')).includes('ahora'), `${tag}: "Ver en el mapa" lleva al repartidor y muestra hace cuánto mandó su ubicación`);
+    await page.waitForTimeout(700); await page.evaluate(() => { TM.mapa.closePopup(); TM.verTodo(); }); await page.waitForTimeout(700);
+    await page.click('.ms-pin', { force: true }); await page.waitForSelector('.leaflet-popup-content button:has-text("Marcar para asignar")', { timeout: 8000 });
+    await page.click('.leaflet-popup-content button:has-text("Marcar para asignar")');
+    await page.waitForFunction(() => document.querySelector('.ms-pin.sel') && /1 envío marcado/.test(document.getElementById("d-cuantos").textContent), null, { timeout: 8000 });
+    verificar(await page.locator('#d-tablero .tl-ot', { hasText: 'ENV-000004' }).locator('input.ms-sel').isChecked(), `${tag}: tocar un envío en el mapa lo marca para asignar (también en el tablero)`);
+    await page.click('#d-mapa-cab button:has-text("Ocultar")'); await page.waitForFunction(() => document.getElementById('d-mapa').style.display === 'none');
+    await page.click('#d-mapa-cab button:has-text("Ver mapa")'); await page.waitForFunction(() => document.getElementById('d-mapa').style.display !== 'none');
+    verificar(true, `${tag}: el mapa se puede ocultar y volver a mostrar`);
+    if (process.env.FOTO_MSJ) await page.screenshot({ path: `${process.env.FOTO_MSJ}-mapa-${ancho}.png` });
     await sinDesborde(page, `${tag} despacho con ubicación`);
     verificar(page.__errores.length === 0, `${tag} fase 4: sin errores (${page.__errores.join(' | ')})`);
     await ctx.close();
@@ -3227,7 +3332,8 @@ async function pruebaMensajeriaFase4(browser, base) {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch({ executablePath: fs.existsSync('/opt/pw-browsers/chromium') ? undefined : undefined });
   try {
-    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); await pruebaMensajeriaDinero(browser, base); await pruebaMensajeriaFase3(browser, base); await pruebaMensajeriaFase4(browser, base); throw 'fin'; }
+    if (process.env.SOLO_MSJ) { await pruebaMensajeria(browser, base); await pruebaMensajeriaDinero(browser, base); await pruebaMensajeriaFase3(browser, base); await pruebaMensajeriaFase4(browser, base); await pruebaMensajeriaHoy(browser, base); throw 'fin'; }
+    if (process.env.SOLO_MSJH) { await pruebaMensajeriaHoy(browser, base); throw 'fin'; }
     if (process.env.SOLO_MSJ4) { await pruebaMensajeriaFase4(browser, base); throw 'fin'; }
     if (process.env.SOLO_MSJ3) { await pruebaMensajeriaFase3(browser, base); throw 'fin'; }
     if (process.env.SOLO_CRM) { await pruebaCRM(browser, base); await pruebaOportunidades(browser, base); throw 'fin'; }
@@ -3282,6 +3388,7 @@ async function pruebaMensajeriaFase4(browser, base) {
     await pruebaMensajeriaDinero(browser, base);
     await pruebaMensajeriaFase3(browser, base);
     await pruebaMensajeriaFase4(browser, base);
+    await pruebaMensajeriaHoy(browser, base);
     await pruebaProduccion(browser, base);
     await pruebaVentaPreparados(browser, base);
     await pruebaPasarConsulta(browser, base);

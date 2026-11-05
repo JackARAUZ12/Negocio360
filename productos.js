@@ -435,11 +435,18 @@ async function cargarDatosEmpresa() {
 async function cargarProductos() {
   try {
     mostrarSkeletons();
-    const { data, error } = await N360Leer.todo(() => supabaseClient
-      .from('productos')
-      .select('*')
-      .eq('auth_user_id', STATE.user.id)
-      .order('created_at', { ascending: false }), 'productos');
+    // Lectura con copia en la pestaña: solo se piden los productos que cambiaron desde la última vez
+    // (ante cualquier duda se lee el catálogo completo, igual que antes; ver cache-productos.js).
+    const baseP = () => supabaseClient.from('productos').select('*').eq('auth_user_id', STATE.user.id);
+    const completoP = () => N360Leer.todo(() => baseP().order('created_at', { ascending: false }), 'productos');
+    const { data, error } = window.N360Cache
+      ? await N360Cache.lista({
+          clave: 'productos_lista', userId: STATE.user.id, completo: completoP,
+          delta: (desde) => N360Leer.todo(() => baseP().gte('updated_at', desde), 'productos'),
+          contar: () => supabaseClient.from('productos').select('id', { count: 'exact', head: true }).eq('auth_user_id', STATE.user.id),
+          camposOrden: ['created_at'],
+        })
+      : await completoP();
 
     if (error) throw error;
 

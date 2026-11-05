@@ -34,21 +34,96 @@
     fiestas: { t: 'Felices fiestas', i: '🎉', d: 'Saludo para fechas especiales.', p: 'todos',
       x: '¡Hola {nombre}! 🎉 Todo el equipo de {negocio} te desea felices fiestas. ¡Gracias por tu preferencia!' },
     libre: { t: 'Mensaje libre', i: '✍️', d: 'Escribe lo que quieras.', p: 'todos', x: 'Hola {nombre}, ' },
+    // ── Recordatorios (Fase 2): solo LEEN créditos y Agenda; no cambian montos, cuotas ni citas ──
+    cuota_vence: { t: 'Cuota por vencer', i: '📅', d: 'Recuérdale la cuota de crédito que vence pronto.', p: 'cuota_3', ps: ['cuota_hoy', 'cuota_3', 'cuota_7'], rec: true,
+      x: 'Hola {nombre} 👋 Te saludamos de {negocio}. Te recordamos que tu cuota de {monto} vence el {fecha}. ¡Gracias por tu puntualidad! 🙌' },
+    cuota_vencida: { t: 'Cuota vencida', i: '⏰', d: 'Para quienes tienen cuotas de crédito atrasadas.', p: 'vencida', ps: ['vencida', 'vencida_30'], rec: true,
+      x: 'Hola {nombre}, te saludamos de {negocio}. Tienes un saldo vencido de {monto} desde el {fecha} ({atraso} días). ¿Nos ayudas a ponerte al día? Cualquier duda, aquí estamos 🙏' },
+    cita_manana: { t: 'Cita de mañana', i: '🗓️', d: 'Citas de la Agenda que tienen un cliente asignado.', p: 'cita_manana', ps: ['cita_manana', 'cita_hoy'], rec: true,
+      x: 'Hola {nombre} 👋 Te recordamos tu cita en {negocio}: {fecha} a las {hora}. ¿Nos confirmas tu asistencia? 😊' },
   };
   const ORDEN = ['cumple', 'extranamos', 'gracias', 'bienvenida', 'promocion', 'novedades', 'fiestas', 'libre'];
+  const ORDEN_REC = ['cuota_vence', 'cuota_vencida', 'cita_manana'];
 
   // ── Utilidades ──
   const mesDia = f => String(f || '').slice(5, 10);
   function proximosMesDia(n) { const out = []; for (let i = 0; i < n; i++) out.push(U().masDias(i).slice(5, 10)); return out; }
+  function dinero(n) {
+    const m = String((K.rec && K.rec.moneda) || 'NIO').toUpperCase(), s = { NIO: 'C$', USD: 'US$', CRC: '₡', HNL: 'L', GTQ: 'Q', MXN: 'MX$', EUR: '€' }[m] || m;
+    return s + ' ' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function hora12(h) {
+    if (!h) return 'la hora acordada';
+    const [H, M] = String(h).split(':').map(Number); if (isNaN(H)) return String(h);
+    return `${((H + 11) % 12) + 1}:${String(M || 0).padStart(2, '0')} ${H < 12 ? 'am' : 'pm'}`;
+  }
   function rellenar(texto, c) {
-    const ctx = U().contexto();
+    const ctx = U().contexto(), r = c._r || {};
     return String(texto)
       .replace(/\{nombre\}/gi, String(c.nombre || '').split(' ')[0] || '')
       .replace(/\{negocio\}/gi, ctx.negocio || 'nuestro negocio')
-      .replace(/\{dias\}/gi, c.diasUltima == null ? 'varios' : String(c.diasUltima));
+      .replace(/\{dias\}/gi, c.diasUltima == null ? 'varios' : String(c.diasUltima))
+      .replace(/\{monto\}/gi, r.monto != null ? dinero(r.monto) : '')
+      .replace(/\{fecha\}/gi, r.fecha ? U().fechaCorta(r.fecha) : '')
+      .replace(/\{hora\}/gi, r.fecha ? hora12(r.hora) : '')
+      .replace(/\{atraso\}/gi, r.atraso != null ? String(r.atraso) : '');
   }
   const textoDe = tipo => K.editados[tipo] != null ? K.editados[tipo] : TIPOS[tipo].x;
-  const tituloEnvio = tipo => `Campaña: ${TIPOS[tipo].t}`;
+  const tituloEnvio = tipo => `${TIPOS[tipo].rec ? 'Recordatorio' : 'Campaña'}: ${TIPOS[tipo].t}`;
+
+  // ── Datos de recordatorios (solo lectura). Si algo falla, simplemente salen vacíos. ──
+  async function leerPaginas(fn, max = 20) {
+    const out = [];
+    for (let i = 0; i < max; i++) {
+      const { data, error } = await fn().range(i * 1000, i * 1000 + 999);
+      if (error) throw error;
+      out.push(...(data || [])); if (!data || data.length < 1000) break;
+    }
+    return out;
+  }
+  async function cargarRecordatorios() {
+    const R = { moneda: 'NIO', panel: false, venc: {}, prox: {}, citas: {} };
+    K.rec = R;
+    const hoy = U().hoy(), en7 = U().masDias(7), man = U().masDias(1);
+    try {
+      const { data: cfg } = await K.sb.from('configuracion_empresa').select('moneda,recordatorios_panel').eq('auth_user_id', K.userId).maybeSingle();
+      R.moneda = (cfg && cfg.moneda) || 'NIO'; R.panel = !!(cfg && cfg.recordatorios_panel);
+    } catch (e) { /* sin moneda: C$ */ }
+    try {
+      const cuotas = await leerPaginas(() => K.sb.from('creditos_cuotas').select('id,credito_id,fecha_vencimiento,monto_total,monto_pagado,estado')
+        .eq('auth_user_id', K.userId).in('estado', ['pendiente', 'parcial', 'vencida']).lte('fecha_vencimiento', en7).order('id'));
+      const ids = [...new Set(cuotas.map(q => q.credito_id).filter(Boolean))], cred = {};
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data, error } = await K.sb.from('creditos').select('id,cliente_id,estado').eq('auth_user_id', K.userId).in('id', ids.slice(i, i + 150));
+        if (error) throw error;
+        (data || []).forEach(c => { cred[c.id] = c; });
+      }
+      cuotas.forEach(q => {
+        const c = cred[q.credito_id]; if (!c || !c.cliente_id || !['activo', 'con_atraso'].includes(c.estado)) return;
+        const pend = Math.round(Math.max((Number(q.monto_total) || 0) - (Number(q.monto_pagado) || 0), 0) * 100) / 100;
+        if (!(pend >= 0.01) || !q.fecha_vencimiento) return;
+        const f = String(q.fecha_vencimiento).slice(0, 10);
+        if (f < hoy) { const v = R.venc[c.cliente_id] || (R.venc[c.cliente_id] = { monto: 0, fecha: f }); v.monto += pend; if (f < v.fecha) v.fecha = f; }
+        else (R.prox[c.cliente_id] || (R.prox[c.cliente_id] = [])).push({ f, m: pend });
+      });
+      Object.values(R.venc).forEach(v => { v.monto = Math.round(v.monto * 100) / 100; v.atraso = Math.round((new Date(hoy + 'T12:00:00') - new Date(v.fecha + 'T12:00:00')) / 864e5); });
+    } catch (e) { console.warn('recordatorios cuotas:', e); R.venc = {}; R.prox = {}; }
+    try {
+      const { data, error } = await K.sb.from('agenda_eventos').select('id,fecha,hora,cliente_id,estado').eq('auth_user_id', K.userId)
+        .in('fecha', [hoy, man]).eq('estado', 'pendiente').not('cliente_id', 'is', null).limit(2000);
+      if (error) throw error;
+      (data || []).forEach(e => {
+        const k = e.cliente_id + '|' + e.fecha, a = R.citas[k];
+        if (!a || String(e.hora || '99') < String(a.hora || '99')) R.citas[k] = { fecha: String(e.fecha).slice(0, 10), hora: e.hora ? String(e.hora).slice(0, 5) : null };
+      });
+    } catch (e) { console.warn('recordatorios citas:', e); R.citas = {}; }
+    return R;
+  }
+  function proxHasta(cid, n) {
+    const l = (K.rec && K.rec.prox[cid]) || [], tope = U().masDias(n), sel = l.filter(x => x.f <= tope);
+    if (!sel.length) return null;
+    return { monto: Math.round(sel.reduce((s, x) => s + x.m, 0) * 100) / 100, fecha: sel.reduce((a, x) => x.f < a ? x.f : a, sel[0].f) };
+  }
 
   function publicos(todos) {
     const G = window.N360Grupos ? window.N360Grupos.GRUPOS : {};
@@ -63,7 +138,20 @@
       ...Object.keys(G).map(k => ['grupo:' + k, `${G[k].i} Grupo: ${G[k].t}`, c => c.grupo === k]),
       ['todos', '👥 Todos mis clientes', () => true],
     ];
-    return p.map(([k, t, f]) => ({ k, t, lista: todos.filter(f) }));
+    const R = K.rec || { venc: {}, prox: {}, citas: {} }, hoy = U().hoy(), man = U().masDias(1);
+    const rec = [
+      ['cuota_hoy', '📅 Cuota que vence hoy', c => proxHasta(c.id, 0)],
+      ['cuota_3', '📅 Cuota que vence en los próximos 3 días', c => proxHasta(c.id, 3)],
+      ['cuota_7', '📅 Cuota que vence en los próximos 7 días', c => proxHasta(c.id, 7)],
+      ['vencida', '⏰ Con cuotas vencidas', c => R.venc[c.id] || null],
+      ['vencida_30', '⏰ Con cuotas vencidas hace 30 días o más', c => (R.venc[c.id] && R.venc[c.id].atraso >= 30) ? R.venc[c.id] : null],
+      ['cita_manana', '🗓️ Tienen cita mañana', c => R.citas[c.id + '|' + man] || null],
+      ['cita_hoy', '🗓️ Tienen cita hoy', c => R.citas[c.id + '|' + hoy] || null],
+    ];
+    return [
+      ...p.map(([k, t, f]) => ({ k, t, lista: todos.filter(f) })),
+      ...rec.map(([k, t, f]) => ({ k, t, rec: true, lista: todos.map(c => { const r = f(c); return r ? { ...c, _r: r } : null; }).filter(Boolean) })),
+    ];
   }
 
   async function cargarEditados() {
@@ -76,9 +164,11 @@
     K.enviados = {};
     try {
       const desde = new Date(); desde.setHours(0, 0, 0, 0);
-      const { data } = await K.sb.from('cliente_interacciones').select('cliente_id,titulo').eq('auth_user_id', K.userId)
-        .like('titulo', 'Campaña:%').gte('fecha', desde.toISOString());
-      (data || []).forEach(r => { K.enviados[r.cliente_id + '|' + r.titulo] = true; });
+      for (const pre of ['Campaña:%', 'Recordatorio:%']) {
+        const { data } = await K.sb.from('cliente_interacciones').select('cliente_id,titulo').eq('auth_user_id', K.userId)
+          .like('titulo', pre).gte('fecha', desde.toISOString());
+        (data || []).forEach(r => { K.enviados[r.cliente_id + '|' + r.titulo] = true; });
+      }
     } catch (e) { /* si falla, solo no se marca lo ya enviado */ }
   }
 
@@ -117,31 +207,53 @@
     if (!cont) return;
     K.cont = cont;
     cont.innerHTML = '<div class="crm-vacio">Preparando campañas…</div>';
-    try { [K.lista] = await Promise.all([window.N360Grupos.datos(true), cargarEditados(), cargarEnviadosHoy()]); }
+    try { [K.lista] = await Promise.all([window.N360Grupos.datos(true), cargarEditados(), cargarEnviadosHoy(), cargarRecordatorios()]); }
     catch (e) { console.error('campañas:', e); cont.innerHTML = '<div class="crm-vacio">No se pudieron preparar las campañas.</div>'; return; }
     if (tipo && TIPOS[tipo]) return abrirTipo(tipo);
     pintarTipos();
   }
   function pintarTipos() {
     const cont = K.cont, pub = publicos(K.lista), cuenta = k => (pub.find(p => p.k === k) || { lista: [] }).lista.length;
-    cont.innerHTML = `<div class="crm-ayuda" style="font-size:12.5px">Elige qué mensaje quieres mandar. El sistema arma la lista de clientes y el mensaje con el nombre de cada uno; tú lo envías con un toque desde <b>tu WhatsApp</b>. <b>Es gratis</b>: no se paga nada a Meta. Todos los mensajes los puedes editar.</div>
-      <div class="cp-tipos">${ORDEN.map(k => { const t = TIPOS[k], n = cuenta(t.p); return `<button type="button" class="cp-tipo" data-cp-tipo="${k}">
+    const tarjeta = k => { const t = TIPOS[k], n = cuenta(t.p); return `<button type="button" class="cp-tipo" data-cp-tipo="${k}">
         <b>${t.i} ${esc(t.t)}${K.editados[k] != null ? '<span class="cp-ed">✏️ editado</span>' : ''}</b><small>${esc(t.d)}</small>
-        ${['cumple', 'extranamos', 'gracias', 'bienvenida'].includes(k) ? `<span class="cp-n">${n} cliente${n === 1 ? '' : 's'} ${k === 'cumple' ? 'hoy' : 'ahora'}</span>` : ''}</button>`; }).join('')}</div>`;
+        ${t.rec || ['cumple', 'extranamos', 'gracias', 'bienvenida'].includes(k) ? `<span class="cp-n">${n} cliente${n === 1 ? '' : 's'} ${k === 'cumple' ? 'hoy' : 'ahora'}</span>` : ''}</button>`; };
+    const panel = !!(K.rec && K.rec.panel);
+    cont.innerHTML = `<div class="crm-ayuda" style="font-size:12.5px">Elige qué mensaje quieres mandar. El sistema arma la lista de clientes y el mensaje con el nombre de cada uno; tú lo envías con un toque desde <b>tu WhatsApp</b>. <b>Es gratis</b>: no se paga nada a Meta. Todos los mensajes los puedes editar.</div>
+      <div style="margin-top:14px;font-weight:800;font-size:14px">📲 Recordatorios de cobro y citas</div>
+      <div class="crm-ayuda" style="font-size:12px">Solo leen tus créditos y tu Agenda para armar el mensaje: no cambian cuotas, saldos, Caja ni citas.</div>
+      <div class="cp-tipos">${ORDEN_REC.map(tarjeta).join('')}</div>
+      <label for="cp-panel" style="display:flex!important;flex-direction:row!important;justify-content:flex-start!important;gap:8px;align-items:center;margin-top:10px;font-size:12.5px;cursor:pointer;width:auto;font-weight:600">
+        <input type="checkbox" id="cp-panel" ${panel ? 'checked' : ''} style="width:18px!important;height:18px;flex:none;margin:0;accent-color:var(--accent,#5a5af4)">
+        <span style="flex:1;min-width:0">📌 Avisarme cada día en el Panel cuántos recordatorios tengo pendientes <span style="font-weight:400;color:var(--text-muted,#71717a)">(apagado si no lo marcas)</span></span></label>
+      <div style="margin-top:18px;font-weight:800;font-size:14px">💬 Campañas</div>
+      <div class="cp-tipos">${ORDEN.map(tarjeta).join('')}</div>`;
     cont.onclick = e => { const b = e.target.closest('[data-cp-tipo]'); if (b) abrirTipo(b.dataset.cpTipo); };
+    const chk = cont.querySelector('#cp-panel');
+    chk.onchange = async () => {
+      const val = chk.checked; chk.disabled = true;
+      try {
+        const { error } = await K.sb.from('configuracion_empresa').update({ recordatorios_panel: val }).eq('auth_user_id', K.userId);
+        if (error) throw error;
+        K.rec.panel = val; U().aviso(val ? '📌 Listo: verás el aviso en el Panel cada día' : 'Aviso del Panel apagado');
+      } catch (e) { console.error('recordatorios panel:', e); chk.checked = !val; U().aviso('No se pudo guardar', 'error'); }
+      finally { chk.disabled = false; }
+    };
   }
 
   // ── Paso 2: a quién, mensaje editable y envío uno por uno ──
   function abrirTipo(tipo) {
     const cont = K.cont, t = TIPOS[tipo];
     K.tipo = tipo; K.publico = t.p; K.texto = textoDe(tipo);
-    const pub = publicos(K.lista);
+    const pub = publicos(K.lista).filter(p => t.ps ? t.ps.includes(p.k) : !p.rec);
     cont.innerHTML = `<div class="cp-paso">
       <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" class="crm-link" data-cp-volver>← Tipos de mensaje</button><b style="font-size:15px">${t.i} ${esc(t.t)}</b></div>
       <label class="crm-campo">¿A quién?<select id="cp-publico">${pub.map(p => `<option value="${esc(p.k)}" ${p.k === K.publico ? 'selected' : ''}>${esc(p.t)} (${p.lista.length})</option>`).join('')}</select></label>
       <label class="crm-campo">Mensaje (puedes cambiarlo)<textarea id="cp-texto" maxlength="1000">${esc(K.texto)}</textarea></label>
-      <div class="cp-vars">Se cambia solo: <code>{nombre}</code> nombre del cliente · <code>{negocio}</code> tu negocio · <code>{dias}</code> días sin comprar</div>
+      <div class="cp-vars">Se cambia solo: <code>{nombre}</code> nombre del cliente · <code>{negocio}</code> tu negocio · ${tipo === 'cita_manana'
+        ? '<code>{fecha}</code> día de la cita · <code>{hora}</code> hora'
+        : t.rec ? `<code>{monto}</code> ${tipo === 'cuota_vencida' ? 'saldo vencido' : 'monto de la cuota'} · <code>{fecha}</code> ${tipo === 'cuota_vencida' ? 'desde cuándo' : 'cuándo vence'}${tipo === 'cuota_vencida' ? ' · <code>{atraso}</code> días de atraso' : ''}`
+        : '<code>{dias}</code> días sin comprar'}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="crm-btn" id="cp-guardar">💾 Guardar como mi mensaje</button>
         <button type="button" class="crm-btn" id="cp-original" ${K.editados[tipo] != null ? '' : 'style="display:none"'}>↩️ Volver al original</button></div>
       <div class="cp-aviso" id="cp-falta" style="display:none">Te falta completar la parte entre [ corchetes ] antes de enviar.</div>
@@ -206,15 +318,32 @@
   async function montarAvisoPanel(cont) {
     estilos();
     if (!cont) return;
+    let html = '';
     try {
       const { data, error } = await K.sb.from('clientes').select('id,nombre,fecha_aniversario').eq('auth_user_id', K.userId).eq('activo', true).not('fecha_aniversario', 'is', null);
       if (error) throw error;
       const hoyMD = U().hoy().slice(5, 10), l = (data || []).filter(c => mesDia(c.fecha_aniversario) === hoyMD);
-      if (!l.length) { cont.innerHTML = ''; return; }
-      cont.innerHTML = `<div class="crm-aviso"><div><b>🎂 Hoy es el cumpleaños o aniversario de ${l.length === 1 ? '1 cliente' : `${l.length} clientes`}</b>
+      if (l.length) html += `<div class="crm-aviso"><div><b>🎂 Hoy es el cumpleaños o aniversario de ${l.length === 1 ? '1 cliente' : `${l.length} clientes`}</b>
         <div class="crm-ayuda">${l.slice(0, 3).map(c => esc(c.nombre)).join(' · ')}${l.length > 3 ? ' …' : ''}</div></div>
         <a class="crm-btn prim" href="clientes.html?tab=campanas&tipo=cumple" style="text-decoration:none">Felicitar por WhatsApp</a></div>`;
-    } catch (e) { cont.innerHTML = ''; }
+    } catch (e) { /* sin aviso de cumpleaños */ }
+    cont.innerHTML = html;
+    // Recordatorios: solo si el negocio lo activó en Clientes → Campañas (apagado por defecto)
+    try {
+      const R = await cargarRecordatorios();
+      if (!R.panel) return;
+      const man = U().masDias(1);
+      const nProx = Object.keys(R.prox).filter(cid => proxHasta(cid, 3)).length, nVenc = Object.keys(R.venc).length;
+      const nCitas = Object.keys(R.citas).filter(k => k.endsWith('|' + man)).length;
+      if (!nProx && !nVenc && !nCitas) return;
+      const pl = (n, s, p) => `${n} ${n === 1 ? s : p}`;
+      const btn = (n, tipo, txt) => n ? `<a class="crm-btn" href="clientes.html?tab=campanas&tipo=${tipo}" style="text-decoration:none">${txt}</a>` : '';
+      cont.insertAdjacentHTML('beforeend', `<div class="crm-aviso" style="margin-top:8px"><div><b>📲 Recordatorios por WhatsApp para hoy</b>
+        <div class="crm-ayuda">${[nProx ? `📅 ${pl(nProx, 'cliente con cuota por vencer (3 días)', 'clientes con cuota por vencer (3 días)')}` : '',
+          nVenc ? `⏰ ${pl(nVenc, 'cliente con cuotas vencidas', 'clientes con cuotas vencidas')}` : '',
+          nCitas ? `🗓️ ${pl(nCitas, 'cita mañana', 'citas mañana')}` : ''].filter(Boolean).join(' · ')}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${btn(nProx, 'cuota_vence', '📅 Por vencer')}${btn(nVenc, 'cuota_vencida', '⏰ Vencidas')}${btn(nCitas, 'cita_manana', '🗓️ Citas')}</div></div>`);
+    } catch (e) { /* el aviso nunca debe afectar al Panel */ }
   }
 
   window.N360Campanas = {

@@ -48,6 +48,9 @@ function tpnIniciar() {
   });
   tpnSegunHash();
   tpnRecorrido(false);
+  if (!tpnSub('envios')) $t('tln-nuevo').style.display = 'none';
+  $t('tln-guia').querySelector('summary').addEventListener('click', () => { TPN.guiaTocada = true; });   // si la persona la abre o cierra, se respeta
+  setInterval(() => { if (!document.hidden && !TPN.actual) tpnCargarInicio(); }, 60000);   // el inicio se actualiza solo cada minuto
 }
 // Un usuario con permisos limitados solo ve en el panel las partes que el administrador le dio.
 function tpnPermitidos() {
@@ -202,13 +205,74 @@ async function tpnCargarInicio() {
       contar('clientes', q => q.eq('activo', true)),
       sb.from('mensajeria_config').select('auth_user_id').eq('auth_user_id', uid).maybeSingle().then(r => !!r.data).catch(() => false),
     ]);
+    const [mano, repsU] = await Promise.all([msEfectivoEnMano().catch(() => ({})), msRepartidores(true).catch(() => [])]);
+    TPN.repsU = repsU;
+    const enCalle = Object.values(mano).reduce((a, v) => a + Number(v || 0), 0), conEfectivo = Object.values(mano).filter(v => Number(v) > 0).length;
     const liq = await sb.rpc('msj_liquidaciones_resumen').then(r => (r.data && r.data.ok ? r.data.comercios : []) || []).catch(() => []);
     const porLiquidar = liq.filter(c => Number(c.listos) > 0).length, deComercios = liq.reduce((a, c) => a + Number(c.cod || 0) + Number(c.en_calle || 0), 0);
-    TPN.datos = { sinAsignar, urgentes, asignados, enRuta, noEnt, hoyEnt, sinCuadrar, zonas, reps, comercios, cfg, porLiquidar, deComercios };
+    TPN.datos = { sinAsignar, urgentes, asignados, enRuta, noEnt, hoyEnt, sinCuadrar, zonas, reps, comercios, cfg, porLiquidar, deComercios, enCalle, conEfectivo };
   } catch (e) { console.warn('inicio mensajeria:', e); TPN.datos = {}; }
-  tpnPintarCiclo(); tpnPintarPreparar(); tpnPintarPendientes(); tpnPintarChips();
+  tpnPintarHoy(); tpnPintarCiclo(); tpnPintarPreparar(); tpnPintarPendientes(); tpnPintarChips(); tpnMiniMapa();
 }
 const tpnS = (k, uno, varios) => `${k} ${k === 1 ? uno : varios}`;
+/* ---------- "Hoy": cuadros grandes que se tocan y llevan a la lista ya filtrada ---------- */
+function tpnPintarHoy() {
+  const d = TPN.datos || {};
+  const c = [
+    { k: 'asignar', ico: '📦', n: d.sinAsignar || 0, t: 'Por asignar', s: d.urgentes ? `🚨 ${tpnS(d.urgentes, 'urgente', 'urgentes')}` : 'esperan repartidor', ir: "tpnIrSub('despacho')", sub: 'despacho', tono: d.urgentes ? 'rojo' : (d.sinAsignar ? 'ambar' : '') },
+    { k: 'camino', ico: '🛵', n: (d.asignados || 0) + (d.enRuta || 0), t: 'En camino', s: `${d.enRuta || 0} en ruta · ${d.asignados || 0} por salir`, ir: "tpnIrSub('despacho')", sub: 'despacho' },
+    { k: 'entregados', ico: '✅', n: d.hoyEnt || 0, t: 'Entregados hoy', s: 'ver la lista', ir: "tpIr('mensajeria-envios.html?estado=entregado')", sub: 'envios', tono: d.hoyEnt ? 'verde' : '' },
+    { k: 'noent', ico: '⚠️', n: d.noEnt || 0, t: 'No entregados', s: d.noEnt ? 'reintentar o devolver' : 'ninguno', ir: "tpIr('mensajeria-envios.html?estado=no_entregado')", sub: 'envios', tono: d.noEnt ? 'rojo' : '' },
+    { k: 'calle', ico: '💵', n: fmt(d.enCalle || 0), t: 'Efectivo en la calle', s: d.conEfectivo ? `${tpnS(d.conEfectivo, 'repartidor por cuadrar', 'repartidores por cuadrar')}` : 'todo cuadrado', ir: "tpnIrSub('cuadre')", sub: 'cuadre', tono: d.enCalle ? 'ambar' : '', dinero: true },
+    { k: 'liquidar', ico: '🤝', n: d.porLiquidar || 0, t: 'Comercios por liquidar', s: `de comercios: ${fmt(d.deComercios || 0)}`, ir: "tpnIrSub('liquidar')", sub: 'liquidar' },
+  ];
+  $t('tln-hoy').innerHTML = c.map(x => {
+    const ok = !!tpnSub(x.sub);
+    return `<button type="button" class="ms-hoy-c ${x.tono || ''}${x.dinero ? ' dinero' : ''}" data-hoy="${x.k}" ${ok ? `onclick="${x.ir}"` : 'disabled title="No tienes acceso a esta parte"'}>
+      <span class="ms-hoy-ico" aria-hidden="true">${x.ico}</span><b class="ms-hoy-n">${esc(String(x.n))}</b><span class="ms-hoy-t">${esc(x.t)}</span><span class="ms-hoy-s">${esc(x.s)}</span></button>`;
+  }).join('');
+}
+// "➕ Envío": desde cualquier parte del panel abre el formulario de envío nuevo.
+function tpnNuevoEnvio() {
+  if (!tpnSub('envios')) { showToast('No tienes acceso a Envíos.', 'warning'); return; }
+  const fr = $t('tln-marco');
+  try { if (TPN.actual === 'envios' && fr.contentWindow.TE && !TPN.cargandoMarco) { fr.contentWindow.TE.nuevo(); return; } } catch (_) {}
+  tpIr('mensajeria-envios.html?nuevo=1');
+}
+// Mini mapa del inicio: solo los repartidores con ubicación (el mapa completo está en Despacho).
+async function tpnMiniMapa() {
+  const caja = $t('tln-mapa'); if (!caja) return;
+  const reps = (TPN.repsU || []).filter(r => r.ubic_lat != null && r.ubic_lng != null && (Date.now() - new Date(r.ubic_at).getTime()) < 864e5);
+  if (!reps.length) {
+    if (TPN.mini) { TPN.mini.remove(); TPN.mini = null; }
+    caja.classList.add('vacio');
+    caja.innerHTML = '<div><span>Cuando un repartidor toque <b>“Compartir mi ubicación”</b> en “Mis entregas”, lo ves aquí moverse.</span></div>';
+    return;
+  }
+  caja.classList.remove('vacio');
+  try { await tmLeaflet(); } catch (_) { caja.classList.add('vacio'); caja.innerHTML = '<div><span>No se pudo cargar el mapa. Revisa tu conexión.</span></div>'; return; }
+  if (!TPN.mini) {
+    caja.innerHTML = '';
+    TPN.mini = L.map(caja, { zoomControl: false, attributionControl: true, scrollWheelZoom: false, dragging: !L.Browser.mobile, tap: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' }).addTo(TPN.mini);
+    TPN.miniCapa = L.layerGroup().addTo(TPN.mini);
+    TPN.mini.on('click', () => tpnIrSub('despacho'));
+    TPN.miniAjustado = false;
+  }
+  TPN.miniCapa.clearLayers();
+  reps.forEach(r => {
+    const m = (Date.now() - new Date(r.ubic_at).getTime()) / 60000, c = m <= 10 ? 'vivo' : m <= 60 ? 'rato' : 'viejo';
+    L.marker([Number(r.ubic_lat), Number(r.ubic_lng)], { title: `${r.nombre} · ${msHace(r.ubic_at)}`, icon: L.divIcon({ className: '', html: `<div class="ms-moto ${c}"><span>${esc(MS_VEHICULOS[r.vehiculo]?.split(' ')[0] || '🛵')}</span><b>${esc(String(r.nombre || '').trim().split(/\s+/)[0])}</b></div>`, iconSize: null, iconAnchor: [20, 20] }) })
+      .on('click', () => tpnIrSub('despacho')).addTo(TPN.miniCapa);
+  });
+  if (!TPN.miniAjustado) {
+    const pts = reps.map(r => [Number(r.ubic_lat), Number(r.ubic_lng)]);
+    if (pts.length === 1) TPN.mini.setView(pts[0], 14); else TPN.mini.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
+    TPN.miniAjustado = true;
+  }
+  setTimeout(() => TPN.mini && TPN.mini.invalidateSize(), 60);
+}
+
 function tpnPintarChips() {
   const d = TPN.datos || {}, act = (d.sinAsignar || 0) + (d.asignados || 0) + (d.enRuta || 0) + (d.noEnt || 0);
   $t('tl-chips').innerHTML = `<span class="tl-chip">📦 ${tpnS(act, 'envío activo', 'envíos activos')}</span><span class="tl-chip">🛵 ${tpnS(d.enRuta || 0, 'en ruta', 'en ruta')}</span><span class="tl-chip">✅ ${tpnS(d.hoyEnt || 0, 'entregado hoy', 'entregados hoy')}</span><span class="tl-chip">🤝 De comercios por liquidar: ${fmt(d.deComercios || 0)}</span>`;
@@ -234,6 +298,9 @@ function tpnPintarPreparar() {
   const oblig = items.filter(i => !i.opc), listos = oblig.filter(i => i.ok).length, todo = listos === oblig.length;
   $t('tln-preparar-estado').textContent = todo ? '✅ Listo para trabajar' : `${listos} de ${oblig.length} pasos listos`;
   $t('tln-preparar').open = !todo;
+  $t('tln-preparar').style.display = todo ? 'none' : '';
+  // Ya preparada la empresa, el inicio muestra solo lo del día; la explicación queda a un toque.
+  if (!TPN.guiaTocada) $t('tln-guia').open = !todo;
   $t('tln-preparar-lista').innerHTML = items.map((i, k) => `<div class="tln-prep${i.ok ? ' ok' : ''}">
       <span class="tln-prep-ico" aria-hidden="true">${i.ok ? '✅' : i.opc ? '➖' : '⬜'}</span>
       <div class="tln-prep-txt"><b>${k + 1}. ${esc(i.t)}${i.opc ? ' <span class="tln-sub">(opcional)</span>' : ''}</b><span class="tln-sub">${esc(i.d)}</span></div>
@@ -259,14 +326,14 @@ function tpnPintarSubs() {
 
 /* ---------- Recorrido guiado (la primera vez, y con "Ver recorrido") ---------- */
 const TPN_RECORRIDO = [
-  { icono: '🛵', titulo: 'Panel de Mensajería', texto: 'Toda tu empresa de delivery está aquí. Arriba tienes cada parte y el botón "🛵 Panel" para volver a este inicio. Nunca sales del panel.' },
+  { icono: '🛵', titulo: 'Panel de Mensajería', texto: 'Toda tu empresa de delivery está aquí. Al abrir ves tu día en cuadros grandes (por asignar, en camino, entregados, efectivo en la calle…): tócalos para ir directo. "➕ Envío" registra uno nuevo desde cualquier parte, y "🛵 Panel" te regresa a este inicio.' },
   { icono: '📦', titulo: '1. Recibir envío', texto: 'Registra quién manda (un comercio o una persona), a quién va, la dirección y cuánto hay que cobrar contra entrega. La tarifa se calcula sola según la zona. Imprime la etiqueta para el paquete.' },
   { icono: '🗂️', titulo: '2. Despachar', texto: 'En el tablero eliges uno o varios envíos y se los asignas a un repartidor. Ves cuánto efectivo anda cada uno en la calle.' },
   { icono: '🛵', titulo: '3. Entregar', texto: 'El repartidor abre "Mis entregas" en su celular: va con Waze o Google Maps, llama o escribe por WhatsApp, y marca Entregado con foto, quién recibió y cómo pagó. Si no pudo, elige el motivo.' },
   { icono: '💵', titulo: '4. Cuadrar repartidor', texto: 'Al final del día el sistema dice cuánto efectivo debe entregar cada repartidor. Las tarifas que cobró entran a Caja como venta; lo de productos es de los comercios y queda aparte. Si falta dinero, queda como deuda del repartidor.' },
   { icono: '🤝', titulo: '5. Liquidar comercio', texto: 'Le entregas al comercio lo cobrado a su nombre menos tus tarifas. Tus tarifas entran a Ventas y Caja. Imprime o manda por WhatsApp su estado de cuenta. Cada envío se liquida una sola vez.' },
   { icono: '🔗', titulo: 'Rastreo y Excel', texto: 'Cada envío tiene un enlace para que quien espera el paquete vea en qué paso va, sin cuenta (va en el WhatsApp y en el QR de la etiqueta). Si un comercio manda muchos envíos, cárgalos desde Excel.' },
-  { icono: '🌐', titulo: 'Portal de comercios y ubicación', texto: 'Dale a cada comercio su enlace privado (en Zonas, tarifas y repartidores → Portal): desde su celular pide envíos, los sigue y ve cuánto le toca. El repartidor puede tocar "Compartir mi ubicación" y en Despacho ves dónde va en Google Maps. Todo gratis.' },
+  { icono: '🌐', titulo: 'Portal de comercios y mapa en vivo', texto: 'Dale a cada comercio su enlace privado (en Zonas, tarifas y repartidores → Portal): desde su celular pide envíos, los sigue y ve cuánto le toca. El repartidor toca "Compartir mi ubicación" y en Despacho lo ves moverse en el mapa en vivo, junto con los envíos. Todo gratis.' },
   { icono: '💼', titulo: 'Pago a repartidores', texto: 'Cada semana o quincena pagas a los repartidores que cobran por entrega o por porcentaje. Queda como gasto, y se les puede descontar su deuda.' },
 ];
 function tpnRecorrido(forzar) {

@@ -1826,6 +1826,8 @@
     _bancoElegidoIdCred = null;
     ocultar('rp-banco-elegir-wrap');
     ocultar('rp-banco-elegido-wrap');
+    // ➗ Pago separado: cada vez que se abre, empieza apagado (un solo método, como siempre)
+    if (window.N360PSCred) { try { N360PSCred.usarBancos(cargarBancosDisponiblesCred); N360PSCred.reset(); N360PSCred.montar(); } catch (_) {} }
     openModal('modal-registrar-pago');
     if (creditoId) {
       const credito = CS.creditos.find(c => c.id === creditoId) || (await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle()).data;
@@ -2319,17 +2321,31 @@
     if (!creditoId) { showToast('Selecciona un crédito', 'error'); CS.registrandoPago = false; return; }
     if (monto <= 0) { showToast('El monto debe ser mayor a cero', 'error'); CS.registrandoPago = false; return; }
 
+    // ➗ Pago separado (opcional): las líneas deben sumar EXACTO el monto del abono.
+    let psLineas = null;
+    if (window.N360PSCred && N360PSCred.activo()) {
+      const v = await N360PSCred.validar(monto);
+      if (!v.ok) { showToast(v.msg, 'error'); CS.registrandoPago = false; return; }
+      psLineas = v.lineas;
+      const monedaBasePS = CS.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+      if (psLineas.some(l => l.bancoId && (l.bancoMoneda || 'NIO') !== monedaBasePS) && !CS.empresaConfig?.tasa_cambio_usd) {
+        showToast('Falta configurar tu tasa de cambio en Caja › Bancos antes de registrar este pago', 'error');
+        CS.registrandoPago = false; return;
+      }
+    }
+    const metodoNombreFinal = psLineas ? N360PSCred.descripcion(psLineas) : metodoNombre;
+
     // El banco ya se eligió al momento de cambiar el método a
     // Tarjeta/Transferencia (no aquí al final) — esto es solo un
     // candado de seguridad, por si alguien llegó hasta aquí sin
     // completar ese paso.
     const metodoActualCred = (metodoNombre||'').toLowerCase();
-    if ((metodoActualCred.includes('tarjeta') || metodoActualCred.includes('transferencia')) && (await cargarBancosDisponiblesCred()).length && !_bancoElegidoIdCred) {
+    if (!psLineas && (metodoActualCred.includes('tarjeta') || metodoActualCred.includes('transferencia')) && (await cargarBancosDisponiblesCred()).length && !_bancoElegidoIdCred) {
       showToast('Elige a qué banco entra este pago', 'error');
       CS.registrandoPago = false;
       return;
     }
-    const bancoElegidoPago = _bancoElegidoIdCred || null;
+    const bancoElegidoPago = psLineas ? null : (_bancoElegidoIdCred || null);
     // Monto en la moneda del banco: se calcula con el monto FINAL (antes se
     // tomaba el calculado al elegir el banco, y si después se cambiaba el
     // monto el banco quedaba descuadrado). Si se cobró en la moneda de ese
@@ -2358,6 +2374,27 @@
       const { data: credito } = await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle();
       if (!credito) throw new Error('Crédito no encontrado');
       if (monto > credito.saldo_pendiente + 0.01) throw new Error('El monto excede el saldo pendiente');
+      // En pago separado el número es más largo: sirve para encontrar TODOS sus movimientos de Caja al anular.
+      const comprobanteNumero = `PAG-${credito.numero_credito}-${Date.now().toString().slice(psLineas ? -7 : -5)}`;
+
+      // ➗ Pago separado: PRIMERO entra cada línea a Caja (con su método y banco).
+      // Si alguna falla, se anulan las que ya entraron y NO se toca el crédito.
+      if (psLineas) {
+        for (let i = 0; i < psLineas.length; i++) {
+          const l = psLineas[i];
+          const r = await registrarEnCaja({
+            auth_user_id: CS.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'PAGO_CREDITO',
+            concepto: `Pago crédito ${credito.numero_credito} · ${comprobanteNumero} (${i + 1}/${psLineas.length} ${l.metodoNombre})`,
+            monto: l.monto, metodo_pago_id: l.metodoId || null, metodo_pago_nombre: l.metodoNombre,
+            banco_id: l.bancoId || null, monto_moneda_banco: null,
+            referencia_tipo: 'credito', referencia_id: creditoId, observaciones,
+          });
+          if (!r || !r.ok) {
+            await anularMovsPagoSeparado(creditoId, comprobanteNumero, 'Pago separado incompleto: se revirtió', null);
+            throw new Error(`no se pudo registrar en Caja la línea de ${l.metodoNombre}. No se aplicó nada al crédito`);
+          }
+        }
+      }
 
       const { data: cuotasPendientes } = await _sb.from('creditos_cuotas').select('*')
         .eq('credito_id', creditoId).neq('estado','pagada').order('numero');
@@ -2409,8 +2446,8 @@
       const nuevoEstadoCredito = saldoNuevo <= 0.01 ? 'cancelado' : (credito.estado === 'en_proceso' ? 'activo' : credito.estado);
       await _sb.from('creditos').update({ saldo_pendiente: saldoNuevo, estado: nuevoEstadoCredito, updated_at: new Date().toISOString() }).eq('id', creditoId);
 
-      // Registrar en Caja (nunca crea una venta nueva)
-      const cajaRes = await registrarEnCaja({
+      // Registrar en Caja (nunca crea una venta nueva). En pago separado ya entró arriba, línea por línea.
+      const cajaRes = psLineas ? { ok: true } : await registrarEnCaja({
         auth_user_id: CS.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'PAGO_CREDITO',
         concepto: `Pago crédito ${credito.numero_credito}`, monto, metodo_pago_id: metodoId,
         metodo_pago_nombre: metodoNombre, banco_id: bancoElegidoPago,
@@ -2426,10 +2463,9 @@
         await registrarImpuestoCredito(montoTax, credito, nombre, id);
       }
 
-      const comprobanteNumero = `PAG-${credito.numero_credito}-${Date.now().toString().slice(-5)}`;
       const { data: pago, error: errPago } = await _sb.from('creditos_pagos').insert({
         auth_user_id: CS.userId, credito_id: creditoId, cliente_id: credito.cliente_id, monto,
-        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, observaciones,
+        metodo_pago_id: psLineas ? null : metodoId, metodo_pago_nombre: metodoNombreFinal, observaciones,
         saldo_anterior: saldoAnterior, saldo_nuevo: saldoNuevo, comprobante_numero: comprobanteNumero,
       }).select().single();
       if (errPago) throw errPago;
@@ -2458,7 +2494,7 @@
         titulo: 'Pago de crédito', numero: comprobanteNumero, credito: await textoCredito(credito),
         clienteId: cliente?.id || null,
         cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}` : '—', fecha: todayISO(),
-        usuario: CS.currentUser?.nombre || CS.userEmail, monto, metodo: metodoNombre,
+        usuario: CS.currentUser?.nombre || CS.userEmail, monto, metodo: metodoNombreFinal,
         saldoAnterior, saldoNuevo, proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
         fechaLimite: await fechaLimiteComprobante(credito, proximaCuota, saldoNuevo),
         estado: LABEL_ESTADO[nuevoEstadoCredito] || nuevoEstadoCredito,
@@ -3467,6 +3503,27 @@
   }
   window.confirmarAnularPago = confirmarAnularPago;
 
+  // Anula los movimientos de Caja de un pago separado (todos o ninguno).
+  // montoEsperado: si se da, la suma debe coincidir; si no, no se toca nada.
+  async function anularMovsPagoSeparado(creditoId, comprobante, motivo, montoEsperado) {
+    const { data: movs, error } = await _sb.from('movimientos_financieros').select('id,monto')
+      .eq('auth_user_id', CS.userId).eq('referencia_id', creditoId).eq('estado', 'completado')
+      .ilike('concepto', `%${comprobante}%`);
+    if (error) return { ok: false, msg: 'No se pudo leer Caja; no se anuló nada' };
+    const lista = movs || [];
+    const suma = round2(lista.reduce((s, m) => s + (Number(m.monto) || 0), 0));
+    if (montoEsperado != null && Math.abs(suma - round2(montoEsperado)) > 0.01) {
+      return { ok: false, msg: `Los movimientos de Caja de este pago separado suman ${fmt(suma)} y el pago es ${fmt(montoEsperado)}. No se anuló nada: revísalo en Caja` };
+    }
+    for (const m of lista) {
+      const { error: e } = await _sb.from('movimientos_financieros')
+        .update({ estado: 'anulado', anulado_en: new Date().toISOString(), anulado_motivo: motivo })
+        .eq('id', m.id).eq('auth_user_id', CS.userId).eq('estado', 'completado');
+      if (e) return { ok: false, msg: 'No se pudo anular un movimiento de Caja: ' + (e.message || '') };
+    }
+    return { ok: true, n: lista.length, suma };
+  }
+
   async function anularPagoCredito(pagoId, creditoId) {
     try {
       const { data: pago } = await _sb.from('creditos_pagos').select('*').eq('id', pagoId).eq('auth_user_id', CS.userId).maybeSingle();
@@ -3483,8 +3540,16 @@
       // queda el rastro y la base recalcula sola el saldo de Caja.
       // Primero por el enlace directo del pago; si no lo tiene (pagos
       // viejos), por referencia + monto + fecha, el más cercano en tiempo.
-      let movObjetivoId = pago.movimiento_financiero_id || null;
-      if (!movObjetivoId) {
+      // ➗ Pago separado: se anulan TODOS sus movimientos de Caja (van marcados con el
+      // número de comprobante). Si no cuadran con el monto del pago, no se anula nada.
+      let separadoAnulado = false;
+      if (pago.comprobante_numero && /^Pago separado/i.test(pago.metodo_pago_nombre || '')) {
+        const r = await anularMovsPagoSeparado(creditoId, pago.comprobante_numero, motivoAnulacion, monto);
+        if (!r.ok) throw new Error(r.msg);
+        separadoAnulado = true;
+      }
+      let movObjetivoId = separadoAnulado ? null : (pago.movimiento_financiero_id || null);
+      if (!separadoAnulado && !movObjetivoId) {
         const { data: movs } = await _sb.from('movimientos_financieros')
           .select('id, created_at')
           .eq('auth_user_id', CS.userId)
