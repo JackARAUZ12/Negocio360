@@ -1,0 +1,2060 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="movil-sin-zoom.css?v=20261021c" />
+  <script src="movil-recargar.js?v=20261021b" defer></script>
+<title>Negocio360 — Configura tu empresa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet">
+
+<!-- Supabase JS v2 -->
+<script src="ver-como.js?v=20261023b"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+<script src="pais-config.js?v=20261101a"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+<script src="clinica-comun.js?v=20261029b"></script>
+
+<style>
+/* ═══════════════════════════════════════════════════════════
+   VARIABLES — TEMA OSCURO (default) y TEMA CLARO
+═══════════════════════════════════════════════════════════ */
+:root {
+  /* Colores de marca */
+  --accent:   #6EE7B7;
+  --accent2:  #3B82F6;
+  --gold:     #F59E0B;
+  --rose:     #F43F5E;
+  --purple:   #A855F7;
+
+  /* Tipografía */
+  --font-head: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+
+  /* Radios */
+  --radius:    16px;
+  --radius-sm: 10px;
+
+  /* Sombra */
+  --shadow: 0 24px 60px rgba(0,0,0,0.4);
+
+  /* Pasos */
+  --step-active:   #6EE7B7;
+  --step-done:     #3B82F6;
+  --step-inactive: #1E293B;
+
+  /* Transición de tema */
+  --theme-transition: background .35s ease, color .35s ease, border-color .35s ease;
+}
+
+/* ── Tema OSCURO ── */
+[data-theme="dark"] {
+  --brand:    #0A0A0F;
+  --brand2:   #111118;
+  --text:     #F1F5F9;
+  --muted:    #64748B;
+  --border:   rgba(255,255,255,0.07);
+  --glass:    rgba(255,255,255,0.04);
+  --glass2:   rgba(255,255,255,0.08);
+  --input-bg: rgba(255,255,255,0.06);
+  --input-focus-bg: rgba(255,255,255,0.10);
+  --card-bg:  rgba(255,255,255,0.04);
+  --header-bg: rgba(10,10,15,0.85);
+  --toggle-inactive: #1E293B;
+  --select-opt-bg: #1E293B;
+  --label-color: #94A3B8;
+}
+
+/* ── Tema CLARO ── */
+[data-theme="light"] {
+  --brand:    #F8FAFC;
+  --brand2:   #EFF6FF;
+  --text:     #0F172A;
+  --muted:    #64748B;
+  --border:   rgba(0,0,0,0.09);
+  --glass:    rgba(255,255,255,0.85);
+  --glass2:   rgba(255,255,255,0.95);
+  --input-bg: rgba(255,255,255,0.9);
+  --input-focus-bg: #FFFFFF;
+  --card-bg:  rgba(255,255,255,0.9);
+  --header-bg: rgba(248,250,252,0.9);
+  --toggle-inactive: #E2E8F0;
+  --select-opt-bg: #F8FAFC;
+  --label-color: #475569;
+  --step-inactive: #CBD5E1;
+  --shadow: 0 16px 48px rgba(0,0,0,0.12);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════════════════ */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0 }
+html { scroll-behavior:smooth }
+body {
+  font-family: var(--font-body);
+  background: var(--brand);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: var(--theme-transition);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FONDOS DECORATIVOS
+═══════════════════════════════════════════════════════════ */
+.bg-mesh {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 10% -10%, rgba(110,231,183,.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 100%, rgba(59,130,246,.10) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(245,158,11,.04) 0%, transparent 60%);
+  transition: opacity .4s;
+}
+[data-theme="light"] .bg-mesh {
+  background:
+    radial-gradient(ellipse 80% 60% at 10% -10%, rgba(110,231,183,.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 100%, rgba(59,130,246,.07) 0%, transparent 55%);
+}
+.bg-grid {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  transition: opacity .4s;
+}
+[data-theme="light"] .bg-grid {
+  background-image:
+    linear-gradient(rgba(0,0,0,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,.04) 1px, transparent 1px);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════════════════ */
+.page { position:relative; z-index:1; min-height:100vh; display:flex; flex-direction:column }
+
+/* ═══════════════════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════════════════ */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 40px;
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  position: sticky; top: 0; z-index: 100;
+  background: var(--header-bg);
+  transition: var(--theme-transition);
+}
+.logo {
+  font-family: var(--font-head); font-weight: 800; font-size: 1.4rem;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  letter-spacing: -0.03em;
+}
+.header-right { display:flex; align-items:center; gap:12px }
+.header-badge {
+  font-size:.75rem; font-weight:500; color:var(--muted);
+  background:var(--glass2); border:1px solid var(--border);
+  padding:6px 14px; border-radius:999px;
+  transition: var(--theme-transition);
+}
+
+/* ── Botón de cambio de tema ── */
+.theme-toggle {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--glass2); border: 1px solid var(--border);
+  cursor: pointer; display:flex; align-items:center; justify-content:center;
+  font-size: 1.1rem; transition: all .2s; user-select:none;
+}
+.theme-toggle:hover { transform:scale(1.1); border-color:rgba(110,231,183,.4) }
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN
+═══════════════════════════════════════════════════════════ */
+.main {
+  flex:1; display:flex; flex-direction:column; align-items:center;
+  padding: 40px 20px 80px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PROGRESO DE PASOS
+═══════════════════════════════════════════════════════════ */
+.progress-wrap { width:100%; max-width:860px; margin-bottom:36px }
+.progress-header {
+  display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom:14px;
+}
+.progress-title { font-family:var(--font-head); font-size:1.05rem; font-weight:700 }
+.progress-count { font-size:.8rem; color:var(--muted) }
+.step-track {
+  display:flex; gap:6px; align-items:center;
+  overflow-x:auto; padding-bottom:4px;
+}
+.step-track::-webkit-scrollbar { height:3px }
+.step-track::-webkit-scrollbar-track { background:transparent }
+.step-track::-webkit-scrollbar-thumb { background:var(--border); border-radius:99px }
+.step-node {
+  flex:1; min-width:56px; height:6px; border-radius:99px;
+  background: var(--step-inactive);
+  transition: background .4s ease, box-shadow .4s ease;
+  cursor: default;
+}
+.step-node.done {
+  background: var(--step-done);
+  cursor: pointer;
+}
+.step-node.active {
+  background: var(--step-active);
+  box-shadow: 0 0 14px rgba(110,231,183,.5);
+}
+.step-labels { display:flex; justify-content:space-between; margin-top:8px }
+.step-label {
+  font-size:.68rem; color:var(--muted);
+  transition: color .3s;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:76px; text-align:center;
+}
+.step-label.active { color:var(--accent) }
+.step-label.done { color:var(--accent2) }
+
+/* ═══════════════════════════════════════════════════════════
+   CARD
+═══════════════════════════════════════════════════════════ */
+.card {
+  width:100%; max-width:860px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: var(--theme-transition);
+}
+.card-step { display:none; animation: fadeUp .35s ease }
+.card-step.active { display:block }
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(18px) }
+  to   { opacity:1; transform:translateY(0) }
+}
+
+.card-header {
+  padding: 32px 40px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items:flex-start; gap:18px;
+  transition: var(--theme-transition);
+}
+.step-icon {
+  width:50px; height:50px; border-radius:var(--radius-sm);
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.4rem; flex-shrink:0;
+}
+.step-icon.green  { background:rgba(110,231,183,.12); border:1px solid rgba(110,231,183,.25) }
+.step-icon.blue   { background:rgba(59,130,246,.12);  border:1px solid rgba(59,130,246,.25) }
+.step-icon.gold   { background:rgba(245,158,11,.12);  border:1px solid rgba(245,158,11,.25) }
+.step-icon.purple { background:rgba(168,85,247,.12);  border:1px solid rgba(168,85,247,.25) }
+.step-icon.rose   { background:rgba(244,63,94,.12);   border:1px solid rgba(244,63,94,.25) }
+
+.card-title {
+  font-family:var(--font-head); font-size:1.45rem; font-weight:700;
+  margin-bottom:5px; letter-spacing:-.02em;
+}
+.card-subtitle { font-size:.88rem; color:var(--muted); line-height:1.55 }
+.card-body { padding:32px 40px }
+
+/* ═══════════════════════════════════════════════════════════
+   CAMPOS DE FORMULARIO
+═══════════════════════════════════════════════════════════ */
+.fields-grid { display:grid; gap:18px }
+.fields-grid.cols-2 { grid-template-columns:1fr 1fr }
+.fields-grid.cols-3 { grid-template-columns:1fr 1fr 1fr }
+@media(max-width:640px){
+  .fields-grid.cols-2,
+  .fields-grid.cols-3 { grid-template-columns:1fr }
+}
+.field { display:flex; flex-direction:column; gap:7px }
+.field.span-2 { grid-column:span 2 }
+.field.span-3 { grid-column:span 3 }
+@media(max-width:640px){ .field.span-2, .field.span-3 { grid-column:span 1 } }
+
+label {
+  font-size:.78rem; font-weight:500; color:var(--label-color);
+  letter-spacing:.04em; text-transform:uppercase;
+  transition: color .3s;
+}
+label span.req  { color:var(--accent); margin-left:3px }
+label span.opt  { color:var(--muted); font-size:.72rem; text-transform:none; font-weight:400 }
+
+input[type=text],
+input[type=email],
+input[type=tel],
+input[type=url],
+input[type=number],
+input[type=date],
+select,
+textarea {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: .9rem;
+  padding: 11px 15px;
+  outline: none;
+  width: 100%;
+  transition: border-color .25s, box-shadow .25s, background .25s, color .3s;
+  -webkit-appearance: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(110,231,183,.14);
+  background: var(--input-focus-bg);
+}
+input::placeholder, textarea::placeholder { color:var(--muted) }
+select option { background:var(--select-opt-bg); color:var(--text) }
+textarea { resize:vertical; min-height:88px }
+
+/* Prefijo telefónico */
+.phone-wrap { display:flex; gap:8px }
+.phone-prefix { width:92px; flex-shrink:0 }
+
+/* ═══════════════════════════════════════════════════════════
+   TOGGLES
+═══════════════════════════════════════════════════════════ */
+.toggle-group { display:flex; flex-direction:column; gap:10px }
+.toggle-row {
+  display:flex; align-items:center; justify-content:space-between;
+  background: var(--glass2); border:1px solid var(--border);
+  border-radius: var(--radius-sm); padding:13px 17px;
+  transition: border-color .2s, background .2s; cursor:pointer;
+}
+.toggle-row:hover { border-color:rgba(255,255,255,.18) }
+[data-theme="light"] .toggle-row:hover { border-color:rgba(0,0,0,.18) }
+.toggle-row.active {
+  border-color:rgba(110,231,183,.35);
+  background:rgba(110,231,183,.06);
+}
+.toggle-info { display:flex; flex-direction:column; gap:2px }
+.toggle-name { font-size:.88rem; font-weight:500 }
+.toggle-desc { font-size:.75rem; color:var(--muted) }
+.toggle-switch {
+  width:42px; height:23px; border-radius:12px;
+  background:var(--toggle-inactive); border:1px solid var(--border);
+  position:relative; flex-shrink:0;
+  transition:background .3s, border-color .3s; pointer-events:none;
+}
+.toggle-switch::after {
+  content:''; position:absolute; top:2px; left:2px;
+  width:17px; height:17px; border-radius:50%;
+  background:#475569;
+  transition:left .3s, background .3s;
+}
+[data-theme="light"] .toggle-switch::after { background:#94A3B8 }
+.toggle-row.active .toggle-switch { background:rgba(110,231,183,.2); border-color:var(--accent) }
+.toggle-row.active .toggle-switch::after { left:21px; background:var(--accent) }
+
+/* ═══════════════════════════════════════════════════════════
+   COLOR PICKER
+═══════════════════════════════════════════════════════════ */
+.color-row { display:flex; align-items:center; gap:10px }
+.color-swatch {
+  width:42px; height:42px; border-radius:9px;
+  border:2px solid var(--border); cursor:pointer;
+  overflow:hidden; flex-shrink:0;
+  transition:transform .2s, border-color .2s;
+}
+.color-swatch:hover { transform:scale(1.1); border-color:rgba(255,255,255,.35) }
+.color-swatch input[type=color] {
+  width:200%; height:200%; margin:-50%;
+  cursor:pointer; border:none; padding:0; background:none;
+}
+.color-hex {
+  flex:1; background:var(--glass2); border:1px solid var(--border);
+  border-radius:var(--radius-sm); color:var(--text);
+  font-family:monospace; font-size:.84rem; padding:9px 13px;
+  outline:none; transition:border-color .25s;
+}
+.color-hex:focus { border-color:var(--accent) }
+.preset-palette { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px }
+.preset-dot {
+  width:26px; height:26px; border-radius:50%; cursor:pointer;
+  border:2px solid transparent;
+  transition:transform .15s, border-color .2s;
+}
+.preset-dot:hover { transform:scale(1.22); border-color:rgba(255,255,255,.4) }
+
+/* ═══════════════════════════════════════════════════════════
+   PALETAS PREDISEÑADAS
+═══════════════════════════════════════════════════════════ */
+.chips { display:flex; flex-wrap:wrap; gap:8px }
+.chip {
+  padding:9px 16px; border-radius:99px;
+  border:1px solid var(--border); background:var(--glass2);
+  font-size:.82rem; font-weight:500; cursor:pointer;
+  transition:border-color .2s, background .2s, color .2s, transform .15s;
+  user-select:none;
+}
+.chip:hover { border-color:rgba(255,255,255,.25); transform:translateY(-1px) }
+[data-theme="light"] .chip:hover { border-color:rgba(0,0,0,.2) }
+.chip.selected { border-color:var(--accent); background:rgba(110,231,183,.12); color:var(--accent) }
+
+/* ═══════════════════════════════════════════════════════════
+   TARJETAS DE TEMA (dentro del paso de identidad visual)
+═══════════════════════════════════════════════════════════ */
+.theme-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px }
+.theme-card {
+  padding:18px; border-radius:var(--radius); border:1px solid var(--border);
+  cursor:pointer; transition:border-color .2s, background .2s, transform .15s;
+  display:flex; align-items:center; gap:12px;
+}
+.theme-card:hover { transform:translateY(-2px) }
+.theme-card.selected { border-color:var(--accent); background:rgba(110,231,183,.07) }
+.theme-preview {
+  width:46px; height:30px; border-radius:6px; flex-shrink:0;
+  border:1px solid var(--border);
+}
+.theme-preview.light { background:linear-gradient(135deg,#f8fafc,#e2e8f0) }
+.theme-preview.dark  { background:linear-gradient(135deg,#0f172a,#1e293b) }
+.theme-name { font-weight:600; font-size:.88rem }
+.theme-desc { font-size:.74rem; color:var(--muted); margin-top:2px }
+
+/* ═══════════════════════════════════════════════════════════
+   TARJETAS DE TIPO DE NEGOCIO -- primera cosa que ve el cliente
+   en Personalizacion. Mismo lenguaje visual que theme-card, mas
+   compacto porque hay muchas mas opciones.
+═══════════════════════════════════════════════════════════ */
+.negocio-categoria-titulo {
+  font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--muted); margin:18px 0 8px;
+}
+.negocio-categoria-titulo:first-child { margin-top:0 }
+.negocio-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:8px }
+.negocio-card {
+  padding:14px 10px; border-radius:var(--radius); border:1px solid var(--border);
+  cursor:pointer; transition:border-color .2s, background .2s, transform .15s;
+  display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px;
+}
+.negocio-card:hover { transform:translateY(-2px) }
+.negocio-card.selected { border-color:var(--accent); background:rgba(110,231,183,.07) }
+.negocio-card-icon { font-size:1.5rem }
+.negocio-card-nombre { font-size:.78rem; font-weight:600; line-height:1.2 }
+
+/* ═══════════════════════════════════════════════════════════
+   TARJETAS DE MODULO -- Paso 6, seleccion MULTIPLE (a diferencia
+   de negocio-card que es una sola opcion). Mismo lenguaje visual,
+   con un checkmark propio en vez de solo el borde.
+═══════════════════════════════════════════════════════════ */
+.modulo-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:8px; margin-bottom:6px }
+.modulo-card {
+  padding:12px 10px; border-radius:var(--radius); border:1px solid var(--border);
+  cursor:pointer; transition:border-color .2s, background .2s;
+  display:flex; align-items:center; gap:10px;
+}
+.modulo-card:hover { border-color:var(--accent) }
+.modulo-card.selected { border-color:var(--accent); background:rgba(110,231,183,.07) }
+.modulo-card-check {
+  width:18px; height:18px; border-radius:5px; border:1.5px solid var(--border);
+  flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.7rem;
+  transition:all .2s;
+}
+.modulo-card.selected .modulo-card-check { background:var(--accent); border-color:var(--accent); color:#0f172a }
+.modulo-card-icon { font-size:1.15rem; flex-shrink:0 }
+.modulo-card-nombre { font-size:.8rem; font-weight:600; line-height:1.2 }
+
+/* ═══════════════════════════════════════════════════════════
+   UPLOAD DE LOGOS
+═══════════════════════════════════════════════════════════ */
+.upload-zone {
+  border:2px dashed var(--border); border-radius:var(--radius);
+  padding:28px; text-align:center; cursor:pointer;
+  transition:border-color .25s, background .25s;
+  position:relative; min-height:140px;
+  display:flex; align-items:center; justify-content:center;
+}
+.upload-zone:hover, .upload-zone.dragging {
+  border-color:var(--accent); background:rgba(110,231,183,.05);
+}
+.upload-zone input[type=file] {
+  position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;
+}
+.upload-icon { font-size:2.2rem; margin-bottom:8px }
+.upload-text { font-size:.88rem; font-weight:500; margin-bottom:3px }
+.upload-hint { font-size:.75rem; color:var(--muted) }
+.upload-preview {
+  width:72px; height:72px; border-radius:9px;
+  object-fit:contain; margin:0 auto 8px; display:block;
+  background:var(--glass2); border:1px solid var(--border);
+  padding:5px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DIVISORES DE SECCIÓN
+═══════════════════════════════════════════════════════════ */
+.section-divider {
+  display:flex; align-items:center; gap:12px; margin:26px 0 18px;
+}
+.section-divider span {
+  font-size:.72rem; color:var(--muted); letter-spacing:.08em;
+  text-transform:uppercase; white-space:nowrap;
+}
+.section-divider::before,.section-divider::after {
+  content:''; flex:1; height:1px; background:var(--border);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FOOTER DE CARD / BOTONES
+═══════════════════════════════════════════════════════════ */
+.card-footer {
+  padding:22px 40px;
+  border-top:1px solid var(--border);
+  display:flex; justify-content:space-between; align-items:center;
+  gap:14px; transition: var(--theme-transition);
+}
+.btn {
+  display:inline-flex; align-items:center; gap:7px;
+  padding:11px 22px; border-radius:var(--radius-sm);
+  font-family:var(--font-body); font-size:.88rem; font-weight:500;
+  cursor:pointer; border:none; transition:all .2s;
+  text-decoration:none; white-space:nowrap;
+}
+.btn-ghost {
+  background:var(--glass2); border:1px solid var(--border);
+  color:var(--muted);
+}
+.btn-ghost:hover { border-color:rgba(255,255,255,.25); color:var(--text) }
+[data-theme="light"] .btn-ghost:hover { border-color:rgba(0,0,0,.2) }
+.btn-primary {
+  background:linear-gradient(135deg, var(--accent), #34D399);
+  color:#0A0A0F; font-weight:700;
+  box-shadow:0 4px 18px rgba(110,231,183,.28);
+}
+.btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 28px rgba(110,231,183,.42) }
+.btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none }
+.btn-finish {
+  background:linear-gradient(135deg, var(--gold), #FBBF24);
+  color:#0A0A0F; font-weight:700;
+  box-shadow:0 4px 18px rgba(245,158,11,.32);
+}
+.btn-finish:hover { transform:translateY(-2px); box-shadow:0 8px 28px rgba(245,158,11,.5) }
+.btn-finish:disabled { opacity:.5; cursor:not-allowed; transform:none }
+.step-indicator { font-size:.8rem; color:var(--muted) }
+
+/* ═══════════════════════════════════════════════════════════
+   PANTALLA DE ÉXITO
+═══════════════════════════════════════════════════════════ */
+.success-screen {
+  display:none; flex-direction:column; align-items:center;
+  justify-content:center; text-align:center; padding:80px 40px;
+}
+.success-screen.active { display:flex }
+.success-anim {
+  width:96px; height:96px; border-radius:50%;
+  background:rgba(110,231,183,.1); border:2px solid var(--accent);
+  display:flex; align-items:center; justify-content:center;
+  font-size:2.8rem; margin-bottom:28px;
+  animation:pulse 2s ease infinite;
+}
+@keyframes pulse {
+  0%,100% { box-shadow:0 0 0 0 rgba(110,231,183,.4) }
+  50%      { box-shadow:0 0 0 20px rgba(110,231,183,0) }
+}
+.success-title {
+  font-family:var(--font-head); font-size:2.2rem; font-weight:800;
+  margin-bottom:10px; letter-spacing:-.03em;
+}
+.success-sub {
+  color:var(--muted); font-size:.96rem;
+  max-width:440px; margin:0 auto 32px; line-height:1.65;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════════ */
+.toast {
+  position:fixed; bottom:28px; right:28px; z-index:999;
+  background:var(--glass2); border:1px solid var(--border);
+  backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+  border-radius:var(--radius-sm); padding:13px 18px;
+  display:flex; align-items:center; gap:9px;
+  font-size:.875rem; font-weight:500;
+  transform:translateY(80px); opacity:0;
+  transition:transform .3s ease, opacity .3s ease;
+  max-width:300px; color:var(--text);
+}
+.toast.show { transform:translateY(0); opacity:1 }
+.toast.success { border-color:rgba(110,231,183,.4) }
+.toast.error   { border-color:rgba(244,63,94,.4) }
+.toast.info    { border-color:rgba(59,130,246,.4) }
+
+/* ═══════════════════════════════════════════════════════════
+   OVERLAY DE GUARDADO
+═══════════════════════════════════════════════════════════ */
+.saving-overlay {
+  position:fixed; inset:0; z-index:500;
+  background:rgba(10,10,15,.75);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  display:none; align-items:center; justify-content:center;
+  flex-direction:column; gap:16px;
+}
+[data-theme="light"] .saving-overlay { background:rgba(248,250,252,.75) }
+.saving-overlay.active { display:flex }
+.spinner {
+  width:46px; height:46px; border:3px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg) } }
+.saving-text { color:var(--muted); font-size:.88rem }
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════════════════ */
+@media(max-width:900px) {
+  .header { padding:14px 20px }
+  .card-header, .card-body, .card-footer { padding-left:24px; padding-right:24px }
+}
+@media(max-width:640px) {
+  .card-header { flex-direction:column; gap:12px; padding:22px 20px }
+  .card-body   { padding:22px 20px }
+  .card-footer { flex-wrap:wrap; padding:18px 20px }
+  .card-title  { font-size:1.2rem }
+  .theme-cards { grid-template-columns:1fr }
+  .btn-finish, .btn-primary { width:100%; justify-content:center }
+  .card-footer { flex-direction:column-reverse }
+  .step-indicator { text-align:center }
+}
+</style>
+  <link rel="stylesheet" href="perfiles-guard.css" />
+</head>
+<body data-theme="dark">
+
+<!-- Fondos decorativos -->
+<div class="bg-mesh"></div>
+<div class="bg-grid"></div>
+
+<!-- ── Overlay de guardado ── -->
+<div class="saving-overlay" id="savingOverlay">
+  <div class="spinner"></div>
+  <div class="saving-text" id="savingText">Guardando configuración…</div>
+</div>
+
+<!-- ── Toast de notificaciones ── -->
+<div class="toast" id="toast">
+  <span id="toastIcon">✓</span>
+  <span id="toastMsg">Guardado correctamente</span>
+</div>
+
+<div class="page">
+
+  <!-- ═══════════════════════════════════════════════════════
+       HEADER
+  ═══════════════════════════════════════════════════════ -->
+  <header class="header">
+    <div class="logo">Negocio<span style="opacity:.45">360</span></div>
+    <div class="header-right">
+      <div class="header-badge">Configuración inicial</div>
+      <button type="button" class="header-badge" id="btnSalirPersonalizacion" onclick="salirDePersonalizacion()" style="cursor:pointer;font:inherit" title="Cerrar sesión y volver al inicio de sesión">Cerrar sesión</button>
+      <!-- Botón toggle de tema -->
+      <div class="theme-toggle" id="themeToggleBtn" title="Cambiar tema" onclick="toggleGlobalTheme()">🌙</div>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- ── Barra de progreso ── -->
+    <div class="progress-wrap">
+      <div class="progress-header">
+        <div class="progress-title">Personaliza tu espacio de trabajo</div>
+        <div class="progress-count" id="progressCount">Paso 1 de 5</div>
+      </div>
+      <div class="step-track" id="stepTrack"></div>
+      <div class="step-labels" id="stepLabels"></div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         CARD PRINCIPAL (contiene todos los pasos)
+    ════════════════════════════════════════════════════ -->
+    <div class="card">
+
+      <!-- ═══════════════════════════════════════════
+           PASO 1 — INFORMACIÓN EMPRESARIAL
+      ═══════════════════════════════════════════ -->
+      <div class="card-step active" id="step-1">
+        <div class="card-header">
+          <div class="step-icon green">🏢</div>
+          <div>
+            <div class="card-title">Información empresarial</div>
+            <div class="card-subtitle">Cuéntanos sobre tu empresa. Esta información personalizará toda la plataforma.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="section-divider" style="margin-top:0"><span>¿En qué país trabajará tu negocio? *</span></div>
+          <div class="fields-grid cols-2" style="margin-bottom:6px">
+            <div class="field">
+              <label>País <span class="req">*</span></label>
+              <select id="pais" onchange="onPaisCambio()">
+                <option value="">Selecciona país…</option>
+                <option value="NI">🇳🇮 Nicaragua</option>
+                <option value="GT">🇬🇹 Guatemala</option>
+                <option value="SV">🇸🇻 El Salvador</option>
+                <option value="HN">🇭🇳 Honduras</option>
+                <option value="CR">🇨🇷 Costa Rica</option>
+                <option value="PA">🇵🇦 Panamá</option>
+                <option value="MX">🇲🇽 México</option>
+                <option value="CO">🇨🇴 Colombia</option>
+                <option value="PE">🇵🇪 Perú</option>
+                <option value="CL">🇨🇱 Chile</option>
+                <option value="AR">🇦🇷 Argentina</option>
+                <option value="EC">🇪🇨 Ecuador</option>
+                <option value="VE">🇻🇪 Venezuela</option>
+                <option value="BO">🇧🇴 Bolivia</option>
+                <option value="PY">🇵🇾 Paraguay</option>
+                <option value="UY">🇺🇾 Uruguay</option>
+                <option value="DO">🇩🇴 Rep. Dominicana</option>
+                <option value="CU">🇨🇺 Cuba</option>
+                <option value="ES">🇪🇸 España</option>
+                <option value="US">🇺🇸 Estados Unidos</option>
+                <option value="otro">🌎 Otro</option>
+              </select>
+            </div>
+            <div class="field" style="display:flex;align-items:flex-end">
+              <div id="pais_resumen" style="font-size:.82rem;color:var(--muted);line-height:1.4;min-height:20px"></div>
+            </div>
+          </div>
+          <div style="font-size:.78rem;color:var(--muted);margin:-2px 0 14px">Con tu país proponemos la moneda, la zona horaria y los impuestos. Todo se puede cambiar en los pasos siguientes y después en Configuración.</div>
+          <div class="section-divider" style="margin-top:6px"><span>¿Cuál es tu negocio? *</span></div>
+          <div id="negocioTiposWrap"></div>
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Nombre comercial <span class="req">*</span></label>
+              <input type="text" id="nombre_comercial" placeholder="Ej: Tienda La Esperanza" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>Razón social <span class="opt">(opcional)</span></label>
+              <input type="text" id="razon_social" placeholder="Ej: Inversiones LA S.A.">
+            </div>
+            <div class="field" style="display:none">
+              <!-- El tipo de negocio ya no se elige aqui -- vive como
+                   tarjetas al inicio del paso. Este input hidden
+                   mantiene exactamente el mismo id y comportamiento
+                   para validateStep()/collectStep(), que no cambian. -->
+              <input type="hidden" id="tipo_negocio" value="">
+            </div>
+            <div class="field">
+              <label>Año de fundación <span class="opt">(opcional)</span></label>
+              <input type="number" id="anio_fundacion" placeholder="Ej: 2018" min="1900" max="2030">
+            </div>
+            <div class="field span-2">
+              <label>Descripción del negocio <span class="opt">(opcional)</span></label>
+              <textarea id="descripcion" placeholder="¿A qué se dedica tu empresa? ¿Cuál es tu propuesta de valor?"></textarea>
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Tamaño del equipo</span></div>
+
+          <div class="field">
+            <label>Cantidad aproximada de empleados <span class="opt">(opcional)</span></label>
+            <input type="number" id="cantidad_empleados" placeholder="Ej: 5" min="1" style="max-width:200px">
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="step-indicator">Paso 1 de 6</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PASO 2 — UBICACIÓN
+      ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-2">
+        <div class="card-header">
+          <div class="step-icon blue">📍</div>
+          <div>
+            <div class="card-title">Ubicación y zona horaria</div>
+            <div class="card-subtitle">¿Desde dónde operas? Permite configurar zona horaria, impuestos y formato de fechas.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Zona horaria <span class="req">*</span></label>
+              <select id="zona_horaria">
+                <option value="">Selecciona zona…</option>
+                <option value="America/Managua">America/Managua (UTC-6)</option>
+                <option value="America/Guatemala">America/Guatemala (UTC-6)</option>
+                <option value="America/El_Salvador">America/El_Salvador (UTC-6)</option>
+                <option value="America/Tegucigalpa">America/Tegucigalpa (UTC-6)</option>
+                <option value="America/Costa_Rica">America/Costa_Rica (UTC-6)</option>
+                <option value="America/Panama">America/Panama (UTC-5)</option>
+                <option value="America/Mexico_City">America/Mexico_City (UTC-6)</option>
+                <option value="America/Bogota">America/Bogota (UTC-5)</option>
+                <option value="America/Lima">America/Lima (UTC-5)</option>
+                <option value="America/Santiago">America/Santiago (UTC-3)</option>
+                <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires (UTC-3)</option>
+                <option value="America/Caracas">America/Caracas (UTC-4)</option>
+                <option value="America/La_Paz">America/La_Paz (UTC-4)</option>
+                <option value="America/Asuncion">America/Asuncion (UTC-4)</option>
+                <option value="America/Montevideo">America/Montevideo (UTC-3)</option>
+                <option value="America/Santo_Domingo">America/Santo_Domingo (UTC-4)</option>
+                <option value="America/Havana">America/Havana (UTC-5)</option>
+                <option value="America/New_York">America/New_York (UTC-5)</option>
+                <option value="America/Los_Angeles">America/Los_Angeles (UTC-8)</option>
+                <option value="Europe/Madrid">Europe/Madrid (UTC+1)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Departamento / Estado <span class="req">*</span></label>
+              <input type="text" id="departamento" placeholder="Ej: Managua">
+            </div>
+            <div class="field">
+              <label>Ciudad / Municipio <span class="req">*</span></label>
+              <input type="text" id="ciudad" placeholder="Ej: Managua">
+            </div>
+            <div class="field span-2">
+              <label>Dirección principal <span class="opt">(opcional)</span></label>
+              <input type="text" id="direccion" placeholder="Ej: De la Plaza España 1c al este, 2c al norte">
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 2 de 6</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PASO 3 — CONTACTO
+      ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-3">
+        <div class="card-header">
+          <div class="step-icon green">📞</div>
+          <div>
+            <div class="card-title">Información de contacto</div>
+            <div class="card-subtitle">Tus canales de comunicación aparecerán en facturas, correos y widgets del dashboard.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="section-divider"><span>Comunicación directa</span></div>
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>WhatsApp principal <span class="opt">(opcional)</span></label>
+              <div class="phone-wrap">
+                <select class="phone-prefix" id="wa_prefix">
+                  <option value="+505">🇳🇮 +505</option>
+                  <option value="+502">🇬🇹 +502</option>
+                  <option value="+503">🇸🇻 +503</option>
+                  <option value="+504">🇭🇳 +504</option>
+                  <option value="+506">🇨🇷 +506</option>
+                  <option value="+507">🇵🇦 +507</option>
+                  <option value="+52">🇲🇽 +52</option>
+                  <option value="+57">🇨🇴 +57</option>
+                  <option value="+51">🇵🇪 +51</option>
+                  <option value="+56">🇨🇱 +56</option>
+                  <option value="+54">🇦🇷 +54</option>
+                  <option value="+1">🇺🇸 +1</option>
+                  <option value="+34">🇪🇸 +34</option>
+                </select>
+                <input type="tel" id="whatsapp" placeholder="8888-1234">
+              </div>
+            </div>
+            <div class="field">
+              <label>Teléfono secundario <span class="opt">(opcional)</span></label>
+              <div class="phone-wrap">
+                <select class="phone-prefix" id="tel_prefix">
+                  <option value="+505">🇳🇮 +505</option>
+                  <option value="+502">🇬🇹 +502</option>
+                  <option value="+503">🇸🇻 +503</option>
+                  <option value="+504">🇭🇳 +504</option>
+                  <option value="+506">🇨🇷 +506</option>
+                  <option value="+507">🇵🇦 +507</option>
+                  <option value="+52">🇲🇽 +52</option>
+                  <option value="+57">🇨🇴 +57</option>
+                  <option value="+51">🇵🇪 +51</option>
+                  <option value="+56">🇨🇱 +56</option>
+                  <option value="+54">🇦🇷 +54</option>
+                  <option value="+1">🇺🇸 +1</option>
+                  <option value="+34">🇪🇸 +34</option>
+                </select>
+                <input type="tel" id="telefono" placeholder="2222-3456">
+              </div>
+            </div>
+            <div class="field">
+              <label>Correo empresarial <span class="opt">(opcional)</span></label>
+              <input type="email" id="email_empresa" placeholder="contacto@minegocio.com">
+            </div>
+            <div class="field">
+              <label>Sitio web <span class="opt">(opcional)</span></label>
+              <input type="url" id="sitio_web" placeholder="https://minegocio.com">
+            </div>
+          </div>
+          <div class="section-divider"><span>Redes sociales</span></div>
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Facebook <span class="opt">(opcional)</span></label>
+              <input type="url" id="facebook" placeholder="https://facebook.com/minegocio">
+            </div>
+            <div class="field">
+              <label>Instagram <span class="opt">(opcional)</span></label>
+              <input type="text" id="instagram" placeholder="@minegocio">
+            </div>
+            <div class="field">
+              <label>TikTok <span class="opt">(opcional)</span></label>
+              <input type="text" id="tiktok" placeholder="@minegocio">
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 3 de 6</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PASO 4 — CONFIGURACIÓN FINANCIERA
+      ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-4">
+        <div class="card-header">
+          <div class="step-icon gold">💰</div>
+          <div>
+            <div class="card-title">Configuración financiera</div>
+            <div class="card-subtitle">Define la moneda con la que operará tu negocio dentro de la plataforma.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Moneda principal <span class="req">*</span></label>
+              <select id="moneda">
+                <option value="">Selecciona moneda…</option>
+                <option value="NIO">🇳🇮 Córdoba (NIO)</option>
+                <option value="USD">🇺🇸 Dólar (USD)</option>
+                <option value="GTQ">🇬🇹 Quetzal (GTQ)</option>
+                <option value="HNL">🇭🇳 Lempira (HNL)</option>
+                <option value="CRC">🇨🇷 Colón costarricense (CRC)</option>
+                <option value="PAB">🇵🇦 Balboa (PAB)</option>
+                <option value="MXN">🇲🇽 Peso mexicano (MXN)</option>
+                <option value="COP">🇨🇴 Peso colombiano (COP)</option>
+                <option value="PEN">🇵🇪 Sol (PEN)</option>
+                <option value="CLP">🇨🇱 Peso chileno (CLP)</option>
+                <option value="ARS">🇦🇷 Peso argentino (ARS)</option>
+                <option value="EUR">🇪🇺 Euro (EUR)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 4 de 6</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PASO 5 — IDENTIDAD VISUAL
+      ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-5">
+        <div class="card-header">
+          <div class="step-icon gold">🎨</div>
+          <div>
+            <div class="card-title">Identidad visual</div>
+            <div class="card-subtitle">Tu marca en cada pantalla. El dashboard usará estos colores y logos automáticamente.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="section-divider"><span>Logotipos</span></div>
+          <div class="fields-grid cols-2">
+            <div class="field">
+              <label>Logo principal <span class="opt">(opcional)</span></label>
+              <div class="upload-zone" id="zone_logo"
+                   ondragover="dragOver(event,'zone_logo')"
+                   ondragleave="dragLeave('zone_logo')"
+                   ondrop="dropFile(event,'logo_principal','zone_logo')">
+                <input type="file" id="logo_principal" accept="image/*"
+                       onchange="previewLogo(this,'zone_logo','principal')">
+                <div id="zone_logo_content">
+                  <div class="upload-icon">🖼️</div>
+                  <div class="upload-text">Subir logo</div>
+                  <div class="upload-hint">PNG, SVG, WEBP · Máx 2MB · Fondo transparente</div>
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Logo alternativo <span class="opt">(icono / versión blanca)</span></label>
+              <div class="upload-zone" id="zone_logo2"
+                   ondragover="dragOver(event,'zone_logo2')"
+                   ondragleave="dragLeave('zone_logo2')"
+                   ondrop="dropFile(event,'logo_alternativo','zone_logo2')">
+                <input type="file" id="logo_alternativo" accept="image/*"
+                       onchange="previewLogo(this,'zone_logo2','alternativo')">
+                <div id="zone_logo2_content">
+                  <div class="upload-icon">✨</div>
+                  <div class="upload-text">Subir logo alternativo</div>
+                  <div class="upload-hint">Versión para fondos oscuros o ícono pequeño</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Paleta de colores</span></div>
+          <div class="fields-grid cols-3">
+            <div class="field">
+              <label>Color principal</label>
+              <div class="color-row">
+                <div class="color-swatch" id="swatch_principal" style="background:#6EE7B7">
+                  <input type="color" id="color_principal" value="#6EE7B7"
+                         oninput="syncColor('color_principal','hex_principal','swatch_principal')">
+                </div>
+                <input type="text" class="color-hex" id="hex_principal" value="#6EE7B7" maxlength="7"
+                       oninput="syncHex('hex_principal','color_principal','swatch_principal')">
+              </div>
+              <div class="preset-palette" id="presets_principal"></div>
+            </div>
+            <div class="field">
+              <label>Color secundario</label>
+              <div class="color-row">
+                <div class="color-swatch" id="swatch_secundario" style="background:#3B82F6">
+                  <input type="color" id="color_secundario" value="#3B82F6"
+                         oninput="syncColor('color_secundario','hex_secundario','swatch_secundario')">
+                </div>
+                <input type="text" class="color-hex" id="hex_secundario" value="#3B82F6" maxlength="7"
+                       oninput="syncHex('hex_secundario','color_secundario','swatch_secundario')">
+              </div>
+            </div>
+            <div class="field">
+              <label>Color de acento</label>
+              <div class="color-row">
+                <div class="color-swatch" id="swatch_acento" style="background:#F59E0B">
+                  <input type="color" id="color_acento" value="#F59E0B"
+                         oninput="syncColor('color_acento','hex_acento','swatch_acento')">
+                </div>
+                <input type="text" class="color-hex" id="hex_acento" value="#F59E0B" maxlength="7"
+                       oninput="syncHex('hex_acento','color_acento','swatch_acento')">
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:10px">
+            <label>Paletas prediseñadas</label>
+            <div class="chips" style="margin-top:10px">
+              <div class="chip" onclick="applyPalette('#6EE7B7','#3B82F6','#F59E0B')">🌿 Natural</div>
+              <div class="chip" onclick="applyPalette('#8B5CF6','#EC4899','#F59E0B')">💜 Violeta</div>
+              <div class="chip" onclick="applyPalette('#EF4444','#F97316','#FCD34D')">🔥 Fuego</div>
+              <div class="chip" onclick="applyPalette('#06B6D4','#0EA5E9','#38BDF8')">🌊 Océano</div>
+              <div class="chip" onclick="applyPalette('#10B981','#059669','#D1FAE5')">🍃 Esmeralda</div>
+              <div class="chip" onclick="applyPalette('#F59E0B','#D97706','#FDE68A')">☀️ Dorado</div>
+              <div class="chip" onclick="applyPalette('#1E40AF','#3B82F6','#93C5FD')">🔷 Corporativo</div>
+            </div>
+          </div>
+
+          <div class="section-divider"><span>Tema de interfaz</span></div>
+          <div class="theme-cards">
+            <div class="theme-card selected" id="theme_dark" onclick="selectTheme('dark')">
+              <div class="theme-preview dark"></div>
+              <div>
+                <div class="theme-name">🌙 Modo oscuro</div>
+                <div class="theme-desc">Interfaz oscura, ideal para uso prolongado</div>
+              </div>
+            </div>
+            <div class="theme-card" id="theme_light" onclick="selectTheme('light')">
+              <div class="theme-preview light"></div>
+              <div>
+                <div class="theme-name">☀️ Modo claro</div>
+                <div class="theme-desc">Interfaz luminosa, ideal para entornos brillantes</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 5 de 6</div>
+          <button class="btn btn-primary" onclick="nextStep()">Continuar →</button>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PASO 6 — MÓDULOS
+      ═══════════════════════════════════════════ -->
+      <div class="card-step" id="step-6">
+        <div class="card-header">
+          <div class="step-icon blue">🧩</div>
+          <div>
+            <div class="card-title">Elige tus módulos</div>
+            <div class="card-subtitle">Los módulos principales (Ventas, Clientes, Caja...) siempre están disponibles. Aquí activas solo los adicionales que tu negocio realmente necesita — puedes cambiar esto después desde Configuración.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="moduloEspecialWrap" style="display:none">
+            <div class="section-divider" style="margin-top:0"><span>De tu rubro</span></div>
+            <div id="moduloEspecialCard"></div>
+          </div>
+          <div class="section-divider"><span>Módulos adicionales</span></div>
+          <div id="modulosSecundariosWrap"></div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-ghost" onclick="prevStep()">← Anterior</button>
+          <div class="step-indicator">Paso 6 de 6</div>
+          <button class="btn btn-finish" id="btnFinish" onclick="finalizarOnboarding()">🚀 Ir a mi Dashboard</button>
+        </div>
+      </div>
+
+      <!-- ── Pantalla de éxito ── -->
+      <div class="success-screen" id="successScreen">
+        <div class="success-anim">🎉</div>
+        <div class="success-title">¡Todo listo!</div>
+        <div class="success-sub">Tu espacio de trabajo está siendo configurado. En segundos serás redirigido a tu dashboard personalizado.</div>
+        <div class="spinner"></div>
+      </div>
+
+    </div><!-- /card -->
+  </main>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════
+     JAVASCRIPT — INTEGRACIÓN SUPABASE JS v2
+═══════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════
+   1. CONFIGURACIÓN DE SUPABASE
+   ════════════════════════════════════════════════════════════ */
+const SUPABASE_URL  = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'; // ← Reemplaza con tu clave real
+
+// Crear cliente Supabase usando la librería CDN v2
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/* ════════════════════════════════════════════════════════════
+   2. DEFINICIÓN DE PASOS
+   ════════════════════════════════════════════════════════════ */
+const STEPS = [
+  { label: 'Empresa'    },
+  { label: 'Ubicación'  },
+  { label: 'Contacto'   },
+  { label: 'Finanzas'   },
+  { label: 'Visual'     },
+  { label: 'Módulos'    },
+];
+
+/* ════════════════════════════════════════════════════════════
+   3. ESTADO GLOBAL
+   ════════════════════════════════════════════════════════════ */
+let currentStep  = 1;      // Paso actual (1–5)
+let formData     = {};      // Acumula todos los campos del formulario
+let logoFiles    = {        // Archivos de logo seleccionados
+  principal:   null,
+  alternativo: null,
+};
+let selectedThemeValue = 'dark'; // Tema seleccionado en el paso de identidad visual
+let currentUser  = null;   // Usuario autenticado de Supabase
+
+/* ════════════════════════════════════════════════════════════
+   4. INICIALIZACIÓN
+   ════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', async () => {
+
+  // 4a. Obtener sesión del usuario
+  const { data: { session }, error: sessErr } = await db.auth.getSession();
+
+  if (sessErr || !session) {
+    // Si no hay sesión activa, redirigir al login
+    showToast('Debes iniciar sesión primero', 'error');
+    setTimeout(() => { window.location.href = 'login.html'; }, 2000);
+    return;
+  }
+
+  currentUser = session.user;
+
+  // 4b. Verificar si ya completó el onboarding. Se usa maybeSingle()
+  // (no single()) y se revisa el error explícitamente — antes, si esta
+  // consulta fallaba por cualquier motivo de red, el código asumía en
+  // silencio "es cuenta nueva" y dejaba pasar a alguien que ya había
+  // completado todo, causando el bucle y errores al intentar guardar
+  // de nuevo sobre datos ya existentes.
+  const { data: existing, error: errExisting } = await db
+    .from('configuracion_empresa')
+    .select('onboarding_completado, onboarding_step')
+    .eq('auth_user_id', currentUser.id)
+    .maybeSingle();
+
+  if (errExisting) {
+    showToast('No se pudo verificar tu cuenta. Revisa tu conexión e intenta de nuevo.', 'error');
+    return;
+  }
+
+  if (existing?.onboarding_completado) {
+    // Ya completó el onboarding, redirigir al dashboard
+    window.location.href = 'dashboard.html';
+    return;
+  }
+
+  // 4b-bis. Sucursales y bodegas NACEN ya configuradas (no pasan por este asistente). Si por algún motivo su
+  // configuración quedó sin guardar (la Central no puede escribir en la cuenta de otro usuario), la cuenta
+  // quedaba atrapada aquí. Se completa sola, SOLO si esta cuenta figura realmente como sucursal/bodega,
+  // y solo escribiendo en su propia fila (lo único que permite la seguridad de la base).
+  try {
+    const { data: filaSuc } = await db.from('sucursales')
+      .select('id, nombre, tipo').eq('auth_user_id_sucursal', currentUser.id).eq('es_central', false).maybeSingle();
+    if (filaSuc) {
+      const { error: e1 } = await db.from('configuracion_empresa').upsert({
+        auth_user_id: currentUser.id, nombre_comercial: filaSuc.nombre, onboarding_completado: true, onboarding_step: 5,
+      }, { onConflict: 'auth_user_id' });
+      const { error: e2 } = await db.from('usuarios').update({ onboarding_completado: true }).eq('auth_user_id', currentUser.id);
+      if (!e1 && !e2) { window.location.href = filaSuc.tipo === 'bodega' ? 'bodega.html' : 'dashboard.html'; return; }
+      console.warn('No se pudo completar la configuración de la sucursal:', e1 || e2);
+    }
+  } catch (eSuc) { console.warn('Revisión de sucursal omitida:', eSuc); }
+
+  // 4c. Si hay progreso previo, restaurar paso
+  if (existing?.onboarding_step && existing.onboarding_step > 1) {
+    const resumeStep = Math.min(existing.onboarding_step, STEPS.length);
+    showToast(`Continuando desde el paso ${resumeStep}`, 'info');
+    goToStep(resumeStep);
+  }
+
+  // 4d. Renderizar progreso y componentes
+  renderProgress();
+  renderColorPresets();
+  renderTiposNegocio();
+  renderModulosSecundarios();
+  applyThemeToPage('dark'); // Tema inicial
+
+  // 4e. Pre-seleccionar Nicaragua (detección por IP sería ideal,
+  //     pero como el usuario es de Managua pre-seleccionamos)
+  // El país ya no se preselecciona: es la primera pregunta y la elige la persona (de ahí salen moneda y zona horaria).
+});
+
+/* ════════════════════════════════════════════════════════════
+   5. BARRA DE PROGRESO
+   ════════════════════════════════════════════════════════════ */
+function renderProgress() {
+  const track  = document.getElementById('stepTrack');
+  const labels = document.getElementById('stepLabels');
+  track.innerHTML  = '';
+  labels.innerHTML = '';
+
+  STEPS.forEach((s, i) => {
+    const n = i + 1;
+
+    // Nodo de barra
+    const node = document.createElement('div');
+    node.className = 'step-node'
+      + (n < currentStep ? ' done'
+       : n === currentStep ? ' active' : '');
+    node.title   = s.label;
+    node.onclick = () => { if (n < currentStep) goToStep(n); };
+    track.appendChild(node);
+
+    // Etiqueta
+    const lbl = document.createElement('div');
+    lbl.className = 'step-label'
+      + (n < currentStep ? ' done'
+       : n === currentStep ? ' active' : '');
+    lbl.textContent = s.label;
+    labels.appendChild(lbl);
+  });
+
+  document.getElementById('progressCount').textContent =
+    `Paso ${currentStep} de ${STEPS.length}`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   6. NAVEGACIÓN ENTRE PASOS
+   ════════════════════════════════════════════════════════════ */
+function goToStep(n) {
+  document.getElementById('step-' + currentStep).classList.remove('active');
+  currentStep = n;
+  document.getElementById('step-' + currentStep).classList.add('active');
+  renderProgress();
+  if (currentStep === 6) renderModuloEspecial();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function nextStep() {
+  if (!validateStep(currentStep)) return;
+  collectStep(currentStep);
+  if (currentStep < STEPS.length) {
+    goToStep(currentStep + 1);
+    // Guardar progreso en Supabase sin bloquear
+    saveProgress().catch(console.warn);
+  }
+}
+
+function prevStep() {
+  if (currentStep > 1) goToStep(currentStep - 1);
+}
+
+/* ════════════════════════════════════════════════════════════
+   7. VALIDACIONES POR PASO
+   ════════════════════════════════════════════════════════════ */
+function validateStep(step) {
+  const required = {
+    1: [
+      { id: 'pais',             msg: 'Selecciona el país donde trabajará tu negocio' },
+      { id: 'nombre_comercial', msg: 'El nombre comercial es obligatorio' },
+      { id: 'tipo_negocio',     msg: 'Selecciona el tipo de negocio' },
+    ],
+    2: [
+      { id: 'pais',          msg: 'Selecciona el país' },
+      { id: 'zona_horaria',  msg: 'Selecciona la zona horaria' },
+      { id: 'departamento',  msg: 'Ingresa el departamento o estado' },
+      { id: 'ciudad',        msg: 'Ingresa la ciudad' },
+    ],
+    4: [
+      { id: 'moneda', msg: 'Selecciona la moneda principal' },
+    ],
+  };
+
+  const rules = required[step] || [];
+  for (const r of rules) {
+    if (r.custom) {
+      if (!r.custom()) { showToast(r.msg, 'error'); return false; }
+    } else {
+      const el = document.getElementById(r.id);
+      if (el && !el.value.trim()) {
+        showToast(r.msg, 'error');
+        el.focus();
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/* ════════════════════════════════════════════════════════════
+   8. RECOLECCIÓN DE DATOS POR PASO
+   ════════════════════════════════════════════════════════════ */
+// Helpers internos
+const g  = (id) => document.getElementById(id)?.value?.trim() ?? '';
+const gi = (id) => { const v = g(id); return v ? parseInt(v) : null; };
+
+function collectStep(step) {
+  if (step === 1) {
+    Object.assign(formData, {
+      pais:               g('pais')                 || null,
+      nombre_comercial:   g('nombre_comercial'),
+      razon_social:       g('razon_social')        || null,
+      tipo_negocio:       g('tipo_negocio')         || null,
+      descripcion:        g('descripcion')          || null,
+      anio_fundacion:     gi('anio_fundacion'),
+      cantidad_empleados: gi('cantidad_empleados'),
+    });
+  }
+  if (step === 2) {
+    Object.assign(formData, {
+      pais:         g('pais')         || null,
+      departamento: g('departamento') || null,
+      ciudad:       g('ciudad')       || null,
+      direccion:    g('direccion')    || null,
+      zona_horaria: g('zona_horaria') || null,
+    });
+  }
+  if (step === 3) {
+    const waNum  = g('whatsapp');
+    const telNum = g('telefono');
+    Object.assign(formData, {
+      whatsapp:      waNum  ? g('wa_prefix')  + waNum  : null,
+      telefono:      telNum ? g('tel_prefix') + telNum : null,
+      email_empresa: g('email_empresa') || null,
+      sitio_web:     g('sitio_web')     || null,
+      facebook:      g('facebook')      || null,
+      instagram:     g('instagram')     || null,
+      tiktok:        g('tiktok')        || null,
+    });
+  }
+  if (step === 4) {
+    Object.assign(formData, {
+      moneda: g('moneda') || null,
+    });
+  }
+  if (step === 5) {
+    Object.assign(formData, {
+      color_principal:  document.getElementById('color_principal').value,
+      color_secundario: document.getElementById('color_secundario').value,
+      color_acento:     document.getElementById('color_acento').value,
+      tema:             selectedThemeValue,
+    });
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   9. GUARDADO PROGRESIVO EN SUPABASE (upsert parcial)
+   ════════════════════════════════════════════════════════════ */
+async function saveProgress() {
+  if (!currentUser) return;
+
+  // Upsert usando auth_user_id como clave única. IMPORTANTE: no se
+  // incluye "onboarding_completado" aquí — si la fila ya existe y ya
+  // estaba en true (cuenta ya completada), este guardado progresivo
+  // NUNCA debe poder bajarlo a false. Para una fila nueva, la columna
+  // ya tiene su propio valor por defecto (false), así que no hace falta
+  // repetirlo aquí.
+  const { error } = await db
+    .from('configuracion_empresa')
+    .upsert(
+      {
+        auth_user_id:     currentUser.id,
+        ...formData,
+        onboarding_step:  currentStep,
+      },
+      { onConflict: 'auth_user_id' }
+    );
+
+  if (error) {
+    console.error('Error al guardar progreso:', error.message);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   10. SUBIDA DE LOGOS AL STORAGE DE SUPABASE
+   ════════════════════════════════════════════════════════════ */
+async function uploadLogo(file, key) {
+  if (!file || !currentUser) return null;
+
+  const ext      = file.name.split('.').pop();
+  const path     = `${currentUser.id}/logo_${key}.${ext}`;
+  const bucket   = 'logos_empresa';
+
+  // Eliminar versión anterior si existe (evita duplicados)
+  await db.storage.from(bucket).remove([path]);
+
+  // Subir nuevo archivo
+  const { error } = await db.storage
+    .from(bucket)
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: file.type,
+    });
+
+  if (error) {
+    console.error(`Error subiendo logo ${key}:`, error.message);
+    return null;
+  }
+
+  // Obtener URL pública
+  const { data } = db.storage.from(bucket).getPublicUrl(path);
+  return data?.publicUrl ?? null;
+}
+
+/* ════════════════════════════════════════════════════════════
+   11. FINALIZACIÓN DEL ONBOARDING
+   ════════════════════════════════════════════════════════════ */
+async function finalizarOnboarding() {
+  // Validar último paso (Identidad visual)
+  if (!validateStep(STEPS.length)) return;
+  collectStep(STEPS.length);
+
+  // Deshabilitar botón para evitar doble envío
+  const btnFinish = document.getElementById('btnFinish');
+  btnFinish.disabled = true;
+
+  // Mostrar overlay
+  showSaving('Subiendo logos…');
+
+  try {
+    // 11a. Subir logos (si se seleccionaron)
+    const [logoUrl, logoAltUrl] = await Promise.all([
+      uploadLogo(logoFiles.principal,   'principal'),
+      uploadLogo(logoFiles.alternativo, 'alternativo'),
+    ]);
+
+    if (logoUrl)    formData.logo_principal_url    = logoUrl;
+    if (logoAltUrl) formData.logo_alternativo_url  = logoAltUrl;
+
+    // 11b. Actualizar texto del overlay
+    updateSavingText('Guardando configuración…');
+
+    // 11b-bis. Configuracion de modulos elegida en el Paso 6 -- SOLO
+    // enciende lo que el cliente selecciono, nunca apaga algo de
+    // fuera de este flujo. Esto corre unicamente para una cuenta
+    // NUEVA -- una cuenta que ya completo onboarding antes jamas
+    // vuelve a ejecutar esta funcion (se redirige al dashboard
+    // apenas entra a esta pagina, visto arriba) -- asi que las 62
+    // cuentas existentes, cuyo metadata.modulosOpcionales nunca tuvo
+    // estos "false" explicitos, siguen viendo sus modulos exactamente
+    // igual que siempre.
+    const modulosAuto = {};
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'hotel') modulosAuto.usa_modulo_hotel = true;
+    if (moduloEspecialActivo && ['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) modulosAuto.usa_modulo_restaurante = true;
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'veterinaria') { modulosAuto.usa_modulo_veterinaria = true; modulosAuto.maneja_lotes_vencimiento = true; }
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'transporte') { modulosAuto.usa_modulo_transporte = true; }
+    if (moduloEspecialActivo && ['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) { modulosAuto.usa_modulo_diseno = true; }
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'insumos_medicos') { modulosAuto.usa_modulo_insumos = true; modulosAuto.maneja_lotes_vencimiento = true; }
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'farmacia') { modulosAuto.usa_modulo_farmacia = true; modulosAuto.usa_farmacia_fase2 = true; modulosAuto.maneja_lotes_vencimiento = true; }
+    if (moduloEspecialActivo && ['clinica', 'fisioterapia'].includes(tipoNegocioSeleccionado)) {
+      const esp = [...document.querySelectorAll('[data-onb-esp]:checked')].map(el => el.value);
+      modulosAuto.usa_modulo_clinica = true; modulosAuto.maneja_lotes_vencimiento = true;
+      modulosAuto.clinica_especialidades = esp.length ? esp : ['multiespecialidad'];
+    }
+
+    const modulosOpcionales = {};
+    MODULOS_SECUNDARIOS.forEach(m => {
+      if (!modulosSecundariosSeleccionados.has(m.key)) modulosOpcionales[m.key] = false;
+    });
+
+    // 11c. Upsert final con onboarding_completado = true
+    const { error: upsertErr } = await db
+      .from('configuracion_empresa')
+      .upsert(
+        {
+          auth_user_id:          currentUser.id,
+          ...formData,
+          ...modulosAuto,
+          metadata:              { modulosOpcionales },
+          onboarding_step:       STEPS.length,
+          onboarding_completado: true,
+        },
+        { onConflict: 'auth_user_id' }
+      );
+
+    if (upsertErr) throw upsertErr;
+
+     // 11c-bis. Marcar onboarding como completado en tabla usuarios
+    // Esto es lo que login.html consulta para redirigir correctamente
+    const { error: usuarioErr } = await db
+      .from('usuarios')
+      .update({ onboarding_completado: true })
+      .eq('auth_user_id', currentUser.id);
+
+    if (usuarioErr) console.warn('No se pudo actualizar usuarios:', usuarioErr.message);
+
+    // 11d. Guardar config mínima en sessionStorage para el dashboard
+    sessionStorage.setItem('n360_config', JSON.stringify({
+      nombre:           formData.nombre_comercial,
+      color_principal:  formData.color_principal,
+      color_secundario: formData.color_secundario,
+      color_acento:     formData.color_acento,
+      tema:             formData.tema,
+      moneda:           formData.moneda,
+      logo_url:         formData.logo_principal_url,
+      tipo_negocio:     formData.tipo_negocio,
+    }));
+
+    // Recuerda el país y la moneda en este navegador (activa los ajustes de Costa Rica al instante si aplica).
+    try { if (window.N360CR) window.N360CR.guardar(currentUser.id, formData.pais, formData.moneda); } catch (_) {}
+
+    // 11e. Ocultar overlay, mostrar pantalla de éxito
+    hideSaving();
+    document.querySelectorAll('.card-step').forEach(el => el.classList.remove('active'));
+    document.getElementById('successScreen').classList.add('active');
+
+    // 11f. Redirigir al dashboard
+    window.location.href = 'dashboard.html?onboarding=complete';
+
+  } catch (err) {
+    hideSaving();
+    btnFinish.disabled = false;
+    showToast('Error al guardar: ' + (err.message || 'Inténtalo de nuevo'), 'error');
+    console.error('Onboarding error:', err);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   12. TEMA DE PÁGINA (oscuro / claro)
+   ════════════════════════════════════════════════════════════ */
+// Cambia el data-theme del body (afecta todas las variables CSS)
+function applyThemeToPage(theme) {
+  document.body.setAttribute('data-theme', theme);
+  document.getElementById('themeToggleBtn').textContent = theme === 'dark' ? '🌙' : '☀️';
+}
+
+// Botón del header: alterna el tema de toda la página
+function toggleGlobalTheme() {
+  const current = document.body.getAttribute('data-theme') || 'dark';
+  const next    = current === 'dark' ? 'light' : 'dark';
+  applyThemeToPage(next);
+  // Si estamos en el paso de identidad visual, sincronizar la selección de tarjeta de tema
+  selectTheme(next);
+}
+
+// Selección de tema dentro del paso de identidad visual
+function selectTheme(t) {
+  selectedThemeValue = t;
+  document.getElementById('theme_dark').classList.toggle('selected', t === 'dark');
+  document.getElementById('theme_light').classList.toggle('selected', t === 'light');
+  // Aplicar inmediatamente para previsualización en tiempo real
+  applyThemeToPage(t);
+}
+
+/* ════════════════════════════════════════════════════════════
+   13. COLOR PICKERS
+   ════════════════════════════════════════════════════════════ */
+function syncColor(colorId, hexId, swatchId) {
+  const val = document.getElementById(colorId).value;
+  document.getElementById(hexId).value = val;
+  document.getElementById(swatchId).style.background = val;
+}
+
+function syncHex(hexId, colorId, swatchId) {
+  const val = document.getElementById(hexId).value;
+  if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+    document.getElementById(colorId).value = val;
+    document.getElementById(swatchId).style.background = val;
+  }
+}
+
+function applyPalette(p, s, a) {
+  const ids = [
+    ['color_principal',  'hex_principal',  'swatch_principal',  p],
+    ['color_secundario', 'hex_secundario', 'swatch_secundario', s],
+    ['color_acento',     'hex_acento',     'swatch_acento',     a],
+  ];
+  ids.forEach(([cId, hId, sId, val]) => {
+    document.getElementById(cId).value = val;
+    document.getElementById(hId).value = val;
+    document.getElementById(sId).style.background = val;
+  });
+}
+
+// Renderiza puntos de color preset bajo "Color principal"
+/* ════════════════════════════════════════════════════════════
+   TIPO DE NEGOCIO -- primera seccion visible del Paso 1. Mismos
+   valores que el select que reemplaza (para no romper nada de lo
+   que ya se guarda), mas "hotel" como opcion nueva -- ninguna de
+   las 62 cuentas existentes vuelve a ver esta pantalla (se
+   redirige al dashboard si onboarding_completado=true, arriba),
+   asi que agregar una opcion nueva aqui no les afecta en nada.
+   ════════════════════════════════════════════════════════════ */
+let tipoNegocioSeleccionado = '';
+const TIPOS_NEGOCIO = [
+  { categoria: 'Comercio', items: [
+    { v:'retail', icono:'👕', nombre:'Tienda / Retail' },
+    { v:'mayorista', icono:'📦', nombre:'Mayorista' },
+    { v:'distribuidor', icono:'🚚', nombre:'Distribuidor' },
+    { v:'importador', icono:'🌎', nombre:'Importador / Exportador' },
+    { v:'farmacia', icono:'💊', nombre:'Farmacia' },
+    { v:'insumos_medicos', icono:'🩺', nombre:'Venta de insumos médicos' },
+    { v:'ferreteria', icono:'🔧', nombre:'Ferretería' },
+    { v:'supermercado', icono:'🛒', nombre:'Supermercado / Minisuper' },
+    { v:'papeleria', icono:'📚', nombre:'Papelería / Librería' },
+    { v:'electronica', icono:'📱', nombre:'Electrónica' },
+    { v:'repuestos', icono:'🚗', nombre:'Repuestos' },
+    { v:'pulperia', icono:'🏪', nombre:'Pulpería / Tienda de barrio' },
+    { v:'ropa_boutique', icono:'👗', nombre:'Ropa / Boutique' },
+    { v:'calzado', icono:'👟', nombre:'Calzado' },
+    { v:'joyeria', icono:'💍', nombre:'Joyería / Relojería' },
+    { v:'celulares', icono:'📲', nombre:'Celulares y accesorios' },
+    { v:'muebleria', icono:'🛋️', nombre:'Mueblería / Electrodomésticos' },
+    { v:'materiales_construccion', icono:'🧱', nombre:'Materiales de construcción' },
+    { v:'agroservicio', icono:'🌱', nombre:'Agroservicio / Insumos agrícolas' },
+    { v:'carniceria', icono:'🥩', nombre:'Carnicería / Pollería' },
+    { v:'verduleria', icono:'🥬', nombre:'Frutas y verduras' },
+    { v:'licoreria', icono:'🍾', nombre:'Licorería / Distribuidora de bebidas' },
+    { v:'cosmeticos', icono:'💄', nombre:'Perfumería / Cosméticos' },
+    { v:'floristeria', icono:'💐', nombre:'Floristería' },
+    { v:'tienda_mascotas', icono:'🐶', nombre:'Tienda de mascotas' },
+    { v:'juguetes_regalos', icono:'🎁', nombre:'Variedades / Regalos / Juguetes' },
+    { v:'vehiculos', icono:'🚙', nombre:'Venta de vehículos / Motos' },
+    { v:'gasolinera', icono:'⛽', nombre:'Gasolinera / Lubricentro' },
+  ]},
+  { categoria: 'Gastronomía', items: [
+    { v:'restaurante', icono:'🍽️', nombre:'Restaurante' },
+    { v:'cafeteria', icono:'☕', nombre:'Cafetería / Panadería' },
+    { v:'catering', icono:'🎉', nombre:'Catering / Eventos' },
+    { v:'bar', icono:'🍺', nombre:'Bar' },
+    { v:'fritanga', icono:'🍗', nombre:'Fritanga / Comedor' },
+    { v:'comida_rapida', icono:'🍔', nombre:'Comida rápida / Food truck' },
+    { v:'heladeria', icono:'🍦', nombre:'Heladería / Dulcería' },
+    { v:'pasteleria', icono:'🎂', nombre:'Pastelería / Repostería' },
+  ]},
+  { categoria: 'Hospedaje', items: [
+    { v:'hotel', icono:'🛏️', nombre:'Hotel / Hospedaje' },
+    { v:'alquiler_vacacional', icono:'🏡', nombre:'Alquiler vacacional / Hostal' },
+    { v:'salon_eventos', icono:'🎊', nombre:'Salón de eventos' },
+  ]},
+  { categoria: 'Servicios', items: [
+    { v:'servicios_profesionales', icono:'💼', nombre:'Servicios profesionales' },
+    { v:'consultoria', icono:'📊', nombre:'Consultoría' },
+    { v:'salud', icono:'⚕️', nombre:'Salud / Médico' },
+    { v:'clinica', icono:'🏥', nombre:'Clínica / Consultorio médico' },
+    { v:'fisioterapia', icono:'🏃', nombre:'Fisioterapia / Quiropraxia / Masajes terapéuticos' },
+    { v:'veterinaria', icono:'🐾', nombre:'Veterinaria' },
+    { v:'educacion', icono:'🎓', nombre:'Educación / Academia' },
+    { v:'tecnologia', icono:'💻', nombre:'Tecnología / Software' },
+    { v:'reparacion', icono:'🛠️', nombre:'Reparación / Técnico' },
+    { v:'belleza', icono:'💇', nombre:'Salón de belleza / Barbería' },
+    { v:'taller_mecanico', icono:'🔩', nombre:'Taller mecánico' },
+    { v:'lavanderia', icono:'🧺', nombre:'Lavandería' },
+    { v:'gimnasio', icono:'🏋️', nombre:'Gimnasio' },
+    { v:'lavado_autos', icono:'🚿', nombre:'Lavado de autos' },
+    { v:'limpieza', icono:'🧹', nombre:'Servicios de limpieza' },
+    { v:'jardineria', icono:'🌳', nombre:'Jardinería / Paisajismo' },
+    { v:'tecnicos_hogar', icono:'🔌', nombre:'Electricista / Plomería / Aire acondicionado' },
+    { v:'seguridad', icono:'🛡️', nombre:'Seguridad privada' },
+    { v:'internet_cable', icono:'📡', nombre:'Internet / Cable' },
+    { v:'colegio', icono:'🏫', nombre:'Colegio / Guardería' },
+    { v:'idiomas', icono:'🗣️', nombre:'Academia de idiomas / Cursos' },
+    { v:'renta_equipos', icono:'🏗️', nombre:'Alquiler de equipos y herramientas' },
+    { v:'financiera', icono:'🏦', nombre:'Financiera / Microcrédito / Casa de empeño' },
+    { v:'agencia_viajes', icono:'✈️', nombre:'Agencia de viajes / Turismo' },
+    { v:'funeraria', icono:'🕊️', nombre:'Funeraria' },
+  ]},
+  { categoria: 'Producción', items: [
+    { v:'manufactura', icono:'🏭', nombre:'Manufactura' },
+    { v:'construccion', icono:'🏗️', nombre:'Construcción' },
+    { v:'agropecuario', icono:'🌾', nombre:'Agropecuario' },
+    { v:'ganaderia', icono:'🐄', nombre:'Ganadería (carne, leche, doble propósito)' },
+    { v:'avicola', icono:'🐔', nombre:'Avícola' },
+    { v:'porcicola', icono:'🐖', nombre:'Porcicultura' },
+    { v:'acuicultura', icono:'🐟', nombre:'Acuicultura / Pesca' },
+    { v:'agricultura', icono:'🌽', nombre:'Agricultura / Cultivos' },
+    { v:'cafe_agroindustria', icono:'☕', nombre:'Café / Agroindustria' },
+    { v:'lacteos', icono:'🧀', nombre:'Lácteos / Quesería' },
+    { v:'carpinteria', icono:'🪚', nombre:'Carpintería / Ebanistería' },
+    { v:'herreria', icono:'⚙️', nombre:'Herrería / Metalmecánica' },
+    { v:'confeccion', icono:'🧵', nombre:'Confección / Sastrería' },
+    { v:'artesanias', icono:'🏺', nombre:'Artesanías' },
+    { v:'bloquera', icono:'🧱', nombre:'Bloquera / Prefabricados' },
+  ]},
+  { categoria: 'Creativos y profesionales', items: [
+    { v:'diseno_grafico', icono:'🎨', nombre:'Diseño gráfico' },
+    { v:'imprenta_publicidad', icono:'🖨️', nombre:'Imprenta / Publicidad / Rotulación' },
+    { v:'fotografia_video', icono:'📷', nombre:'Fotografía y video' },
+    { v:'agencia_marketing', icono:'📣', nombre:'Agencia de marketing / Redes sociales' },
+    { v:'audiovisual', icono:'🎬', nombre:'Producción audiovisual / Música' },
+    { v:'desarrollo_web', icono:'🌐', nombre:'Desarrollo web / Apps' },
+    { v:'contabilidad_auditoria', icono:'🧾', nombre:'Contabilidad / Auditoría' },
+    { v:'legal_notaria', icono:'⚖️', nombre:'Abogados / Notaría' },
+    { v:'arquitectura_ingenieria', icono:'📐', nombre:'Arquitectura / Ingeniería' },
+    { v:'seguros', icono:'🛟', nombre:'Seguros / Corretaje' },
+  ]},
+  { categoria: 'Salud y bienestar', items: [
+    { v:'odontologia', icono:'🦷', nombre:'Clínica dental' },
+    { v:'laboratorio_clinico', icono:'🔬', nombre:'Laboratorio clínico' },
+    { v:'optica', icono:'👓', nombre:'Óptica' },
+    { v:'spa_estetica', icono:'💆', nombre:'Spa / Estética / Uñas' },
+    { v:'psicologia_terapia', icono:'🧠', nombre:'Psicología / Fisioterapia / Nutrición' },
+  ]},
+  { categoria: 'Otros', items: [
+    { v:'transporte', icono:'🚛', nombre:'Transporte / Logística' },
+    { v:'inmobiliaria', icono:'🏠', nombre:'Inmobiliaria' },
+    { v:'entretenimiento', icono:'🎮', nombre:'Entretenimiento' },
+    { v:'courier', icono:'📬', nombre:'Mensajería / Courier' },
+    { v:'ong_iglesia', icono:'🤝', nombre:'ONG / Fundación / Iglesia' },
+    { v:'cooperativa', icono:'🏛️', nombre:'Cooperativa / Asociación' },
+    { v:'club_deportivo', icono:'⚽', nombre:'Club deportivo / Escuela deportiva' },
+    { v:'otro', icono:'✨', nombre:'Otro' },
+  ]},
+];
+
+function renderTiposNegocio() {
+  const wrap = document.getElementById('negocioTiposWrap');
+  if (!wrap) return;
+  wrap.innerHTML = TIPOS_NEGOCIO.map(cat => `
+    <div class="negocio-categoria-titulo">${cat.categoria}</div>
+    <div class="negocio-grid">
+      ${cat.items.map(it => `
+        <div class="negocio-card" data-valor="${it.v}" onclick="seleccionarTipoNegocio('${it.v}')">
+          <div class="negocio-card-icon">${it.icono}</div>
+          <div class="negocio-card-nombre">${it.nombre}</div>
+        </div>`).join('')}
+    </div>
+  `).join('');
+}
+
+// Rubros que traen modulos opcionales sugeridos (pre-marcados en el Paso 6).
+// Solo se pre-marcan mientras la persona no haya tocado la seleccion a mano; ella
+// siempre puede marcar o desmarcar lo que quiera.
+const MODULOS_SUGERIDOS_POR_RUBRO = {
+  transporte: ['creditos','proformas','impuestos','cuentas_por_pagar','activos','salarios','rutas','agenda','estadisticas','contabilidad'],
+  insumos_medicos: ['creditos','proformas','impuestos','cuentas_por_pagar','consulta_inventario','codigos_barras',
+                    'servicio','rutas','delivery','estadisticas','contabilidad','catalogo360'],
+};
+let modulosSugeridosAplicados = false;   // true = lo marcado viene de una sugerencia y nadie lo ha tocado
+
+function aplicarModulosSugeridos(valor) {
+  if (modulosSugeridosAplicados) {            // limpia la sugerencia anterior (si nadie la toco)
+    modulosSecundariosSeleccionados.clear();
+    modulosSugeridosAplicados = false;
+  }
+  const sugeridos = MODULOS_SUGERIDOS_POR_RUBRO[valor];
+  if (sugeridos && modulosSecundariosSeleccionados.size === 0) {
+    sugeridos.forEach(k => modulosSecundariosSeleccionados.add(k));
+    modulosSugeridosAplicados = true;
+  }
+  document.querySelectorAll('.modulo-card[data-key]').forEach(c => {
+    c.classList.toggle('selected', modulosSecundariosSeleccionados.has(c.dataset.key));
+  });
+}
+
+function seleccionarTipoNegocio(valor) {
+  tipoNegocioSeleccionado = valor;
+  try { aplicarModulosSugeridos(valor); } catch (e) { console.warn('modulos sugeridos:', e); }
+  document.getElementById('tipo_negocio').value = valor;
+  document.querySelectorAll('.negocio-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.valor === valor);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   MODULOS -- Paso 6. Antes, una cuenta nueva arrancaba con
+   PRACTICAMENTE TODOS los modulos secundarios ya activos (la
+   forma en que estaActivo() esta escrita en modulos-guard.js: solo
+   se considera inactivo un modulo marcado false EXPLICITAMENTE --
+   una cuenta que nunca toco nada los tenia todos encendidos por
+   default). No se toca esa logica -- en vez de eso, al terminar el
+   onboarding de una cuenta NUEVA se escriben false explicitos para
+   los que el cliente NO eligio aqui. Las 62 cuentas existentes
+   jamas ejecutan este codigo (misma garantia que el Paso 1: se
+   redirige al dashboard si onboarding_completado=true).
+
+   Se dejan fuera de esta lista "notificaciones" y "personalizacion"
+   -- no tiene sentido ofrecer como "opcional, apagado por defecto"
+   el acceso a configurar la propia cuenta o a ver notificaciones.
+   ════════════════════════════════════════════════════════════ */
+const MODULOS_SECUNDARIOS = [
+  { key:'creditos', icono:'🧾', nombre:'Créditos' },
+  { key:'estadisticas', icono:'📈', nombre:'Estadísticas' },
+  { key:'impuestos', icono:'🧮', nombre:'Impuestos' },
+  { key:'cuentas_por_pagar', icono:'📇', nombre:'Cuentas por Pagar' },
+  { key:'salarios', icono:'🧑‍💼', nombre:'Salarios' },
+  { key:'auditoria', icono:'🕵️', nombre:'Auditoría' },
+  { key:'proformas', icono:'📄', nombre:'Proformas' },
+  { key:'codigos_barras', icono:'📊', nombre:'Códigos de Barras' },
+  { key:'sucursales', icono:'🏬', nombre:'Sucursales' },
+  { key:'consulta_inventario', icono:'🔎', nombre:'Consulta/Inventario' },
+  { key:'rutas', icono:'🗺️', nombre:'Rutas' },
+  { key:'delivery', icono:'🛵', nombre:'Delivery' },
+  { key:'activos', icono:'🏭', nombre:'Activos Fijos' },
+  { key:'agenda', icono:'📅', nombre:'Agenda' },
+  { key:'asistente', icono:'🤖', nombre:'Asistente IA' },
+  { key:'catalogo360', icono:'📇', nombre:'Catálogo360' },
+  { key:'produccion', icono:'🏭', nombre:'Producción' },
+  { key:'servicio', icono:'🛠️', nombre:'Servicio Postventa' },
+  { key:'contabilidad', icono:'📒', nombre:'Contabilidad' },
+];
+const modulosSecundariosSeleccionados = new Set(); // vacio = nada marcado por defecto
+let moduloEspecialActivo = false;
+
+function renderModulosSecundarios() {
+  const wrap = document.getElementById('modulosSecundariosWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="modulo-grid">${MODULOS_SECUNDARIOS.map(m => `
+    <div class="modulo-card" data-key="${m.key}" onclick="toggleModuloSecundario('${m.key}')">
+      <div class="modulo-card-check">✓</div>
+      <div class="modulo-card-icon">${m.icono}</div>
+      <div class="modulo-card-nombre">${m.nombre}</div>
+    </div>`).join('')}</div>`;
+}
+
+function toggleModuloSecundario(key) {
+  modulosSugeridosAplicados = false;   // ya lo toco la persona: la sugerencia no se vuelve a limpiar sola
+  if (modulosSecundariosSeleccionados.has(key)) modulosSecundariosSeleccionados.delete(key);
+  else modulosSecundariosSeleccionados.add(key);
+  const card = document.querySelector(`.modulo-card[data-key="${key}"]`);
+  if (card) card.classList.toggle('selected', modulosSecundariosSeleccionados.has(key));
+}
+
+// El "modulo especial" (Hotel o Restaurante) solo aparece si el tipo
+// de negocio elegido en el Paso 1 coincide -- para cualquier otro
+// rubro, esta seccion completa queda oculta. Se pre-marca activado
+// (el cliente ya indico su rubro), pero puede desmarcarlo aqui mismo
+// si no lo quiere.
+function renderModuloEspecial() {
+  const wrap = document.getElementById('moduloEspecialWrap');
+  const card = document.getElementById('moduloEspecialCard');
+  if (!wrap || !card) return;
+
+  let especial = null;
+  if (tipoNegocioSeleccionado === 'hotel') especial = { icono:'🛏️', nombre:'Módulo de Hotel', desc:'Habitaciones, reservaciones, mapa y housekeeping.' };
+  else if (['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) especial = { icono:'🍽️', nombre:'Módulo de Restaurante', desc:'Mesas, comandas y cocina en tiempo real.' };
+  else if (tipoNegocioSeleccionado === 'veterinaria') especial = { icono:'🐾', nombre:'Módulo de Veterinaria', desc:'Agenda, mascotas, historia clínica, vacunas y recordatorios, recetas con dosis, hospital, pensión y baño, certificados y control de lotes con vencimientos.' };
+  else if (tipoNegocioSeleccionado === 'insumos_medicos') especial = { icono:'🩺', nombre:'Módulo de Insumos Médicos', desc:'Lotes, vencimientos, salida por vencimiento (el lote que vence primero sale primero) y rotación y margen.' };
+  else if (tipoNegocioSeleccionado === 'transporte') especial = { icono:'🚛', nombre:'Módulo de Transporte de carga', desc:'Panel de operación, flota, conductores, viajes, costos y cobros — conectado con Ventas, Créditos, Gastos y Caja.' };
+  else if (['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) especial = { icono:'🎨', nombre:'Módulo de Diseño', desc:'Marca de agua: pon tu logo o tu texto a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' };
+  else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
+  else if (tipoNegocioSeleccionado === 'fisioterapia') especial = { icono:'🏃', nombre:'Módulo de Clínica (terapias)', desc:'Pacientes y expediente con ficha de fisioterapia, quiropraxia y masajes (dolor antes y después, sesión 4 de 10, ejercicios para la casa), agenda y sala de espera, y cobro por Ventas.' };
+  else if (tipoNegocioSeleccionado === 'clinica') especial = { icono:'🏥', nombre:'Módulo de Clínica', desc:'Pacientes y expediente clínico (médicos con su código de usuario), consultas firmadas, sala de espera sobre la Agenda y cobro por Ventas.' };
+
+  if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }
+
+  moduloEspecialActivo = true;
+  wrap.style.display = '';
+  card.innerHTML = `
+    <div class="modulo-card selected" style="max-width:280px" onclick="toggleModuloEspecial()">
+      <div class="modulo-card-check">✓</div>
+      <div class="modulo-card-icon">${especial.icono}</div>
+      <div>
+        <div class="modulo-card-nombre">${especial.nombre}</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${especial.desc}</div>
+      </div>
+    </div>`;
+  // Clinica: elegir especialidades (vacio = todas). Se puede cambiar luego en Configuracion.
+  if (['clinica', 'fisioterapia'].includes(tipoNegocioSeleccionado) && typeof CLINICA_ESPECIALIDADES !== 'undefined') {
+    // Centro de terapias: ya vienen marcadas las suyas (se pueden cambiar).
+    const marcadas = tipoNegocioSeleccionado === 'fisioterapia' ? ['fisioterapia', 'quiropraxia', 'masoterapia'] : [];
+    card.innerHTML += `<div style="margin-top:12px;font-size:.78rem">
+      <div style="font-weight:700;margin-bottom:6px">¿Qué especialidades atiende? <span style="color:var(--muted);font-weight:400">(si no eliges ninguna: todas)</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:4px 10px">${Object.entries(CLINICA_ESPECIALIDADES).map(([k, v]) =>
+        `<label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-onb-esp value="${k}" ${marcadas.includes(k) ? 'checked' : ''} style="width:15px;height:15px"/> ${v.e} ${v.n}</label>`).join('')}</div></div>`;
+  }
+}
+
+function toggleModuloEspecial() {
+  moduloEspecialActivo = !moduloEspecialActivo;
+  const card = document.querySelector('#moduloEspecialCard .modulo-card');
+  if (card) card.classList.toggle('selected', moduloEspecialActivo);
+}
+
+function renderColorPresets() {
+  const presets   = [
+    '#6EE7B7','#3B82F6','#F59E0B','#EF4444',
+    '#8B5CF6','#EC4899','#10B981','#0EA5E9',
+    '#F97316','#FFFFFF','#CBD5E1','#0F172A',
+  ];
+  const container = document.getElementById('presets_principal');
+  if (!container) return;
+
+  presets.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'preset-dot';
+    d.style.background = c;
+    d.title = c;
+    d.onclick = () => {
+      document.getElementById('color_principal').value = c;
+      document.getElementById('hex_principal').value   = c;
+      document.getElementById('swatch_principal').style.background = c;
+    };
+    container.appendChild(d);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   14. ZONA HORARIA AUTO-SELECCIÓN
+   ════════════════════════════════════════════════════════════ */
+const TIMEZONE_MAP = {
+  NI: 'America/Managua',
+  GT: 'America/Guatemala',
+  SV: 'America/El_Salvador',
+  HN: 'America/Tegucigalpa',
+  CR: 'America/Costa_Rica',
+  PA: 'America/Panama',
+  MX: 'America/Mexico_City',
+  CO: 'America/Bogota',
+  PE: 'America/Lima',
+  CL: 'America/Santiago',
+  AR: 'America/Argentina/Buenos_Aires',
+  EC: 'America/Lima',
+  VE: 'America/Caracas',
+  BO: 'America/La_Paz',
+  PY: 'America/Asuncion',
+  UY: 'America/Montevideo',
+  DO: 'America/Santo_Domingo',
+  CU: 'America/Havana',
+  ES: 'Europe/Madrid',
+  US: 'America/New_York',
+};
+
+async function onPaisCambio() {
+  const cod = document.getElementById('pais').value;
+  const res = document.getElementById('pais_resumen');
+  if (!cod || cod === 'otro') { if (res) res.textContent = ''; return; }
+  let p = null;
+  try { p = await window.N360Pais.obtener(db, cod); } catch (_) {}
+  const zona = (p && p.zona_horaria) || TIMEZONE_MAP[cod];
+  const mon  = p && p.moneda;
+  if (zona) document.getElementById('zona_horaria').value = zona;
+  const selMon = document.getElementById('moneda');
+  if (mon && selMon && [...selMon.options].some(o => o.value === mon)) selMon.value = mon;
+  if (res) res.textContent = p ? 'Propuesta: ' + window.N360Pais.resumen(p) + ' · ' + zona : '';
+}
+
+function autoTimezone() {
+  const pais = document.getElementById('pais').value;
+  const tz   = TIMEZONE_MAP[pais];
+  if (tz) document.getElementById('zona_horaria').value = tz;
+}
+
+/* ════════════════════════════════════════════════════════════
+   15. SUBIDA Y PREVIEW DE LOGOS
+   ════════════════════════════════════════════════════════════ */
+function previewLogo(input, zoneId, key) {
+  const file = input.files[0];
+  if (!file) return;
+
+  logoFiles[key] = file;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const zone = document.getElementById(zoneId + '_content');
+    zone.innerHTML = `
+      <img src="${e.target.result}" class="upload-preview" alt="Preview logo">
+      <div class="upload-text" style="font-size:.78rem;color:var(--muted)">${file.name}</div>
+    `;
+  };
+  reader.readAsDataURL(file);
+}
+
+function dragOver(e, zoneId) {
+  e.preventDefault();
+  document.getElementById(zoneId).classList.add('dragging');
+}
+
+function dragLeave(zoneId) {
+  document.getElementById(zoneId).classList.remove('dragging');
+}
+
+function dropFile(e, inputId, zoneId) {
+  e.preventDefault();
+  dragLeave(zoneId);
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    const input = document.getElementById(inputId);
+    const dt    = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    const key   = zoneId === 'zone_logo' ? 'principal' : 'alternativo';
+    previewLogo(input, zoneId, key);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   16. OVERLAY DE GUARDADO
+   ════════════════════════════════════════════════════════════ */
+function showSaving(msg = 'Guardando…') {
+  document.getElementById('savingText').textContent = msg;
+  document.getElementById('savingOverlay').classList.add('active');
+}
+function updateSavingText(msg) {
+  document.getElementById('savingText').textContent = msg;
+}
+function hideSaving() {
+  document.getElementById('savingOverlay').classList.remove('active');
+}
+
+/* ════════════════════════════════════════════════════════════
+   17. TOAST DE NOTIFICACIONES
+   ════════════════════════════════════════════════════════════ */
+let toastTimer = null;
+
+/* Salida de emergencia: cerrar sesión desde el asistente (antes no había forma de salir). */
+async function salirDePersonalizacion() {
+  try { await db.auth.signOut(); } catch (e) { console.warn('signOut:', e); }
+  try { sessionStorage.removeItem('n360_perfil_activo'); sessionStorage.removeItem('n360_config'); } catch (_) {}
+  window.location.href = 'login.html';
+}
+
+function showToast(msg, type = 'success') {
+  const t    = document.getElementById('toast');
+  const icon = type === 'success' ? '✓' : type === 'error' ? '⚠️' : 'ℹ️';
+  document.getElementById('toastIcon').textContent = icon;
+  document.getElementById('toastMsg').textContent  = msg;
+  t.className = 'toast ' + type + ' show';
+
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+</script>
+<script src="perfiles-guard.js?v=20261029a"></script>
+</body>
+</html>

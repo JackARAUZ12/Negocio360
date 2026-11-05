@@ -1182,7 +1182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // de nuevo sobre datos ya existentes.
   const { data: existing, error: errExisting } = await db
     .from('configuracion_empresa')
-    .select('onboarding_completado, onboarding_step')
+    .select('onboarding_completado, onboarding_step, nombre_comercial')
     .eq('auth_user_id', currentUser.id)
     .maybeSingle();
 
@@ -1213,6 +1213,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.warn('No se pudo completar la configuración de la sucursal:', e1 || e2);
     }
   } catch (eSuc) { console.warn('Revisión de sucursal omitida:', eSuc); }
+
+  // 4b-ter. Negocio adicional creado desde "Mis negocios": ya trae su nombre, se deja escrito.
+  try { const inp = document.getElementById('nombre_comercial'); if (inp && !inp.value && existing?.nombre_comercial) inp.value = existing.nombre_comercial; } catch (_) {}
 
   // 4c. Si hay progreso previo, restaurar paso
   if (existing?.onboarding_step && existing.onboarding_step > 1) {
@@ -1488,6 +1491,7 @@ async function finalizarOnboarding() {
     if (moduloEspecialActivo && ['restaurante','cafeteria','catering','bar'].includes(tipoNegocioSeleccionado)) modulosAuto.usa_modulo_restaurante = true;
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'veterinaria') { modulosAuto.usa_modulo_veterinaria = true; modulosAuto.maneja_lotes_vencimiento = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'transporte') { modulosAuto.usa_modulo_transporte = true; }
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'financiera') { modulosAuto.usa_modulo_microfinanciera = true; modulosSecundariosSeleccionados.add('creditos'); }
     if (moduloEspecialActivo && ['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) { modulosAuto.usa_modulo_diseno = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'insumos_medicos') { modulosAuto.usa_modulo_insumos = true; modulosAuto.maneja_lotes_vencimiento = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'farmacia') { modulosAuto.usa_modulo_farmacia = true; modulosAuto.usa_farmacia_fase2 = true; modulosAuto.maneja_lotes_vencimiento = true; }
@@ -1874,6 +1878,7 @@ function renderModuloEspecial() {
   else if (['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) especial = { icono:'🎨', nombre:'Módulo de Diseño', desc:'Marca de agua: pon tu logo o tu texto a tus fotos (hasta 50 por tanda) y descárgalas. Las fotos no se guardan en el sistema.' };
   else if (tipoNegocioSeleccionado === 'farmacia') especial = { icono:'💊', nombre:'Módulo de Farmacia', desc:'Lotes, vencimientos, FEFO, control de sustancias y recetas.' };
   else if (tipoNegocioSeleccionado === 'fisioterapia') especial = { icono:'🏃', nombre:'Módulo de Clínica (terapias)', desc:'Pacientes y expediente con ficha de fisioterapia, quiropraxia y masajes (dolor antes y después, sesión 4 de 10, ejercicios para la casa), agenda y sala de espera, y cobro por Ventas.' };
+  else if (tipoNegocioSeleccionado === 'financiera') especial = { icono:'💼', nombre:'Panel Microfinanciera', desc:'Préstamos y ventas al crédito, cobro en ruta, mora, cobradores con su cartera, cierre del día, documentos (pagaré, contrato, plan de pagos) y reportes de cartera.' };
   else if (tipoNegocioSeleccionado === 'clinica') especial = { icono:'🏥', nombre:'Módulo de Clínica', desc:'Pacientes y expediente clínico (médicos con su código de usuario), consultas firmadas, sala de espera sobre la Agenda y cobro por Ventas.' };
 
   if (!especial) { wrap.style.display = 'none'; moduloEspecialActivo = false; return; }
