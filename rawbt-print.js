@@ -13,12 +13,14 @@
 ===================================================== */
 (function () {
   'use strict';
-  var COLS = 48;                       // papel de 80 mm, letra normal
+  var COLS = 48;                       // 80 mm = 48 letras; 58 mm = 32 (se ajusta en rawbtActivo)
   var ESC = 0x1B, GS = 0x1D;
 
   function esAndroid() { return /Android/i.test(navigator.userAgent || ''); }
   // ¿Esta configuración pide RawBT y el equipo puede usarlo?
   function rawbtActivo(cfg) {
+    // Papel de 58 mm (ej. impresora interna de Sunmi V2): 32 letras por línea. Cualquier otro: 48 como siempre.
+    if (cfg) COLS = cfg.ancho_ticket === '58mm' ? 32 : 48;
     return !!(cfg && cfg.imprimir_rawbt && cfg.ancho_ticket !== 'carta' && esAndroid());
   }
 
