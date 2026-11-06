@@ -283,29 +283,74 @@
       return ws;
     }
 
-    // RESUMEN
-    const wsR = wb.addWorksheet('Resumen', { views: [{ showGridLines: false }], pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
-    wsR.columns = [{ width: 44 }, { width: 14 }, { width: 20 }];
-    wsR.mergeCells('A1:C1'); wsR.mergeCells('A2:C2');
-    Object.assign(wsR.getCell('A1'), { value: 'Reporte de anulaciones y devoluciones' });
-    wsR.getCell('A1').font = { size: 16, bold: true, color: { argb: C.blanco } }; wsR.getCell('A1').fill = relleno(C.oscuro); wsR.getCell('A1').alignment = { vertical: 'middle', indent: 1 }; wsR.getRow(1).height = 30;
-    wsR.getCell('A2').value = `${negocio()}   ·   Período: ${A.datos.desde} al ${A.datos.hasta}`; wsR.getCell('A2').font = { size: 10, color: { argb: C.sub } }; wsR.getCell('A2').alignment = { indent: 1 };
-    const filaR = (vals, estilo) => { const r = wsR.addRow(vals); r.eachCell({ includeEmpty: true }, (c, ci) => { c.border = borde; c.font = { size: 10.5, bold: !!estilo?.bold, color: { argb: estilo?.color || C.texto } }; if (estilo?.fill) c.fill = relleno(estilo.fill); if (ci === 3) c.numFmt = MON; if (ci > 1) c.alignment = { horizontal: 'right' }; if (ci === 1 && estilo?.indent) c.alignment = { indent: 2 }; }); return r; };
-    wsR.addRow([]);
-    const encR = wsR.addRow(['Concepto', 'Cantidad', 'Monto']); encR.eachCell(c => { c.font = { bold: true, color: { argb: C.blanco } }; c.fill = relleno(C.oscuro); c.border = borde; c.alignment = { horizontal: 'center' }; });
-    filaR(['Ventas anuladas', t.nAn, t.totalAn], { bold: true, fill: C.rojoSuave, color: C.rojo });
-    filaR(['Devuelto en Caja', '', t.devueltoAn], { indent: true });
-    filaR(['Unidades que volvieron al inventario', t.unidAn, ''], { indent: true });
-    filaR(['Devoluciones', t.nDev, t.totalDev], { bold: true, fill: C.ambarSuave, color: C.ambar });
-    filaR(['Devuelto en dinero', '', t.dineroDev], { indent: true });
-    filaR(['Rebajado de créditos', '', t.creditoDev], { indent: true });
-    filaR(['Deuda perdonada', '', t.condonadoDev], { indent: true });
-    filaR(['Impuesto revertido', '', t.impDev], { indent: true });
-    filaR(['Costo que volvió al inventario', '', t.costoReing], { indent: true });
-    filaR(['Costo que no volvió (dañado)', '', t.costoNoReing], { indent: true });
-    const tot = filaR(['TOTAL AFECTADO', t.nAn + t.nDev, r2(t.totalAn + t.totalDev)], { bold: true, fill: 'FFE2E8F0' });
-    tot.eachCell(c => { c.border = { ...borde, top: { style: 'medium', color: { argb: C.oscuro } } }; });
-    filaR(['Dinero que salió de Caja en total', '', r2(t.devueltoAn + t.dineroDev)], { bold: true });
+    // HOJA PRINCIPAL "Reporte": TODO en una sola hoja (resumen + anuladas + devoluciones con productos,
+    // motivo, fechas y quién), igual que el PDF. Así se ve completo aunque solo se abra la primera hoja.
+    const wsP = wb.addWorksheet('Reporte', {
+      views: [{ showGridLines: false }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 1, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } },
+      headerFooter: { oddFooter: '&L&8' + negocio() + '&R&8Página &P de &N' },
+    });
+    wsP.columns = [14, 12, 26, 14, 44, 34, 22, 24, 15].map(w => ({ width: w }));
+    const UL = 'I';
+    const banda = (texto, color, alto, tam) => { const r = wsP.addRow([texto]); wsP.mergeCells(`A${r.number}:${UL}${r.number}`); const c = r.getCell(1); c.font = { size: tam || 13, bold: true, color: { argb: C.blanco } }; c.fill = relleno(color); c.alignment = { vertical: 'middle', indent: 1 }; r.height = alto || 24; return r; };
+    banda('Reporte de anulaciones y devoluciones', C.oscuro, 32, 16);
+    { const r = wsP.addRow([`${negocio()}   ·   Período: ${A.datos.desde} al ${A.datos.hasta}   ·   Generado: ${fechaHora(A.datos.generado)}`]); wsP.mergeCells(`A${r.number}:${UL}${r.number}`); r.getCell(1).font = { size: 10, color: { argb: C.sub } }; r.getCell(1).alignment = { indent: 1 }; }
+    wsP.addRow([]);
+    // Resumen: concepto (A:G) · cantidad (H) · monto (I)
+    const filaRes = (concepto, cant, monto, est) => {
+      const r = wsP.addRow([concepto, '', '', '', '', '', '', cant, monto]); wsP.mergeCells(`A${r.number}:G${r.number}`);
+      for (const ci of [1, 8, 9]) { const c = r.getCell(ci); c.border = borde; c.font = { size: 10.5, bold: !!est?.bold, color: { argb: est?.color || C.texto } }; if (est?.fill) c.fill = relleno(est.fill); }
+      r.getCell(1).alignment = { indent: est?.sub ? 3 : 1 }; r.getCell(8).alignment = { horizontal: 'right' }; r.getCell(9).alignment = { horizontal: 'right' }; r.getCell(9).numFmt = MON;
+      if (est?.top) for (const ci of [1, 8, 9]) r.getCell(ci).border = { ...borde, top: { style: 'medium', color: { argb: C.oscuro } } };
+      return r;
+    };
+    { const r = wsP.addRow(['Resumen', '', '', '', '', '', '', 'Cantidad', 'Monto']); wsP.mergeCells(`A${r.number}:G${r.number}`);
+      for (const ci of [1, 8, 9]) { const c = r.getCell(ci); c.font = { bold: true, color: { argb: C.blanco } }; c.fill = relleno(C.oscuro); c.border = borde; c.alignment = ci === 1 ? { horizontal: 'left', indent: 1 } : { horizontal: 'right' }; } }
+    filaRes('Ventas anuladas', t.nAn, t.totalAn, { bold: true, fill: C.rojoSuave, color: C.rojo });
+    filaRes('de eso, devuelto en Caja', '', t.devueltoAn, { sub: true });
+    filaRes('Devoluciones', t.nDev, t.totalDev, { bold: true, fill: C.ambarSuave, color: C.ambar });
+    filaRes('devuelto en dinero', '', t.dineroDev, { sub: true });
+    filaRes('rebajado de créditos', '', t.creditoDev, { sub: true });
+    if (t.condonadoDev) filaRes('deuda perdonada', '', t.condonadoDev, { sub: true });
+    filaRes('impuesto revertido', '', t.impDev, { sub: true });
+    filaRes('costo que volvió al inventario', '', t.costoReing, { sub: true });
+    filaRes('TOTAL AFECTADO', t.nAn + t.nDev, r2(t.totalAn + t.totalDev), { bold: true, fill: 'FFE2E8F0', top: true });
+    filaRes('Dinero que salió de Caja en total', '', r2(t.devueltoAn + t.dineroDev), { bold: true });
+
+    // Bloque de tabla dentro de la hoja principal
+    function bloque(titulo, color, suave, encabezados, formatos, filas, total) {
+      wsP.addRow([]); banda(titulo, color, 24, 13);
+      const e = wsP.addRow(encabezados); e.height = 22;
+      e.eachCell(c => { c.font = { bold: true, color: { argb: C.blanco }, size: 10 }; c.fill = relleno(C.oscuro); c.border = borde; c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }; });
+      if (!filas.length) { const r = wsP.addRow(['Sin registros en este período']); wsP.mergeCells(`A${r.number}:${UL}${r.number}`); r.getCell(1).font = { italic: true, color: { argb: C.sub } }; return; }
+      filas.forEach((f, i) => {
+        const r = wsP.addRow(f);
+        for (let ci = 1; ci <= 9; ci++) {
+          const c = r.getCell(ci), fm = formatos[ci - 1];
+          c.border = borde; c.font = { size: 10, color: { argb: C.texto } };
+          c.alignment = { vertical: 'top', wrapText: true, horizontal: fm === 'mon' ? 'right' : fm === 'centro' ? 'center' : 'left' };
+          if (fm === 'mon') c.numFmt = MON;
+          if (i % 2 === 1) c.fill = relleno(C.gris);
+        }
+      });
+      const r = wsP.addRow(total); r.height = 20;
+      for (let ci = 1; ci <= 9; ci++) {
+        const c = r.getCell(ci), fm = formatos[ci - 1];
+        c.font = { bold: true, size: 10.5 }; c.fill = relleno(suave); c.border = { ...borde, top: { style: 'medium', color: { argb: color } } };
+        c.alignment = { vertical: 'middle', horizontal: fm === 'mon' ? 'right' : 'left' }; if (fm === 'mon') c.numFmt = MON;
+      }
+    }
+    if (A.filtro !== 'devoluciones') bloque('Ventas anuladas', C.rojo, C.rojoSuave,
+      ['Venta', 'Fecha venta', 'Cliente', 'Forma de pago', 'Productos', 'Motivo', 'Anulada (cuándo / quién)', 'Devuelto en Caja', 'Total'],
+      ['', 'centro', '', '', '', '', '', 'mon', 'mon'],
+      vis.anuladas.map(v => [v.numero_venta || '', f10(v.fecha), v.cliente_nombre || 'Consumidor final', v.metodo_pago_nombre || v.metodo_pago || '', prodTxt(v._productos), v._motivo,
+        (v._cuando ? fechaHora(v._cuando) : 'Sin fecha') + (v.anulada_por ? '\n' + v.anulada_por : ''), v._devueltoCaja, r2(v.total)]),
+      [`Total anuladas (${t.nAn})`, '', '', '', '', '', '', t.devueltoAn, t.totalAn]);
+    if (A.filtro !== 'anuladas') bloque('Devoluciones', C.ambar, C.ambarSuave,
+      ['Devolución', 'Fecha', 'Venta original / cliente', 'Tipo', 'Productos devueltos', 'Motivo', 'Registró', 'Cómo se devolvió', 'Total'],
+      ['', 'centro', '', 'centro', '', '', '', '', 'mon'],
+      vis.devs.map(d => [d.numero || '', f10(d.fecha), `${d._venta.numero_venta || ''}\n${d._venta.cliente_nombre || 'Consumidor final'}`, d._esTotal ? 'Total' : 'Parcial', prodTxt(d._productos), d.motivo || '', d.usuario_nombre || '', d._como, r2(d.total)]),
+      [`Total devoluciones (${t.nDev})`, '', '', '', '', '', '', '', t.totalDev]);
 
     // ANULADAS
     hoja('Anuladas', C.rojo, C.rojoSuave, 'Ventas anuladas', [
