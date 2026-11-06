@@ -1,0 +1,4049 @@
+/* ============================================================
+   NEGOCIO360 - admin.js
+   Panel de Administración — lógica completa
+   ============================================================ */
+
+// ── SUPABASE INIT ──────────────────────────────────────────
+// REEMPLAZA CON TUS CREDENCIALES
+const SUPABASE_URL      = 'https://zvlincmqmmoclqhykejv.supabase.co';      // ← reemplazar
+const SUPABASE_ANON_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t'; // ← reemplazar
+
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Las sucursales y bodegas son cuentas internas (creadas automáticamente
+// por el módulo Sucursales) — nunca son clientes que pagan, así que se
+// excluyen de la lista y las estadísticas de usuarios/clientes. Se pide
+// una sola vez y se reutiliza el mismo resultado durante la sesión.
+let _idsSucursalesShadowCache = null;
+async function obtenerIdsSucursalesShadow() {
+  if (_idsSucursalesShadowCache) return _idsSucursalesShadowCache;
+  try {
+    const [{ data: dataRpc, error: errorRpc }, { data: dataEmail, error: errorEmail }] = await Promise.all([
+      sb.rpc('listar_auth_ids_sucursales_shadow'),
+      // Respaldo robusto: cualquier cuenta con correo @negocio360.internal
+      // se excluye TAMBIEN por este patron, sin depender de que su fila
+      // en "sucursales" siga existiendo. Encontrado un caso real: 4
+      // cuentas de bodega/sucursal cuya fila en "sucursales" ya no
+      // existe (se elimino esa sucursal/bodega en algun momento, sin
+      // borrar la cuenta tecnica asociada) -- el RPC nunca las
+      // encontraba porque busca DENTRO de "sucursales", dejandolas
+      // aparecer como si fueran clientes reales en Usuarios, en las
+      // listas de pago, y en Clientes por Periodo.
+      sb.from('usuarios').select('auth_user_id').ilike('email', '%@negocio360.internal'),
+    ]);
+    if (errorRpc) throw errorRpc;
+    const ids = new Set((dataRpc || []).map(r => r.auth_user_id));
+    if (!errorEmail) (dataEmail || []).forEach(u => ids.add(u.auth_user_id));
+    _idsSucursalesShadowCache = ids;
+    return _idsSucursalesShadowCache;
+  } catch (e) {
+    console.warn('obtenerIdsSucursalesShadow:', e);
+    // BUG REAL CORREGIDO: antes, si esta llamada fallaba UNA sola vez
+    // (ej. un problema de red pasajero), se guardaba un Set() vacío
+    // en la caché -- y como un Set vacío sigue siendo "verdadero" en
+    // JS, el siguiente intento nunca volvía a consultar de verdad,
+    // dejando sucursales y bodegas visibles el resto de la sesión.
+    // Ahora NO se guarda nada en caché si falla -- el próximo intento
+    // (ej. recargar el Dashboard) sí vuelve a consultar en serio.
+    return new Set();
+  }
+}
+
+// Las cuentas INDEPENDIENTES de Catálogo360 (registradas solo para
+// Catálogo360, nunca fueron ni serán clientes completos de Negocio360
+// -- incluida la cuenta de demostración) tampoco son clientes de
+// Negocio360 para efectos de esta lista -- se ven en su propia
+// sección "Clientes Catálogo360", nunca mezcladas aquí con negocios
+// reales de Negocio360.
+let _idsClientesC360IndependientesCache = null;
+async function obtenerIdsClientesC360Independientes() {
+  if (_idsClientesC360IndependientesCache) return _idsClientesC360IndependientesCache;
+  try {
+    const { data, error } = await sb.from('catalogo_suscripciones').select('auth_user_id').eq('es_independiente', true);
+    if (error) throw error;
+    const ids = new Set((data || []).map(r => r.auth_user_id));
+    // Las CUENTAS DE PRUEBA (submódulo "Pruebas") tampoco son clientes: se
+    // excluyen de Usuarios, estadísticas y Clientes por período por este mismo
+    // camino. Si la consulta falla, simplemente no se excluye nada extra.
+    try {
+      const { data: pr } = await sb.from('cuentas_prueba').select('auth_user_id');
+      (pr || []).forEach(r => ids.add(r.auth_user_id));
+    } catch (_) { /* tabla aún no disponible */ }
+    _idsClientesC360IndependientesCache = ids;
+    return _idsClientesC360IndependientesCache;
+  } catch (e) {
+    console.warn('obtenerIdsClientesC360Independientes:', e);
+    return new Set();
+  }
+}
+
+// ── CONFIGURACIÓN DE COBRO ─────────────────────────────────
+// Precio mensual del plan Premium usado en el comprobante de pago.
+// Cambia este valor si el precio de la suscripción cambia.
+const PRECIO_PREMIUM_USD = 10.00;
+
+// Precio a cobrar a un cliente puntual: su precio personalizado si el
+// admin le asignó uno, o el precio por defecto del plan si no.
+function precioDe(u) {
+  return (u.precio_personalizado !== null && u.precio_personalizado !== undefined && u.precio_personalizado !== '')
+    ? Number(u.precio_personalizado)
+    : PRECIO_PREMIUM_USD;
+}
+
+// Etiqueta legible del ciclo de facturación de un cliente.
+function cicloLabel(u) {
+  if (u.ciclo_facturacion === 'anual') return 'Anual';
+  if (u.ciclo_facturacion === 'unico') return 'Pago único';
+  return 'Mensual';
+}
+
+// ── ESTADO GLOBAL ──────────────────────────────────────────
+let currentUser   = null;
+let adminRecord   = null;
+let allUsers      = [];
+let USUARIO_DETALLE_ACTUAL = null; // el usuario que está abierto ahora mismo en el modal de detalle, para las notas internas
+let allCodes      = [];
+let userFilter    = 'all';
+let pendingAction = null;  // función pendiente de confirmación
+
+// Estado del chat / atención al cliente
+let allConversaciones   = [];
+let chatFilter          = 'activas';
+let currentConvId       = null;
+let currentConvUsuario  = null;
+let soporteMsgChannel   = null;
+let soporteConvChannel  = null;
+let soporteGlobalChannel = null;
+let soporteSeenIds      = new Set();
+
+// ── HELPERS DOM ────────────────────────────────────────────
+const $  = (sel, ctx = document) => ctx.querySelector(sel);
+const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+// ── LOADER ─────────────────────────────────────────────────
+function showLoader()  { document.getElementById('page-loader').classList.remove('hidden'); }
+function hideLoader()  { document.getElementById('page-loader').classList.add('hidden'); }
+
+// ── TOAST ──────────────────────────────────────────────────
+function toast(title, msg = '', type = 'success') {
+  const icons = {
+    success: '✓',
+    error:   '✕',
+    warning: '⚠',
+    info:    'ℹ',
+  };
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `
+    <div class="toast-icon ${type}">${icons[type] || icons.info}</div>
+    <div class="toast-body">
+      <div class="toast-title">${escHtml(title)}</div>
+      ${msg ? `<div class="toast-msg">${escHtml(msg)}</div>` : ''}
+    </div>
+  `;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('removing');
+    el.addEventListener('transitionend', () => el.remove());
+  }, 3800);
+}
+
+// ── MODAL HELPERS ──────────────────────────────────────────
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('open');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+}
+function closeAllModals() {
+  $$('.modal-overlay').forEach(m => m.classList.remove('open'));
+}
+
+// ── NAVEGACIÓN ─────────────────────────────────────────────
+function navigate(section) {
+  $$('.page-content').forEach(p => p.classList.remove('active'));
+  $$('.nav-item[data-section]').forEach(n => n.classList.remove('active'));
+
+  const page = document.getElementById(`page-${section}`);
+  const nav  = $(`.nav-item[data-section="${section}"]`);
+
+  if (page) page.classList.add('active');
+  if (nav)  nav.classList.add('active');
+
+  // Cerrar sidebar en móvil
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('visible');
+
+  // Cargar datos según sección
+  if (section === 'dashboard') loadDashboardStats();
+  if (section === 'users')     loadUsers();
+  if (section === 'codes')     loadCodes();
+  if (section === 'codes-catalogo360') loadCodesC360();
+  if (section === 'clientes-catalogo360') loadClientesC360();
+  if (section === 'clientes-periodo') loadClientesPeriodo();
+  if (section === 'pruebas')   loadPruebas();
+  if (section === 'soporte')   loadConversaciones();
+  if (section === 'anuncios')  loadAnunciosSection();
+  if (section === 'tutoriales') loadTutorialesSection();
+  if (section === 'encuestas') cargarResultadosEncuesta();
+  if (section === 'notificaciones') loadNotificacionesSection();
+  if (section === 'chats-grupales') loadChatsGrupales();
+  if (section === 'auditoria-global') loadAuditoriaGlobal();
+  if (section === 'freelancers') window.AdminFL?.cargar();
+}
+
+// ── AUTENTICACIÓN & VERIFICACIÓN ADMIN ────────────────────
+async function verifyAdmin() {
+  try {
+    const { data: { user }, error } = await sb.auth.getUser();
+
+    if (error || !user) {
+      window.location.href = 'login.html';
+      return false;
+    }
+
+    // Verificar en tabla administradores
+    const { data: admin, error: adminError } = await sb
+      .from('administradores')
+      .select('*')
+      .eq('email', user.email)
+      .eq('activo', true)
+      .single();
+
+    if (adminError || !admin) {
+      window.location.href = 'dashboard.html';
+      return false;
+    }
+
+    currentUser = user;
+    adminRecord = admin;
+    return true;
+
+  } catch (e) {
+    window.location.href = 'login.html';
+    return false;
+  }
+}
+
+// ── POBLAR HEADER ──────────────────────────────────────────
+function populateHeader() {
+  const nombreCompleto = adminRecord.nombre || currentUser.email;
+  const initials = nombreCompleto.charAt(0).toUpperCase();
+
+  document.getElementById('header-admin-name').textContent = nombreCompleto;
+  document.getElementById('header-admin-email').textContent = currentUser.email;
+  document.getElementById('admin-avatar').textContent = initials;
+
+  // Fecha actual
+  const now = new Date();
+  const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  document.getElementById('header-date').textContent =
+    now.toLocaleDateString('es-ES', opts);
+}
+
+// ── DARK MODE ──────────────────────────────────────────────
+function initTheme() {
+  const saved = localStorage.getItem('n360_admin_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+  updateThemeIcon(saved);
+}
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next    = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('n360_admin_theme', next);
+  updateThemeIcon(next);
+}
+function updateThemeIcon(theme) {
+  document.getElementById('theme-icon').innerHTML =
+    theme === 'dark'
+      ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+           <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>
+           <line x1="12" y1="21" x2="12" y2="23"/>
+           <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+           <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+           <line x1="1" y1="12" x2="3" y2="12"/>
+           <line x1="21" y1="12" x2="23" y2="12"/>
+           <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+           <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+         </svg>`
+      : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+         </svg>`;
+}
+
+// ── CERRAR SESIÓN ──────────────────────────────────────────
+async function signOut() {
+  await sb.auth.signOut();
+  window.location.href = 'login.html';
+}
+
+// ============================================================
+// SECCIÓN 1 — DASHBOARD STATS
+// ============================================================
+async function loadDashboardStats() {
+  // Re-verificar sesión antes de cargar
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  showSkeletons();
+  showPaymentListsLoading();
+
+  try {
+    const { data: usuariosCrudo, error } = await sb
+      .from('usuarios')
+      .select('id, auth_user_id, nombre, apellido, email, estado_cuenta, plan, created_at, fecha_ultimo_pago, ultima_conexion');
+
+    if (error) throw error;
+
+    // Las sucursales/bodegas de los clientes no son cuentas que pagan
+    // — se excluyen antes de calcular cualquier estadística.
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
+    const usuarios = usuariosCrudo.filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
+
+    const total     = usuarios.length;
+    const activos   = usuarios.filter(u => u.estado_cuenta === 'activa').length;
+    const suspendidos = usuarios.filter(u => u.estado_cuenta === 'suspendida').length;
+    const cancelados  = usuarios.filter(u => u.estado_cuenta === 'cancelada').length;
+    const prueba    = usuarios.filter(u => u.plan === 'prueba').length;
+    const premium   = usuarios.filter(u => u.plan === 'premium').length;
+    const enRiesgo  = usuarios.filter(esClienteEnRiesgo).length;
+
+    document.getElementById('stat-total').textContent       = total;
+    document.getElementById('stat-activos').textContent     = activos;
+    document.getElementById('stat-suspendidos').textContent = suspendidos;
+    document.getElementById('stat-cancelados').textContent  = cancelados;
+    document.getElementById('stat-prueba').textContent      = prueba;
+    document.getElementById('stat-premium').textContent     = premium;
+    document.getElementById('stat-en-riesgo').textContent   = enRiesgo;
+
+    // Construir las listas informativas de pagos (próximos / pendientes / atrasados)
+    buildPaymentLists(usuarios);
+    buildClientesEnRiesgo(usuarios);
+    loadCrecimientoNegocio(usuarios, idsShadow);
+
+  } catch (e) {
+    toast('Error al cargar estadísticas', e.message, 'error');
+  }
+}
+
+function showSkeletons() {
+  ['stat-total','stat-activos','stat-suspendidos','stat-cancelados','stat-prueba','stat-premium','stat-en-riesgo','stat-ingresos-mes','stat-clientes-nuevos-mes']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = '—'; }
+    });
+}
+
+function showPaymentListsLoading() {
+  ['list-proximos', 'list-pendientes', 'list-atrasados', 'list-en-riesgo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="payment-empty">Cargando...</div>';
+  });
+}
+
+// ============================================================
+// SECCIÓN 1B — CONTROL DE PAGOS (Próximos / Pendientes / Atrasados)
+// ============================================================
+// La lógica se basa en el día del mes en que el usuario se registró
+// (created_at). Esa misma fecha es el "día de pago" desde el primer mes
+// (SIN período de gracia: el cobro corre desde el día del registro).
+//
+// - 3 días antes del día de pago  → aparece en "Próximos a Pagar"
+// - El día de pago (o 1 día después) → aparece en "Pendientes de Pago"
+// - 2 días o más después del día de pago → aparece en "Pago Atrasado"
+//
+// Un usuario deja de aparecer en cualquiera de las 3 listas apenas se le
+// marca "Pagado" (desde la sección Usuarios) para el ciclo correspondiente,
+// y no vuelve a aparecer hasta que se acerque su próxima fecha de pago.
+//
+// "fecha_ultimo_pago" representa el CICLO cubierto (hasta qué vencimiento
+// está al día el usuario), no necesariamente la fecha exacta en que se dio
+// clic en "Marcar Pagado". Esto permite pagos adelantados: si el cliente
+// paga julio y luego, ese mismo día, adelanta agosto, "fecha_ultimo_pago"
+// pasa a ser el vencimiento de agosto y julio queda cubierto igual.
+//
+// NOTA: por defecto solo se controla el pago de usuarios con plan
+// "premium" (los usuarios en "prueba" no pagan). Si tu negocio cobra
+// también el plan de prueba, quita la condición `u.plan !== 'premium'`.
+
+// Calcula la fecha de vencimiento ("día de pago") para un año/mes dados,
+// a partir del día de registro del usuario. Se reutiliza tanto para el
+// ciclo actual como para calcular el próximo ciclo, así ambos cálculos
+// quedan siempre alineados con la misma lógica.
+function calcDueDateForMonth(regDate, year, month) {
+  const regDay = regDate.getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dueDay = Math.min(regDay, daysInMonth);
+  return new Date(year, month, dueDay);
+}
+
+// Igual que calcDueDateForMonth pero para ciclo ANUAL: conserva el mismo
+// día/mes de registro, repitiéndolo una vez al año en el "year" dado.
+function calcDueDateForYear(regDate, year) {
+  const month = regDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dueDay = Math.min(regDate.getDate(), daysInMonth);
+  return new Date(year, month, dueDay);
+}
+
+// Índice absoluto de mes (año*12 + mes), útil para comparar "cuál ciclo
+// es más reciente" sin preocuparse por el día exacto.
+function monthIndex(d) {
+  return d.getFullYear() * 12 + d.getMonth();
+}
+
+// Índice de ciclo comparable, según el ciclo de facturación del cliente:
+// mensual → índice de mes; anual → año. "unico" no tiene ciclo (se maneja
+// aparte en getCicloAPagar/getPaymentInfo).
+function cicloIndexOf(u, date) {
+  return u.ciclo_facturacion === 'anual' ? date.getFullYear() : monthIndex(date);
+}
+
+// Fecha de vencimiento del ciclo correspondiente a "today", según el
+// ciclo de facturación del cliente (mensual por defecto, o anual).
+function getCurrentCycleDueDate(u, today) {
+  if (!u.created_at) return null;
+  const reg = new Date(u.created_at);
+  const t = new Date(today);
+  if (u.ciclo_facturacion === 'anual') {
+    return calcDueDateForYear(reg, t.getFullYear());
+  }
+  return calcDueDateForMonth(reg, t.getFullYear(), t.getMonth());
+}
+
+// Ciclo inmediatamente siguiente a una fecha de vencimiento dada, según el
+// ciclo de facturación del cliente. A diferencia de getNextCycleDueDate,
+// no parte de "hoy" sino de cualquier fecha de vencimiento que le pases,
+// así se puede encadenar para calcular varios ciclos hacia adelante
+// (pagos adelantados).
+function getNextCycleAfter(u, dueDate) {
+  if (!dueDate) return null;
+  const reg = new Date(u.created_at);
+  if (u.ciclo_facturacion === 'anual') {
+    return calcDueDateForYear(reg, dueDate.getFullYear() + 1);
+  }
+  const nextMonthIndex = dueDate.getMonth() + 1;
+  const year  = dueDate.getFullYear() + Math.floor(nextMonthIndex / 12);
+  const month = ((nextMonthIndex % 12) + 12) % 12;
+  return calcDueDateForMonth(reg, year, month);
+}
+
+// Fecha de vencimiento del ciclo siguiente al ciclo actual (un ciclo
+// después de "hoy"). Se usa para mostrarle al administrador cuándo
+// tocará el próximo pago justo antes/después de marcar el pago actual
+// como recibido.
+function getNextCycleDueDate(u, today) {
+  const current = getCurrentCycleDueDate(u, today);
+  if (!current) return null;
+  return getNextCycleAfter(u, current);
+}
+
+// Encuentra el próximo ciclo que TODAVÍA no ha sido cubierto por
+// fecha_ultimo_pago. Si el usuario ya pagó julio y el admin quiere
+// adelantar el pago de agosto, esta función devuelve agosto (no julio
+// de nuevo), permitiendo pagos adelantados ilimitados.
+//
+// Si el cliente es de "pago único" (ciclo_facturacion = 'unico'), no hay
+// ciclos que se repitan: una vez que fecha_ultimo_pago tiene algún valor,
+// ya no hay nada más que cobrar (se devuelve null para siempre). Si nunca
+// se ha pagado, el "ciclo a pagar" es la fecha de registro (vence de
+// inmediato, como un pago pendiente desde el día 1).
+function getCicloAPagar(u, today) {
+  if (!u.created_at) return null;
+
+  if (u.ciclo_facturacion === 'unico') {
+    if (u.fecha_ultimo_pago) return null; // ya se pagó una vez: nunca más
+    const reg = new Date(u.created_at);
+    reg.setHours(0, 0, 0, 0);
+    return reg;
+  }
+
+  let candidate = getCurrentCycleDueDate(u, today);
+  if (!candidate) return null;
+
+  if (u.fecha_ultimo_pago) {
+    // El "próximo pago" es el PRIMER ciclo que sigue sin cubrir: el que va
+    // justo después del último ciclo pagado. Antes se partía siempre del
+    // ciclo de hoy, así que un cliente que no paga desde agosto aparecía
+    // con octubre y se saltaba septiembre (y agosto) sin cobrar.
+    const pago = new Date(u.fecha_ultimo_pago + 'T00:00:00');
+    const reg = new Date(u.created_at);
+    const cicloPagado = u.ciclo_facturacion === 'anual'
+      ? calcDueDateForYear(reg, pago.getFullYear())
+      : calcDueDateForMonth(reg, pago.getFullYear(), pago.getMonth());
+    candidate = getNextCycleAfter(u, cicloPagado);
+  }
+  return candidate;
+}
+
+// Nombre de mes + año, con la primera letra en mayúscula (ej. "Julio 2026")
+function formatMesAnio(date) {
+  if (!date) return '—';
+  const txt = date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+
+function getPaymentInfo(u, today) {
+  if (!u.created_at) return null;
+  if (u.plan !== 'premium') return null;
+  if (u.estado_cuenta === 'cancelada') return null;
+
+  const t = new Date(today);
+  t.setHours(0, 0, 0, 0);
+
+  // "Pago único" (de por vida): si ya se pagó alguna vez, esta cuenta
+  // nunca vuelve a aparecer como pendiente. Si nunca se ha pagado, se
+  // trata como vencido desde el día de registro (sin ciclos que se
+  // repitan cada mes/año).
+  if (u.ciclo_facturacion === 'unico') {
+    if (u.fecha_ultimo_pago) return null;
+    const dueDate = new Date(u.created_at);
+    dueDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((t - dueDate) / 86400000);
+    if (u.estado_cuenta === 'suspendida') {
+      return { status: 'atrasado', dueDate, diffDays: Math.max(diffDays, 0) };
+    }
+    if (diffDays < -3) return null;
+    if (diffDays < 0)   return { status: 'proximo',   dueDate, diffDays };
+    if (diffDays <= 1)  return { status: 'pendiente', dueDate, diffDays };
+    return { status: 'atrasado', dueDate, diffDays };
+  }
+
+  // Sin período de gracia para nadie: el primer "día de pago" es el mismo
+  // día del registro (esa fecha se repite cada ciclo en adelante). Antes se
+  // ignoraba por completo el primer mes asumiendo "se pagó al registrarse",
+  // pero el negocio cobra desde el inicio, así que ese descuento se quita.
+  let dueDate = getCurrentCycleDueDate(u, t);
+  if (!dueDate) return null;
+
+  // ¿Ya se marcó como pagado (o adelantado) el ciclo que corresponde a
+  // este vencimiento? Se compara por ciclo (mes o año, según corresponda),
+  // no por igualdad exacta, para que un pago adelantado cubra también el
+  // ciclo anterior.
+  if (u.fecha_ultimo_pago) {
+    const pago = new Date(u.fecha_ultimo_pago + 'T00:00:00');
+    if (cicloIndexOf(u, pago) >= cicloIndexOf(u, dueDate)) {
+      return null; // este ciclo (o uno posterior) ya está cubierto
+    }
+  }
+
+  // Si el cliente lleva más de un ciclo sin pagar, el vencimiento que cuenta
+  // es el del primer ciclo pendiente (no el de este mes), para que los días
+  // de atraso sean reales.
+  const primerPendiente = u.fecha_ultimo_pago ? getCicloAPagar(u, t) : null;
+  if (primerPendiente && primerPendiente < dueDate) dueDate = primerPendiente;
+
+  const diffDays = Math.round((t - dueDate) / 86400000);
+
+  // Una cuenta SUSPENDIDA ya es, por definición, un pago sin resolver
+  // (se suspende justamente por falta de pago) — se muestra siempre en
+  // "Atrasados", sin importar cuántos días exactos han pasado.
+  if (u.estado_cuenta === 'suspendida') {
+    return { status: 'atrasado', dueDate, diffDays: Math.max(diffDays, 0) };
+  }
+
+  if (diffDays < -3) return null;                                    // todavía falta más de 3 días
+  if (diffDays < 0)   return { status: 'proximo',   dueDate, diffDays };
+  if (diffDays <= 1)  return { status: 'pendiente', dueDate, diffDays };
+  return { status: 'atrasado', dueDate, diffDays };
+}
+
+function buildPaymentLists(usuarios) {
+  const today = new Date();
+  const proximos = [], pendientes = [], atrasados = [];
+
+  usuarios.forEach(u => {
+    const info = getPaymentInfo(u, today);
+    if (!info) return;
+    const entry = Object.assign({}, u, info);
+    if (info.status === 'proximo')   proximos.push(entry);
+    if (info.status === 'pendiente') pendientes.push(entry);
+    if (info.status === 'atrasado')  atrasados.push(entry);
+  });
+
+  proximos.sort((a, b) => a.dueDate - b.dueDate);
+  pendientes.sort((a, b) => a.dueDate - b.dueDate);
+  atrasados.sort((a, b) => b.diffDays - a.diffDays);
+
+  renderPaymentList('list-proximos', proximos, 'Nadie está próximo a pagar', (e) => {
+    const dias = Math.abs(e.diffDays);
+    return {
+      sub:   `Vence en ${dias} día${dias === 1 ? '' : 's'} · ${formatDate(e.dueDate)}`,
+      badge: 'info',
+      label: `${dias}d`,
+    };
+  });
+
+  renderPaymentList('list-pendientes', pendientes, 'No hay pagos pendientes hoy', (e) => {
+    const label = e.diffDays === 0 ? 'Hoy' : 'Ayer';
+    return {
+      sub:   `Vence ${label.toLowerCase()} · ${formatDate(e.dueDate)}`,
+      badge: 'warning',
+      label,
+    };
+  });
+
+  renderPaymentList('list-atrasados', atrasados, 'No hay pagos atrasados', (e) => {
+    return {
+      sub:   `Venció el ${formatDate(e.dueDate)}`,
+      badge: 'danger',
+      label: e.diffDays > 0 ? `${e.diffDays}d atraso` : 'Atrasado',
+    };
+  });
+}
+
+function renderPaymentList(containerId, items, emptyMsg, describe) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  if (!items.length) {
+    el.innerHTML = `<div class="payment-empty">${emptyMsg}</div>`;
+    return;
+  }
+
+  el.innerHTML = items.map(u => {
+    const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Sin nombre';
+    const initial = nombreCompleto.charAt(0).toUpperCase();
+    const { sub, badge, label } = describe(u);
+    return `
+      <div class="payment-item">
+        <div class="payment-item-avatar">${escHtml(initial)}</div>
+        <div class="payment-item-info">
+          <div class="payment-item-name">${escHtml(nombreCompleto)}</div>
+          <div class="payment-item-sub">${escHtml(sub)}</div>
+        </div>
+        <span class="pago-badge ${badge}">${escHtml(label)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================================
+// CLIENTES EN RIESGO — sin entrar al sistema hace 3+ días
+// (usuarios.ultima_conexion, actualizado por el heartbeat de la app
+// cada ~45s mientras el cliente la tiene abierta -- mismo dato ya
+// usado en el badge de "Conexión" de la tabla de Usuarios).
+// ============================================================
+const DIAS_RIESGO = 3;
+
+function esClienteEnRiesgo(u) {
+  if (!u.ultima_conexion) return true; // nunca ha entrado -- el caso más urgente
+  const dias = (Date.now() - new Date(u.ultima_conexion).getTime()) / 86400000;
+  return dias >= DIAS_RIESGO;
+}
+
+// Ingresos generados por TODOS los clientes juntos (mes actual vs
+// anterior), y cuantos clientes nuevos entraron. Requiere el acceso
+// especial de admin a movimientos_financieros (agregado aparte, con
+// una politica NUEVA que no toca la que ya existia -- cada cuenta
+// sigue viendo solo lo suyo normalmente).
+// No existía una función de formato de dinero en este archivo --
+// se agrega aquí, simple, para las 2 tarjetas nuevas.
+// Los numeros guardados vienen en formatos distintos ("57772533",
+// "+50587878108", "81294177"...) -- wa.me exige el numero completo
+// con codigo de pais, sin simbolos. Los numeros locales de 8 digitos
+// (el formato normal en Nicaragua) se completan con 505 al inicio;
+// los que ya vienen con codigo de pais se dejan tal cual.
+function normalizarNumeroWhatsApp(telefono) {
+  if (!telefono) return null;
+  const soloDigitos = String(telefono).replace(/[^\d]/g, '');
+  if (!soloDigitos) return null;
+  if (soloDigitos.length === 8) return '505' + soloDigitos;
+  return soloDigitos;
+}
+
+function fmt(monto, simbolo) {
+  const n = Number(monto) || 0;
+  return `${simbolo || 'C$'} ${n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+async function loadCrecimientoNegocio(usuarios, idsShadow) {
+  try {
+    const hoy = new Date();
+    const fISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const inicioMesActual   = fISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+    const inicioMesAnterior = fISO(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1));
+    const finMesAnterior    = fISO(new Date(hoy.getFullYear(), hoy.getMonth(), 0)); // día 0 = último día real del mes anterior
+
+    // ---- Clientes nuevos: se reutiliza la lista YA cargada y YA
+    // filtrada de sucursales/bodegas, sin hacer una consulta nueva ----
+    const nuevosMesActual   = usuarios.filter(u => u.created_at && u.created_at.slice(0,10) >= inicioMesActual).length;
+    const nuevosMesAnterior = usuarios.filter(u => u.created_at && u.created_at.slice(0,10) >= inicioMesAnterior && u.created_at.slice(0,10) <= finMesAnterior).length;
+
+    document.getElementById('stat-clientes-nuevos-mes').textContent = nuevosMesActual;
+    const difClientes = nuevosMesActual - nuevosMesAnterior;
+    const compCli = document.getElementById('stat-clientes-comparativo');
+    if (compCli) {
+      compCli.textContent = `${nuevosMesAnterior} el mes pasado (${difClientes>=0?'+':''}${difClientes})`;
+      compCli.style.color = difClientes > 0 ? 'var(--success)' : difClientes < 0 ? 'var(--danger)' : '';
+    }
+
+    // ---- Ingresos: consulta nueva, excluyendo sucursales/bodegas
+    // para no contar el mismo dinero dos veces ----
+    const [{ data: movsActual }, { data: movsAnterior }] = await Promise.all([
+      sb.from('movimientos_financieros').select('monto, auth_user_id, tipo_movimiento')
+        .eq('tipo_flujo', 'INGRESO').eq('estado', 'completado').gte('fecha', inicioMesActual),
+      sb.from('movimientos_financieros').select('monto, auth_user_id, tipo_movimiento')
+        .eq('tipo_flujo', 'INGRESO').eq('estado', 'completado').gte('fecha', inicioMesAnterior).lte('fecha', finMesAnterior),
+    ]);
+
+    const sumarSinSucursales = (filas) => (filas||[])
+      .filter(m => !idsShadow.has(m.auth_user_id))
+      .reduce((s,m) => s + (Number(m.monto)||0), 0);
+
+    const sinTransf = lst => (lst || []).filter(m => m.tipo_movimiento !== 'TRANSFERENCIA'); // transferencias internas no son ingresos
+    const totalActual   = sumarSinSucursales(sinTransf(movsActual));
+    const totalAnterior = sumarSinSucursales(sinTransf(movsAnterior));
+
+    document.getElementById('stat-ingresos-mes').textContent = fmt(totalActual, 'C$');
+    const difIngresos = totalActual - totalAnterior;
+    const compIng = document.getElementById('stat-ingresos-comparativo');
+    if (compIng) {
+      const pct = totalAnterior > 0 ? Math.round((difIngresos/totalAnterior)*100) : null;
+      compIng.textContent = `${fmt(totalAnterior,'C$')} el mes pasado` + (pct!==null ? ` (${pct>=0?'+':''}${pct}%)` : '');
+      compIng.style.color = difIngresos > 0 ? 'var(--success)' : difIngresos < 0 ? 'var(--danger)' : '';
+    }
+  } catch (e) {
+    console.warn('loadCrecimientoNegocio:', e);
+  }
+}
+
+async function buildClientesEnRiesgo(usuarios) {
+  const enRiesgo = usuarios.filter(esClienteEnRiesgo).map(u => {
+    const diasInactivo = u.ultima_conexion
+      ? Math.floor((Date.now() - new Date(u.ultima_conexion).getTime()) / 86400000)
+      : null;
+    return Object.assign({}, u, { diasInactivo });
+  });
+
+  // Los que NUNCA han entrado (diasInactivo=null) son los más
+  // urgentes, van primero. Despues, del que lleva mas dias al que
+  // lleva menos.
+  enRiesgo.sort((a, b) => {
+    if (a.diasInactivo === null && b.diasInactivo === null) return 0;
+    if (a.diasInactivo === null) return -1;
+    if (b.diasInactivo === null) return 1;
+    return b.diasInactivo - a.diasInactivo;
+  });
+
+  // Traer de una sola vez el estado de seguimiento (pendiente /
+  // contactado / resuelto) de todos estos clientes -- para no
+  // perder de vista a quien ya se contacto.
+  let seguimientoPorUsuario = {};
+  if (enRiesgo.length) {
+    try {
+      const ids = enRiesgo.map(u => u.auth_user_id);
+      const { data } = await sb.from('admin_seguimiento_riesgo').select('auth_user_id, estado').in('auth_user_id', ids);
+      (data || []).forEach(s => { seguimientoPorUsuario[s.auth_user_id] = s.estado; });
+    } catch (e) { console.warn('seguimiento riesgo:', e); }
+  }
+
+  renderClientesEnRiesgoList(enRiesgo, seguimientoPorUsuario);
+}
+
+function renderClientesEnRiesgoList(items, seguimientoPorUsuario) {
+  const el = document.getElementById('list-en-riesgo');
+  if (!el) return;
+
+  if (!items.length) {
+    el.innerHTML = '<div class="payment-empty">Ningún cliente en riesgo ahora mismo 🎉</div>';
+    return;
+  }
+
+  el.innerHTML = items.map(u => {
+    const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Sin nombre';
+    const initial = nombreCompleto.charAt(0).toUpperCase();
+    const sub = u.diasInactivo === null ? 'Nunca ha iniciado sesión' : `Sin entrar hace ${u.diasInactivo} día${u.diasInactivo === 1 ? '' : 's'}`;
+    const badge = (u.diasInactivo === null || u.diasInactivo >= 7) ? 'danger' : 'warning';
+    const label = u.diasInactivo === null ? 'Nunca' : `${u.diasInactivo}d`;
+    // 5+ días (o nunca entró) se marca como urgente -- mas alla del
+    // umbral normal de "en riesgo" (3 dias).
+    const esUrgente = u.diasInactivo === null || u.diasInactivo >= 5;
+    const estado = (seguimientoPorUsuario && seguimientoPorUsuario[u.auth_user_id]) || 'pendiente';
+    return `
+      <div class="payment-item">
+        <div class="payment-item-avatar" style="cursor:pointer" onclick="mensajearCliente('${u.auth_user_id}')" title="Clic para enviarle un mensaje por el chat">${escHtml(initial)}</div>
+        <div class="payment-item-info" style="cursor:pointer" onclick="mensajearCliente('${u.auth_user_id}')" title="Clic para enviarle un mensaje por el chat">
+          <div class="payment-item-name">${escHtml(nombreCompleto)} ${esUrgente ? '<span style="color:var(--danger);font-size:10.5px;font-weight:700;margin-left:4px">● URGENTE</span>' : ''}</div>
+          <div class="payment-item-sub">${escHtml(sub)}</div>
+        </div>
+        <span class="pago-badge ${badge}">${escHtml(label)}</span>
+        <select onclick="event.stopPropagation()" onchange="actualizarSeguimientoRiesgo('${u.auth_user_id}', this.value)" style="width:auto;font-size:11px;padding:3px 6px;margin-left:6px" title="¿Qué se ha hecho con este cliente?">
+          <option value="pendiente" ${estado==='pendiente'?'selected':''}>⏳ Pendiente</option>
+          <option value="contactado" ${estado==='contactado'?'selected':''}>📞 Contactado</option>
+          <option value="resuelto" ${estado==='resuelto'?'selected':''}>✅ Resuelto</option>
+        </select>
+      </div>
+    `;
+  }).join('');
+}
+
+// Guarda que se hizo con esta alerta -- pendiente/contactado/resuelto.
+// Un solo registro por cliente, se actualiza el mismo (no se acumulan
+// filas viejas) via upsert.
+async function actualizarSeguimientoRiesgo(authUserId, estado) {
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { error } = await sb.from('admin_seguimiento_riesgo').upsert({
+      auth_user_id: authUserId,
+      estado,
+      actualizado_por_email: user?.email || 'admin',
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+    toast('Guardado', `Marcado como "${estado}"`, 'success');
+  } catch (e) {
+    console.error('actualizarSeguimientoRiesgo:', e);
+    toast('Error', 'No se pudo guardar el estado', 'error');
+  }
+}
+
+// Abre (o crea) una conversación de soporte con este cliente y lo
+// lleva directo a ella -- reutiliza exactamente el mismo mecanismo
+// que ya usa el envío de comprobantes de pago por chat.
+async function mensajearCliente(authUserId) {
+  try {
+    const convId = await getOrCreateActiveConversacion(authUserId);
+    navigate('soporte');
+    await loadConversaciones();
+    selectConversation(convId);
+  } catch (e) {
+    toast('Error', 'No se pudo abrir el chat con este cliente', 'error');
+  }
+}
+
+// Llama a la funcion de servidor que manda los correos de verdad --
+// la clave de Resend nunca pasa por aqui, vive solo en el servidor.
+async function enviarRecordatoriosInactivos() {
+  const btn = document.getElementById('btn-enviar-recordatorios');
+  if (!confirm('¿Mandar un correo a cada cliente en riesgo? (máximo 1 cada 7 días por persona, no se repite si ya se le escribió hace poco)')) return;
+
+  btn.disabled = true;
+  const textoOriginal = btn.innerHTML;
+  btn.innerHTML = 'Enviando...';
+
+  try {
+    const { data, error } = await sb.functions.invoke('recordatorios-inactivos');
+    if (error) throw error;
+
+    if (!data.ok) {
+      toast('Error', data.error || 'No se pudo completar el envío', 'error');
+      return;
+    }
+
+    const enviados = data.detalle.filter(d => d.resultado === 'enviado').length;
+    const omitidos = data.detalle.filter(d => d.resultado?.startsWith('omitido')).length;
+    const errores = data.detalle.filter(d => d.resultado?.startsWith('error')).length;
+
+    toast(
+      'Recordatorios procesados',
+      `${enviados} enviados, ${omitidos} omitidos (ya se les escribió hace poco), ${errores} con error`,
+      errores > 0 ? 'warning' : 'success'
+    );
+
+    if (errores > 0) {
+      console.warn('Detalle de errores al enviar recordatorios:', data.detalle.filter(d => d.resultado?.startsWith('error')));
+    }
+  } catch (e) {
+    toast('Error', 'No se pudo conectar con la función de recordatorios: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = textoOriginal;
+  }
+}
+
+// ============================================================
+// SECCIÓN 2 — USUARIOS
+// ============================================================
+async function loadUsers() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  showUsersLoader();
+
+  try {
+    const { data, error } = await sb
+      .from('usuarios')
+      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, telefono, estado_cuenta, plan, fecha_vencimiento, fecha_ultimo_pago, onboarding_completado, created_at, ultima_conexion, ciclo_facturacion, precio_personalizado, limite_perfiles, limite_negocios')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Igual que en las estadísticas: las sucursales/bodegas internas
+    // nunca aparecen en esta lista, no son clientes que pagan.
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
+    allUsers = (data || []).filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
+    renderUsersTable(allUsers);
+
+  } catch (e) {
+    toast('Error al cargar usuarios', e.message, 'error');
+    renderUsersEmpty();
+  }
+}
+
+function showUsersLoader() {
+  document.getElementById('users-tbody').innerHTML = `
+    <tr><td colspan="12" style="text-align:center; padding:48px; color:var(--text-muted)">
+      <div class="loader-spinner" style="margin:0 auto 12px"></div>
+      <div>Cargando usuarios...</div>
+    </td></tr>`;
+}
+
+function renderUsersEmpty() {
+  document.getElementById('users-tbody').innerHTML = `
+    <tr><td colspan="12">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <p>No se encontraron usuarios</p>
+        <span>Intenta cambiar los filtros de búsqueda</span>
+      </div>
+    </td></tr>`;
+}
+
+function renderUsersTable(users) {
+  const tbody = document.getElementById('users-tbody');
+
+  if (!users.length) { renderUsersEmpty(); return; }
+
+  const today = new Date();
+
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td>${escHtml(u.nombre || '—')}</td>
+      <td>${escHtml(u.apellido || '—')}</td>
+      <td>${escHtml(u.nombre_negocio || '—')}</td>
+      <td>${escHtml(u.email || '—')}</td>
+      <td>${escHtml(u.telefono || '—')}</td>
+      <td>${planBadge(u.plan)}</td>
+      <td>${u.plan === 'premium'
+            ? `<span class="badge badge-info">${escHtml(cicloLabel(u))}</span><br><span style="font-size:11px;color:var(--text-muted)">$${precioDe(u).toFixed(2)}</span>`
+            : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td>${estadoBadge(u.estado_cuenta)}</td>
+      <td>${conexionBadge(u.ultima_conexion)}</td>
+      <td>${formatDate(u.created_at)}</td>
+      <td>${u.fecha_ultimo_pago ? formatDate(u.fecha_ultimo_pago) : '<span style="color:var(--text-muted)">Sin registro</span>'}</td>
+      <td>
+        <div class="td-actions">
+          <button class="btn-icon btn-ghost btn-sm" onclick="viewUser('${u.id}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Ver
+          </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="verComoCliente('${u.auth_user_id}')" title="Abrir la cuenta de este cliente en otra pestaña, solo para mirar (no se puede modificar nada)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Entrar (solo lectura)
+          </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="verSucursalesCliente('${u.auth_user_id}')" title="Ver las bodegas y sucursales de este cliente (solo lectura)">
+            Bodegas / sucursales
+          </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="mensajearCliente('${u.auth_user_id}')" title="Enviarle un mensaje por el chat de soporte">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            Mensaje
+          </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="openLimiteUsuarios('${u.id}')" title="Editar cuántos usuarios (perfiles con PIN) puede crear esta cuenta">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Usuarios
+          </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="openLimiteNegocios('${u.id}')" title="Editar cuántos negocios puede crear esta cuenta bajo el mismo correo">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+            Negocios
+          </button>
+          ${u.plan === 'premium'
+            ? `<button class="btn-icon btn-ghost btn-sm" onclick="openEditBilling('${u.id}')" title="Editar ciclo de facturación y precio de este cliente">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Editar
+              </button>`
+            : ''}
+          ${u.plan === 'premium'
+            ? `<div class="marcar-pagado-wrap">
+                <button class="btn-icon btn-primary btn-sm" onclick="openConfirmMarkPaid('${u.id}')" title="Marcar que ya pagó (o adelantó) su próximo mes y enviarle el comprobante">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Marcar Pagado
+                </button>
+                ${u.created_at ? `<span class="next-pago-hint">Próx. pago: ${getCicloAPagar(u, today) ? formatDate(getCicloAPagar(u, today)) : 'N/A (pago único ya cubierto)'}</span>` : ''}
+              </div>`
+            : ''}
+          ${u.estado_cuenta !== 'activa'
+            ? `<button class="btn-icon btn-success btn-sm" data-nombre="${escHtml(u.nombre || u.email)}" onclick="openConfirmAction('activar', '${u.id}', this.dataset.nombre)">Activar</button>`
+            : ''}
+          ${u.estado_cuenta !== 'suspendida'
+            ? `<button class="btn-icon btn-warning btn-sm" data-nombre="${escHtml(u.nombre || u.email)}" onclick="openConfirmAction('suspender', '${u.id}', this.dataset.nombre)">Suspender</button>`
+            : ''}
+          ${u.estado_cuenta !== 'cancelada'
+            ? `<button class="btn-icon btn-danger btn-sm" data-nombre="${escHtml(u.nombre || u.email)}" onclick="openConfirmAction('cancelar', '${u.id}', this.dataset.nombre)">Cancelar</button>`
+            : ''}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ── VER COMO CLIENTE (solo lectura) ───────────────────────
+// Abre la cuenta del cliente en otra pestaña, sin poder modificar nada.
+// La función admin-ver-como verifica que seas administrador y deja constancia.
+async function verComoCliente(authUserId, nombreExtra) {
+  const u = (allUsers || []).find(x => x.auth_user_id === authUserId) || {};
+  const nombre = u.nombre_negocio || nombreExtra || u.email || 'este cliente';
+  if (!confirm('Vas a abrir la cuenta de "' + nombre + '" en otra pestaña, en modo SOLO LECTURA.\n\nPodrás ver todo pero no se guardará ningún cambio. Queda registrado en la bitácora.\n\n¿Continuar?')) return;
+  // Se abre la pestaña de inmediato (si no, el navegador la bloquea) y luego se le da la dirección.
+  const w = window.open('about:blank', '_blank');
+  if (!w) { toast('Pestaña bloqueada', 'Permite las ventanas emergentes de este sitio e intenta de nuevo', 'error'); return; }
+  try { w.document.write('<p style="font-family:system-ui;padding:24px">Abriendo la cuenta…</p>'); } catch (e) {}
+  try {
+    const { data, error } = await sb.functions.invoke('admin-ver-como', { body: { auth_user_id: authUserId } });
+    if (error || !data || !data.ok) {
+      let msg = (data && data.error) || (error && error.message) || 'No se pudo abrir la cuenta';
+      try { if (error && error.context && error.context.json) { const j = await error.context.json(); if (j && j.error) msg = j.error; } } catch (e) {}
+      try { w.close(); } catch (e) {}
+      toast('No se pudo abrir', msg, 'error');
+      return;
+    }
+    w.location.href = 'ver-como.html#th=' + encodeURIComponent(data.token_hash)
+      + '&n=' + encodeURIComponent(data.negocio || nombre)
+      + '&e=' + encodeURIComponent(data.email || '');
+  } catch (e) {
+    try { w.close(); } catch (e2) {}
+    toast('No se pudo abrir', e.message || 'Error inesperado', 'error');
+  }
+}
+
+
+// Lista las bodegas y sucursales de un cliente y deja entrar a cada una en
+// modo solo lectura (usa la misma función admin-ver-como de arriba).
+async function verSucursalesCliente(authUserId) {
+  const u = (allUsers || []).find(x => x.auth_user_id === authUserId) || {};
+  const cont = document.getElementById('sc-lista');
+  document.getElementById('sc-titulo').textContent = 'Bodegas y sucursales — ' + (u.nombre_negocio || u.email || '');
+  cont.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  openModal('modal-sucursales-cliente');
+  const { data, error } = await sb.rpc('admin_sucursales_de_cliente', { p_central: authUserId });
+  if (error) { cont.innerHTML = '<p style="color:var(--text-muted)">No se pudo cargar: ' + escHtml(error.message || '') + '</p>'; return; }
+  if (!data || !data.length) { cont.innerHTML = '<p style="color:var(--text-muted)">Este cliente no tiene bodegas ni sucursales.</p>'; return; }
+  cont.innerHTML = data.map(s => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:8px">
+      <div><strong>${escHtml(s.nombre || '—')}</strong>
+        <span style="font-size:12px;color:var(--text-muted)"> · ${s.tipo === 'bodega' ? 'Bodega' : 'Sucursal'}${s.activa === false ? ' · inactiva' : ''}</span></div>
+      <button class="btn-icon btn-ghost btn-sm" data-id="${s.auth_user_id}" data-n="${escHtml(s.nombre || '')}">Entrar (solo lectura)</button>
+    </div>`).join('');
+  cont.querySelectorAll('button[data-id]').forEach(b =>
+    b.addEventListener('click', () => verComoCliente(b.dataset.id, b.dataset.n)));
+}
+
+// Filtrar tabla usuarios
+function applyUserFilter(filter) {
+  userFilter = filter;
+  $$('#page-users .filter-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.filter === filter));
+  filterAndSearch();
+}
+
+function filterAndSearch() {
+  const query = (document.getElementById('user-search').value || '').toLowerCase().trim();
+  let filtered = allUsers;
+
+  if (userFilter !== 'all') {
+    if (userFilter === 'prueba' || userFilter === 'premium') {
+      filtered = filtered.filter(u => u.plan === userFilter);
+    } else if (userFilter === 'en_riesgo') {
+      filtered = filtered.filter(esClienteEnRiesgo);
+    } else {
+      const estadoMap = { activos: 'activa', suspendidos: 'suspendida', cancelados: 'cancelada' };
+      filtered = filtered.filter(u => u.estado_cuenta === estadoMap[userFilter]);
+    }
+  }
+
+  if (query) {
+    filtered = filtered.filter(u =>
+      [u.nombre, u.apellido, u.email, u.nombre_negocio, u.telefono]
+        .join(' ').toLowerCase().includes(query));
+  }
+
+  renderUsersTable(filtered);
+}
+
+// Ver usuario — modal detalle
+// Notas internas de administrador sobre un cliente -- solo lectura
+// y escritura para administradores (tabla propia con su propio
+// candado de RLS, confirmado que un usuario normal recibe "permiso
+// denegado" si intenta escribir aqui).
+async function cargarNotasCliente(authUserId) {
+  const cont = document.getElementById('notas-cliente-lista');
+  if (!cont) return;
+  cont.innerHTML = '<div style="color:var(--text-muted);font-size:12.5px">Cargando…</div>';
+  try {
+    const { data, error } = await sb.from('admin_notas_clientes')
+      .select('*').eq('auth_user_id', authUserId).order('created_at', { ascending:false });
+    if (error) throw error;
+
+    if (!data || !data.length) {
+      cont.innerHTML = '<div style="color:var(--text-muted);font-size:12.5px">Sin notas todavía.</div>';
+      return;
+    }
+    cont.innerHTML = data.map(n => `
+      <div style="padding:8px 10px;border-radius:8px;background:var(--bg-hover);margin-bottom:6px;font-size:12.5px">
+        <div>${escHtml(n.texto)}</div>
+        <div style="color:var(--text-muted);font-size:11px;margin-top:3px">${escHtml(n.creado_por_email)} · ${formatDate(n.created_at)}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.warn('cargarNotasCliente:', e);
+    cont.innerHTML = '<div style="color:var(--danger);font-size:12.5px">No se pudieron cargar las notas.</div>';
+  }
+}
+
+async function guardarNotaCliente() {
+  const input = document.getElementById('nota-cliente-texto');
+  const texto = input?.value.trim();
+  if (!texto) return;
+  if (!USUARIO_DETALLE_ACTUAL?.auth_user_id) { toast('Error', 'No se identificó al cliente', 'error'); return; }
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { error } = await sb.from('admin_notas_clientes').insert({
+      auth_user_id: USUARIO_DETALLE_ACTUAL.auth_user_id,
+      texto,
+      creado_por_email: user?.email || 'admin',
+    });
+    if (error) throw error;
+
+    input.value = '';
+    await cargarNotasCliente(USUARIO_DETALLE_ACTUAL.auth_user_id);
+  } catch (e) {
+    console.error('guardarNotaCliente:', e);
+    toast('Error', 'No se pudo guardar la nota', 'error');
+  }
+}
+
+function viewUser(id) {
+  const u = allUsers.find(x => x.id === id);
+  if (!u) return;
+  USUARIO_DETALLE_ACTUAL = u; // se reutiliza para las notas internas, sin tener que buscarlo de nuevo
+
+  document.getElementById('detail-nombre').textContent     = u.nombre || '—';
+  document.getElementById('detail-apellido').textContent   = u.apellido || '—';
+  document.getElementById('detail-negocio').textContent    = u.nombre_negocio || '—';
+  document.getElementById('detail-email').textContent      = u.email || '—';
+  document.getElementById('detail-telefono').textContent   = u.telefono || '—';
+  const linkWa = document.getElementById('detail-telefono-whatsapp');
+  if (linkWa) {
+    const numeroWa = normalizarNumeroWhatsApp(u.telefono);
+    if (numeroWa) { linkWa.href = `https://wa.me/${numeroWa}`; linkWa.style.display = 'inline-flex'; }
+    else { linkWa.style.display = 'none'; }
+  }
+  document.getElementById('detail-plan').innerHTML         = planBadge(u.plan);
+  document.getElementById('detail-estado').innerHTML       = estadoBadge(u.estado_cuenta);
+  document.getElementById('detail-registro').textContent   = formatDate(u.created_at);
+  document.getElementById('detail-conexion').innerHTML     = conexionBadge(u.ultima_conexion);
+  document.getElementById('detail-ultimo-pago').textContent = u.fecha_ultimo_pago ? formatDate(u.fecha_ultimo_pago) : 'Sin registro';
+  document.getElementById('detail-onboarding').innerHTML   = u.onboarding_completado
+    ? '<span class="badge badge-success">Completado</span>'
+    : '<span class="badge badge-warning">Pendiente</span>';
+
+  cargarNotasCliente(u.auth_user_id);
+  openModal('modal-view-user');
+}
+
+// ============================================================
+// EDITAR FACTURACIÓN DE UN CLIENTE (ciclo + precio personalizado)
+// ============================================================
+function actualizarPreviewBilling() {
+  const u = window._editingBillingUser;
+  if (!u) return;
+  const cicloSel = document.getElementById('eb-ciclo').value;
+  const uPreview = { ...u, ciclo_facturacion: cicloSel };
+  const previewEl = document.getElementById('eb-preview');
+
+  if (cicloSel === 'unico') {
+    if (u.fecha_ultimo_pago) {
+      previewEl.textContent = 'Ya se pagó — no habrá más pagos para este cliente';
+    } else {
+      previewEl.textContent = `Pendiente desde ${formatDate(u.created_at)} (pago único)`;
+    }
+    return;
+  }
+
+  const today = new Date();
+  const ciclo = getCicloAPagar(uPreview, today);
+  previewEl.textContent = ciclo ? formatDate(ciclo) : '—';
+}
+
+function openEditBilling(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  window._editingBillingUser = u;
+  document.getElementById('eb-nombre-cliente').textContent =
+    [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+  document.getElementById('eb-ciclo').value = u.ciclo_facturacion || 'mensual';
+  document.getElementById('eb-precio').value = (u.precio_personalizado !== null && u.precio_personalizado !== undefined)
+    ? Number(u.precio_personalizado) : '';
+  document.getElementById('eb-precio').placeholder = `Precio por defecto ($${PRECIO_PREMIUM_USD.toFixed(2)})`;
+
+  actualizarPreviewBilling();
+  openModal('modal-edit-billing');
+}
+
+async function guardarEditBilling() {
+  const u = window._editingBillingUser;
+  if (!u) return;
+
+  const ciclo = document.getElementById('eb-ciclo').value;
+  const precioRaw = document.getElementById('eb-precio').value.trim();
+  const precio = precioRaw === '' ? null : Number(precioRaw);
+
+  if (precio !== null && (isNaN(precio) || precio < 0)) {
+    toast('Precio inválido', 'Ingresa un número mayor o igual a cero, o deja el campo vacío.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-guardar-billing');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const { error } = await sb
+      .from('usuarios')
+      .update({ ciclo_facturacion: ciclo, precio_personalizado: precio })
+      .eq('id', u.id);
+    if (error) throw error;
+
+    // Actualizar copia local sin recargar toda la tabla
+    const idx = allUsers.findIndex(x => x.id === u.id);
+    if (idx !== -1) {
+      allUsers[idx].ciclo_facturacion = ciclo;
+      allUsers[idx].precio_personalizado = precio;
+    }
+
+    closeModal('modal-edit-billing');
+    toast('Facturación actualizada', `Se guardaron los cambios de ${u.nombre || u.email}`, 'success');
+    filterAndSearch();
+  } catch (e) {
+    console.error('guardarEditBilling:', e);
+    toast('Error al guardar', e.message || 'Intenta de nuevo', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
+// LÍMITE DE USUARIOS (sistema multiusuario / perfiles con PIN)
+// ============================================================
+async function openLimiteUsuarios(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  window._editingLimiteUser = u;
+  document.getElementById('lu-nombre-cliente').textContent =
+    [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+  document.getElementById('lu-limite').value = u.limite_perfiles || 5;
+  document.getElementById('lu-actuales').textContent = 'Cargando…';
+
+  openModal('modal-limite-usuarios');
+
+  // Cuenta real de perfiles ya creados -- se carga bajo demanda (solo
+  // al abrir el modal de esa cuenta), no en la tabla completa de
+  // clientes, para no sumar una consulta extra por cada una de las
+  // filas cuando ni siquiera se va a ver este dato.
+  try {
+    const { count, error } = await sb
+      .from('perfiles_acceso')
+      .select('id', { count: 'exact', head: true })
+      .eq('auth_user_id', u.auth_user_id);
+    document.getElementById('lu-actuales').textContent = error ? '—' : `${count ?? 0} perfil${count === 1 ? '' : 'es'}`;
+  } catch (e) {
+    console.error('openLimiteUsuarios, contar perfiles:', e);
+    document.getElementById('lu-actuales').textContent = '—';
+  }
+}
+
+async function guardarLimiteUsuarios() {
+  const u = window._editingLimiteUser;
+  if (!u) return;
+
+  const valorRaw = document.getElementById('lu-limite').value.trim();
+  const limite = Number(valorRaw);
+  if (valorRaw === '' || isNaN(limite) || !Number.isInteger(limite) || limite < 1) {
+    toast('Valor inválido', 'Ingresa un número entero de 1 o más.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-guardar-limite');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const { error } = await sb
+      .from('usuarios')
+      .update({ limite_perfiles: limite })
+      .eq('id', u.id);
+    if (error) throw error;
+
+    const idx = allUsers.findIndex(x => x.id === u.id);
+    if (idx !== -1) allUsers[idx].limite_perfiles = limite;
+
+    closeModal('modal-limite-usuarios');
+    toast('Límite actualizado', `${u.nombre || u.email} ahora puede tener hasta ${limite} usuario${limite === 1 ? '' : 's'}`, 'success');
+  } catch (e) {
+    console.error('guardarLimiteUsuarios:', e);
+    toast('Error al guardar', e.message || 'Intenta de nuevo', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
+// LÍMITE DE NEGOCIOS (varios negocios bajo el mismo correo)
+// ============================================================
+async function openLimiteNegocios(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  window._editingLimiteNegociosUser = u;
+  document.getElementById('ln-nombre-cliente').textContent =
+    [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+  document.getElementById('ln-limite').value = u.limite_negocios || 1;
+  document.getElementById('ln-actuales').textContent = 'Cargando…';
+
+  openModal('modal-limite-negocios');
+
+  // El negocio "principal" cuenta siempre como 1, aunque nunca haya
+  // creado ninguno adicional (no necesita fila en la base de datos
+  // hasta ese momento) -- por eso el conteo real es 1 + los
+  // vinculados que de verdad existan.
+  try {
+    const { count, error } = await sb
+      .from('negocios_vinculados')
+      .select('id', { count: 'exact', head: true })
+      .eq('auth_user_id_principal', u.auth_user_id).eq('es_principal', false).eq('activo', true);
+    const total = 1 + (error ? 0 : (count ?? 0));
+    document.getElementById('ln-actuales').textContent = `${total} negocio${total === 1 ? '' : 's'}`;
+  } catch (e) {
+    console.error('openLimiteNegocios, contar negocios:', e);
+    document.getElementById('ln-actuales').textContent = '—';
+  }
+}
+
+async function guardarLimiteNegocios() {
+  const u = window._editingLimiteNegociosUser;
+  if (!u) return;
+
+  const valorRaw = document.getElementById('ln-limite').value.trim();
+  const limite = Number(valorRaw);
+  if (valorRaw === '' || isNaN(limite) || !Number.isInteger(limite) || limite < 1) {
+    toast('Valor inválido', 'Ingresa un número entero de 1 o más.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-guardar-limite-negocios');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const { error } = await sb
+      .from('usuarios')
+      .update({ limite_negocios: limite })
+      .eq('id', u.id);
+    if (error) throw error;
+
+    const idx = allUsers.findIndex(x => x.id === u.id);
+    if (idx !== -1) allUsers[idx].limite_negocios = limite;
+
+    closeModal('modal-limite-negocios');
+    toast('Límite actualizado', `${u.nombre || u.email} ahora puede tener hasta ${limite} negocio${limite === 1 ? '' : 's'}`, 'success');
+  } catch (e) {
+    console.error('guardarLimiteNegocios:', e);
+    toast('Error al guardar', e.message || 'Intenta de nuevo', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
+// MARCAR PAGADO → genera comprobante PDF y lo envía por chat
+// ============================================================
+// Flujo:
+//   1. El admin hace clic en "Marcar Pagado" → openConfirmMarkPaid()
+//      calcula el PRÓXIMO CICLO AÚN NO CUBIERTO (permite pagos
+//      adelantados) y muestra un modal de confirmación con el nombre
+//      del cliente, el mes que se está pagando, el monto y la fecha
+//      del próximo pago después de este.
+//   2. Al confirmar → executeMarkAsPaid():
+//        a) Actualiza fecha_ultimo_pago en la tabla "usuarios" con la
+//           fecha del CICLO pagado (no la fecha real de hoy), lo que
+//           permite adelantar varios meses seguidos.
+//        b) Genera un comprobante de pago en PDF (jsPDF).
+//        c) Busca (o crea) una conversación activa de soporte para ese
+//           cliente y sube el PDF al bucket "chat-archivos".
+//        d) Inserta un mensaje de texto + el documento (comprobante)
+//           en esa conversación, como si el administrador se los
+//           enviara al cliente por el chat de Atención al Cliente.
+//
+// NOTA IMPORTANTE SOBRE PERMISOS (Supabase):
+// Para que el paso (c) funcione, el bucket de Storage "chat-archivos"
+// debe permitir que un administrador (no el dueño del archivo) suba
+// documentos dentro de la carpeta del cliente. Si tu bucket restringe
+// las subidas a "auth.uid() = carpeta raíz del archivo", agrega esta
+// política en el SQL Editor de Supabase:
+//
+//   create policy "Admins pueden subir comprobantes para cualquier usuario"
+//   on storage.objects
+//   for insert
+//   to authenticated
+//   with check (
+//     bucket_id = 'chat-archivos'
+//     and exists (
+//       select 1 from public.administradores a
+//       where a.email = auth.email() and a.activo = true
+//     )
+//   );
+//
+// Si esa política ya existe o el bucket no tiene RLS restrictivo,
+// no necesitas hacer nada más.
+
+function openConfirmMarkPaid(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  if (!u.auth_user_id) {
+    toast('No se puede procesar', 'Este usuario no tiene una cuenta de acceso vinculada (auth_user_id), así que no se le puede enviar el comprobante por chat.', 'warning');
+    return;
+  }
+
+  const today = new Date();
+  const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'este cliente';
+  const cicloAPagar    = getCicloAPagar(u, today);
+  const mesPagadoTexto = u.ciclo_facturacion === 'unico'
+    ? 'pago único'
+    : (cicloAPagar ? formatMesAnio(cicloAPagar) : formatMesAnio(today));
+  const esUnico        = u.ciclo_facturacion === 'unico';
+  const nextDue        = (!esUnico && cicloAPagar) ? getNextCycleAfter(u, cicloAPagar) : null;
+
+  document.getElementById('confirm-icon').className = 'confirm-icon success';
+  document.getElementById('confirm-icon').textContent = '✓';
+  document.getElementById('confirm-title').textContent = '¿Confirmar pago recibido?';
+  document.getElementById('confirm-sub').innerHTML =
+    `Se registrará el pago de <strong>${escHtml(nombreCompleto)}</strong> correspondiente a <strong>${escHtml(mesPagadoTexto)}</strong> por <strong>$${precioDe(u).toFixed(2)} USD</strong>.<br><br>` +
+    `Se le enviará automáticamente un comprobante en su chat de soporte.` +
+    (esUnico ? `<br>Al ser un <strong>pago único</strong>, este cliente no volverá a aparecer como pendiente de pago.`
+             : (nextDue ? `<br>Su próximo pago será el <strong>${escHtml(formatDate(nextDue))}</strong>.` : ''));
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.className = 'btn-icon btn-success';
+  btn.textContent = 'Sí, marcar como pagado';
+
+  window._pendingAction = { accion: 'marcar-pagado', userId, cicloAPagar };
+  openModal('modal-confirm');
+}
+
+// Busca una conversación activa existente para el usuario; si no hay
+// ninguna, crea una nueva (igual que startConversation() en chat.html).
+async function getOrCreateActiveConversacion(authUserId) {
+  const { data: existing, error: errFind } = await sb
+    .from('conversaciones_chat')
+    .select('id')
+    .eq('auth_user_id', authUserId)
+    .eq('estado', 'activa')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (errFind) throw errFind;
+  if (existing) return existing.id;
+
+  const { data: created, error: errCreate } = await sb
+    .from('conversaciones_chat')
+    .insert({ auth_user_id: authUserId, estado: 'activa' })
+    .select('id')
+    .single();
+
+  if (errCreate) throw errCreate;
+  return created.id;
+}
+
+// Genera el PDF del comprobante de pago. Devuelve { blob, filename }.
+function generarComprobantePDF({ nombreCompleto, email, negocio, mesPagadoTexto, fechaPago, monto, proximoPago }) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const numero = 'CMP-' + Date.now().toString().slice(-8);
+
+  // Encabezado
+  doc.setFillColor(108, 99, 255);
+  doc.rect(0, 0, W, 38, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20); doc.setFont(undefined, 'bold');
+  doc.text('Negocio360', 14, 20);
+  doc.setFontSize(11); doc.setFont(undefined, 'normal');
+  doc.text('Comprobante de Pago', 14, 29);
+  doc.setFontSize(9);
+  doc.text(`N.º ${numero}`, W - 14, 18, { align: 'right' });
+  doc.text(`Emitido: ${fechaPago.toLocaleString('es-NI')}`, W - 14, 24, { align: 'right' });
+
+  let y = 52;
+  doc.setTextColor(20, 20, 30);
+  doc.setFontSize(12); doc.setFont(undefined, 'bold');
+  doc.text('Detalle del pago', 14, y);
+
+  const rows = [
+    ['Pago del mes',  mesPagadoTexto],
+    ['Fecha de pago', fechaPago.toLocaleDateString('es-NI', { day: '2-digit', month: 'long', year: 'numeric' })],
+    ['A nombre de',   nombreCompleto],
+    ['Correo',        email || '—'],
+    ['Negocio',       negocio || '—'],
+    ['Recibe',        'Negocio360'],
+    ['Monto',         `$${monto.toFixed(2)} USD`],
+  ];
+
+  doc.autoTable({
+    startY: y + 6,
+    body: rows,
+    theme: 'plain',
+    styles: { fontSize: 11, cellPadding: 4 },
+    columnStyles: {
+      0: { fontStyle: 'bold', textColor: [90, 90, 110], cellWidth: 55 },
+      1: { textColor: [20, 20, 30] },
+    },
+    didParseCell: (data) => {
+      if (data.row.index === rows.length - 1) {
+        data.cell.styles.fontSize = 14;
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.textColor = [108, 99, 255];
+      }
+    },
+  });
+
+  let finalY = doc.lastAutoTable.finalY + 14;
+  doc.setDrawColor(230, 230, 235);
+  doc.line(14, finalY, W - 14, finalY);
+  finalY += 10;
+
+  doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.setTextColor(90, 90, 110);
+  if (proximoPago) {
+    doc.text(`Tu próximo pago será el ${proximoPago.toLocaleDateString('es-NI', { day: '2-digit', month: 'long', year: 'numeric' })}.`, 14, finalY);
+    finalY += 14;
+  }
+
+  doc.setFontSize(8.5); doc.setTextColor(140, 140, 160);
+  doc.text('Este comprobante fue generado automáticamente por Negocio360 y no requiere firma.', 14, finalY);
+
+  const filename = `comprobante_${numero}.pdf`;
+  const blob = doc.output('blob');
+  return { blob, filename };
+}
+
+// Ejecuta la acción completa al confirmar "Marcar Pagado".
+// cicloAPagar es la fecha de vencimiento del ciclo que se está pagando
+// (calculada en openConfirmMarkPaid), permitiendo pagos adelantados.
+async function executeMarkAsPaid(userId, cicloAPagar) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) { toast('Error', 'No se encontró el usuario', 'error'); return; }
+  if (!u.auth_user_id) {
+    toast('No se pudo enviar el comprobante', 'Este usuario no tiene una cuenta vinculada para chat', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const today = new Date();
+
+    // El ciclo a registrar es el que se calculó al abrir el modal de
+    // confirmación; si por alguna razón no llegó, se recalcula aquí
+    // como respaldo (equivalente al comportamiento anterior).
+    const cicloDueDate = cicloAPagar || getCicloAPagar(u, today) || getCurrentCycleDueDate(u, today);
+    // FIX zona horaria: toISOString() es UTC y puede correr la fecha en
+    // Nicaragua (UTC-6); se usa la fecha calendario local del ciclo.
+    const hoyISO = `${cicloDueDate.getFullYear()}-${String(cicloDueDate.getMonth()+1).padStart(2,'0')}-${String(cicloDueDate.getDate()).padStart(2,'0')}`; // fecha del CICLO pagado (no la fecha real de hoy)
+
+    // 1) Registrar el pago
+    const { error: errPago } = await sb
+      .from('usuarios')
+      .update({ fecha_ultimo_pago: hoyISO })
+      .eq('id', userId);
+    if (errPago) throw errPago;
+
+    // 2) Generar el comprobante en PDF
+    const mesPagadoTexto = u.ciclo_facturacion === 'unico' ? 'pago único' : formatMesAnio(cicloDueDate);
+    const nextDue        = u.ciclo_facturacion === 'unico' ? null : getNextCycleAfter(u, cicloDueDate);
+    const nombreCompleto = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+
+    const { blob, filename } = generarComprobantePDF({
+      nombreCompleto,
+      email: u.email,
+      negocio: u.nombre_negocio,
+      mesPagadoTexto,
+      fechaPago: today,
+      monto: precioDe(u),
+      proximoPago: nextDue,
+    });
+
+    // 3) Buscar o crear una conversación activa para este cliente
+    const convId = await getOrCreateActiveConversacion(u.auth_user_id);
+
+    // 4) Subir el PDF al bucket de archivos del chat
+    const path = `${u.auth_user_id}/${convId}/${Date.now()}-${filename}`;
+    const { error: upErr } = await sb.storage
+      .from('chat-archivos')
+      .upload(path, blob, { contentType: 'application/pdf' });
+    if (upErr) throw upErr;
+
+    const { data: pub } = sb.storage.from('chat-archivos').getPublicUrl(path);
+
+    // 5) Enviar el mensaje de texto + el comprobante en el chat
+    const { error: errMsgTxt } = await sb.from('mensajes_chat').insert({
+      conversacion_id: convId,
+      auth_user_id: u.auth_user_id,
+      remitente: 'admin',
+      tipo: 'texto',
+      contenido: `¡Gracias por tu pago! Aquí tienes tu comprobante correspondiente a ${mesPagadoTexto}.`,
+    });
+    if (errMsgTxt) throw errMsgTxt;
+
+    const { error: errMsgDoc } = await sb.from('mensajes_chat').insert({
+      conversacion_id: convId,
+      auth_user_id: u.auth_user_id,
+      remitente: 'admin',
+      tipo: 'documento',
+      archivo_url: pub.publicUrl,
+      archivo_nombre: filename,
+    });
+    if (errMsgDoc) throw errMsgDoc;
+
+    // Actualizar copia local
+    const idx = allUsers.findIndex(x => x.id === userId);
+    if (idx !== -1) allUsers[idx].fecha_ultimo_pago = hoyISO;
+
+    closeModal('modal-confirm');
+    toast('Pago registrado y comprobante enviado', `Se envió el comprobante a ${nombreCompleto} por su chat de soporte`, 'success');
+
+    filterAndSearch();
+    loadDashboardStats();
+
+  } catch (e) {
+    toast('Error al procesar el pago', e.message, 'error');
+  } finally {
+    btn.innerHTML = 'Confirmar';
+    btn.disabled = false;
+    window._pendingAction = null;
+  }
+}
+
+// Confirmar acción sobre usuario (activar / suspender / cancelar)
+function openConfirmAction(accion, userId, nombreSinEscapar) {
+  // El nombre lo escribe el cliente: siempre se escapa antes de mostrarlo.
+  const nombre = escHtml(nombreSinEscapar || '');
+  const msgs = {
+    activar:   { title: '¿Activar esta cuenta?',   sub: `Se activará la cuenta de <strong>${nombre}</strong>.`,   icon: '✓', cls: 'success', btn: 'btn-success', label: 'Sí, activar'    },
+    suspender: { title: '¿Suspender esta cuenta?', sub: `Se suspenderá la cuenta de <strong>${nombre}</strong>.`, icon: '⚠', cls: 'warn',    btn: 'btn-warning', label: 'Sí, suspender' },
+    cancelar:  { title: '¿Cancelar esta cuenta?',  sub: `Se cancelará la cuenta de <strong>${nombre}</strong>.`,  icon: '✕', cls: 'danger',  btn: 'btn-danger',  label: 'Sí, cancelar'  },
+  };
+  const m = msgs[accion];
+  if (!m) return;
+
+  document.getElementById('confirm-icon').className = `confirm-icon ${m.cls}`;
+  document.getElementById('confirm-icon').textContent = m.icon;
+  document.getElementById('confirm-title').textContent = m.title;
+  document.getElementById('confirm-sub').innerHTML = m.sub;
+
+  const btnConfirm = document.getElementById('btn-confirm-action');
+  btnConfirm.className = `btn-icon ${m.btn}`;
+  btnConfirm.textContent = m.label;
+
+  // Guardar acción pendiente
+  window._pendingAction = { accion, userId };
+
+  openModal('modal-confirm');
+}
+
+async function executeConfirmAction() {
+  const { accion, userId } = window._pendingAction || {};
+  if (!accion || !userId) return;
+
+  const estadoMap = { activar: 'activa', suspender: 'suspendida', cancelar: 'cancelada' };
+  const nuevoEstado = estadoMap[accion];
+  if (!nuevoEstado) return;
+
+  // Re-verificar sesión
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('usuarios')
+      .update({ estado_cuenta: nuevoEstado, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    if (error) throw error;
+
+    closeModal('modal-confirm');
+
+    const toastMsgs = {
+      activa:     'Cuenta activada correctamente',
+      suspendida: 'Cuenta suspendida correctamente',
+      cancelada:  'Cuenta cancelada correctamente',
+    };
+    const toastTypes = { activa: 'success', suspendida: 'warning', cancelada: 'error' };
+
+    toast(toastMsgs[nuevoEstado], '', toastTypes[nuevoEstado]);
+
+    // Actualizar local
+    const idx = allUsers.findIndex(u => u.id === userId);
+    if (idx !== -1) allUsers[idx].estado_cuenta = nuevoEstado;
+
+    filterAndSearch();
+    loadDashboardStats();
+
+  } catch (e) {
+    toast('Error al actualizar cuenta', e.message, 'error');
+  } finally {
+    btn.innerHTML = 'Confirmar';
+    btn.disabled = false;
+    window._pendingAction = null;
+  }
+}
+
+// ============================================================
+// SECCIÓN 3 — CÓDIGOS DE ACCESO
+// ============================================================
+/* ══════════════════════════════════════════
+   ANUNCIOS DEL SISTEMA
+   Permite lanzar un aviso de novedades a todos los usuarios
+   desde el Panel de Administración, sin tocar código. Cada
+   usuario lo ve una sola vez (tabla anuncios_vistos, que llena
+   dashboard.html). Al lanzar uno nuevo, se desactivan los
+   anteriores para que solo exista un anuncio activo a la vez.
+   ══════════════════════════════════════════ */
+let anuncioItemsCount = 0;
+
+function renderAnuncioItemRow(valor = '') {
+  anuncioItemsCount++;
+  const id = `anuncio-item-${anuncioItemsCount}`;
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:8px;margin-bottom:8px';
+  wrap.innerHTML = `
+    <input type="text" class="form-control anuncio-item-input" id="${id}" value="${valor.replace(/"/g,'&quot;')}" placeholder="Ej: Ya puedes importar clientes masivamente desde Excel" />
+    <button type="button" class="btn-icon btn-ghost" onclick="this.parentElement.remove()">✕</button>
+  `;
+  document.getElementById('anuncio-form-items').appendChild(wrap);
+}
+function agregarItemAnuncio() { renderAnuncioItemRow(); }
+
+function limpiarFormAnuncio() {
+  document.getElementById('anuncio-form-titulo').value = '';
+  document.getElementById('anuncio-form-items').innerHTML = '';
+  anuncioItemsCount = 0;
+  renderAnuncioItemRow();
+  renderAnuncioItemRow();
+}
+
+async function loadAnunciosSection() {
+  limpiarFormAnuncio();
+  await renderAnuncioActivoPreview();
+}
+
+let anuncioActivoActual = null;
+
+async function renderAnuncioActivoPreview() {
+  const el = document.getElementById('anuncio-activo-preview');
+  const btnVerLectores = document.getElementById('btn-ver-lectores-anuncio');
+  const btnDesactivar = document.getElementById('btn-desactivar-anuncio');
+  if (!el) return;
+  el.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  if (btnVerLectores) btnVerLectores.style.display = 'none';
+  if (btnDesactivar) btnDesactivar.style.display = 'none';
+  try {
+    const { data, error } = await sb.from('anuncios_sistema')
+      .select('*').eq('activo', true).order('created_at', { ascending:false }).limit(1).maybeSingle();
+    if (error) throw error;
+    anuncioActivoActual = data || null;
+    if (!data) { el.innerHTML = '<p style="color:var(--text-muted)">No hay ningún anuncio activo en este momento.</p>'; return; }
+
+    if (btnVerLectores) btnVerLectores.style.display = 'inline-flex';
+    if (btnDesactivar) btnDesactivar.style.display = 'inline-flex';
+
+    const items = Array.isArray(data.items) ? data.items : [];
+    el.innerHTML = `
+      <div style="font-weight:700;font-size:15px;margin-bottom:10px">${escAnuncio(data.titulo)}</div>
+      <ul style="margin:0;padding-left:18px;color:var(--text-secondary)">
+        ${items.map(i => `<li style="margin-bottom:6px">${escAnuncio(i)}</li>`).join('')}
+      </ul>
+      <div style="margin-top:14px;font-size:12px;color:var(--text-muted)">
+        Lanzado el ${new Date(data.created_at).toLocaleString('es-NI')}${data.created_by ? ' · por ' + escAnuncio(data.created_by) : ''}
+      </div>`;
+  } catch (e) {
+    el.innerHTML = '<p style="color:var(--text-muted)">No se pudo cargar el anuncio activo.</p>';
+    console.error('renderAnuncioActivoPreview:', e);
+  }
+}
+
+async function desactivarAnuncioActivo() {
+  if (!anuncioActivoActual) return;
+  if (!confirm('¿Desactivar este anuncio? Dejará de aparecerle a cualquier cliente que entre después de ahora.')) return;
+  try {
+    const { error } = await sb.from('anuncios_sistema').update({ activo: false }).eq('id', anuncioActivoActual.id);
+    if (error) throw error;
+    toast('Anuncio desactivado', '', 'success');
+    await renderAnuncioActivoPreview();
+  } catch (e) {
+    console.error('desactivarAnuncioActivo:', e);
+    toast('No se pudo desactivar', e.message, 'error');
+  }
+}
+
+function escAnuncio(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function lanzarAnuncio() {
+  const titulo = document.getElementById('anuncio-form-titulo').value.trim();
+  const items = Array.from(document.querySelectorAll('.anuncio-item-input'))
+    .map(i => i.value.trim()).filter(Boolean);
+
+  if (!titulo) { toast('Falta el título', 'Escribe un título para el anuncio', 'warning'); return; }
+  if (!items.length) { toast('Falta al menos un punto', 'Agrega al menos un punto al anuncio', 'warning'); return; }
+
+  const btn = event?.target?.closest('button');
+  if (btn) btn.disabled = true;
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+
+    // Solo puede existir un anuncio activo a la vez: se desactivan los anteriores.
+    await sb.from('anuncios_sistema').update({ activo: false }).eq('activo', true);
+
+    const { error } = await sb.from('anuncios_sistema').insert({
+      titulo, items, activo: true, created_by: user?.email || null,
+    });
+    if (error) throw error;
+
+    toast('Anuncio lanzado', 'Todos los usuarios lo verán la próxima vez que entren al Dashboard', 'success');
+    limpiarFormAnuncio();
+    await renderAnuncioActivoPreview();
+  } catch (e) {
+    console.error('lanzarAnuncio:', e);
+    toast('Error al lanzar el anuncio', e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── ENCUESTAS (satisfacción del usuario, 1-5 estrellas) ────────────
+async function publicarEncuesta() {
+  const pregunta = document.getElementById('encuesta-form-pregunta').value.trim();
+  if (!pregunta) { toast('Falta la pregunta', 'Escribe la pregunta de la encuesta', 'warning'); return; }
+
+  const btn = event?.target?.closest('button');
+  if (btn) btn.disabled = true;
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+
+    // Solo puede existir una encuesta activa a la vez.
+    await sb.from('encuestas_sistema').update({ activa: false }).eq('activa', true);
+
+    const { error } = await sb.from('encuestas_sistema').insert({
+      pregunta, activa: true, created_by: user?.email || null,
+    });
+    if (error) throw error;
+
+    toast('Encuesta publicada', 'Los usuarios la verán la próxima vez que entren al Dashboard', 'success');
+    document.getElementById('encuesta-form-pregunta').value = '';
+    await cargarResultadosEncuesta();
+  } catch (e) {
+    console.error('publicarEncuesta:', e);
+    toast('Error al publicar la encuesta', e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+let encuestaActivaActual = null;
+
+async function cargarResultadosEncuesta() {
+  const cont = document.getElementById('encuesta-resultados');
+  const btnDesactivar = document.getElementById('btn-desactivar-encuesta');
+  if (!cont) return;
+  cont.innerHTML = '<p style="color:var(--text-muted)">Cargando…</p>';
+  if (btnDesactivar) btnDesactivar.style.display = 'none';
+  try {
+    const { data: encuesta, error } = await sb.from('encuestas_sistema')
+      .select('id,pregunta,created_at').eq('activa', true)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    encuestaActivaActual = encuesta || null;
+    if (!encuesta) { cont.innerHTML = '<p style="color:var(--text-muted)">No hay ninguna encuesta activa en este momento.</p>'; return; }
+    if (btnDesactivar) btnDesactivar.style.display = 'inline-flex';
+
+    const { data: respuestas, error: errR } = await sb.from('encuestas_respuestas')
+      .select('estrellas, comentario, created_at').eq('encuesta_id', encuesta.id)
+      .order('created_at', { ascending: false });
+    if (errR) throw errR;
+
+    const lista = respuestas || [];
+    const calificadas = lista.filter(r => r.estrellas != null);
+    const soloAceptaron = lista.length - calificadas.length;
+    const promedio = calificadas.length
+      ? (calificadas.reduce((s, r) => s + r.estrellas, 0) / calificadas.length)
+      : 0;
+    const distribucion = [5, 4, 3, 2, 1].map(n => calificadas.filter(r => r.estrellas === n).length);
+    const maxDist = Math.max(1, ...distribucion);
+
+    const comentarios = calificadas.filter(r => r.comentario && r.comentario.trim());
+
+    cont.innerHTML = `
+      <div style="margin-bottom:18px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">${escHtml(encuesta.pregunta)}</div>
+        <div style="font-size:12px;color:var(--text-muted)">Publicada el ${formatDate(encuesta.created_at)}</div>
+      </div>
+
+      <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin-bottom:20px">
+        <div style="text-align:center">
+          <div style="font-size:36px;font-weight:800;color:#F5A623">${promedio.toFixed(1)}<span style="font-size:18px;color:var(--text-muted)">/5</span></div>
+          <div style="font-size:11px;color:var(--text-muted)">${calificadas.length} calificación${calificadas.length===1?'':'es'}</div>
+        </div>
+        <div style="flex:1;min-width:200px">
+          ${[5,4,3,2,1].map((n,i) => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="font-size:11.5px;color:var(--text-muted);width:34px">${n} ★</span>
+              <div style="flex:1;height:8px;background:var(--bg-hover,#eee);border-radius:100px;overflow:hidden">
+                <div style="width:${(distribucion[i]/maxDist*100)}%;height:100%;background:#F5A623"></div>
+              </div>
+              <span style="font-size:11.5px;color:var(--text-muted);width:20px;text-align:right">${distribucion[i]}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+        ${soloAceptaron} usuario${soloAceptaron===1?'':'s'} presionó "Aceptar" sin calificar.
+      </div>
+
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">Comentarios (${comentarios.length})</div>
+      <div style="display:flex;flex-direction:column;gap:10px;max-height:320px;overflow-y:auto">
+        ${comentarios.length ? comentarios.map(r => `
+          <div style="padding:10px 12px;background:var(--bg-hover,#f7f7fa);border-radius:8px">
+            <div style="color:#F5A623;font-size:13px;margin-bottom:4px">${'★'.repeat(r.estrellas)}${'☆'.repeat(5-r.estrellas)}</div>
+            <div style="font-size:13px;color:var(--text-secondary)">${escHtml(r.comentario)}</div>
+          </div>`).join('') : '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay comentarios.</p>'}
+      </div>
+    `;
+  } catch (e) {
+    console.error('cargarResultadosEncuesta:', e);
+    cont.innerHTML = '<p style="color:var(--text-muted)">No se pudieron cargar los resultados.</p>';
+  }
+}
+
+async function desactivarEncuestaActiva() {
+  if (!encuestaActivaActual) return;
+  if (!confirm('¿Desactivar esta encuesta? Dejará de aparecerle a cualquier cliente que entre después de ahora.')) return;
+  try {
+    const { error } = await sb.from('encuestas_sistema').update({ activa: false }).eq('id', encuestaActivaActual.id);
+    if (error) throw error;
+    toast('Encuesta desactivada', '', 'success');
+    await cargarResultadosEncuesta();
+  } catch (e) {
+    console.error('desactivarEncuestaActiva:', e);
+    toast('No se pudo desactivar', e.message, 'error');
+  }
+}
+
+// ── NOTIFICACIONES (feed de actualizaciones para los clientes) ─────
+const NOTIF_TIPO_LABEL = {
+  actualizacion:  { label: 'Actualización',  cls: 'badge-info' },
+  nueva_funcion:  { label: 'Nueva función',  cls: 'badge-success' },
+  mantenimiento:  { label: 'Mantenimiento',  cls: 'badge-warning' },
+  aviso:          { label: 'Aviso',          cls: 'badge-purple' },
+  urgente:        { label: 'Urgente',        cls: 'badge-danger' },
+};
+
+async function loadNotificacionesSection() {
+  const tbody = document.getElementById('notificaciones-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-muted)">
+    <div class="loader-spinner" style="margin:0 auto 10px"></div>Cargando…</td></tr>`;
+  try {
+    const { data, error } = await sb.from('notificaciones')
+      .select('*').order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    renderNotificacionesTabla(data || []);
+  } catch (e) {
+    console.error('loadNotificacionesSection:', e);
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-muted)">
+      No se pudo cargar el historial de notificaciones.</td></tr>`;
+  }
+}
+
+function renderNotificacionesTabla(items) {
+  const tbody = document.getElementById('notificaciones-tbody');
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-muted)">
+      Aún no has publicado ninguna notificación.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = items.map(n => {
+    const tipo = NOTIF_TIPO_LABEL[n.tipo] || { label: n.tipo, cls: 'badge' };
+    return `
+      <tr>
+        <td>
+          <div style="font-weight:600">${escHtml(n.titulo)}</div>
+          <div style="font-size:12px;color:var(--text-muted);max-width:420px;white-space:normal">${escHtml(n.mensaje)}</div>
+        </td>
+        <td><span class="badge ${tipo.cls}">${escHtml(tipo.label)}</span></td>
+        <td>${formatDateTimeShort(n.created_at)}<div style="font-size:11px;color:var(--text-muted)">${escHtml(n.creado_por || '')}</div></td>
+        <td>
+          <button class="btn-icon btn-ghost btn-sm" onclick="abrirVerLectoresNotificacion('${n.id}', '${escHtml(n.titulo).replace(/'/g,"\\'")}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Ver lectores
+          </button>
+          <button class="btn-icon btn-ghost btn-sm" onclick="toggleActivoNotificacion('${n.id}', ${n.activo === false ? 'true' : 'false'})" title="${n.activo === false ? 'Clientes nuevos no la ven' : 'Visible para clientes nuevos'}">
+            ${n.activo === false ? '🔕 Desactivada' : '🔔 Activa'}
+          </button>
+          <button class="btn-icon btn-danger btn-sm" onclick="eliminarNotificacion('${n.id}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Eliminar
+          </button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+async function publicarNotificacion() {
+  const titulo  = document.getElementById('notif-form-titulo').value.trim();
+  const mensaje = document.getElementById('notif-form-mensaje').value.trim();
+  const tipo    = document.getElementById('notif-form-tipo').value;
+
+  if (!titulo)  { toast('Falta el título', 'Escribe un título para la notificación', 'warning'); return; }
+  if (!mensaje) { toast('Falta el mensaje', 'Escribe el contenido de la notificación', 'warning'); return; }
+
+  const btn = event?.target?.closest('button');
+  if (btn) btn.disabled = true;
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { error } = await sb.from('notificaciones').insert({
+      titulo, mensaje, tipo, creado_por: user?.email || null,
+    });
+    if (error) throw error;
+
+    toast('Notificación publicada', 'Todos los usuarios la verán en su módulo de Notificaciones', 'success');
+    document.getElementById('notif-form-titulo').value = '';
+    document.getElementById('notif-form-mensaje').value = '';
+    document.getElementById('notif-form-tipo').value = 'actualizacion';
+    await loadNotificacionesSection();
+  } catch (e) {
+    console.error('publicarNotificacion:', e);
+    toast('Error al publicar', e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ══════════════════════════════════════════
+   AUDITORÍA GLOBAL — movimientos de TODAS las cuentas del
+   sistema, con retención de 24 horas (se borran solos via
+   pg_cron; aquí solo se lee, nunca se inserta ni se borra
+   manualmente).
+   ══════════════════════════════════════════ */
+let AG_STATE = { registros: [] };
+const AG_ACCION_LABEL = { INSERT: 'Creó', UPDATE: 'Editó', DELETE: 'Eliminó' };
+
+async function loadAuditoriaGlobal() {
+  const tbody = document.getElementById('auditoria-global-tbody');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</td></tr>`;
+  try {
+    const { data, error } = await sb.from('auditoria_log').select('*')
+      .order('created_at', { ascending: false }).limit(2000);
+    if (error) throw error;
+    // Las sucursales/bodegas internas nunca deben aparecer aquí — no
+    // son clientes, son cuentas técnicas creadas por el propio cliente.
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
+    const registros = (data || []).filter(r => !idsShadow.has(r.auth_user_id) && !idsIndependientesC360.has(r.auth_user_id));
+
+    // Un solo query para traer el nombre de negocio/correo de cada
+    // cuenta involucrada (evita N consultas, una por registro).
+    const ids = [...new Set(registros.map(r => r.auth_user_id).filter(Boolean))];
+    let usuariosMap = new Map();
+    if (ids.length) {
+      const { data: usuarios } = await sb.from('usuarios')
+        .select('auth_user_id, nombre_negocio, email, nombre').in('auth_user_id', ids);
+      usuariosMap = new Map((usuarios || []).map(u => [u.auth_user_id, u]));
+    }
+
+    AG_STATE.registros = registros.map(r => {
+      const u = usuariosMap.get(r.auth_user_id);
+      return { ...r, negocio: u?.nombre_negocio || u?.email || 'Cuenta eliminada' };
+    });
+
+    poblarFiltroCuentasGlobal();
+    renderTablaAuditoriaGlobal();
+    renderStatsAuditoriaGlobal();
+  } catch (e) {
+    console.error('loadAuditoriaGlobal:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">No se pudo cargar la auditoría</td></tr>`;
+  }
+}
+
+function poblarFiltroCuentasGlobal() {
+  const sel = document.getElementById('ag-filtro-cuenta');
+  if (!sel) return;
+  const cuentas = [...new Set(AG_STATE.registros.map(r => r.negocio))].sort();
+  const actual = sel.value;
+  sel.innerHTML = `<option value="">Todas las cuentas</option>` +
+    cuentas.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+  if (cuentas.includes(actual)) sel.value = actual;
+}
+
+function renderTablaAuditoriaGlobal() {
+  const tbody = document.getElementById('auditoria-global-tbody');
+  if (!tbody) return;
+  const filtroCuenta = document.getElementById('ag-filtro-cuenta')?.value || '';
+  const filtroAccion = document.getElementById('ag-filtro-accion')?.value || '';
+  const q = (document.getElementById('ag-search')?.value || '').toLowerCase().trim();
+
+  const filtrados = AG_STATE.registros.filter(r => {
+    if (filtroCuenta && r.negocio !== filtroCuenta) return false;
+    if (filtroAccion && r.accion !== filtroAccion) return false;
+    if (q && !`${r.negocio} ${r.modulo} ${r.resumen||''}`.toLowerCase().includes(q)) return false;
+    return true;
+  }).slice(0, 300); // límite razonable para no saturar la tabla en pantalla
+
+  if (!filtrados.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Sin movimientos con estos filtros</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtrados.map(r => `
+    <tr>
+      <td>${formatDate(r.created_at)}</td>
+      <td>${formatTime(r.created_at)}</td>
+      <td style="font-weight:600">${escHtml(r.negocio)}</td>
+      <td>${escHtml(r.perfil_nombre)}${r.perfil_tipo==='admin' ? ' <span style="font-size:10px;color:var(--text-muted)">(admin)</span>' : ''}</td>
+      <td>${escHtml(r.modulo)}</td>
+      <td>${AG_ACCION_LABEL[r.accion] || escHtml(r.accion)}</td>
+      <td style="font-size:12.5px;color:var(--text-secondary)">${escHtml(r.resumen || '—')}</td>
+    </tr>`).join('');
+}
+
+function renderStatsAuditoriaGlobal() {
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  set('ag-stat-total', AG_STATE.registros.length.toLocaleString('es-NI'));
+  set('ag-stat-cuentas', new Set(AG_STATE.registros.map(r => r.auth_user_id)).size.toLocaleString('es-NI'));
+  const ultimo = AG_STATE.registros[0];
+  set('ag-stat-ultimo', ultimo ? `${ultimo.negocio} · ${formatTime(ultimo.created_at)}` : '—');
+}
+
+async function toggleActivoNotificacion(id, nuevoActivo) {
+  try {
+    const { error } = await sb.from('notificaciones').update({ activo: nuevoActivo }).eq('id', id);
+    if (error) throw error;
+    toast(nuevoActivo ? 'Notificación reactivada' : 'Notificación desactivada', nuevoActivo ? 'Vuelve a aparecer para clientes nuevos' : 'Clientes nuevos ya no la verán', 'success');
+    await loadNotificacionesSection();
+  } catch (e) {
+    console.error('toggleActivoNotificacion:', e);
+    toast('No se pudo cambiar el estado', e.message, 'error');
+  }
+}
+
+async function eliminarNotificacion(id) {
+  if (!confirm('¿Eliminar esta notificación? Los usuarios ya no la verán.')) return;
+  try {
+    const { error } = await sb.from('notificaciones').delete().eq('id', id);
+    if (error) throw error;
+    toast('Notificación eliminada', '', 'success');
+    await loadNotificacionesSection();
+  } catch (e) {
+    console.error('eliminarNotificacion:', e);
+    toast('Error al eliminar', e.message, 'error');
+  }
+}
+
+/* ══════════════════════════════════════════
+   VER QUIÉN VIO UN ANUNCIO / NOTIFICACIÓN
+   Reutiliza la misma tabla usuarios (auth_user_id → nombre/negocio/
+   correo) para mostrar quién, y a qué hora, vio cada envío global.
+   Solo LEE de anuncios_vistos / notificaciones_leidas — ambas ya
+   las llena el propio dashboard.html / notificaciones.js del
+   cliente; aquí no se inserta ni modifica nada.
+   ══════════════════════════════════════════ */
+async function abrirVerLectoresAnuncio() {
+  if (!anuncioActivoActual) return;
+  await abrirVerLectores({
+    titulo: `¿Quién vio? — ${anuncioActivoActual.titulo}`,
+    tabla: 'anuncios_vistos',
+    columnaId: 'anuncio_id',
+    valorId: anuncioActivoActual.id,
+    columnaFecha: 'visto_at',
+  });
+}
+
+async function abrirVerLectoresNotificacion(notificacionId, titulo) {
+  await abrirVerLectores({
+    titulo: `¿Quién la leyó? — ${titulo}`,
+    tabla: 'notificaciones_leidas',
+    columnaId: 'notificacion_id',
+    valorId: notificacionId,
+    columnaFecha: 'leida_at',
+  });
+}
+
+async function abrirVerLectores({ titulo, tabla, columnaId, valorId, columnaFecha }) {
+  document.getElementById('lectores-modal-title').textContent = titulo;
+  document.getElementById('lectores-modal-resumen').textContent = 'Cargando…';
+  document.getElementById('lectores-tbody').innerHTML =
+    `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</td></tr>`;
+  openModal('modal-ver-lectores');
+
+  try {
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const [{ data: vistos, error: errVistos }, { data: activos }] = await Promise.all([
+      sb.from(tabla).select(`auth_user_id, ${columnaFecha}`).eq(columnaId, valorId).order(columnaFecha, { ascending: false }),
+      sb.from('usuarios').select('auth_user_id').eq('estado_cuenta', 'activa'),
+    ]);
+    if (errVistos) throw errVistos;
+
+    // Las sucursales/bodegas internas nunca cuentan como clientes que
+    // vieron el anuncio/encuesta, ni como parte del total de activos.
+    const lista = (vistos || []).filter(v => !idsShadow.has(v.auth_user_id));
+    const totalUsuarios = (activos || []).filter(u => !idsShadow.has(u.auth_user_id)).length;
+    document.getElementById('lectores-modal-resumen').textContent =
+      `${lista.length} de ${totalUsuarios ?? '—'} clientes activos lo han visto.`;
+
+    if (!lista.length) {
+      document.getElementById('lectores-tbody').innerHTML =
+        `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted)">Todavía nadie lo ha visto.</td></tr>`;
+      return;
+    }
+
+    // Trae nombre/negocio/correo de cada usuario que lo vio, en un solo query.
+    const ids = [...new Set(lista.map(v => v.auth_user_id))];
+    const { data: usuarios } = await sb.from('usuarios')
+      .select('auth_user_id, nombre, apellido, nombre_negocio, email').in('auth_user_id', ids);
+    const porId = new Map((usuarios || []).map(u => [u.auth_user_id, u]));
+
+    document.getElementById('lectores-tbody').innerHTML = lista.map(v => {
+      const u = porId.get(v.auth_user_id);
+      const nombre = u ? ([u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente') : 'Cliente eliminado';
+      const negocio = u ? (u.nombre_negocio || u.email || '—') : '—';
+      const fecha = v[columnaFecha] ? new Date(v[columnaFecha]).toLocaleString('es-NI') : '—';
+      return `<tr><td>${escHtml(nombre)}</td><td>${escHtml(negocio)}</td><td>${fecha}</td></tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('abrirVerLectores:', e);
+    document.getElementById('lectores-modal-resumen').textContent = '';
+    document.getElementById('lectores-tbody').innerHTML =
+      `<tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted)">No se pudo cargar la lista.</td></tr>`;
+  }
+}
+
+async function loadCodes() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  showCodesLoader();
+
+  try {
+    const { data, error } = await sb
+      .from('codigos_acceso')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    allCodes = data || [];
+    renderCodesTable(allCodes);
+
+  } catch (e) {
+    toast('Error al cargar códigos', e.message, 'error');
+    renderCodesEmpty();
+  }
+}
+
+function showCodesLoader() {
+  document.getElementById('codes-tbody').innerHTML = `
+    <tr><td colspan="7" style="text-align:center; padding:48px; color:var(--text-muted)">
+      <div class="loader-spinner" style="margin:0 auto 12px"></div>
+      <div>Cargando códigos...</div>
+    </td></tr>`;
+}
+
+function renderCodesEmpty() {
+  document.getElementById('codes-tbody').innerHTML = `
+    <tr><td colspan="7">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+        <p>No hay códigos de acceso</p>
+        <span>Crea el primer código con el botón "Crear Código"</span>
+      </div>
+    </td></tr>`;
+}
+
+function renderCodesTable(codes) {
+  const tbody = document.getElementById('codes-tbody');
+  if (!codes.length) { renderCodesEmpty(); return; }
+
+  tbody.innerHTML = codes.map(c => `
+    <tr>
+      <td>
+        <span style="font-family:monospace;font-weight:600;letter-spacing:.5px;color:var(--accent)">${escHtml(c.codigo)}</span>
+      </td>
+      <td>${escHtml(c.descripcion || '—')}</td>
+      <td>${planBadge(c.plan)}</td>
+      <td>
+        ${c.activo
+          ? '<span class="badge badge-success badge-dot">Activo</span>'
+          : '<span class="badge badge-danger badge-dot">Inactivo</span>'}
+      </td>
+      <td>
+        <span style="font-weight:600">${c.usos_actuales}</span>
+        <span style="color:var(--text-muted)"> / ${c.usos_maximos}</span>
+      </td>
+      <td>${formatDate(c.created_at)}</td>
+      <td>
+        <div class="td-actions">
+          <button class="btn-copy" onclick="copyCode('${escHtml(c.codigo)}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copiar
+          </button>
+          ${c.activo
+            ? `<button class="btn-icon btn-warning btn-sm" onclick="toggleCode('${c.id}', false)">Desactivar</button>`
+            : `<button class="btn-icon btn-success btn-sm" onclick="toggleCode('${c.id}', true)">Activar</button>`}
+          <button class="btn-icon btn-danger btn-sm" onclick="confirmDeleteCode('${c.id}', '${escHtml(c.codigo)}')">Eliminar</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Copiar código
+function copyCode(codigo) {
+  navigator.clipboard.writeText(codigo).then(() => {
+    toast('Código copiado', codigo, 'info');
+  }).catch(() => {
+    toast('No se pudo copiar', 'Copia manualmente el código', 'warning');
+  });
+}
+
+// Activar / desactivar código
+async function toggleCode(id, nuevoEstado) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  try {
+    const { error } = await sb
+      .from('codigos_acceso')
+      .update({ activo: nuevoEstado })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    toast(nuevoEstado ? 'Código activado' : 'Código desactivado', '', nuevoEstado ? 'success' : 'warning');
+    loadCodes();
+
+  } catch (e) {
+    toast('Error al actualizar código', e.message, 'error');
+  }
+}
+
+// Confirmar eliminar código
+function confirmDeleteCode(id, codigo) {
+  document.getElementById('confirm-icon').className = 'confirm-icon danger';
+  document.getElementById('confirm-icon').textContent = '✕';
+  document.getElementById('confirm-title').textContent = '¿Eliminar este código?';
+  document.getElementById('confirm-sub').innerHTML = `Se eliminará el código <strong>${escHtml(codigo)}</strong>. Esta acción no se puede deshacer.`;
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.className = 'btn-icon btn-danger';
+  btn.textContent = 'Sí, eliminar';
+
+  window._pendingAction = { accion: 'delete-code', codeId: id };
+  openModal('modal-confirm');
+}
+
+async function executeConfirmDeleteCode(codeId) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('codigos_acceso')
+      .delete()
+      .eq('id', codeId);
+
+    if (error) throw error;
+
+    closeModal('modal-confirm');
+    toast('Código eliminado', '', 'error');
+    loadCodes();
+
+  } catch (e) {
+    toast('Error al eliminar código', e.message, 'error');
+  } finally {
+    btn.innerHTML = 'Confirmar';
+    btn.disabled = false;
+    window._pendingAction = null;
+  }
+}
+
+// Modal crear código
+function openCreateCodeModal() {
+  document.getElementById('form-create-code').reset();
+  document.getElementById('code-preview-text').textContent = '';
+  openModal('modal-create-code');
+}
+
+// Generador automático de código
+function generateCode() {
+  const chars   = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const segment = (n) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  const plan    = document.getElementById('new-plan').value;
+  const code    = plan === 'premium'
+    ? `NEG360-PREM-${segment(6)}`
+    : `NEG360-${segment(4)}${segment(4)}`;
+
+  document.getElementById('new-codigo').value = code;
+  document.getElementById('code-preview-text').textContent = code;
+}
+
+// Crear código
+async function createCode() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const codigo      = document.getElementById('new-codigo').value.trim();
+  const descripcion = document.getElementById('new-descripcion').value.trim();
+  const plan        = document.getElementById('new-plan').value;
+  const usosMax     = parseInt(document.getElementById('new-usos').value, 10) || 1;
+
+  if (!codigo) { toast('Campo requerido', 'El código no puede estar vacío', 'warning'); return; }
+
+  const btn = document.getElementById('btn-save-code');
+  btn.innerHTML = '<span class="btn-spinner"></span> Guardando...';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('codigos_acceso')
+      .insert({
+        codigo,
+        descripcion: descripcion || null,
+        plan,
+        activo: true,
+        usos_maximos: usosMax,
+        usos_actuales: 0,
+      });
+
+    if (error) throw error;
+
+    closeModal('modal-create-code');
+    toast('Código creado correctamente', codigo, 'success');
+    loadCodes();
+
+  } catch (e) {
+    if (e.code === '23505') {
+      toast('Código duplicado', 'Ya existe un código con ese nombre', 'warning');
+    } else {
+      toast('Error al crear código', e.message, 'error');
+    }
+  } finally {
+    btn.innerHTML = 'Guardar Código';
+    btn.disabled = false;
+  }
+}
+
+// ============================================================
+// SECCIÓN 3-B — CÓDIGOS CATÁLOGO360
+// Tabla y logica completamente aparte de codigos_acceso (esa es
+// para registrar cuentas nuevas con un plan -- este es para
+// desbloquear el modulo Catalogo360 en una cuenta YA existente).
+// ============================================================
+let allCodesC360 = [];
+
+async function loadCodesC360() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  showCodesC360Loader();
+
+  try {
+    const { data, error } = await sb
+      .from('catalogo360_codigos')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    allCodesC360 = data || [];
+    renderCodesC360Table(allCodesC360);
+
+  } catch (e) {
+    toast('Error al cargar códigos', e.message, 'error');
+    renderCodesC360Empty();
+  }
+}
+
+function showCodesC360Loader() {
+  document.getElementById('codes-catalogo360-tbody').innerHTML = `
+    <tr><td colspan="7" style="text-align:center; padding:48px; color:var(--text-muted)">
+      <div class="loader-spinner" style="margin:0 auto 12px"></div>
+      <div>Cargando códigos...</div>
+    </td></tr>`;
+}
+
+function renderCodesC360Empty() {
+  document.getElementById('codes-catalogo360-tbody').innerHTML = `
+    <tr><td colspan="7">
+      <div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21V12h6v9"/>
+        </svg>
+        <p>No hay códigos de Catálogo360</p>
+        <span>Crea el primer código con el botón "Crear Código"</span>
+      </div>
+    </td></tr>`;
+}
+
+function renderCodesC360Table(codes) {
+  const tbody = document.getElementById('codes-catalogo360-tbody');
+  if (!codes.length) { renderCodesC360Empty(); return; }
+
+  tbody.innerHTML = codes.map(c => `
+    <tr>
+      <td>
+        <span style="font-family:monospace;font-weight:600;letter-spacing:.5px;color:var(--accent)">${escHtml(c.codigo)}</span>
+      </td>
+      <td>${escHtml(c.descripcion || '—')}</td>
+      <td>
+        <span class="badge badge-dot" style="background:var(--accent-soft,#eff0ff);color:var(--accent)">${escHtml(c.plan_key ? c.plan_key[0].toUpperCase()+c.plan_key.slice(1) : 'Básico')}</span>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">${c.es_independiente ? '🧍 Independiente' : '🏢 Cliente Negocio360'}</div>
+      </td>
+      <td>
+        ${c.activo
+          ? '<span class="badge badge-success badge-dot">Activo</span>'
+          : '<span class="badge badge-danger badge-dot">Inactivo</span>'}
+      </td>
+      <td>
+        <span style="font-weight:600">${c.usos_actuales}</span>
+        <span style="color:var(--text-muted)"> / ${c.usos_maximos ?? '∞'}</span>
+      </td>
+      <td>${c.fecha_expiracion ? formatDate(c.fecha_expiracion) : '—'}</td>
+      <td>${formatDate(c.created_at)}</td>
+      <td>
+        <div class="td-actions">
+          <button class="btn-copy" onclick="copyCode('${escHtml(c.codigo)}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copiar
+          </button>
+          ${c.activo
+            ? `<button class="btn-icon btn-warning btn-sm" onclick="toggleCodeC360('${c.id}', false)">Desactivar</button>`
+            : `<button class="btn-icon btn-success btn-sm" onclick="toggleCodeC360('${c.id}', true)">Activar</button>`}
+          <button class="btn-icon btn-danger btn-sm" onclick="confirmDeleteCodeC360('${c.id}', '${escHtml(c.codigo)}')">Eliminar</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function toggleCodeC360(id, nuevoEstado) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  try {
+    const { error } = await sb
+      .from('catalogo360_codigos')
+      .update({ activo: nuevoEstado })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    toast(nuevoEstado ? 'Código activado' : 'Código desactivado', '', nuevoEstado ? 'success' : 'warning');
+    loadCodesC360();
+
+  } catch (e) {
+    toast('Error al actualizar código', e.message, 'error');
+  }
+}
+
+function confirmDeleteCodeC360(id, codigo) {
+  document.getElementById('confirm-icon').className = 'confirm-icon danger';
+  document.getElementById('confirm-icon').textContent = '✕';
+  document.getElementById('confirm-title').textContent = '¿Eliminar este código?';
+  document.getElementById('confirm-sub').innerHTML = `Se eliminará el código <strong>${escHtml(codigo)}</strong>. Esta acción no se puede deshacer. Los clientes que ya lo hayan canjeado NO pierden su acceso.`;
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.className = 'btn-icon btn-danger';
+  btn.textContent = 'Sí, eliminar';
+
+  window._pendingAction = { accion: 'delete-code-c360', codeId: id };
+  openModal('modal-confirm');
+}
+
+async function executeConfirmDeleteCodeC360(codeId) {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('catalogo360_codigos')
+      .delete()
+      .eq('id', codeId);
+
+    if (error) throw error;
+
+    closeModal('modal-confirm');
+    toast('Código eliminado', '', 'error');
+    loadCodesC360();
+
+  } catch (e) {
+    toast('Error al eliminar código', e.message, 'error');
+  } finally {
+    btn.innerHTML = 'Confirmar';
+    btn.disabled = false;
+    window._pendingAction = null;
+  }
+}
+
+function openCreateCodeC360Modal() {
+  document.getElementById('form-create-code-catalogo360').reset();
+  document.getElementById('new-usos-c360').value = 1;
+  openModal('modal-create-code-catalogo360');
+}
+
+function generateCodeC360() {
+  const chars   = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const segment = (n) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  document.getElementById('new-codigo-c360').value = `C360-${segment(4)}${segment(4)}`;
+}
+
+async function createCodeC360() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const codigo      = document.getElementById('new-codigo-c360').value.trim();
+  const descripcion = document.getElementById('new-descripcion-c360').value.trim();
+  const usosMax     = parseInt(document.getElementById('new-usos-c360').value, 10) || 1;
+  const expiracion  = document.getElementById('new-expiracion-c360').value || null;
+  const planKey     = document.getElementById('new-plan-c360').value;
+  const esIndependiente = document.getElementById('new-tipo-cliente-c360').value === 'true';
+
+  if (!codigo) { toast('Campo requerido', 'El código no puede estar vacío', 'warning'); return; }
+
+  const btn = document.getElementById('btn-save-code-c360');
+  btn.innerHTML = '<span class="btn-spinner"></span> Guardando...';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('catalogo360_codigos')
+      .insert({
+        codigo,
+        descripcion: descripcion || null,
+        activo: true,
+        usos_maximos: usosMax,
+        usos_actuales: 0,
+        fecha_expiracion: expiracion,
+        creado_por: user.email,
+        plan_key: planKey,
+        es_independiente: esIndependiente,
+      });
+
+    if (error) throw error;
+
+    closeModal('modal-create-code-catalogo360');
+    toast('Código creado correctamente', codigo, 'success');
+    loadCodesC360();
+
+  } catch (e) {
+    if (e.code === '23505') {
+      toast('Código duplicado', 'Ya existe un código con ese nombre', 'warning');
+    } else {
+      toast('Error al crear código', e.message, 'error');
+    }
+  } finally {
+    btn.innerHTML = 'Guardar Código';
+    btn.disabled = false;
+  }
+}
+
+// ============================================================
+// SECCIÓN 3-C — CLIENTES CATÁLOGO360
+// ============================================================
+
+// ============================================================
+// SUBMÓDULO "PRUEBAS" — cuentas de prueba / demostración
+// Lista las cuentas registradas en cuentas_prueba (no aparecen en
+// Usuarios ni en las estadísticas). Solo lectura.
+// ============================================================
+async function loadPruebas() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+  const tbody = document.getElementById('pruebas-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:48px;color:var(--text-muted)"><div class="loader-spinner" style="margin:0 auto 12px"></div>Cargando cuentas de prueba...</td></tr>`;
+  try {
+    const { data: filas, error } = await sb.from('cuentas_prueba').select('*').order('orden', { ascending: true });
+    if (error) throw error;
+    const lista = filas || [];
+    const ids = lista.map(f => f.auth_user_id);
+    let porId = new Map();
+    if (ids.length) {
+      const { data: us } = await sb.from('usuarios')
+        .select('auth_user_id, nombre, apellido, nombre_negocio, email, plan, estado_cuenta, ultima_conexion').in('auth_user_id', ids);
+      porId = new Map((us || []).map(u => [u.auth_user_id, u]));
+    }
+    const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setT('pruebas-total', lista.length);
+    setT('pruebas-demos', lista.filter(f => f.tipo === 'demo_publica').length);
+    setT('pruebas-internas', lista.filter(f => f.tipo !== 'demo_publica').length);
+    if (!lista.length) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>No hay cuentas de prueba registradas</p><span>Las cuentas de demostración aparecerán aquí</span></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = lista.map(f => {
+      const u = porId.get(f.auth_user_id) || {};
+      const nombre = [u.nombre, u.apellido].filter(Boolean).join(' ');
+      const tipo = f.tipo === 'demo_publica' ? '🎬 Demo pública' : '🔒 Interna';
+      return `<tr>
+        <td style="font-weight:600">${escHtml(f.etiqueta)}${f.nota ? `<div style="font-size:11px;color:var(--text-muted);font-weight:400">${escHtml(f.nota)}</div>` : ''}</td>
+        <td>${escHtml(u.nombre_negocio || '—')}${nombre ? `<div style="font-size:11px;color:var(--text-muted)">${escHtml(nombre)}</div>` : ''}</td>
+        <td>${escHtml(u.email || '—')}</td>
+        <td>${tipo}</td>
+        <td>${escHtml(f.rubro || '—')}</td>
+        <td>${escHtml(u.plan || '—')}</td>
+        <td>${u.ultima_conexion ? formatDate(u.ultima_conexion) : '—'}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    console.error('loadPruebas:', e);
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">No se pudieron cargar las cuentas de prueba.</td></tr>`;
+    toast('Error al cargar pruebas', e.message, 'error');
+  }
+}
+
+async function loadClientesC360() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const tbody = document.getElementById('clientes-catalogo360-tbody');
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:48px;color:var(--text-muted)"><div class="loader-spinner" style="margin:0 auto 12px"></div>Cargando clientes...</td></tr>`;
+
+  try {
+    const { data, error } = await sb.rpc('admin_catalogo360_listar_clientes');
+    if (error) throw error;
+
+    const clientes = data || [];
+    document.getElementById('cc360-total').textContent = clientes.length;
+    document.getElementById('cc360-independientes').textContent = clientes.filter(c => c.es_independiente).length;
+    document.getElementById('cc360-existentes').textContent = clientes.filter(c => !c.es_independiente).length;
+    const ingreso = clientes.reduce((sum, c) => sum + Number(c.precio_mensual || 0), 0);
+    document.getElementById('cc360-ingresos').textContent = `$${ingreso.toFixed(0)}`;
+
+    if (!clientes.length) {
+      tbody.innerHTML = `
+        <tr><td colspan="8">
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            </svg>
+            <p>Todavía no hay clientes con Catálogo360 desbloqueado</p>
+            <span>Aparecerán aquí en cuanto canjeen un código</span>
+          </div>
+        </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = clientes.map(c => `
+      <tr>
+        <td style="font-weight:600">${escHtml(c.nombre_comercial || '—')}</td>
+        <td>${escHtml(c.email)}</td>
+        <td>${escHtml(c.whatsapp || '—')}</td>
+        <td>
+          <span class="badge badge-dot" style="background:var(--accent-soft,#eff0ff);color:var(--accent)">${escHtml(c.nombre_plan)}</span>
+          <div style="font-size:11px;color:var(--text-muted)">$${Number(c.precio_mensual).toFixed(0)}/mes</div>
+        </td>
+        <td>${c.es_independiente ? '🧍 Independiente' : '🏢 Cliente Negocio360'}</td>
+        <td style="text-align:center;font-weight:600">${c.cantidad_catalogos}</td>
+        <td><span style="font-family:monospace;font-size:12px;color:var(--text-muted)">${escHtml(c.codigo_usado || '—')}</span></td>
+        <td>${c.desbloqueado_en ? formatDate(c.desbloqueado_en) : '—'}</td>
+      </tr>
+    `).join('');
+
+  } catch (e) {
+    console.error('loadClientesC360:', e);
+    toast('Error al cargar clientes', e.message, 'error');
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--danger)">No se pudo cargar la lista de clientes.</td></tr>`;
+  }
+}
+
+// ============================================================
+// SECCIÓN 3-D — CLIENTES POR PERÍODO (19-19)
+// ============================================================
+let CP_PERIODOS_CACHE = [];
+let CP_USUARIOS_CACHE = [];      // lista ya filtrada segun los interruptores
+let CP_USUARIOS_TODOS = [];      // todas las cuentas reales (activas, suspendidas y canceladas)
+
+// Genera N períodos consecutivos del 19 de un mes al 19 del siguiente,
+// empezando por el período que contiene la fecha de hoy y yendo hacia
+// atrás. Ej: si hoy es 6 de septiembre, el período actual es
+// "19 ago - 19 sep" (todavía no llega al día 19 de este mes).
+function generarPeriodos19_19(cantidad = 12) {
+  const hoy = new Date();
+  let mesAncla = hoy.getMonth();
+  let anioAncla = hoy.getFullYear();
+  if (hoy.getDate() < 19) {
+    mesAncla -= 1;
+    if (mesAncla < 0) { mesAncla = 11; anioAncla -= 1; }
+  }
+
+  const nombresMes = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const periodos = [];
+  for (let i = 0; i < cantidad; i++) {
+    let mesInicio = mesAncla - i;
+    let anioInicio = anioAncla;
+    while (mesInicio < 0) { mesInicio += 12; anioInicio -= 1; }
+    let mesFin = mesInicio + 1, anioFin = anioInicio;
+    if (mesFin > 11) { mesFin = 0; anioFin += 1; }
+
+    const inicio = new Date(anioInicio, mesInicio, 19, 0, 0, 0);
+    const fin = new Date(anioFin, mesFin, 19, 0, 0, 0);
+    periodos.push({
+      inicio, fin,
+      etiqueta: `19 ${nombresMes[mesInicio]} — 19 ${nombresMes[mesFin]} ${anioFin}`,
+      esActual: i === 0,
+    });
+  }
+  return periodos;
+}
+
+async function loadClientesPeriodo() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const tbody = document.getElementById('clientes-periodo-tbody');
+  tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:48px;color:var(--text-muted)"><div class="loader-spinner" style="margin:0 auto 12px"></div>Cargando clientes...</td></tr>`;
+
+  try {
+    const { data, error } = await sb.from('usuarios')
+      .select('id, auth_user_id, nombre, apellido, nombre_negocio, email, plan, estado_cuenta, created_at')
+      .in('estado_cuenta', ['activa', 'suspendida', 'cancelada'])
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    // Las sucursales/bodegas internas no son clientes que pagan -- se
+    // excluyen antes de agrupar por período, igual que en el resto
+    // del panel (Usuarios, listas de pago, etc).
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
+    CP_USUARIOS_TODOS = (data || []).filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
+    CP_PERIODOS_CACHE = generarPeriodos19_19(12);
+    pintarClientesPeriodo();
+  } catch (e) {
+    console.error('loadClientesPeriodo:', e);
+    toast('Error al cargar clientes por período', e.message, 'error');
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;padding:32px;color:var(--danger)">No se pudo cargar la lista.</td></tr>`;
+  }
+}
+
+function cpCambiarFiltro() {
+  document.getElementById('cp-detalle-card').style.display = 'none';
+  pintarClientesPeriodo();
+}
+
+// Aplica los interruptores (suspendidas / canceladas) y pinta tarjetas y tabla.
+// Sin ninguno marcado queda exactamente igual que antes: solo cuentas activas.
+function pintarClientesPeriodo() {
+  const tbody = document.getElementById('clientes-periodo-tbody');
+  const conSusp = !!document.getElementById('cp-incl-suspendidas')?.checked;
+  const conCanc = !!document.getElementById('cp-incl-canceladas')?.checked;
+  const estados = ['activa'].concat(conSusp ? ['suspendida'] : [], conCanc ? ['cancelada'] : []);
+  const etiqueta = (!conSusp && !conCanc) ? 'activos'
+    : (conSusp && conCanc) ? 'activos, suspendidos y cancelados'
+    : conSusp ? 'activos y suspendidos' : 'activos y cancelados';
+  {
+    CP_USUARIOS_CACHE = CP_USUARIOS_TODOS.filter(u => estados.includes(u.estado_cuenta));
+
+    document.getElementById('cp-total-activos').textContent = CP_USUARIOS_CACHE.length;
+    document.getElementById('cp-total-label').textContent = `Total ${etiqueta} (todos los períodos)`;
+    document.getElementById('cp-tabla-titulo').textContent = `Clientes ${etiqueta} por período`;
+    document.getElementById('cp-col-titulo').textContent = `Clientes ${etiqueta} registrados`;
+
+    const periodoActual = CP_PERIODOS_CACHE[0];
+    const conteoActual = CP_USUARIOS_CACHE.filter(u => {
+      const f = new Date(u.created_at);
+      return f >= periodoActual.inicio && f < periodoActual.fin;
+    }).length;
+    document.getElementById('cp-periodo-actual').textContent = conteoActual;
+    document.getElementById('cp-periodo-actual-label').textContent = `Período actual (${periodoActual.etiqueta})`;
+
+    tbody.innerHTML = CP_PERIODOS_CACHE.map((p, idx) => {
+      const conteo = CP_USUARIOS_CACHE.filter(u => {
+        const f = new Date(u.created_at);
+        return f >= p.inicio && f < p.fin;
+      }).length;
+      return `
+        <tr>
+          <td style="font-weight:600">${p.etiqueta} ${p.esActual ? '<span class="badge badge-dot" style="background:var(--accent-soft,#eff0ff);color:var(--accent);margin-left:6px">Actual</span>' : ''}</td>
+          <td style="text-align:center;font-weight:700;font-size:15px">${conteo}</td>
+          <td style="text-align:right">
+            <button class="btn-secondary btn-sm" onclick="verDetallePeriodo(${idx})" ${conteo === 0 ? 'disabled' : ''}>Ver detalle</button>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+}
+
+function verDetallePeriodo(idx) {
+  const p = CP_PERIODOS_CACHE[idx];
+  if (!p) return;
+  const enEsePeriodo = CP_USUARIOS_CACHE.filter(u => {
+    const f = new Date(u.created_at);
+    return f >= p.inicio && f < p.fin;
+  });
+
+  const _lbl = document.getElementById('cp-tabla-titulo').textContent.replace(' por período', '');
+  document.getElementById('cp-detalle-titulo').textContent = `${_lbl} — ${p.etiqueta}`;
+  document.getElementById('cp-detalle-tbody').innerHTML = enEsePeriodo.map(u => `
+    <tr>
+      <td style="font-weight:600">${escHtml(u.nombre_negocio || (u.nombre + ' ' + (u.apellido||'')))}</td>
+      <td>${escHtml(u.email)}</td>
+      <td>${escHtml(u.plan || '—')}</td>
+      <td>${u.estado_cuenta === 'activa' ? 'Activa' : u.estado_cuenta === 'suspendida' ? '<span style="color:var(--warning,#f59e0b);font-weight:600">Suspendida</span>' : '<span style="color:var(--danger,#ef4444);font-weight:600">Cancelada</span>'}</td>
+      <td>${formatDate(u.created_at)}</td>
+    </tr>
+  `).join('');
+  document.getElementById('cp-detalle-card').style.display = 'block';
+  document.getElementById('cp-detalle-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Carga la lista de conversaciones y las cruza con los datos del usuario
+async function loadConversaciones() {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const listEl = document.getElementById('conv-list');
+  if (listEl) listEl.innerHTML = '<div class="payment-empty">Cargando...</div>';
+
+  try {
+    const { data: convsCrudo, error } = await sb
+      .from('conversaciones_chat')
+      .select('*')
+      .order('ultimo_mensaje_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Las sucursales/bodegas internas nunca deben aparecer en la lista
+    // de conversaciones de soporte — no son clientes independientes.
+    const idsShadow = await obtenerIdsSucursalesShadow();
+    const convs = (convsCrudo || []).filter(c => !idsShadow.has(c.auth_user_id));
+
+    const userIds = [...new Set((convs || []).map(c => c.auth_user_id))];
+    let usuariosMap = {};
+    if (userIds.length) {
+      const { data: usuarios } = await sb
+        .from('usuarios')
+        .select('auth_user_id, nombre, apellido, email, nombre_negocio')
+        .in('auth_user_id', userIds);
+      (usuarios || []).forEach(u => { usuariosMap[u.auth_user_id] = u; });
+    }
+
+    allConversaciones = (convs || []).map(c => ({
+      ...c,
+      _usuario: usuariosMap[c.auth_user_id] || null
+    }));
+
+    renderConvList();
+    updateSoporteBadge();
+    subscribeSoporteGlobal();
+
+  } catch (e) {
+    toast('Error al cargar conversaciones', e.message, 'error');
+    if (listEl) listEl.innerHTML = '<div class="payment-empty">No se pudieron cargar las conversaciones</div>';
+  }
+}
+
+function updateSoporteBadge() {
+  const activas = allConversaciones.filter(c => c.estado === 'activa').length;
+  const badge = document.getElementById('soporte-nav-badge');
+  if (!badge) return;
+  if (activas > 0) {
+    badge.textContent = activas;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function applyChatFilter(filter) {
+  chatFilter = filter;
+  $$('[data-chatfilter]').forEach(b => b.classList.toggle('active', b.dataset.chatfilter === filter));
+  renderConvList();
+}
+
+function renderConvList() {
+  const el = document.getElementById('conv-list');
+  if (!el) return;
+
+  const filtered = allConversaciones.filter(c =>
+    chatFilter === 'activas' ? c.estado === 'activa' : c.estado === 'finalizada'
+  );
+
+  if (!filtered.length) {
+    el.innerHTML = `<div class="payment-empty">${chatFilter === 'activas' ? 'No hay conversaciones activas' : 'No hay conversaciones finalizadas'}</div>`;
+    return;
+  }
+
+  el.innerHTML = filtered.map(c => {
+    const u = c._usuario;
+    const nombre = u ? ([u.nombre, u.apellido].filter(Boolean).join(' ') || u.email) : 'Cliente';
+    const initial = (nombre || 'C').charAt(0).toUpperCase();
+    const selected = c.id === currentConvId ? 'selected' : '';
+    return `
+      <div class="conv-item ${selected}" onclick="selectConversation('${c.id}')">
+        <div class="conv-item-avatar">${escHtml(initial)}</div>
+        <div class="conv-item-info">
+          <div class="conv-item-name">${escHtml(nombre)}</div>
+          <div class="conv-item-preview">${u ? escHtml(u.nombre_negocio || u.email) : ''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="conv-item-dot ${c.estado}"></span>
+          <span class="conv-item-time">${formatDateTimeShort(c.ultimo_mensaje_at)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Selecciona una conversación y carga sus mensajes
+async function selectConversation(convId) {
+  currentConvId = convId;
+  soporteSeenIds = new Set();
+  renderConvList();
+
+  const conv = allConversaciones.find(c => c.id === convId);
+  if (!conv) return;
+  currentConvUsuario = conv._usuario;
+
+  document.getElementById('soporte-empty').style.display = 'none';
+  document.getElementById('soporte-active').style.display = 'flex';
+
+  const nombre = currentConvUsuario
+    ? ([currentConvUsuario.nombre, currentConvUsuario.apellido].filter(Boolean).join(' ') || currentConvUsuario.email)
+    : 'Cliente';
+  document.getElementById('chat-cliente-nombre').textContent = nombre;
+  document.getElementById('chat-cliente-sub').textContent = currentConvUsuario
+    ? (currentConvUsuario.nombre_negocio || currentConvUsuario.email || '')
+    : '';
+
+  document.getElementById('soporte-messages').innerHTML = '';
+  setSoporteInputState(conv.estado === 'activa');
+
+  await loadSoporteMessages(convId);
+  subscribeSoporteConversacion(convId);
+}
+
+async function loadSoporteMessages(convId) {
+  try {
+    const { data, error } = await sb
+      .from('mensajes_chat')
+      .select('*')
+      .eq('conversacion_id', convId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    (data || []).forEach(renderSoporteMessage);
+  } catch (e) {
+    toast('Error al cargar mensajes', e.message, 'error');
+  }
+}
+
+function setSoporteInputState(activa) {
+  document.getElementById('soporte-input-bar').style.display = activa ? 'flex' : 'none';
+  document.getElementById('soporte-finalizada-banner').style.display = activa ? 'none' : 'block';
+  const btnFinalizar = document.getElementById('btn-finalizar-chat');
+  if (btnFinalizar) btnFinalizar.style.display = activa ? 'flex' : 'none';
+}
+
+// Adjuntos del chat: solo se aceptan archivos del bucket "chat-archivos" de
+// este proyecto. Cualquier otra cosa (javascript:, otro sitio, comillas que
+// intenten inyectar atributos) se muestra como "Adjunto no válido".
+const ADJ_INVALIDO = '<div style="font-size:12px;opacity:.7">⚠️ Adjunto no válido</div>';
+function urlAdjuntoChatSegura(url) {
+  const base = SUPABASE_URL + '/storage/v1/object/public/chat-archivos/';
+  if (typeof url !== 'string' || !url.startsWith(base)) return null;
+  if (/[\s"'<>\\`]/.test(url.slice(base.length))) return null;
+  return escHtml(url);
+}
+function renderSoporteMessage(m) {
+  if (soporteSeenIds.has(m.id)) return;
+  soporteSeenIds.add(m.id);
+
+  const row = document.createElement('div');
+  row.className = 'chat-msg-row ' + m.remitente;
+
+  let inner = '';
+  // Solo se muestran adjuntos del almacenamiento propio del chat (nunca un
+  // enlace arbitrario: podría traer código y ejecutarse al abrir el chat).
+  const urlAdj = urlAdjuntoChatSegura(m.archivo_url);
+  if (m.tipo === 'texto') {
+    inner = `<div>${escHtml(m.contenido).replace(/\n/g, '<br>')}</div>`;
+  } else if (m.tipo === 'imagen') {
+    inner = urlAdj ? `<a href="${urlAdj}" target="_blank" rel="noopener noreferrer"><img src="${urlAdj}" alt="imagen"></a>` : ADJ_INVALIDO;
+  } else if (m.tipo === 'documento') {
+    inner = !urlAdj ? ADJ_INVALIDO : `<a class="doc-link" href="${urlAdj}" target="_blank" rel="noopener noreferrer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      ${escHtml(m.archivo_nombre || 'Documento')}
+    </a>`;
+  } else if (m.tipo === 'audio') {
+    inner = urlAdj ? `<audio controls src="${urlAdj}"></audio>` : ADJ_INVALIDO;
+  }
+
+  row.innerHTML = `<div><div class="chat-msg-bubble">${inner}</div><div class="chat-msg-time">${formatTime(m.created_at)}</div></div>`;
+  const container = document.getElementById('soporte-messages');
+  container.appendChild(row);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendAdminMessage() {
+  const input = document.getElementById('soporte-input');
+  const text = input.value.trim();
+  if (!text || !currentConvId) return;
+
+  const conv = allConversaciones.find(c => c.id === currentConvId);
+  if (!conv || conv.estado !== 'activa') { toast('Esta conversación ya fue finalizada', '', 'warning'); return; }
+
+  input.value = '';
+
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { data, error } = await sb
+      .from('mensajes_chat')
+      .insert({
+        conversacion_id: currentConvId,
+        auth_user_id: conv.auth_user_id,
+        remitente: 'admin',
+        tipo: 'texto',
+        contenido: text
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    renderSoporteMessage(data);
+  } catch (e) {
+    toast('No se pudo enviar el mensaje', e.message, 'error');
+  }
+}
+
+// Botón "Finalizar conversación" — solo visible/usable por administradores
+// (esta sección completa ya está protegida por verifyAdmin() al cargar la página)
+function confirmFinalizarChat() {
+  if (!currentConvId) return;
+
+  document.getElementById('confirm-icon').className = 'confirm-icon danger';
+  document.getElementById('confirm-icon').textContent = '✕';
+  document.getElementById('confirm-title').textContent = '¿Finalizar esta conversación?';
+  document.getElementById('confirm-sub').innerHTML = 'El cliente ya no podrá enviar más mensajes en esta conversación. Se eliminará automáticamente 72 horas después de finalizada. Si el cliente quiere hablar de nuevo, deberá iniciar una nueva conversación.';
+
+  const btn = document.getElementById('btn-confirm-action');
+  btn.className = 'btn-icon btn-danger';
+  btn.textContent = 'Sí, finalizar';
+
+  window._pendingAction = { accion: 'finalizar-chat', convId: currentConvId };
+  openModal('modal-confirm');
+}
+
+async function executeFinalizarChat(convId) {
+  const btn = document.getElementById('btn-confirm-action');
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+  btn.disabled = true;
+
+  try {
+    const { error } = await sb
+      .from('conversaciones_chat')
+      .update({ estado: 'finalizada', finalizada_at: new Date().toISOString() })
+      .eq('id', convId);
+    if (error) throw error;
+
+    closeModal('modal-confirm');
+    toast('Conversación finalizada', 'El cliente ya no puede enviar mensajes', 'success');
+
+    const idx = allConversaciones.findIndex(c => c.id === convId);
+    if (idx !== -1) allConversaciones[idx].estado = 'finalizada';
+
+    if (currentConvId === convId) setSoporteInputState(false);
+
+    renderConvList();
+    updateSoporteBadge();
+
+  } catch (e) {
+    toast('Error al finalizar la conversación', e.message, 'error');
+  } finally {
+    btn.innerHTML = 'Confirmar';
+    btn.disabled = false;
+    window._pendingAction = null;
+  }
+}
+
+// Realtime: nuevos mensajes en la conversación abierta
+function subscribeSoporteConversacion(convId) {
+  if (soporteMsgChannel) sb.removeChannel(soporteMsgChannel);
+  if (soporteConvChannel) sb.removeChannel(soporteConvChannel);
+
+  soporteMsgChannel = sb.channel('admin-msgs-' + convId)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes_chat', filter: `conversacion_id=eq.${convId}` },
+      payload => renderSoporteMessage(payload.new))
+    .subscribe();
+
+  soporteConvChannel = sb.channel('admin-conv-' + convId)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversaciones_chat', filter: `id=eq.${convId}` },
+      payload => {
+        const idx = allConversaciones.findIndex(c => c.id === convId);
+        if (idx !== -1) allConversaciones[idx].estado = payload.new.estado;
+        if (currentConvId === convId) setSoporteInputState(payload.new.estado === 'activa');
+        renderConvList();
+      })
+    .subscribe();
+}
+
+// Realtime: nuevas conversaciones / cambios generales (para refrescar la lista y el badge)
+function subscribeSoporteGlobal() {
+  if (soporteGlobalChannel) return; // ya suscrito
+  soporteGlobalChannel = sb.channel('admin-conv-global')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones_chat' },
+      () => loadConversaciones())
+    .subscribe();
+}
+
+// ============================================================
+// CHATS GRUPALES — el admin crea chats grupales y agrega a los
+// clientes que quiera. Los mensajes se eliminan automáticamente
+// 72 horas después de enviados (limpieza perezosa, mismo patrón
+// que public.notificaciones / notificaciones.js).
+// ============================================================
+let allChatsGrupales           = [];
+let currentChatGrupalId        = null;
+let currentChatGrupalMiembros  = []; // filas de chats_grupales_miembros + nombre resuelto
+let gcMsgChannel                = null;
+let gcSeenIds                   = new Set();
+let gcSelectedNewChat           = new Set(); // auth_user_id seleccionados al crear un chat
+let gcSelectedAdd               = new Set(); // auth_user_id seleccionados al agregar miembro
+
+// ── LIMPIEZA AUTOMÁTICA (best-effort, permitida por RLS) ───
+async function limpiarMensajesGrupalesViejos() {
+  try {
+    const limite = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    await sb.from('mensajes_chat_grupal').delete().lt('created_at', limite);
+  } catch (e) {
+    // Best-effort: si falla, simplemente no se limpia en este momento.
+    console.warn('limpiarMensajesGrupalesViejos:', e);
+  }
+}
+
+// ── LISTA DE CHATS GRUPALES ─────────────────────────────────
+async function loadChatsGrupales() {
+  limpiarMensajesGrupalesViejos(); // no bloquea la carga de la lista
+
+  const list = document.getElementById('gc-list');
+  if (list) list.innerHTML = '<div class="payment-empty">Cargando...</div>';
+
+  try {
+    // FIX: si esta sección se abre sin haber visitado antes "Usuarios",
+    // allUsers estaba vacío — eso hacía que el selector de "Agregar
+    // miembro"/"Nuevo chat" pareciera no tener clientes disponibles, y que
+    // los nombres de los miembros no se resolvieran. Se carga en paralelo.
+    const [_, { data: chats, error }, { data: miembros, error: errM }] = await Promise.all([
+      loadUsers(),
+      sb.from('chats_grupales').select('*').order('created_at', { ascending: false }),
+      sb.from('chats_grupales_miembros').select('chat_id, auth_user_id'),
+    ]);
+    if (error) throw error;
+    if (errM) throw errM;
+
+    const conteo = {};
+    (miembros || []).forEach(m => { conteo[m.chat_id] = (conteo[m.chat_id] || 0) + 1; });
+
+    allChatsGrupales = (chats || []).map(c => ({ ...c, _numMiembros: conteo[c.id] || 0 }));
+    renderChatsGrupalesList();
+  } catch (e) {
+    console.error('loadChatsGrupales:', e);
+    if (list) list.innerHTML = '<div class="payment-empty">No se pudieron cargar los chats</div>';
+  }
+}
+
+function renderChatsGrupalesList() {
+  const list = document.getElementById('gc-list');
+  if (!list) return;
+
+  if (!allChatsGrupales.length) {
+    list.innerHTML = '<div class="payment-empty">Aún no has creado ningún chat grupal</div>';
+    return;
+  }
+
+  list.innerHTML = allChatsGrupales.map(c => `
+    <div class="conv-item ${c.id === currentChatGrupalId ? 'selected' : ''}" onclick="abrirChatGrupal('${c.id}')">
+      <div class="conv-item-avatar">${escHtml((c.nombre || '?').charAt(0).toUpperCase())}</div>
+      <div class="conv-item-info">
+        <div class="conv-item-name">${escHtml(c.nombre)}</div>
+        <div class="conv-item-preview">${c._numMiembros} miembro${c._numMiembros === 1 ? '' : 's'}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── ABRIR UN CHAT GRUPAL ─────────────────────────────────────
+async function abrirChatGrupal(chatId) {
+  currentChatGrupalId = chatId;
+  const chat = allChatsGrupales.find(c => c.id === chatId);
+  if (!chat) return;
+
+  renderChatsGrupalesList(); // refresca cuál queda marcado como "selected"
+
+  document.getElementById('gc-empty').style.display = 'none';
+  document.getElementById('gc-active').style.display = 'flex';
+  document.getElementById('gc-nombre').textContent = chat.nombre;
+  document.getElementById('gc-sub').textContent = 'Cargando miembros...';
+  document.getElementById('gc-messages').innerHTML = '';
+  gcSeenIds = new Set();
+
+  await Promise.all([cargarMiembrosChatGrupal(chatId), cargarMensajesChatGrupal(chatId)]);
+  subscribeChatGrupal(chatId);
+}
+
+async function cargarMiembrosChatGrupal(chatId) {
+  try {
+    const { data, error } = await sb
+      .from('chats_grupales_miembros')
+      .select('id, auth_user_id, agregado_at')
+      .eq('chat_id', chatId)
+      .order('agregado_at', { ascending: true });
+    if (error) throw error;
+
+    // Etiqueta anónima "Usuario N" según el orden en que cada quien fue
+    // agregado al chat (mismo criterio que usa la función de Supabase
+    // para el lado del cliente). El nombre real solo se guarda para
+    // mostrarlo como tooltip al admin, nunca como texto visible del chat.
+    currentChatGrupalMiembros = (data || []).map((m, idx) => {
+      const u = allUsers.find(x => x.auth_user_id === m.auth_user_id);
+      const nombreReal = u ? ([u.nombre, u.apellido].filter(Boolean).join(' ') || u.email) : 'Cliente';
+      return { ...m, etiqueta: `Usuario ${idx + 1}`, nombreReal };
+    });
+
+    document.getElementById('gc-sub').textContent =
+      `${currentChatGrupalMiembros.length} miembro${currentChatGrupalMiembros.length === 1 ? '' : 's'}`;
+    renderMiembrosBar();
+  } catch (e) {
+    console.error('cargarMiembrosChatGrupal:', e);
+  }
+}
+
+function renderMiembrosBar() {
+  const bar = document.getElementById('gc-members-bar');
+  if (!bar) return;
+  if (!currentChatGrupalMiembros.length) {
+    bar.innerHTML = '<span style="font-size:11.5px;color:var(--text-muted)">Sin miembros todavía — usa "Agregar miembro"</span>';
+    return;
+  }
+  bar.innerHTML = currentChatGrupalMiembros.map(m => `
+    <span class="gc-member-chip" title="${escHtml(m.nombreReal)}">
+      ${escHtml(m.etiqueta)}
+      <button onclick="quitarMiembroChatGrupal('${m.id}')" title="Quitar del chat">&times;</button>
+    </span>
+  `).join('');
+}
+
+async function quitarMiembroChatGrupal(miembroId) {
+  if (!confirm('¿Quitar a este cliente del chat grupal?')) return;
+  try {
+    const { error } = await sb.from('chats_grupales_miembros').delete().eq('id', miembroId);
+    if (error) throw error;
+    currentChatGrupalMiembros = currentChatGrupalMiembros.filter(m => m.id !== miembroId);
+    document.getElementById('gc-sub').textContent =
+      `${currentChatGrupalMiembros.length} miembro${currentChatGrupalMiembros.length === 1 ? '' : 's'}`;
+    renderMiembrosBar();
+    loadChatsGrupales(); // refresca el conteo en la lista de la izquierda
+  } catch (e) {
+    toast('No se pudo quitar al miembro', e.message, 'error');
+  }
+}
+
+// ── MENSAJES DEL CHAT GRUPAL ─────────────────────────────────
+async function cargarMensajesChatGrupal(chatId) {
+  try {
+    const { data, error } = await sb
+      .from('mensajes_chat_grupal')
+      .select('*')
+      .eq('chat_id', chatId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    (data || []).forEach(renderMensajeGrupal);
+  } catch (e) {
+    console.error('cargarMensajesChatGrupal:', e);
+  }
+}
+
+function renderMensajeGrupal(m) {
+  if (gcSeenIds.has(m.id)) return;
+  gcSeenIds.add(m.id);
+
+  const esAdmin = m.auth_user_id === currentUser?.id;
+  const row = document.createElement('div');
+  row.className = 'chat-msg-row ' + (esAdmin ? 'admin' : 'cliente');
+
+  let nombreRemitente = 'Tú (admin)';
+  if (!esAdmin) {
+    const miembro = currentChatGrupalMiembros.find(x => x.auth_user_id === m.auth_user_id);
+    nombreRemitente = miembro ? miembro.etiqueta : 'Usuario';
+  }
+
+  row.innerHTML = `<div>
+    <div class="chat-msg-sender">${escHtml(nombreRemitente)}</div>
+    <div class="chat-msg-bubble">${escHtml(m.contenido).replace(/\n/g, '<br>')}</div>
+    <div class="chat-msg-time">${formatTime(m.created_at)}</div>
+  </div>`;
+  const container = document.getElementById('gc-messages');
+  if (!container) return;
+  container.appendChild(row);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function enviarMensajeGrupal() {
+  const input = document.getElementById('gc-input');
+  const text = input.value.trim();
+  if (!text || !currentChatGrupalId) return;
+  input.value = '';
+
+  try {
+    const { data, error } = await sb.from('mensajes_chat_grupal').insert({
+      chat_id: currentChatGrupalId,
+      auth_user_id: currentUser.id,
+      contenido: text,
+    }).select().single();
+    if (error) throw error;
+    renderMensajeGrupal(data);
+  } catch (e) {
+    toast('No se pudo enviar el mensaje', e.message, 'error');
+  }
+}
+
+// Tiempo real: nuevos mensajes en el chat grupal abierto
+function subscribeChatGrupal(chatId) {
+  if (gcMsgChannel) { sb.removeChannel(gcMsgChannel); gcMsgChannel = null; }
+  gcMsgChannel = sb.channel(`admin-chat-grupal-${chatId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes_chat_grupal', filter: `chat_id=eq.${chatId}` },
+      (payload) => renderMensajeGrupal(payload.new))
+    .subscribe();
+}
+
+// ── SELECTOR DE CLIENTES (crear chat / agregar miembro) ─────
+// Muestra solo clientes con auth_user_id (requisito para ser miembro),
+// excluyendo los que ya están en "excluirIds" — así, quien ya está
+// unido a un chat NO vuelve a aparecer en la lista de personas a unir.
+function renderPickerClientes(containerId, selectedSet, excluirIds) {
+  const cont = document.getElementById(containerId);
+  if (!cont) return;
+  const excluir = new Set(excluirIds);
+  const disponibles = allUsers.filter(u => u.auth_user_id && !excluir.has(u.auth_user_id));
+
+  if (!disponibles.length) {
+    cont.innerHTML = '<div class="payment-empty">No hay clientes disponibles para agregar</div>';
+    return;
+  }
+
+  cont.innerHTML = disponibles.map(u => {
+    const nombre = [u.nombre, u.apellido].filter(Boolean).join(' ') || u.email || 'Cliente';
+    const checked = selectedSet.has(u.auth_user_id) ? 'checked' : '';
+    return `
+      <label class="gc-picker-item">
+        <input type="checkbox" ${checked} onchange="togglePickerSeleccion('${containerId}','${u.auth_user_id}', this.checked)">
+        <div>
+          <div class="gc-picker-name">${escHtml(nombre)}</div>
+          <div class="gc-picker-sub">${escHtml(u.nombre_negocio || u.email || '')}</div>
+        </div>
+      </label>`;
+  }).join('');
+}
+
+function togglePickerSeleccion(containerId, authUserId, checked) {
+  const set = containerId === 'ncg-picker' ? gcSelectedNewChat : gcSelectedAdd;
+  if (checked) set.add(authUserId); else set.delete(authUserId);
+}
+
+// ── CREAR CHAT GRUPAL ─────────────────────────────────────
+async function abrirNuevoChatGrupal() {
+  document.getElementById('ncg-nombre').value = '';
+  gcSelectedNewChat = new Set();
+
+  // FIX: si el admin entra directo a "Chats Grupales" sin haber visitado
+  // antes la sección "Usuarios", allUsers estaba vacío y el selector
+  // mostraba "no hay clientes" aunque sí existieran. Se asegura tener la
+  // lista cargada (o refrescada, por si hay clientes nuevos) antes de
+  // abrir el selector.
+  document.getElementById('ncg-picker').innerHTML = '<div class="payment-empty">Cargando clientes...</div>';
+  openModal('modal-nuevo-chat-grupal');
+  await loadUsers();
+  renderPickerClientes('ncg-picker', gcSelectedNewChat, []);
+}
+
+async function crearChatGrupal() {
+  const nombre = document.getElementById('ncg-nombre').value.trim();
+  if (!nombre) { toast('Falta el nombre', 'Escribe un nombre para el chat grupal', 'warning'); return; }
+
+  const btn = document.getElementById('btn-crear-chat-grupal');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const { data: chat, error } = await sb.from('chats_grupales')
+      .insert({ nombre, creado_por: currentUser?.email || null })
+      .select().single();
+    if (error) throw error;
+
+    const miembrosSeleccionados = [...gcSelectedNewChat];
+    if (miembrosSeleccionados.length) {
+      const rows = miembrosSeleccionados.map(authUserId => ({ chat_id: chat.id, auth_user_id: authUserId }));
+      const { error: errM } = await sb.from('chats_grupales_miembros').insert(rows);
+      if (errM) throw errM;
+    }
+
+    closeModal('modal-nuevo-chat-grupal');
+    toast('Chat grupal creado', `"${nombre}" está listo`, 'success');
+    await loadChatsGrupales();
+    abrirChatGrupal(chat.id);
+  } catch (e) {
+    console.error('crearChatGrupal:', e);
+    toast('Error al crear el chat', e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Crear chat';
+  }
+}
+
+// ── AGREGAR MIEMBRO A UN CHAT EXISTENTE ───────────────────
+async function abrirAgregarMiembro() {
+  if (!currentChatGrupalId) return;
+  gcSelectedAdd = new Set();
+
+  // Mismo fix que abrirNuevoChatGrupal: refrescar allUsers antes de armar
+  // el selector, para no depender de haber visitado antes "Usuarios".
+  document.getElementById('am-picker').innerHTML = '<div class="payment-empty">Cargando clientes...</div>';
+  openModal('modal-agregar-miembro');
+  await loadUsers();
+  const yaMiembros = currentChatGrupalMiembros.map(m => m.auth_user_id);
+  renderPickerClientes('am-picker', gcSelectedAdd, yaMiembros);
+}
+
+async function agregarMiembroSeleccionado() {
+  if (!currentChatGrupalId) return;
+  const seleccionados = [...gcSelectedAdd];
+  if (!seleccionados.length) { toast('Selecciona al menos un cliente', '', 'warning'); return; }
+
+  const btn = document.getElementById('btn-agregar-miembro');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spinner"></span>';
+
+  try {
+    const rows = seleccionados.map(authUserId => ({ chat_id: currentChatGrupalId, auth_user_id: authUserId }));
+    const { error } = await sb.from('chats_grupales_miembros').insert(rows);
+    if (error) throw error;
+
+    closeModal('modal-agregar-miembro');
+    toast('Miembros agregados', '', 'success');
+    await cargarMiembrosChatGrupal(currentChatGrupalId);
+    loadChatsGrupales();
+  } catch (e) {
+    console.error('agregarMiembroSeleccionado:', e);
+    toast('Error al agregar miembros', e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Agregar seleccionados';
+  }
+}
+
+// ── CONFIRM DISPATCHER ─────────────────────────────────────
+async function dispatchConfirm() {
+  const pending = window._pendingAction;
+  if (!pending) return;
+
+  if (pending.accion === 'delete-code') {
+    await executeConfirmDeleteCode(pending.codeId);
+  } else if (pending.accion === 'delete-code-c360') {
+    await executeConfirmDeleteCodeC360(pending.codeId);
+  } else if (pending.accion === 'finalizar-chat') {
+    await executeFinalizarChat(pending.convId);
+  } else if (pending.accion === 'marcar-pagado') {
+    await executeMarkAsPaid(pending.userId, pending.cicloAPagar);
+  } else {
+    await executeConfirmAction();
+  }
+}
+
+// ── UTILIDADES ─────────────────────────────────────────────
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('es-ES', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    });
+  } catch { return '—'; }
+}
+
+function formatTime(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+}
+
+function formatDateTimeShort(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    return sameDay
+      ? d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+  } catch { return ''; }
+}
+
+function estadoBadge(estado) {
+  const map = {
+    activa:     '<span class="badge badge-success badge-dot">Activa</span>',
+    suspendida: '<span class="badge badge-warning badge-dot">Suspendida</span>',
+    cancelada:  '<span class="badge badge-danger badge-dot">Cancelada</span>',
+  };
+  return map[estado] || `<span class="badge">${escHtml(estado || '—')}</span>`;
+}
+
+function planBadge(plan) {
+  const map = {
+    prueba:  '<span class="badge badge-info">Prueba</span>',
+    premium: '<span class="badge badge-purple">Premium</span>',
+  };
+  return map[plan] || `<span class="badge">${escHtml(plan || '—')}</span>`;
+}
+
+// Estado de conexión de un usuario a partir de usuarios.ultima_conexion
+// (actualizado por el heartbeat de perfiles-guard.js cada ~45s mientras
+// el usuario tiene la app abierta). Se considera "en línea" si el último
+// latido llegó hace menos de 2 minutos.
+const CONEXION_ONLINE_MS = 5 * 60 * 1000;   // el aviso de conexión llega cada 2 min
+
+function conexionBadge(ultimaConexionIso) {
+  if (!ultimaConexionIso) {
+    return '<span class="badge" style="color:var(--text-muted)">Sin registro</span>';
+  }
+  const ultima = new Date(ultimaConexionIso);
+  if (isNaN(ultima.getTime())) {
+    return '<span class="badge" style="color:var(--text-muted)">Sin registro</span>';
+  }
+  const diffMs = Date.now() - ultima.getTime();
+
+  if (diffMs <= CONEXION_ONLINE_MS) {
+    return `<span class="badge badge-success badge-dot" title="Última actividad: ${escHtml(ultima.toLocaleString('es-NI'))}">
+      <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:4px"></span>En línea
+    </span>`;
+  }
+
+  return `<span class="badge" style="color:var(--text-muted)" title="${escHtml(ultima.toLocaleString('es-NI'))}">
+    Hace ${tiempoRelativo(diffMs)}
+  </span>`;
+}
+
+function tiempoRelativo(diffMs) {
+  const min = Math.floor(diffMs / 60000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d} d`;
+  const mo = Math.floor(d / 30);
+  return `${mo} mes${mo === 1 ? '' : 'es'}`;
+}
+
+// ── INIT ───────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  initTheme();
+
+  const ok = await verifyAdmin();
+  if (!ok) return;
+
+  populateHeader();
+
+  // Evento: cerrar sesión
+  document.getElementById('btn-logout').addEventListener('click', signOut);
+
+  // Evento: toggle theme
+  document.getElementById('btn-theme').addEventListener('click', toggleTheme);
+
+  // Evento: toggle sidebar mobile
+  document.getElementById('menu-toggle').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebar-overlay').classList.toggle('visible');
+  });
+  document.getElementById('sidebar-overlay').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('visible');
+  });
+
+  // Evento: navegación
+  $$('.nav-item[data-section]').forEach(item => {
+    item.addEventListener('click', () => navigate(item.dataset.section));
+  });
+
+  // Evento: búsqueda usuarios
+  document.getElementById('user-search').addEventListener('input', filterAndSearch);
+
+  // Evento: filtros usuarios
+  $$('#page-users .filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyUserFilter(btn.dataset.filter));
+  });
+
+  // Evento: filtros de conversaciones (Activas / Finalizadas)
+  $$('[data-chatfilter]').forEach(btn => {
+    btn.addEventListener('click', () => applyChatFilter(btn.dataset.chatfilter));
+  });
+
+  // Evento: enviar mensaje de soporte
+  document.getElementById('btn-send-admin').addEventListener('click', sendAdminMessage);
+  document.getElementById('soporte-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); sendAdminMessage(); }
+  });
+
+  // Evento: finalizar conversación (solo visible para administradores autenticados)
+  document.getElementById('btn-finalizar-chat').addEventListener('click', confirmFinalizarChat);
+
+  // Evento: enviar mensaje en chat grupal
+  document.getElementById('btn-send-grupal').addEventListener('click', enviarMensajeGrupal);
+  document.getElementById('gc-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); enviarMensajeGrupal(); }
+  });
+
+  // Evento: cerrar modales con X
+  $$('.modal-close').forEach(btn => {
+    btn.addEventListener('click', () => btn.closest('.modal-overlay').classList.remove('open'));
+  });
+
+  // Evento: cerrar modal al hacer clic fuera
+  $$('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.classList.remove('open');
+    });
+  });
+
+  // Evento: confirmar acción
+  document.getElementById('btn-confirm-action').addEventListener('click', dispatchConfirm);
+
+  // Evento: cancelar confirmación
+  document.getElementById('btn-cancel-confirm').addEventListener('click', () => {
+    closeModal('modal-confirm');
+    window._pendingAction = null;
+  });
+
+  // Evento: botón crear código
+  document.getElementById('btn-new-code').addEventListener('click', openCreateCodeModal);
+
+  // Evento: generar código automático
+  document.getElementById('btn-generate-code').addEventListener('click', generateCode);
+
+  // Evento: preview de código al escribir
+  document.getElementById('new-codigo').addEventListener('input', (e) => {
+    document.getElementById('code-preview-text').textContent = e.target.value.trim();
+  });
+
+  // Evento: guardar código
+  document.getElementById('btn-save-code').addEventListener('click', createCode);
+
+  // Eventos: Códigos Catálogo360
+  document.getElementById('btn-new-code-catalogo360').addEventListener('click', openCreateCodeC360Modal);
+  document.getElementById('btn-generate-code-c360').addEventListener('click', generateCodeC360);
+  document.getElementById('btn-save-code-c360').addEventListener('click', createCodeC360);
+
+  // Cargar página inicial
+  navigate('dashboard');
+
+  // Ocultar loader
+  hideLoader();
+
+  // Refrescar la columna "Conexión" (en línea / última conexión) cada 30s
+  // mientras el admin tenga abierta la sección de Usuarios. No vuelve a
+  // consultar la base de datos: solo recalcula el tiempo transcurrido
+  // sobre los datos ya cargados en memoria (allUsers).
+  setInterval(() => {
+    const pageUsers = document.getElementById('page-users');
+    if (pageUsers && pageUsers.classList.contains('active')) {
+      filterAndSearch();
+    }
+  }, 30000);
+});
+
+
+/* ============================================================
+   TUTORIALES — videos de YouTube por módulo (tabla tutoriales_videos)
+   Lectura: todos los usuarios. Escritura: solo administradores (RLS).
+   ============================================================ */
+const TUTA = { videos: [], editandoId: null, cargado: false };
+
+function tutModulosLista() {
+  const reg = window.NEGOCIO360_MODULOS || {};
+  const vistos = new Set(['general']);
+  const lista = [{ key: 'general', label: '🚀 Primeros pasos (general)' }];
+  Object.values(reg).forEach(m => {
+    if (vistos.has(m.key)) return;
+    vistos.add(m.key);
+    lista.push({ key: m.key, label: `${m.icon || ''} ${m.label}`.trim() });
+  });
+  return lista;
+}
+
+// Saca el ID de 11 caracteres de cualquier formato de enlace de YouTube.
+function tutExtraerYoutubeId(texto) {
+  const t = String(texto || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(t)) return t;
+  try {
+    const u = new URL(t.startsWith('http') ? t : 'https://' + t);
+    const h = u.hostname.replace(/^www\.|^m\./, '');
+    let id = null;
+    if (h === 'youtu.be') id = u.pathname.split('/')[1];
+    else if (h.endsWith('youtube.com') || h.endsWith('youtube-nocookie.com')) {
+      if (u.pathname === '/watch') id = u.searchParams.get('v');
+      else {
+        const m = u.pathname.match(/^\/(embed|shorts|live|v)\/([^/?]+)/);
+        if (m) id = m[2];
+      }
+    }
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  } catch (_) { return null; }
+}
+
+async function loadTutorialesSection() {
+  const sel = document.getElementById('tut-modulo');
+  if (!sel) return;
+  if (!sel.options.length) {
+    sel.innerHTML = tutModulosLista().map(m => `<option value="${escHtml(m.key)}">${escHtml(m.label)}</option>`).join('');
+  }
+  await tutCargarVideos();
+}
+
+async function tutCargarVideos() {
+  const cont = document.getElementById('tut-lista');
+  try {
+    const { data, error } = await sb.from('tutoriales_videos').select('*')
+      .order('orden', { ascending: true }).order('created_at', { ascending: true });
+    if (error) throw error;
+    TUTA.videos = data || [];
+    TUTA.cargado = true;
+    tutActualizarContadores();
+    tutRenderLista();
+  } catch (e) {
+    console.error('tutCargarVideos:', e);
+    if (cont) cont.innerHTML = '<p style="color:var(--danger,#e11d48)">No se pudieron cargar los videos. ¿Ya ejecutaste el SQL de Tutoriales en Supabase?</p>';
+  }
+}
+
+function tutActualizarContadores() {
+  const sel = document.getElementById('tut-modulo');
+  if (!sel) return;
+  const nombres = Object.fromEntries(tutModulosLista().map(m => [m.key, m.label]));
+  [...sel.options].forEach(o => {
+    const n = TUTA.videos.filter(v => v.modulo_key === o.value).length;
+    o.textContent = `${nombres[o.value] || o.value}${n ? '  ·  ' + n + (n === 1 ? ' video' : ' videos') : ''}`;
+  });
+}
+
+function tutModuloActual() { return document.getElementById('tut-modulo')?.value || 'general'; }
+
+function tutCambiarModulo() { tutLimpiarForm(); tutRenderLista(); }
+
+function tutRenderLista() {
+  const cont = document.getElementById('tut-lista');
+  if (!cont) return;
+  const mod = tutModuloActual();
+  const lista = TUTA.videos.filter(v => v.modulo_key === mod);
+  const tit = document.getElementById('tut-lista-titulo');
+  const nombre = (tutModulosLista().find(m => m.key === mod) || {}).label || mod;
+  if (tit) tit.textContent = `Videos de ${nombre}`;
+  if (!lista.length) { cont.innerHTML = '<p style="color:var(--text-muted, #888)">Este módulo todavía no tiene videos. Agrega el primero arriba.</p>'; return; }
+  const niv = { basico: 'Básico', intermedio: 'Intermedio', avanzado: 'Avanzado' };
+  cont.innerHTML = lista.map((v, i) => `
+    <div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border, #e8e8ef);${v.visible ? '' : 'opacity:.55'}">
+      <img src="https://i.ytimg.com/vi/${encodeURIComponent(v.youtube_id)}/mqdefault.jpg" alt="" style="width:108px;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#222;flex-shrink:0" onerror="this.style.visibility='hidden'" />
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px">${escHtml(v.titulo)}</div>
+        <div style="font-size:12px;color:var(--text-muted, #888);margin-top:2px">
+          ${escHtml(niv[v.nivel] || 'Básico')}${v.duracion ? ' · ⏱ ' + escHtml(v.duracion) : ''}${v.visible ? '' : ' · <strong>Borrador (oculto)</strong>'}
+          · <a href="https://www.youtube.com/watch?v=${encodeURIComponent(v.youtube_id)}" target="_blank" rel="noopener">Ver en YouTube</a>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn-icon btn-ghost" title="Subir" ${i === 0 ? 'disabled' : ''} onclick="tutMover('${v.id}', -1)">▲</button>
+        <button class="btn-icon btn-ghost" title="Bajar" ${i === lista.length - 1 ? 'disabled' : ''} onclick="tutMover('${v.id}', 1)">▼</button>
+        <button class="btn-icon btn-ghost" onclick="tutAlternarVisible('${v.id}')">${v.visible ? 'Ocultar' : 'Mostrar'}</button>
+        <button class="btn-icon btn-ghost" onclick="tutEditar('${v.id}')">Editar</button>
+        <button class="btn-icon btn-danger" onclick="tutEliminar('${v.id}')">Eliminar</button>
+      </div>
+    </div>`).join('');
+}
+
+function tutPrevisualizar() {
+  const el = document.getElementById('tut-prev');
+  if (!el) return;
+  const t = document.getElementById('tut-url').value.trim();
+  if (!t) { el.innerHTML = ''; return; }
+  const id = tutExtraerYoutubeId(t);
+  el.innerHTML = id
+    ? `<img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" style="width:160px;border-radius:6px;display:block;margin-bottom:4px" onerror="this.style.display='none'" /> ✓ Video reconocido (${id})`
+    : '<span style="color:var(--danger,#e11d48)">No reconozco ese enlace de YouTube.</span>';
+}
+
+function tutLimpiarForm() {
+  TUTA.editandoId = null;
+  ['tut-url', 'tut-titulo', 'tut-desc', 'tut-duracion'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; });
+  const n = document.getElementById('tut-nivel'); if (n) n.value = 'basico';
+  const v = document.getElementById('tut-visible'); if (v) v.value = 'true';
+  const p = document.getElementById('tut-prev'); if (p) p.innerHTML = '';
+  const t = document.getElementById('tut-form-titulo'); if (t) t.textContent = 'Agregar video';
+  const c = document.getElementById('tut-btn-cancelar'); if (c) c.style.display = 'none';
+}
+
+function tutEditar(id) {
+  const v = TUTA.videos.find(x => x.id === id);
+  if (!v) return;
+  TUTA.editandoId = id;
+  document.getElementById('tut-url').value = 'https://www.youtube.com/watch?v=' + v.youtube_id;
+  document.getElementById('tut-titulo').value = v.titulo || '';
+  document.getElementById('tut-desc').value = v.descripcion || '';
+  document.getElementById('tut-nivel').value = v.nivel || 'basico';
+  document.getElementById('tut-duracion').value = v.duracion || '';
+  document.getElementById('tut-visible').value = v.visible ? 'true' : 'false';
+  document.getElementById('tut-form-titulo').textContent = 'Editar video';
+  document.getElementById('tut-btn-cancelar').style.display = '';
+  tutPrevisualizar();
+  document.getElementById('tut-url').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function tutGuardar() {
+  const btn = document.getElementById('tut-btn-guardar');
+  const youtube_id = tutExtraerYoutubeId(document.getElementById('tut-url').value);
+  const titulo = document.getElementById('tut-titulo').value.trim();
+  if (!youtube_id) { toast('Enlace no válido', 'Pega un enlace de YouTube válido.', 'warning'); return; }
+  if (!titulo) { toast('Falta el título', 'Escribe un título para el video.', 'warning'); return; }
+  const modulo = tutModuloActual();
+  const campos = {
+    youtube_id, titulo,
+    descripcion: document.getElementById('tut-desc').value.trim() || null,
+    nivel: document.getElementById('tut-nivel').value,
+    duracion: document.getElementById('tut-duracion').value.trim() || null,
+    visible: document.getElementById('tut-visible').value === 'true',
+  };
+  if (btn) btn.disabled = true;
+  try {
+    if (TUTA.editandoId) {
+      const { error } = await sb.from('tutoriales_videos').update({ ...campos, updated_at: new Date().toISOString() }).eq('id', TUTA.editandoId);
+      if (error) throw error;
+      toast('Video actualizado', '', 'success');
+    } else {
+      const delModulo = TUTA.videos.filter(v => v.modulo_key === modulo);
+      const orden = delModulo.length ? Math.max(...delModulo.map(v => v.orden || 0)) + 1 : 1;
+      const { error } = await sb.from('tutoriales_videos').insert({ ...campos, modulo_key: modulo, orden });
+      if (error) throw error;
+      toast('Video agregado', 'Ya lo ven los usuarios que tengan ese módulo.', 'success');
+    }
+    tutLimpiarForm();
+    await tutCargarVideos();
+  } catch (e) {
+    console.error('tutGuardar:', e);
+    toast('No se pudo guardar', e.message || 'Error', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function tutMover(id, dir) {
+  const mod = tutModuloActual();
+  const lista = TUTA.videos.filter(v => v.modulo_key === mod);
+  const i = lista.findIndex(v => v.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= lista.length) return;
+  // Se renumera todo el módulo (1..n) para que el orden sea siempre estable.
+  const nuevo = [...lista];
+  [nuevo[i], nuevo[j]] = [nuevo[j], nuevo[i]];
+  try {
+    for (let k = 0; k < nuevo.length; k++) {
+      if (nuevo[k].orden === k + 1) continue;
+      const { error } = await sb.from('tutoriales_videos').update({ orden: k + 1 }).eq('id', nuevo[k].id);
+      if (error) throw error;
+    }
+    await tutCargarVideos();
+  } catch (e) {
+    console.error('tutMover:', e);
+    toast('No se pudo reordenar', e.message || 'Error', 'error');
+    await tutCargarVideos();
+  }
+}
+
+async function tutAlternarVisible(id) {
+  const v = TUTA.videos.find(x => x.id === id);
+  if (!v) return;
+  const { error } = await sb.from('tutoriales_videos').update({ visible: !v.visible, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast('No se pudo cambiar', error.message, 'error'); return; }
+  await tutCargarVideos();
+}
+
+async function tutEliminar(id) {
+  const v = TUTA.videos.find(x => x.id === id);
+  if (!v) return;
+  if (!confirm(`¿Eliminar el video "${v.titulo}"? Dejará de verse para todos los usuarios.`)) return;
+  const { error } = await sb.from('tutoriales_videos').delete().eq('id', id);
+  if (error) { toast('No se pudo eliminar', error.message, 'error'); return; }
+  if (TUTA.editandoId === id) tutLimpiarForm();
+  toast('Video eliminado', '', 'success');
+  await tutCargarVideos();
+}

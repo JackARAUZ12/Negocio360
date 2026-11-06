@@ -880,6 +880,24 @@ async function loadUsers() {
     const idsShadow = await obtenerIdsSucursalesShadow();
     const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
     allUsers = (data || []).filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
+    // Negocios adicionales ("Mis negocios"): se muestran como una cuenta más, con el nombre del dueño
+    // y del negocio, y el correo del dueño (no el correo interno). No entran en cobros ni estadísticas:
+    // el pago es de la cuenta principal.
+    try {
+      const { data: adic } = await sb.rpc('admin_negocios_adicionales');
+      const porId = new Map((adic || []).map(a => [a.auth_user_id, a]));
+      (data || []).forEach(u => {
+        const a = porId.get(u.auth_user_id);
+        if (!a || allUsers.includes(u)) return;
+        allUsers.push({ ...u,
+          nombre: (u.nombre || '').trim() || a.principal_nombre || '',
+          apellido: (u.apellido || '').trim() || a.principal_apellido || '',
+          nombre_negocio: `${a.nombre_negocio} · negocio adicional`,
+          email: a.principal_email || u.email,
+          _negocioAdicional: true });
+      });
+      allUsers.sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+    } catch (e) { console.warn('negocios adicionales:', e); }
     renderUsersTable(allUsers);
 
   } catch (e) {
