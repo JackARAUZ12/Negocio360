@@ -1823,4 +1823,16 @@
     init();
   }
 
+
+  // Guía de inicio obligatoria (solo cuentas nuevas, la primera vez). Se carga
+  // aparte para no tocar nada de este archivo; si no carga, todo sigue igual.
+  try {
+    if (!document.querySelector('script[src^="guia-inicio.js"]')) {
+      const gi = document.createElement('script');
+      gi.src = 'guia-inicio.js?v=20261106a';
+      gi.defer = true;
+      (document.head || document.documentElement).appendChild(gi);
+    }
+  } catch (_) {}
+
 })();
