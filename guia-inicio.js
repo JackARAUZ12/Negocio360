@@ -73,12 +73,12 @@
     s.id = 'gi-estilos';
     s.textContent = `
       html.gi-activa #pp-card{display:none!important}
-      #gi-anillo{position:fixed;z-index:100001;pointer-events:none;border:3px solid var(--accent,#5a5af4);border-radius:12px;
+      #gi-anillo{position:fixed;z-index:99991;pointer-events:none;border:3px solid var(--accent,#5a5af4);border-radius:12px;
         transition:top .25s ease,left .25s ease,width .25s ease,height .25s ease,box-shadow .25s;display:none}
       #gi-anillo.gi-dim{box-shadow:0 0 0 9999px rgba(12,12,30,.45)}
       #gi-anillo::after{content:'';position:absolute;inset:-3px;border-radius:12px;border:3px solid var(--accent,#5a5af4);animation:giPulso 1.4s ease-out infinite}
       @keyframes giPulso{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.18)}}
-      #gi-tip{position:fixed;z-index:100002;width:min(340px,calc(100vw - 24px));background:var(--bg-surface,#fff);color:var(--text-primary,#0d0d14);
+      #gi-tip{position:fixed;z-index:99992;width:min(340px,calc(100vw - 24px));background:var(--bg-surface,#fff);color:var(--text-primary,#0d0d14);
         border-radius:14px;box-shadow:0 14px 40px -6px rgba(10,10,40,.45);padding:14px 16px 14px;display:none;
         font-family:'DM Sans','Segoe UI',system-ui,sans-serif;border:1px solid var(--border,#e8e8ef);transition:top .25s ease,left .25s ease}
       #gi-tip .gi-fl{position:absolute;width:14px;height:14px;background:inherit;border:inherit;transform:rotate(45deg);left:var(--fx,30px)}
@@ -99,7 +99,7 @@
       .gi-btn:disabled{opacity:.6;cursor:default}
       #gi-tip.gi-sacude{animation:giSacude .4s}
       @keyframes giSacude{0%,100%{translate:0}25%{translate:-6px}75%{translate:6px}}
-      #gi-modal{position:fixed;inset:0;z-index:100003;background:rgba(10,10,25,.55);display:flex;align-items:center;justify-content:center;padding:16px;
+      #gi-modal{position:fixed;inset:0;z-index:99993;background:rgba(10,10,25,.55);display:flex;align-items:center;justify-content:center;padding:16px;
         font-family:'DM Sans','Segoe UI',system-ui,sans-serif;animation:giEntra .25s ease}
       @keyframes giEntra{from{opacity:0}to{opacity:1}}
       #gi-modal .gi-caja{background:var(--bg-surface,#fff);color:var(--text-primary,#0d0d14);border-radius:20px;max-width:430px;width:100%;
@@ -433,6 +433,41 @@
     }, true);
   }
 
+  async function abrirSaldoInicialSolo() {
+    for (let i = 0; i < 40; i++) {           // hasta ~10 s a que Caja termine de cargar
+      await espera(250);
+      if (paso !== 'caja') return;
+      if (modalAbierto('modal-capital-inicial', 'modal-open')) return; // Caja ya la abrió
+      if (typeof window.openModal === 'function' && document.getElementById('modal-capital-inicial') && i >= 4) {
+        if (document.querySelector('.modal-overlay.modal-open')) continue; // otra ventana abierta: esperar
+        try {
+          const inp = document.getElementById('capital-inicial-monto');
+          if (inp) { inp.value = ''; if (esDemo) inp.max = String(TOPE_DEMO); }
+          window.openModal('modal-capital-inicial');
+          setTimeout(() => { try { inp && inp.focus(); } catch (_) {} }, 200);
+        } catch (_) {}
+        return;
+      }
+    }
+  }
+
+  /* =============== esperar animación + pantalla de código =============== */
+  function animacionPendiente() {
+    // En las pantallas de entrada la animación marca esta clave al empezar.
+    if (archivo !== 'dashboard.html') return false;
+    if (!window.__giT0) window.__giT0 = Date.now();
+    if (Date.now() - window.__giT0 > 15000) return false; // si la animación no corre, no esperar para siempre
+    return ssGet('n360_welcome_visto_' + uid) !== '1' && ssGet('n360_welcome_visto') !== '1';
+  }
+  async function esperarAnimacionYCodigo() {
+    let quietos = 0;
+    for (let i = 0; i < 400 && quietos < 3; i++) {
+      await espera(250);
+      const ocupado = animacionPendiente() || document.getElementById('n360-welcome') || document.getElementById('pg-overlay');
+      quietos = ocupado ? 0 : quietos + 1;
+    }
+  }
+
   /* =============== arranque =============== */
   async function iniciar() {
     for (let i = 0; i < 50 && !window.supabase; i++) await espera(100);
@@ -467,12 +502,8 @@
     // 2) Página no permitida en este paso -> al inicio (ahí la guía señala el camino)
     if (!PERMITIDAS[paso].includes(archivo)) { location.replace('dashboard.html'); return; }
 
-    // 3) Esperar a que termine la animación de bienvenida y la pantalla de código
-    let quietos = 0;
-    for (let i = 0; i < 200 && quietos < 4; i++) {
-      await espera(250);
-      quietos = (document.getElementById('n360-welcome') || document.getElementById('pg-overlay')) ? 0 : quietos + 1;
-    }
+    // 3) Orden: animación del logo -> usuario y código -> recién ahí la guía.
+    await esperarAnimacionYCodigo();
 
     document.documentElement.classList.add('gi-activa');
     document.addEventListener('click', candadoClicks, true);
@@ -491,7 +522,12 @@
       } catch (_) {}
     }
 
-    if (paso === 'caja' && archivo === 'dashboard.html' && ssGet('n360_guia_intro_' + uid) !== '1') ventanaInicio();
+    if (paso === 'caja' && archivo === 'dashboard.html' && ssGet('n360_guia_intro_' + uid) !== '1') {
+      await esperarAnimacionYCodigo();
+      ventanaInicio();
+    }
+    // En Caja la ventana de saldo inicial sale sola (como en una cuenta real), también en demostración.
+    if (paso === 'caja' && archivo === 'caja.html') abrirSaldoInicialSolo();
     arrancarSondeo();
     reloj = setInterval(dibujar, 300);
     window.addEventListener('resize', dibujar);
