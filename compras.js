@@ -1906,6 +1906,9 @@ async function _guardarCompraDirectaInterno() {
     bancoPagoId = document.getElementById('cd-banco').value || null;
     if (!bancoPagoId) { errEl.textContent = 'Indica de qué banco sale este pago.'; return; }
   }
+  // 🔒 Solo el EFECTIVO pagado HOY puede salir de Caja Chica. Si se paga por banco/transferencia/tarjeta,
+  // o la compra es de otro día (ya contado y cerrado), el dinero no sale de la gaveta de Caja Chica.
+  if (origenCaja === 'chica' && (bancoPagoId || !/efectivo/i.test(metodoPagoNombre || '') || fecha !== todayISO())) origenCaja = 'general';
   const observaciones = document.getElementById('cd-observaciones')?.value.trim() || null;
   const proveedor = STATE.proveedorSeleccionadoDirectaCompra;
   // Retención de IR practicada al proveedor (opcional). Sale de Caja el neto; la retención queda por pagar a la DGI.
@@ -2056,6 +2059,9 @@ async function _guardarCompraInterno() {
     origenCaja = document.getElementById('nc-origen-caja').value;
     if (!origenCaja) { showToast('Indica de dónde sale este dinero (Caja Chica o Caja General)', 'error'); return; }
   }
+
+  // 🔒 Solo el EFECTIVO pagado HOY puede salir de Caja Chica (ver compra directa).
+  if (origenCaja === 'chica' && (_bancoElegidoIdCompra || !/efectivo/i.test(metodoPagoNombre || '') || fecha !== todayISO())) origenCaja = 'general';
 
   // Si se eligió un banco para este egreso, se valida que tenga saldo
   // suficiente ANTES de guardar nada — a diferencia de un ingreso, un

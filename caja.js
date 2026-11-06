@@ -2874,7 +2874,7 @@ async function reabrirCajaDeHoy(sesionId) {
     * Una transferencia solo resta del cajon si SALE de la Caja Chica.
     * Las transferencias internas no son ingresos ni egresos del negocio.
 ===================================================== */
-const COLS_MOV_CHICA = 'tipo_flujo, monto, metodo_pago_nombre, origen_caja, tipo_movimiento';
+const COLS_MOV_CHICA = 'tipo_flujo, monto, metodo_pago_nombre, origen_caja, tipo_movimiento, banco_id';
 function movEsEfectivo(m) { return (m.metodo_pago_nombre || 'Efectivo').toLowerCase().includes('efectivo'); }
 function esTransferenciaInterna(m) { return m.tipo_movimiento === 'TRANSFERENCIA'; }
 function ingresoEsDeCajaChica(m) {
@@ -2883,6 +2883,7 @@ function ingresoEsDeCajaChica(m) {
 }
 function egresoEsDeCajaChica(m) {
   if (m.tipo_movimiento === 'TRANSFERENCIA') return m.origen_caja === 'chica';
+  if (m.banco_id) return false;   // pagado desde un banco: nunca sale de la gaveta de Caja Chica
   return m.origen_caja === 'general' ? false : (m.origen_caja === 'chica' ? true : movEsEfectivo(m));
 }
 // Totales del dia de la Caja Chica. 'lista' = movimientos completados de hoy.
