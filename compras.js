@@ -1304,11 +1304,15 @@ function buscarProductoNuevaCompra() {
   if (!q) { res.innerHTML = ''; return; }
 
   // Solo tipo PRODUCTO (nunca servicios) — ya filtrado en STATE.productos
+  // También busca por marca/proveedor del producto (ej. "Genven" lista todos sus productos)
+  const marcaDe = p => (p.proveedor_nombre ||
+    ((STATE.proveedores || []).find(x => x.id === p.proveedor_id) || {}).nombre || '');
   const filtrados = STATE.productos.filter(p =>
     p.nombre.toLowerCase().includes(q) ||
     (p.sku || '').toLowerCase().includes(q) ||
-    (p.categoria || '').toLowerCase().includes(q)
-  ).slice(0, 10);
+    (p.categoria || '').toLowerCase().includes(q) ||
+    marcaDe(p).toLowerCase().includes(q)
+  ).slice(0, 25);
 
   if (!filtrados.length) {
     res.innerHTML = `<div class="search-no-results">Sin resultados para "${escHtml(q)}"</div>`;
@@ -1319,7 +1323,7 @@ function buscarProductoNuevaCompra() {
     <div class="search-result-item" onclick="agregarProductoAlCarrito('${p.id}')">
       <div class="sri-info">
         <span class="sri-nombre">${escHtml(p.nombre)}</span>
-        <span class="sri-meta">${p.sku ? 'SKU: '+escHtml(p.sku)+' · ' : ''}${p.categoria ? escHtml(p.categoria)+' · ' : ''}Stock: ${fmtNum(p.stock_actual)}${abrevU(p.unidad_codigo) ? ' ' + abrevU(p.unidad_codigo) : ''}${productoTieneUnidadCompra(p) ? ' · Compra en ' + nombreU(p.unidad_compra_codigo) : ''}</span>
+        <span class="sri-meta">${p.sku ? 'SKU: '+escHtml(p.sku)+' · ' : ''}${p.categoria ? escHtml(p.categoria)+' · ' : ''}${marcaDe(p) ? 'Marca: '+escHtml(marcaDe(p))+' · ' : ''}Stock: ${fmtNum(p.stock_actual)}${abrevU(p.unidad_codigo) ? ' ' + abrevU(p.unidad_codigo) : ''}${productoTieneUnidadCompra(p) ? ' · Compra en ' + nombreU(p.unidad_compra_codigo) : ''}</span>
       </div>
       <span class="sri-costo">${fmt(p.costo)}</span>
     </div>
