@@ -173,16 +173,32 @@
     const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
     const vis = filtrar(), t = totales(vis), W = doc.internal.pageSize.getWidth(), m = 36;
     const money = n => `${sym()} ${Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.text('Reporte de anulaciones y devoluciones', m, 44);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-    doc.text(`${negocio()}  ·  Período: ${A.datos.desde} al ${A.datos.hasta}  ·  Generado: ${fechaHora(A.datos.generado)}`, m, 62);
-    doc.autoTable({ startY: 76, margin: { left: m, right: m }, theme: 'grid', styles: { fontSize: 9, cellPadding: 5 }, headStyles: { fillColor: [30, 41, 59] },
+    // Encabezado con franja de color
+    doc.setFillColor(30, 41, 59); doc.rect(0, 0, W, 64, 'F');
+    doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text('Reporte de anulaciones y devoluciones', m, 30);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    doc.text(`${negocio()}   ·   Período: ${A.datos.desde} al ${A.datos.hasta}   ·   Generado: ${fechaHora(A.datos.generado)}`, m, 48);
+    // Tarjetas de totales
+    const tarjetas = [['Ventas anuladas', money(t.totalAn), `${t.nAn} venta(s)`, [185, 28, 28]], ['Devoluciones', money(t.totalDev), `${t.nDev} devolución(es)`, [180, 83, 9]],
+      ['Salió de Caja', money(t.devueltoAn + t.dineroDev), 'anuladas + devoluciones', [30, 41, 59]], ['Total afectado', money(t.totalAn + t.totalDev), `${t.nAn + t.nDev} documento(s)`, [30, 41, 59]]];
+    const anchoT = (W - 2 * m - 3 * 10) / 4;
+    tarjetas.forEach(([lbl, val, sub, col], i) => {
+      const x = m + i * (anchoT + 10), y = 78;
+      doc.setDrawColor(226, 232, 240); doc.setFillColor(248, 250, 252); doc.roundedRect(x, y, anchoT, 50, 6, 6, 'FD');
+      doc.setFillColor(col[0], col[1], col[2]); doc.rect(x, y + 6, 3, 38, 'F');
+      doc.setTextColor(100, 116, 139); doc.setFontSize(8.5); doc.text(lbl.toUpperCase(), x + 12, y + 16);
+      doc.setTextColor(col[0], col[1], col[2]); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(val, x + 12, y + 33);
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139); doc.setFontSize(8); doc.text(sub, x + 12, y + 44);
+    });
+    doc.setTextColor(0);
+    doc.autoTable({ startY: 142, margin: { left: m, right: m }, theme: 'grid', styles: { fontSize: 9, cellPadding: 5 }, headStyles: { fillColor: [30, 41, 59] },
       head: [['Resumen', 'Cantidad', 'Monto']],
       body: [['Ventas anuladas', String(t.nAn), money(t.totalAn)], ['   de eso, devuelto en Caja', '', money(t.devueltoAn)],
              ['Devoluciones', String(t.nDev), money(t.totalDev)], ['   devuelto en dinero', '', money(t.dineroDev)], ['   rebajado de créditos', '', money(t.creditoDev)],
              ['   impuesto revertido', '', money(t.impDev)], ['   costo que volvió al inventario', '', money(t.costoReing)],
              [{ content: 'TOTAL AFECTADO', styles: { fontStyle: 'bold' } }, String(t.nAn + t.nDev), { content: money(t.totalAn + t.totalDev), styles: { fontStyle: 'bold' } }]],
-      columnStyles: { 1: { halign: 'right', cellWidth: 80 }, 2: { halign: 'right', cellWidth: 120 } } });
+      columnStyles: { 1: { halign: 'right', cellWidth: 80 }, 2: { halign: 'right', cellWidth: 120 } },
+      didParseCell: c => { if (c.section === 'head' && c.column.index > 0) c.cell.styles.halign = 'right'; } });
     if (A.filtro !== 'devoluciones') {
       doc.autoTable({ startY: doc.lastAutoTable.finalY + 18, margin: { left: m, right: m }, theme: 'striped', styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
         headStyles: { fillColor: [185, 28, 28] }, head: [['Venta', 'Fecha', 'Cliente', 'Productos', 'Motivo', 'Anulada (cuándo / quién)', 'Devuelto Caja', 'Total']],
@@ -202,31 +218,127 @@
     doc.save(nombreArchivo('pdf'));
   }
 
-  function exportarExcel() {
+  // Excel con formato profesional (colores, bordes, montos con moneda, totales, encabezado fijo, filtros,
+  // listo para imprimir). Usa ExcelJS, que se carga solo cuando se pide el Excel.
+  function cargarExcelJS() {
+    if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+    return new Promise((ok, mal) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+      s.onload = () => window.ExcelJS ? ok(window.ExcelJS) : mal(new Error('ExcelJS no cargó'));
+      s.onerror = () => mal(new Error('No se pudo descargar el generador de Excel'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function exportarExcel() {
     if (!A.datos) return showToast('Primero carga el reporte.', 'error');
-    const X = window.XLSX, vis = filtrar(), t = totales(vis), wb = X.utils.book_new();
-    const hoja = (filas, anchos) => { const ws = X.utils.aoa_to_sheet(filas); ws['!cols'] = anchos.map(w => ({ wch: w })); return ws; };
-    X.utils.book_append_sheet(wb, hoja([
-      ['Reporte de anulaciones y devoluciones'], [negocio()], [`Período: ${A.datos.desde} al ${A.datos.hasta}`], [`Moneda: ${sym()}`], [],
-      ['Concepto', 'Cantidad', 'Monto'],
-      ['Ventas anuladas', t.nAn, t.totalAn], ['  devuelto en Caja', '', t.devueltoAn],
-      ['Devoluciones', t.nDev, t.totalDev], ['  devuelto en dinero', '', t.dineroDev], ['  rebajado de créditos', '', t.creditoDev], ['  deuda perdonada', '', t.condonadoDev],
-      ['  impuesto revertido', '', t.impDev], ['  sin impuesto', '', t.netoDev], ['  costo que volvió al inventario', '', t.costoReing], ['  costo que no volvió (dañado)', '', t.costoNoReing],
-      ['TOTAL AFECTADO', t.nAn + t.nDev, r2(t.totalAn + t.totalDev)]], [34, 12, 16]), 'Resumen');
-    X.utils.book_append_sheet(wb, hoja([['Venta', 'Fecha venta', 'Cliente', 'Método', 'Productos', 'Unidades', 'Motivo', 'Anulada en', 'Anulada por', 'Vendió', 'Devuelto en Caja', 'Impuesto', 'Total']]
-      .concat(vis.anuladas.map(v => [v.numero_venta || '', f10(v.fecha), v.cliente_nombre || 'Consumidor final', v.metodo_pago_nombre || v.metodo_pago || '', prodTxt(v._productos), v._unidades, v._motivo,
-        v._cuando ? fechaHora(v._cuando) : '', v.anulada_por || '', v.creado_por_nombre || '', v._devueltoCaja, r2(v.impuesto), r2(v.total)]))
-      .concat([['TOTAL', '', '', '', '', t.unidAn, '', '', '', '', t.devueltoAn, t.impAn, t.totalAn]]), [14, 11, 24, 14, 50, 9, 40, 18, 16, 16, 14, 11, 13]), 'Anuladas');
-    X.utils.book_append_sheet(wb, hoja([['Devolución', 'Fecha', 'Venta original', 'Cliente', 'Tipo', 'Venta', 'Productos', 'Unidades', 'Motivo', 'Registró', 'Dinero devuelto', 'Método', 'Rebajado de crédito', 'Deuda perdonada', 'Impuesto', 'Sin impuesto', 'Costo reingresado', 'Total']]
-      .concat(vis.devs.map(d => [d.numero || '', f10(d.fecha), d._venta.numero_venta || '', d._venta.cliente_nombre || 'Consumidor final', d._esTotal ? 'Total' : 'Parcial', d.tipo_venta || '', prodTxt(d._productos), d._unidades,
-        d.motivo || '', d.usuario_nombre || '', r2(d.monto_dinero), d.metodo_pago_nombre || '', r2(d.monto_credito), r2(d.deuda_condonada), r2(d.impuesto), r2(d.neto), r2(d.costo_reingresado), r2(d.total)]))
-      .concat([['TOTAL', '', '', '', '', '', '', t.unidDev, '', '', t.dineroDev, '', t.creditoDev, t.condonadoDev, t.impDev, t.netoDev, t.costoReing, t.totalDev]]),
-      [12, 11, 13, 24, 9, 10, 50, 9, 36, 16, 14, 13, 16, 14, 11, 13, 15, 13]), 'Devoluciones');
-    const prods = [['Origen', 'Documento', 'Fecha', 'Producto', 'Cantidad', 'Monto', 'Volvió al inventario']];
-    vis.anuladas.forEach(v => v._productos.forEach(p => prods.push(['Anulada', v.numero_venta || '', f10(v.fecha), p.producto_nombre, Number(p.cantidad), r2(p.subtotal), 'Sí'])));
-    vis.devs.forEach(d => d._productos.forEach(p => prods.push(['Devolución', d.numero || '', f10(d.fecha), p.producto_nombre, Number(p.cantidad), r2(p.monto), p.reingresa === false ? 'No (dañado)' : 'Sí'])));
-    X.utils.book_append_sheet(wb, hoja(prods, [11, 14, 11, 40, 10, 13, 18]), 'Productos');
-    X.writeFile(wb, nombreArchivo('xlsx'));
+    let ExcelJS;
+    try { ExcelJS = await cargarExcelJS(); } catch (e) { return showToast('No se pudo preparar el Excel. Revisa tu conexión e intenta de nuevo.', 'error'); }
+    const vis = filtrar(), t = totales(vis);
+    const wb = new ExcelJS.Workbook(); wb.creator = 'Negocio360'; wb.created = new Date();
+    const MON = `"${sym()}" #,##0.00;[Red]-"${sym()}" #,##0.00`, NUM = '#,##0.###';
+    const C = { oscuro: 'FF1E293B', rojo: 'FFB91C1C', rojoSuave: 'FFFEE2E2', ambar: 'FFB45309', ambarSuave: 'FFFEF3C7', gris: 'FFF8FAFC', borde: 'FFD1D5DB', blanco: 'FFFFFFFF', texto: 'FF0F172A', sub: 'FF64748B' };
+    const borde = { top: { style: 'thin', color: { argb: C.borde } }, left: { style: 'thin', color: { argb: C.borde } }, bottom: { style: 'thin', color: { argb: C.borde } }, right: { style: 'thin', color: { argb: C.borde } } };
+    const relleno = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+
+    // Hoja con título, subtítulo, tabla y fila de total.
+    function hoja(nombre, color, colorSuave, titulo, cols, filas, total) {
+      const ws = wb.addWorksheet(nombre, {
+        views: [{ state: 'frozen', ySplit: 4, showGridLines: false }],
+        pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 1, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }, printTitlesRow: '4:4' },
+        headerFooter: { oddFooter: '&L&8' + negocio() + '&R&8Página &P de &N' },
+      });
+      ws.columns = cols.map(c => ({ key: c.k, width: c.w }));
+      const n = cols.length, ultima = ws.getColumn(n).letter;
+      ws.mergeCells(`A1:${ultima}1`); ws.mergeCells(`A2:${ultima}2`);
+      const t1 = ws.getCell('A1'); t1.value = titulo; t1.font = { name: 'Calibri', size: 16, bold: true, color: { argb: C.blanco } }; t1.fill = relleno(color); t1.alignment = { vertical: 'middle', indent: 1 };
+      ws.getRow(1).height = 30;
+      const t2 = ws.getCell('A2'); t2.value = `${negocio()}   ·   Período: ${A.datos.desde} al ${A.datos.hasta}   ·   Generado: ${fechaHora(A.datos.generado)}`;
+      t2.font = { size: 10, color: { argb: C.sub } }; t2.alignment = { indent: 1 }; ws.getRow(2).height = 18;
+      const enc = ws.getRow(4); enc.values = cols.map(c => c.t); enc.height = 22;
+      enc.eachCell(c => { c.font = { bold: true, color: { argb: C.blanco }, size: 10.5 }; c.fill = relleno(C.oscuro); c.border = borde; c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }; });
+      filas.forEach((f, i) => {
+        const r = ws.addRow(f);
+        r.eachCell({ includeEmpty: true }, (c, ci) => {
+          const col = cols[ci - 1]; if (!col) return;
+          c.border = borde; c.font = { size: 10, color: { argb: C.texto } };
+          c.alignment = { vertical: 'top', wrapText: !!col.wrap, horizontal: col.f === 'mon' || col.f === 'num' ? 'right' : col.centro ? 'center' : 'left' };
+          if (col.f === 'mon') c.numFmt = MON; else if (col.f === 'num') c.numFmt = NUM;
+          if (i % 2 === 1) c.fill = relleno(C.gris);
+        });
+      });
+      if (filas.length) ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4 + filas.length, column: n } };
+      if (total) {
+        const r = ws.addRow(total); r.height = 20;
+        r.eachCell({ includeEmpty: true }, (c, ci) => {
+          const col = cols[ci - 1]; if (!col) return;
+          c.font = { bold: true, size: 10.5, color: { argb: C.texto } }; c.fill = relleno(colorSuave);
+          c.border = { ...borde, top: { style: 'medium', color: { argb: color } } };
+          c.alignment = { vertical: 'middle', horizontal: col.f === 'mon' || col.f === 'num' ? 'right' : 'left' };
+          if (col.f === 'mon') c.numFmt = MON; else if (col.f === 'num') c.numFmt = NUM;
+        });
+      }
+      if (!filas.length) { const r = ws.addRow(['Sin registros en este período']); ws.mergeCells(`A${r.number}:${ultima}${r.number}`); r.getCell(1).font = { italic: true, color: { argb: C.sub } }; }
+      return ws;
+    }
+
+    // RESUMEN
+    const wsR = wb.addWorksheet('Resumen', { views: [{ showGridLines: false }], pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+    wsR.columns = [{ width: 44 }, { width: 14 }, { width: 20 }];
+    wsR.mergeCells('A1:C1'); wsR.mergeCells('A2:C2');
+    Object.assign(wsR.getCell('A1'), { value: 'Reporte de anulaciones y devoluciones' });
+    wsR.getCell('A1').font = { size: 16, bold: true, color: { argb: C.blanco } }; wsR.getCell('A1').fill = relleno(C.oscuro); wsR.getCell('A1').alignment = { vertical: 'middle', indent: 1 }; wsR.getRow(1).height = 30;
+    wsR.getCell('A2').value = `${negocio()}   ·   Período: ${A.datos.desde} al ${A.datos.hasta}`; wsR.getCell('A2').font = { size: 10, color: { argb: C.sub } }; wsR.getCell('A2').alignment = { indent: 1 };
+    const filaR = (vals, estilo) => { const r = wsR.addRow(vals); r.eachCell({ includeEmpty: true }, (c, ci) => { c.border = borde; c.font = { size: 10.5, bold: !!estilo?.bold, color: { argb: estilo?.color || C.texto } }; if (estilo?.fill) c.fill = relleno(estilo.fill); if (ci === 3) c.numFmt = MON; if (ci > 1) c.alignment = { horizontal: 'right' }; if (ci === 1 && estilo?.indent) c.alignment = { indent: 2 }; }); return r; };
+    wsR.addRow([]);
+    const encR = wsR.addRow(['Concepto', 'Cantidad', 'Monto']); encR.eachCell(c => { c.font = { bold: true, color: { argb: C.blanco } }; c.fill = relleno(C.oscuro); c.border = borde; c.alignment = { horizontal: 'center' }; });
+    filaR(['Ventas anuladas', t.nAn, t.totalAn], { bold: true, fill: C.rojoSuave, color: C.rojo });
+    filaR(['Devuelto en Caja', '', t.devueltoAn], { indent: true });
+    filaR(['Unidades que volvieron al inventario', t.unidAn, ''], { indent: true });
+    filaR(['Devoluciones', t.nDev, t.totalDev], { bold: true, fill: C.ambarSuave, color: C.ambar });
+    filaR(['Devuelto en dinero', '', t.dineroDev], { indent: true });
+    filaR(['Rebajado de créditos', '', t.creditoDev], { indent: true });
+    filaR(['Deuda perdonada', '', t.condonadoDev], { indent: true });
+    filaR(['Impuesto revertido', '', t.impDev], { indent: true });
+    filaR(['Costo que volvió al inventario', '', t.costoReing], { indent: true });
+    filaR(['Costo que no volvió (dañado)', '', t.costoNoReing], { indent: true });
+    const tot = filaR(['TOTAL AFECTADO', t.nAn + t.nDev, r2(t.totalAn + t.totalDev)], { bold: true, fill: 'FFE2E8F0' });
+    tot.eachCell(c => { c.border = { ...borde, top: { style: 'medium', color: { argb: C.oscuro } } }; });
+    filaR(['Dinero que salió de Caja en total', '', r2(t.devueltoAn + t.dineroDev)], { bold: true });
+
+    // ANULADAS
+    hoja('Anuladas', C.rojo, C.rojoSuave, 'Ventas anuladas', [
+      { k: 'v', t: 'Venta', w: 14 }, { k: 'f', t: 'Fecha venta', w: 12, centro: true }, { k: 'c', t: 'Cliente', w: 24, wrap: true }, { k: 'm', t: 'Forma de pago', w: 14 },
+      { k: 'p', t: 'Productos', w: 42, wrap: true }, { k: 'u', t: 'Unidades', w: 10, f: 'num' }, { k: 'mo', t: 'Motivo', w: 36, wrap: true },
+      { k: 'ae', t: 'Anulada el', w: 19, centro: true }, { k: 'ap', t: 'Anulada por', w: 16 }, { k: 'dc', t: 'Devuelto en Caja', w: 16, f: 'mon' }, { k: 'tt', t: 'Total', w: 15, f: 'mon' },
+    ], vis.anuladas.map(v => [v.numero_venta || '', f10(v.fecha), v.cliente_nombre || 'Consumidor final', v.metodo_pago_nombre || v.metodo_pago || '', prodTxt(v._productos), v._unidades, v._motivo,
+      v._cuando ? fechaHora(v._cuando) : 'Sin fecha', v.anulada_por || '', v._devueltoCaja, r2(v.total)]),
+      vis.anuladas.length ? [`Total (${t.nAn})`, '', '', '', '', t.unidAn, '', '', '', t.devueltoAn, t.totalAn] : null);
+
+    // DEVOLUCIONES
+    hoja('Devoluciones', C.ambar, C.ambarSuave, 'Devoluciones', [
+      { k: 'd', t: 'Devolución', w: 13 }, { k: 'f', t: 'Fecha', w: 12, centro: true }, { k: 'v', t: 'Venta original', w: 14 }, { k: 'c', t: 'Cliente', w: 22, wrap: true },
+      { k: 'ti', t: 'Tipo', w: 9, centro: true }, { k: 'p', t: 'Productos devueltos', w: 38, wrap: true }, { k: 'u', t: 'Unid.', w: 8, f: 'num' }, { k: 'mo', t: 'Motivo', w: 30, wrap: true },
+      { k: 'q', t: 'Registró', w: 14 }, { k: 'di', t: 'Dinero devuelto', w: 15, f: 'mon' }, { k: 'cr', t: 'Rebajado crédito', w: 15, f: 'mon' }, { k: 'im', t: 'Impuesto', w: 12, f: 'mon' },
+      { k: 'co', t: 'Costo reingresado', w: 15, f: 'mon' }, { k: 'tt', t: 'Total', w: 14, f: 'mon' },
+    ], vis.devs.map(d => [d.numero || '', f10(d.fecha), d._venta.numero_venta || '', d._venta.cliente_nombre || 'Consumidor final', d._esTotal ? 'Total' : 'Parcial', prodTxt(d._productos), d._unidades,
+      d.motivo || '', d.usuario_nombre || '', r2(d.monto_dinero), r2(d.monto_credito), r2(d.impuesto), r2(d.costo_reingresado), r2(d.total)]),
+      vis.devs.length ? [`Total (${t.nDev})`, '', '', '', '', '', t.unidDev, '', '', t.dineroDev, t.creditoDev, t.impDev, t.costoReing, t.totalDev] : null);
+
+    // PRODUCTOS (una línea por producto)
+    const prods = [];
+    vis.anuladas.forEach(v => v._productos.forEach(p => prods.push(['Anulada', v.numero_venta || '', f10(v.fecha), p.producto_nombre, Number(p.cantidad) || 0, r2(p.subtotal), 'Sí'])));
+    vis.devs.forEach(d => d._productos.forEach(p => prods.push(['Devolución', d.numero || '', f10(d.fecha), p.producto_nombre, Number(p.cantidad) || 0, r2(p.monto), p.reingresa === false ? 'No (dañado)' : 'Sí'])));
+    hoja('Productos', C.oscuro, 'FFE2E8F0', 'Productos anulados y devueltos', [
+      { k: 'o', t: 'Origen', w: 12 }, { k: 'd', t: 'Documento', w: 14 }, { k: 'f', t: 'Fecha', w: 12, centro: true }, { k: 'p', t: 'Producto', w: 44, wrap: true },
+      { k: 'c', t: 'Cantidad', w: 11, f: 'num' }, { k: 'm', t: 'Monto', w: 15, f: 'mon' }, { k: 'r', t: 'Volvió al inventario', w: 18, centro: true },
+    ], prods, prods.length ? [`Total (${prods.length} líneas)`, '', '', '', r2(prods.reduce((s, x) => s + x[4], 0)), r2(prods.reduce((s, x) => s + x[5], 0)), ''] : null);
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombreArchivo('xlsx');
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   }
 
   window.N360Anulaciones = {
