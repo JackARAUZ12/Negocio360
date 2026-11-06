@@ -1,0 +1,5 @@
+-- 06-nov-2026 · All Plastic Comercial (46521033-…): el gasto programado "pago de sistema de negocio 360"
+-- se creó con C$3,700 por error; el pago real es C$370 mensual. Se cancelaron los gastos de 3,700 de
+-- sep/oct/nov (movimientos anulados) y se registraron los de 370 con la misma fecha y método.
+-- Programado corregido a 370 (próximo 03-dic). Devuelto a caja: C$9,990.
+-- Aplicada con apply_migration "allplastic_comercial_pago_sistema_370" (bloque DO con candados: solo si seguía en 3,700).
