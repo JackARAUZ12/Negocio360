@@ -899,6 +899,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
           Regalías
         </div>
+        <div class="main-tab" data-tab="anulaciones" onclick="switchTab('anulaciones')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+          Anulaciones y devoluciones
+        </div>
         <div class="main-tab" data-tab="alertas" onclick="switchTab('alertas')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           Alertas
@@ -1936,6 +1940,35 @@
 
       </div><!-- /panel-regalias -->
 
+      <!-- ANULACIONES Y DEVOLUCIONES (reportes-anulaciones.js) -->
+      <div class="tab-panel" id="panel-anulaciones">
+        <style>
+          .an-barra{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+          .an-filtro{border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);border-radius:999px;padding:7px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+          .an-filtro.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+          .an-buscar{flex:1;min-width:180px;border:1px solid var(--border);border-radius:10px;padding:8px 12px;font:inherit;font-size:13px;background:var(--bg-card);color:var(--text-primary)}
+          .an-tabla td{vertical-align:top}
+          .an-sub{font-size:11.5px;color:var(--text-muted);margin-top:2px}
+          .an-prod{min-width:180px;max-width:280px;font-size:12.5px}
+          .an-motivo{min-width:160px;max-width:260px;font-size:12.5px;overflow-wrap:anywhere}
+          .an-como{min-width:150px;font-size:12.5px}
+          .an-badge{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:700}
+          .an-badge.tot{background:#fee2e2;color:#b91c1c}.an-badge.par{background:#fef3c7;color:#b45309}
+          .an-tabla tfoot td{border-top:2px solid var(--border);background:var(--bg-app)}
+        </style>
+        <div class="an-barra">
+          <button class="an-filtro active" data-v="todo" onclick="N360Anulaciones.filtro('todo')">Todo</button>
+          <button class="an-filtro" data-v="anuladas" onclick="N360Anulaciones.filtro('anuladas')">🚫 Solo anuladas</button>
+          <button class="an-filtro" data-v="devoluciones" onclick="N360Anulaciones.filtro('devoluciones')">↩️ Solo devoluciones</button>
+          <input class="an-buscar" type="search" placeholder="Buscar venta, cliente, producto o motivo…" oninput="N360Anulaciones.buscar(this.value)">
+          <button class="btn-secondary" onclick="N360Anulaciones.pdf()">📄 PDF</button>
+          <button class="btn-secondary" onclick="N360Anulaciones.excel()">📊 Excel</button>
+        </div>
+        <div class="an-sub" style="margin:-6px 0 12px">Período: <b id="an-periodo">—</b> · Anuladas por la fecha de la venta; devoluciones por la fecha de la devolución. Sin límite de filas.</div>
+        <div class="kpi-grid-4 fade-in" id="an-kpis"></div>
+        <div id="an-contenido"></div>
+      </div><!-- /panel-anulaciones -->
+
       <!-- =====================================================
            TAB: ALERTAS
       ===================================================== -->
@@ -2268,7 +2301,8 @@
 <script src="exportar-datos.js?v=20261008a"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>
-<script src="reportes.js?v=20261031a"></script>
+<script src="reportes.js?v=20261106a"></script>
+<script src="reportes-anulaciones.js?v=20261106a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261106b"></script>
 <script src="modulos-guard.js?v=20261105a"></script>

@@ -859,6 +859,10 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Configuración del módulo
           </button>
+          <button class="btn-secondary" id="btn-reporte-anulaciones" onclick="location.href='reportes.html?tab=anulaciones'" title="Reporte de ventas anuladas y devoluciones, con motivos y totales">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+            Anulaciones y devoluciones
+          </button>
           <button class="btn-secondary" id="btn-exportar-ventas" onclick="abrirExportarVentas()" title="Exportar ventas a Excel o PDF con filtros, subtotales y totales">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Exportar
@@ -1785,6 +1789,11 @@
           Márcalo si el dinero se le devolvió al cliente. Si NO se devolvió dinero (ej. solo fue un error al registrarla), desmárcalo para que el saldo de Caja no se toque.
         </span>
       </label>
+      <div style="text-align:left;margin-top:12px">
+        <label for="anular-motivo" style="font-size:12.5px;font-weight:600;display:block;margin-bottom:5px">¿Por qué se anula? <span style="color:var(--danger)">*</span></label>
+        <textarea id="anular-motivo" maxlength="300" rows="2" placeholder="Ej.: el cliente se arrepintió, se registró dos veces, precio equivocado…" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:10px;padding:9px 11px;font:inherit;font-size:13px;background:var(--bg-card);color:var(--text-primary);resize:vertical"></textarea>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">Queda guardado en el Reporte de anulaciones y devoluciones.</div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeModal('modal-anular')">Cancelar</button>
@@ -2090,11 +2099,11 @@
 <script src="paginar-lectura.js?v=20261029d"></script>
 <script src="cache-productos.js?v=20261106b"></script>
 <script src="iva-lineas.js?v=20261101a"></script>
-<script src="ventas.js?v=20261106b"></script>
+<script src="ventas.js?v=20261106c"></script>
 <script src="enviar-doc.js?v=20261102a"></script>
 <script src="vendedores-venta.js?v=20261102a"></script>
 <script src="exportar-modulo.js?v=20261029b"></script>
-<script src="exportar-ventas.js?v=20261106b"></script>
+<script src="exportar-ventas.js?v=20261106c"></script>
 <script src="certificados-venta.js?v=20261023i"></script>
 <script src="select-buscable.js?v=20261025e"></script>
 <script src="series-proveedor.js?v=20261031a"></script>

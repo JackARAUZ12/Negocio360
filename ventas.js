@@ -1060,12 +1060,16 @@ async function abrirDetalle(ventaId) {
    ANULAR VENTA
    ============================================================ */
 function abrirConfirmarAnular() {
+  const m = document.getElementById('anular-motivo'); if (m) m.value = '';
   openModal('modal-anular');
 }
 
 async function anularVenta() {
   const id = S.ventaDetalleId;
   if (!id) return;
+
+  const motivoAnular = (document.getElementById('anular-motivo')?.value || '').trim();
+  if (motivoAnular.length < 3) { showToast('Escribe por qué se anula la venta (queda en el reporte).', 'error'); document.getElementById('anular-motivo')?.focus(); return; }
 
   const btn = document.getElementById('btn-confirmar-anular');
   if (btn) btn.disabled = true;
@@ -1139,6 +1143,11 @@ async function anularVenta() {
     }
     const proformaRevertida = !!res?.proforma_revertida;
     const creditoCancelado  = !!res?.credito_cancelado;
+    // Motivo y quién anuló (para el Reporte de anulaciones y devoluciones). Si falla, la anulación ya quedó hecha.
+    try {
+      await sb.from('ventas').update({ anulado_motivo: motivoAnular.slice(0, 300), anulada_por: (typeof obtenerNombrePerfilActivo === 'function' ? obtenerNombrePerfilActivo() : null) || null })
+        .eq('id', id).eq('auth_user_id', S.userId);
+    } catch (eMot) { console.warn('No se guardó el motivo de la anulación:', eMot); }
 
     // La comisión del banco de esa venta (si se pagó con tarjeta) también se
     // anula cuando el dinero se devuelve en Caja: su gasto y su egreso.

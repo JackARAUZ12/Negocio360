@@ -445,6 +445,7 @@ async function loadTab(tab) {
     case 'salarios':    await loadSalariosTab(); break;
     case 'hotel':       await loadHotelTab();    break;
     case 'regalias':    await loadRegaliasTab(); break;
+    case 'anulaciones': if (window.N360Anulaciones) await N360Anulaciones.cargar(); break;
     case 'alertas':     await loadAlertas();     break;
     case 'exportar':    renderConfigExportar();  break;
   }
@@ -4305,7 +4306,8 @@ async function initReportes() {
     // Verificar si hay parámetro en URL para abrir tab específico
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('type');
-    if (tabParam) {
+    if (params.get('tab') === 'anulaciones') switchTab('anulaciones');
+    else if (tabParam) {
       const tabMap = { diario:'ejecutivo', mensual:'ejecutivo', anual:'ejecutivo', comparativo:'financiero' };
       switchTab(tabMap[tabParam]||'ejecutivo');
     }
