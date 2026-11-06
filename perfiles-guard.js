@@ -1829,7 +1829,7 @@
   try {
     if (!document.querySelector('script[src^="guia-inicio.js"]')) {
       const gi = document.createElement('script');
-      gi.src = 'guia-inicio.js?v=20261106a';
+      gi.src = 'guia-inicio.js?v=20261106b';
       gi.defer = true;
       (document.head || document.documentElement).appendChild(gi);
     }

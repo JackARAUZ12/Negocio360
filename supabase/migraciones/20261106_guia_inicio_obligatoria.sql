@@ -75,3 +75,47 @@ begin
 end $$;
 revoke all on function public.guia_inicio_estado(boolean) from public, anon;
 grant execute on function public.guia_inicio_estado(boolean) to authenticated;
+
+-- ============ (aplicado como migración guia_inicio_demo_caja) ============
+-- Demostraciones: tope de 1,000,000 en saldo inicial / ingreso de capital
+create or replace function public._demo_tope_capital() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null and public._es_cuenta_demo(new.auth_user_id) then
+    raise exception 'En la cuenta de demostración el saldo inicial máximo es 1,000,000.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_demo_tope_capital on public.movimientos_financieros;
+create trigger trg_demo_tope_capital before insert on public.movimientos_financieros
+  for each row when (new.tipo_movimiento = 'CAPITAL_AGREGADO' and new.monto > 1000000)
+  execute function public._demo_tope_capital();
+drop trigger if exists trg_demo_tope_capital on public.capital_negocio;
+create trigger trg_demo_tope_capital before insert on public.capital_negocio
+  for each row when (new.monto > 1000000)
+  execute function public._demo_tope_capital();
+
+-- Demostraciones: caja a 0 para cada visitante (no borra nada: agrega un movimiento de ajuste)
+create or replace function public.guia_demo_reiniciar_caja()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_uid uuid := auth.uid(); v_saldo numeric;
+begin
+  if v_uid is null or not public._es_cuenta_demo(v_uid) then
+    return jsonb_build_object('ok', false, 'motivo', 'no_demo');
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('mov_fin:' || v_uid::text, 0));
+  select saldo_resultante into v_saldo from movimientos_financieros
+   where auth_user_id = v_uid and estado = 'completado'
+   order by created_at desc, id desc limit 1;
+  v_saldo := round(coalesce(v_saldo, 0), 2);
+  if v_saldo = 0 then return jsonb_build_object('ok', true, 'ajuste', 0); end if;
+  insert into movimientos_financieros (auth_user_id, tipo_flujo, tipo_movimiento, concepto, monto,
+         metodo_pago_nombre, fecha, estado, origen_caja)
+  values (v_uid, case when v_saldo > 0 then 'EGRESO' else 'INGRESO' end,
+          case when v_saldo > 0 then 'RETIRO' else 'OTRO_INGRESO' end,
+          'Reinicio de caja de la demostración (nuevo visitante)', abs(v_saldo),
+          'Efectivo', (now() at time zone 'America/Managua')::date, 'completado', 'general');
+  return jsonb_build_object('ok', true, 'ajuste', v_saldo);
+end $$;
+revoke all on function public.guia_demo_reiniciar_caja() from public, anon;
+grant execute on function public.guia_demo_reiniciar_caja() to authenticated;
