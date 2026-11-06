@@ -1066,11 +1066,14 @@
   // tiempo mientras la pestaña esté abierta, para que admin.html
   // pueda mostrar "en línea" / "última conexión" por usuario.
   // ------------------------------------------------------------
-  const PG_HEARTBEAT_MS = 45000; // 45s
+  const PG_HEARTBEAT_MS = 120000; // 2 min (antes 45 s): igual de útil para "En línea", con menos consultas
 
   async function latirPresencia() {
     try {
       if (!PG.client || !PG.authUserId) return;
+      // Al cambiar de página no se vuelve a avisar si ya se avisó hace menos de 2 minutos.
+      const kLat = 'n360_latido_' + PG.authUserId;
+      try { const t = Number(sessionStorage.getItem(kLat) || 0); if (Date.now() - t < PG_HEARTBEAT_MS - 5000) return; sessionStorage.setItem(kLat, String(Date.now())); } catch (_) {}
       // Se usa una funcion RPC que calcula la hora DENTRO del propio
       // servidor (now() de Postgres) en vez de mandar la hora del
       // reloj del dispositivo -- un celular con la fecha/hora mal

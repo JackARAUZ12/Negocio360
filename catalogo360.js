@@ -66,6 +66,16 @@ function showToast(msg, type='success') {
 /* =====================================================
    COMPRESIÓN DE IMÁGENES
 ===================================================== */
+// Algunos navegadores (Safari/iPhone viejos) no saben crear WebP y en su lugar entregan un PNG pesado (1–2 MB).
+// Si pasa eso, se usa JPG; y si aún pesa mucho, se baja un poco la calidad. Así toda foto queda liviana.
+function _fotoLiviana(canvas, blob, calidad, cb) {
+  if (blob && blob.type === 'image/webp' && blob.size <= 400000) return cb(blob);
+  canvas.toBlob(j => {
+    if (!j) return cb(blob);
+    if (j.size <= 400000) return cb(blob && blob.type === 'image/webp' && blob.size < j.size ? blob : j);
+    canvas.toBlob(j2 => cb(j2 && j2.size < j.size ? j2 : j), 'image/jpeg', 0.6);
+  }, 'image/jpeg', Math.min(calidad, 0.8));
+}
 function comprimirImagen(archivo, anchoMax = 1200, calidad = 0.82) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -78,10 +88,10 @@ function comprimirImagen(archivo, anchoMax = 1200, calidad = 0.82) {
       canvas.width = w; canvas.height = h;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => {
+      canvas.toBlob(blob0 => _fotoLiviana(canvas, blob0, calidad, blob => {
         if (!blob) { reject(new Error('No se pudo comprimir la imagen')); return; }
         resolve({ blob, ancho: w, alto: h });
-      }, 'image/webp', calidad);
+      }), 'image/webp', calidad);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
     img.src = url;
@@ -89,9 +99,10 @@ function comprimirImagen(archivo, anchoMax = 1200, calidad = 0.82) {
 }
 
 async function subirImagenCatalogo(blob, carpeta) {
-  const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2,8) + '.webp';
+  const esJpg = blob && blob.type === 'image/jpeg';
+  const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2,8) + (esJpg ? '.jpg' : '.webp');
   const ruta = STATE.userId + '/' + carpeta + '/' + nombreArchivo;
-  const { error } = await sb.storage.from('catalogo360').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
+  const { error } = await sb.storage.from('catalogo360').upload(ruta, blob, { contentType: esJpg ? 'image/jpeg' : 'image/webp', upsert: false, cacheControl: '31536000' });
   if (error) throw error;
   const { data } = sb.storage.from('catalogo360').getPublicUrl(ruta);
   return { url: data.publicUrl, ruta };

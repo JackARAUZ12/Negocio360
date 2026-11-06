@@ -5287,6 +5287,17 @@ let _tipoInventarioSeleccion = 'predeterminado';
    almacenamiento). Solo se muestra el campo si la cuenta activo
    "Inventario con imagenes" en la Configuracion de Inventario.
 ============================================================ */
+
+// Algunos navegadores (Safari/iPhone viejos) no saben crear WebP y en su lugar entregan un PNG pesado (1–2 MB).
+// Si pasa eso, se usa JPG; y si aún pesa mucho, se baja un poco la calidad. Así toda foto queda liviana.
+function _fotoLiviana(canvas, blob, calidad, cb) {
+  if (blob && blob.type === 'image/webp' && blob.size <= 400000) return cb(blob);
+  canvas.toBlob(j => {
+    if (!j) return cb(blob);
+    if (j.size <= 400000) return cb(blob && blob.type === 'image/webp' && blob.size < j.size ? blob : j);
+    canvas.toBlob(j2 => cb(j2 && j2.size < j.size ? j2 : j), 'image/jpeg', 0.6);
+  }, 'image/jpeg', Math.min(calidad, 0.8));
+}
 function comprimirImagenInventario(archivo, anchoMax = 800, calidad = 0.8) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -5298,10 +5309,10 @@ function comprimirImagenInventario(archivo, anchoMax = 800, calidad = 0.8) {
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => {
+      canvas.toBlob(blob0 => _fotoLiviana(canvas, blob0, calidad, blob => {
         if (!blob) { reject(new Error('No se pudo procesar la imagen')); return; }
         resolve(blob);
-      }, 'image/webp', calidad);
+      }), 'image/webp', calidad);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
     img.src = url;
@@ -5309,9 +5320,10 @@ function comprimirImagenInventario(archivo, anchoMax = 800, calidad = 0.8) {
 }
 
 async function subirFotoInventario(blob, carpeta = 'productos') {
-  const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.webp';
+  const esJpg = blob && blob.type === 'image/jpeg';
+  const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + (esJpg ? '.jpg' : '.webp');
   const ruta = STATE.user.id + '/' + carpeta + '/' + nombreArchivo;
-  const { error } = await supabaseClient.storage.from('inventario_fotos').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
+  const { error } = await supabaseClient.storage.from('inventario_fotos').upload(ruta, blob, { contentType: esJpg ? 'image/jpeg' : 'image/webp', upsert: false, cacheControl: '31536000' });
   if (error) throw error;
   const { data } = supabaseClient.storage.from('inventario_fotos').getPublicUrl(ruta);
   return data.publicUrl;

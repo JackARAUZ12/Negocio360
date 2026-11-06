@@ -705,7 +705,7 @@ function renderTablaVentas() {
   }).join('');
 
   // Cargar preview de productos (en paralelo, sin bloquear render)
-  S.ventas.forEach(v => loadProductosPreview(v.id));
+  loadProductosPreviewLote(S.ventas.map(v => v.id));
 
   // Cargar proveedor(es) de cada venta en LOTE (una sola consulta para
   // toda la página, en vez de una por fila) para no sobrecargar la BD.
@@ -773,6 +773,35 @@ async function cargarProveedoresPreview(ventaIds) {
   }
 }
 
+// Una sola consulta para todas las ventas de la página (antes: una consulta por venta).
+// Si alguna venta no llega en el lote (muchos productos en la página), se pide sola como antes.
+async function loadProductosPreviewLote(ids) {
+  ids = (ids || []).filter(Boolean);
+  if (!ids.length) return;
+  let filas = null;
+  try {
+    const { data, error } = await sb.from('venta_detalles').select('venta_id,producto_nombre,cantidad,tipo_item')
+      .eq('auth_user_id', S.userId).in('venta_id', ids).limit(1000);
+    if (!error) filas = data || [];
+  } catch (_) { filas = null; }
+  if (!filas) { ids.forEach(id => loadProductosPreview(id)); return; }
+  const porVenta = {};
+  filas.forEach(d => { (porVenta[d.venta_id] = porVenta[d.venta_id] || []).push(d); });
+  const lleno = filas.length >= 1000;
+  ids.forEach(id => {
+    const lista = porVenta[id];
+    if (!lista && lleno) { loadProductosPreview(id); return; }
+    pintarProductosPreview(id, (lista || []).slice(0, 3));
+  });
+}
+function pintarProductosPreview(ventaId, data) {
+  const el = document.getElementById(`prod-preview-${ventaId}`);
+  if (!el) return;
+  if (!data || !data.length) { el.innerHTML = '<span style="color:var(--text-muted)">—</span>'; return; }
+  const txt = data.map(d => `${d.producto_nombre} ×${Number(d.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3, useGrouping: false })}`).join(', ');
+  el.textContent = txt;
+  el.title = txt;
+}
 async function loadProductosPreview(ventaId) {
   try {
     const { data } = await sb.from('venta_detalles').select('producto_nombre,cantidad,tipo_item')

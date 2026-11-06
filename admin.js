@@ -3674,7 +3674,7 @@ function planBadge(plan) {
 // (actualizado por el heartbeat de perfiles-guard.js cada ~45s mientras
 // el usuario tiene la app abierta). Se considera "en línea" si el último
 // latido llegó hace menos de 2 minutos.
-const CONEXION_ONLINE_MS = 2 * 60 * 1000;
+const CONEXION_ONLINE_MS = 5 * 60 * 1000;   // el aviso de conexión llega cada 2 min
 
 function conexionBadge(ultimaConexionIso) {
   if (!ultimaConexionIso) {

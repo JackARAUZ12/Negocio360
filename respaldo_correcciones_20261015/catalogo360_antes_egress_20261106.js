@@ -1,0 +1,1948 @@
+/* =====================================================
+   CATALOGO360.JS — NEGOCIO360
+   App de gestión de catálogos digitales. Reutiliza los productos ya
+   existentes de Negocio360 (opcional) o permite crear productos
+   propios de Catálogo360, con fotos comprimidas del lado del
+   navegador antes de subirlas (nunca se sube una foto sin comprimir).
+===================================================== */
+
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sbClient = sb;
+
+let STATE = {
+  userId: null, empresaConfig: {}, currentUser: {},
+  catalogos: [], limites: null,
+  catalogoActual: null,     // fila completa del catálogo que se está editando
+  productosActual: [],      // productos de ese catálogo (con sus fotos)
+  fotosSubiendo: false,
+  productosNegocio360: [],  // cache de productos reales, para "agregar desde mi inventario"
+  seleccionImportar: new Set(),
+};
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtC(n) { return 'C$' + Number(n||0).toLocaleString('es-NI', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+/* =====================================================
+   SHELL: TEMA, SIDEBAR, NAVEGACIÓN, MODALES (idéntico al resto del sistema)
+===================================================== */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('n360_theme', theme);
+  const sun = document.getElementById('icon-sun'), moon = document.getElementById('icon-moon');
+  if (sun)  sun.style.display  = theme === 'dark'  ? 'block' : 'none';
+  if (moon) moon.style.display = theme === 'light' ? 'block' : 'none';
+}
+function toggleTheme() {
+  const curr = document.documentElement.getAttribute('data-theme');
+  applyTheme(curr === 'dark' ? 'light' : 'dark');
+}
+function isMobileViewport() { return window.innerWidth <= 860; }
+function toggleSidebar() {
+  if (isMobileViewport()) {
+    document.getElementById('sidebar').classList.toggle('mobile-open');
+    document.getElementById('sidebar-overlay').classList.toggle('active');
+  } else {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    document.getElementById('main').classList.toggle('sidebar-collapsed');
+  }
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('active');
+}
+function navigate(url) { closeMobileSidebar(); window.location.href = url; }
+function openModal(id) { const el = document.getElementById(id); if (el) { el.style.display='flex'; el.classList.add('modal-open'); document.body.style.overflow='hidden'; } }
+function closeModal(id) { const el = document.getElementById(id); if (el) { el.style.display='none'; el.classList.remove('modal-open'); document.body.style.overflow=''; } }
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  if (!t) { console.log(msg); return; }
+  t.textContent = msg;
+  t.className = 'toast toast-' + (type === 'error' ? 'error' : 'success') + ' toast-show';
+  setTimeout(() => t.classList.remove('toast-show'), 3200);
+}
+
+/* =====================================================
+   COMPRESIÓN DE IMÁGENES
+===================================================== */
+function comprimirImagen(archivo, anchoMax = 1200, calidad = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(archivo);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > anchoMax) { h = Math.round(h * (anchoMax / w)); w = anchoMax; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (!blob) { reject(new Error('No se pudo comprimir la imagen')); return; }
+        resolve({ blob, ancho: w, alto: h });
+      }, 'image/webp', calidad);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+    img.src = url;
+  });
+}
+
+async function subirImagenCatalogo(blob, carpeta) {
+  const nombreArchivo = Date.now() + '_' + Math.random().toString(36).slice(2,8) + '.webp';
+  const ruta = STATE.userId + '/' + carpeta + '/' + nombreArchivo;
+  const { error } = await sb.storage.from('catalogo360').upload(ruta, blob, { contentType: 'image/webp', upsert: false });
+  if (error) throw error;
+  const { data } = sb.storage.from('catalogo360').getPublicUrl(ruta);
+  return { url: data.publicUrl, ruta };
+}
+
+/* =====================================================
+   INICIALIZACIÓN
+===================================================== */
+async function loadEmpresaConfig(userId) {
+  try {
+    const { data } = await sb.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
+    STATE.empresaConfig = data || {};
+    if (data) {
+      const bizName = data.nombre_comercial || data.nombre_negocio || 'Mi negocio';
+      const lt = document.getElementById('sidebar-logo-text'); if (lt) lt.textContent = bizName;
+    }
+  } catch (e) {}
+}
+async function loadUserProfile(userId) {
+  try {
+    const { data } = await sb.from('usuarios').select('*').eq('auth_user_id', userId).maybeSingle();
+    STATE.currentUser = data || {};
+    return data;
+  } catch (e) { return null; }
+}
+function renderUserInfo(profile, email) {
+  const name = profile?.nombre || email?.split('@')[0] || 'Usuario';
+  const hName = document.getElementById('header-name'); if (hName) hName.textContent = name;
+  const hAv = document.getElementById('header-avatar'); if (hAv) hAv.textContent = (name||'U')[0].toUpperCase();
+}
+
+// Cerrar sesión (cabecera, menú lateral y pantalla de planes): sale de la cuenta y vuelve al inicio de
+// sesión de Catálogo360. Limpia lo guardado de la sesión en esta pestaña (usuario elegido, respaldos).
+async function cerrarSesionCatalogo() {
+  if (!confirm('¿Cerrar sesión?')) return;
+  try { await sb.auth.signOut(); } catch (e) { console.warn('cerrar sesión:', e); }
+  try { ['n360_perfil_activo', 'n360_central_session_backup', 'n360_sucursal_modulos'].forEach(k => sessionStorage.removeItem(k)); } catch (_) {}
+  try { localStorage.removeItem('n360_central_session_backup_ls'); } catch (_) {}
+  window.location.href = 'catalogo360-login.html';
+}
+
+async function init() {
+  applyTheme(localStorage.getItem('n360_theme') || 'light');
+  const fechaEl = document.getElementById('header-fecha');
+  if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+
+  try {
+    const { data: { user }, error } = await sb.auth.getUser();
+    if (error || !user) { window.location.href = 'catalogo360-login.html'; return; }
+    STATE.userId = user.id;
+
+    await loadEmpresaConfig(user.id);
+    const profile = await loadUserProfile(user.id);
+    if (profile) renderUserInfo(profile, user.email);
+
+    document.getElementById('loader').classList.add('hidden');
+
+    // Bloqueo real: si esta cuenta todavia no canjeo un codigo de
+    // Catalogo360, se muestra la pantalla de planes en vez del editor
+    // -- nunca se carga ningun dato real del catalogo hasta desbloquear.
+    if (!STATE.empresaConfig?.catalogo360_desbloqueado) {
+      document.getElementById('c360-paywall').style.display = 'block';
+      return;
+    }
+
+    document.getElementById('app').style.display = 'flex';
+
+    await cargarLimitesYUso();
+    await cargarListaCatalogos();
+
+    if (!STATE.empresaConfig?.catalogo360_tutorial_visto || STATE.userId === CATALOGO360_CUENTA_SIEMPRE_DEMO) mostrarTutorial();
+  } catch (e) {
+    console.error('init catalogo360:', e);
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+  }
+}
+
+async function canjearCodigoCatalogo360() {
+  const input = document.getElementById('c360-input-codigo');
+  const msgEl = document.getElementById('c360-codigo-mensaje');
+  const btn = document.getElementById('c360-btn-canjear');
+  const codigo = (input?.value || '').trim();
+  if (!codigo) {
+    msgEl.style.display = 'block'; msgEl.style.color = '#e53e3e'; msgEl.textContent = 'Escribe un código primero';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Verificando…';
+  msgEl.style.display = 'none';
+  try {
+    const { data, error } = await sb.rpc('catalogo360_canjear_codigo', { p_codigo: codigo });
+    if (error) throw error;
+    if (data?.ok) {
+      msgEl.style.display = 'block'; msgEl.style.color = '#22c55e'; msgEl.textContent = data.mensaje;
+      setTimeout(() => window.location.reload(), 900);
+    } else {
+      msgEl.style.display = 'block'; msgEl.style.color = '#e53e3e'; msgEl.textContent = data?.mensaje || 'Código no válido';
+      btn.disabled = false; btn.textContent = 'Activar';
+    }
+  } catch (e) {
+    msgEl.style.display = 'block'; msgEl.style.color = '#e53e3e'; msgEl.textContent = 'No se pudo verificar el código, intenta de nuevo';
+    btn.disabled = false; btn.textContent = 'Activar';
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  init();
+  if (window.lucide) lucide.createIcons();
+  const btnCanjear = document.getElementById('c360-btn-canjear');
+  if (btnCanjear) btnCanjear.addEventListener('click', canjearCodigoCatalogo360);
+  const inputCodigo = document.getElementById('c360-input-codigo');
+  if (inputCodigo) inputCodigo.addEventListener('keydown', (e) => { if (e.key === 'Enter') canjearCodigoCatalogo360(); });
+});
+
+/* =====================================================
+   LÍMITES Y USO
+===================================================== */
+async function cargarLimitesYUso() {
+  try {
+    const { data: limites } = await sb.rpc('catalogo_obtener_limites', { p_auth_user_id: STATE.userId });
+    STATE.limites = limites?.[0] || { plan_key:'basico', catalogos_max:1, productos_por_catalogo_max:100, fotos_por_producto_max:3 };
+  } catch (e) {
+    STATE.limites = { plan_key:'basico', catalogos_max:1, productos_por_catalogo_max:100, fotos_por_producto_max:3 };
+  }
+  try {
+    const { data: plan } = await sb.from('catalogo_planes').select('nombre, precio_mensual').eq('plan_key', STATE.limites.plan_key).maybeSingle();
+    STATE.limites.nombre_plan = plan?.nombre || STATE.limites.plan_key;
+    STATE.limites.precio_mensual = plan?.precio_mensual || 0;
+  } catch (e) { STATE.limites.nombre_plan = STATE.limites.plan_key; STATE.limites.precio_mensual = 0; }
+}
+
+/* =====================================================
+   DASHBOARD PRINCIPAL
+===================================================== */
+async function cargarListaCatalogos() {
+  try {
+    const { data } = await sb.from('catalogos').select('*').eq('auth_user_id', STATE.userId).order('created_at', { ascending:false });
+    STATE.catalogos = data || [];
+  } catch (e) { STATE.catalogos = []; }
+
+  const nombreNegocio = STATE.empresaConfig?.nombre_comercial || STATE.empresaConfig?.nombre_negocio || STATE.currentUser?.nombre || '';
+  const saludoEl = document.getElementById('c360-saludo');
+  if (saludoEl && nombreNegocio) saludoEl.textContent = `¡Bienvenido, ${nombreNegocio}! 👋`;
+
+  const idsC = STATE.catalogos.map(c => c.id);
+  let productosTotal = 0, fotosTotal = 0, todosLosProductos = [];
+  if (idsC.length) {
+    const { data: productos } = await sb.from('catalogo_productos').select('id, catalogo_id, nombre, precio, categoria, activo, created_at').in('catalogo_id', idsC).order('created_at', { ascending:false });
+    todosLosProductos = productos || [];
+    productosTotal = todosLosProductos.length;
+    const idsProd = todosLosProductos.map(p => p.id);
+    if (idsProd.length) {
+      const { count } = await sb.from('catalogo_producto_fotos').select('id', { count:'exact', head:true }).in('catalogo_producto_id', idsProd);
+      fotosTotal = count || 0;
+    }
+  }
+
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+  let visitasMes = 0;
+  let visitasPorCatalogo = {};
+  try {
+    const { data: resumen } = await sb.rpc('catalogo_resumen_eventos', { p_auth_user_id: STATE.userId, p_desde: inicioMes.toISOString() });
+    visitasMes = (resumen || []).find(r => r.tipo_evento === 'visita')?.total || 0;
+    const { data: visitasCat } = await sb.rpc('catalogo_visitas_por_catalogo', { p_auth_user_id: STATE.userId });
+    (visitasCat || []).forEach(v => { visitasPorCatalogo[v.catalogo_id] = v.visitas; });
+  } catch (e) {}
+
+  const publicados = STATE.catalogos.filter(c => c.estado === 'publicado').length;
+  const borradores = STATE.catalogos.length - publicados;
+
+  renderKpis({ productosTotal, fotosTotal, visitasMes, publicados, borradores });
+  renderPlanYUso(productosTotal, fotosTotal);
+  renderCatalogosCards(visitasPorCatalogo);
+  renderProductosRecientes(todosLosProductos.slice(0, 5));
+  renderActividadReciente(todosLosProductos);
+
+  const btnCrear = document.getElementById('c360-btn-crear');
+  if (btnCrear) btnCrear.disabled = STATE.catalogos.length >= STATE.limites.catalogos_max;
+}
+
+function renderKpis({ productosTotal, fotosTotal, visitasMes, publicados, borradores }) {
+  const L = STATE.limites;
+  const promedioProd = STATE.catalogos.length ? Math.round(productosTotal / STATE.catalogos.length) : 0;
+  const promedioFotos = productosTotal ? (fotosTotal / productosTotal).toFixed(1) : '0.0';
+  const kpis = [
+    { icono:'📁', color:'#a855f7', valor:`${STATE.catalogos.length} / ${L.catalogos_max}`, label:'Catálogos',
+      sub: STATE.catalogos.length >= L.catalogos_max ? 'Límite alcanzado' : `${L.catalogos_max - STATE.catalogos.length} disponible(s)` },
+    { icono:'📦', color:'#10b981', valor:`${productosTotal} / ${STATE.catalogos.length * L.productos_por_catalogo_max}`, label:'Productos totales',
+      sub: `${promedioProd} por catálogo (promedio)` },
+    { icono:'🖼', color:'#3b82f6', valor:`${fotosTotal}`, label:'Fotos subidas',
+      sub: `Promedio: ${promedioFotos} por producto` },
+    { icono:'👁', color:'#f59e0b', valor:`${visitasMes}`, label:'Visitas este mes',
+      sub: visitasMes ? 'Total registrado' : 'Aún sin visitas' },
+    { icono:'📈', color:'#ec4899', valor:`${publicados}`, label:'Catálogos publicados',
+      sub: borradores ? `${borradores} en borrador` : 'Todos publicados' },
+  ];
+  document.getElementById('c360-kpis').innerHTML = kpis.map(k => `
+    <div class="c360-kpi-card">
+      <div class="c360-kpi-icono" style="background:${k.color}22;color:${k.color}">${k.icono}</div>
+      <div class="c360-kpi-valor">${k.valor}</div>
+      <div class="c360-kpi-label">${k.label}</div>
+      <div class="c360-kpi-sub">${k.sub}</div>
+    </div>
+  `).join('');
+}
+
+function renderPlanYUso(productosTotal, fotosTotal) {
+  const L = STATE.limites;
+  document.getElementById('c360-plan-nombre').textContent = L.nombre_plan;
+  document.getElementById('c360-plan-precio').textContent = L.precio_mensual > 0 ? `$${L.precio_mensual}/mes` : 'Gratis';
+
+  const features = [
+    `${L.catalogos_max} catálogo${L.catalogos_max===1?'':'s'} incluido${L.catalogos_max===1?'':'s'}`,
+    `${L.productos_por_catalogo_max} productos por catálogo`,
+    `${L.fotos_por_producto_max} fotos por producto`,
+  ];
+  document.getElementById('c360-plan-features').innerHTML = features.map(f => `<div>✓ ${esc(f)}</div>`).join('');
+
+  const promedioFotosPorProducto = productosTotal ? Math.round(fotosTotal / productosTotal) : 0;
+  const barras = [
+    { label:'Catálogos', actual: STATE.catalogos.length, max: L.catalogos_max },
+    { label:'Productos por catálogo (promedio)', actual: STATE.catalogos.length ? Math.round(productosTotal/STATE.catalogos.length) : 0, max: L.productos_por_catalogo_max },
+    { label:'Fotos por producto (promedio)', actual: promedioFotosPorProducto, max: L.fotos_por_producto_max },
+  ];
+  document.getElementById('c360-barras-uso').innerHTML = barras.map(b => {
+    const pct = Math.min(100, Math.round((b.actual / (b.max||1)) * 100));
+    return `<div>
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span>${esc(b.label)}</span><span style="font-weight:700">${b.actual} de ${b.max}</span></div>
+      <div class="c360-barra-uso-track"><div class="c360-barra-uso-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderCatalogosCards(visitasPorCatalogo) {
+  const onboarding = document.getElementById('c360-onboarding');
+  const grid = document.getElementById('c360-grid-catalogos');
+  if (!STATE.catalogos.length) { onboarding.style.display = 'block'; grid.innerHTML = ''; return; }
+  onboarding.style.display = 'none';
+  grid.innerHTML = STATE.catalogos.map(c => `
+    <div class="c360-mini-card-catalogo" onclick="abrirEditorCatalogo('${c.id}')">
+      ${c.logo_url ? `<img src="${esc(c.logo_url)}">` : `<div style="height:90px;background:linear-gradient(135deg,var(--accent),${c.color_acento||'#6366f1'});display:flex;align-items:center;justify-content:center;font-size:26px">📇</div>`}
+      <span class="c360-badge ${c.estado}" style="position:absolute;top:8px;left:8px">${c.estado === 'publicado' ? 'PUBLICADO' : c.estado === 'pausado' ? 'PAUSADO' : 'BORRADOR'}</span>
+      <span style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px">👁 ${visitasPorCatalogo[c.id] || 0}</span>
+      <div style="padding:10px 12px;background:var(--bg-surface)">
+        <div style="font-weight:700;font-size:13.5px">${esc(c.nombre)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${tiempoRelativo(c.updated_at)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function tiempoRelativo(fechaISO) {
+  if (!fechaISO) return '';
+  const diffMs = Date.now() - new Date(fechaISO).getTime();
+  const horas = Math.floor(diffMs / 3600000);
+  if (horas < 1) return 'Hace instantes';
+  if (horas < 24) return `Actualizado hace ${horas} hora${horas===1?'':'s'}`;
+  const dias = Math.floor(horas / 24);
+  return `Actualizado hace ${dias} día${dias===1?'':'s'}`;
+}
+
+function renderProductosRecientes(productos) {
+  const cont = document.getElementById('c360-productos-recientes');
+  if (!productos.length) { cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px">Todavía no has agregado productos.</p>`; return; }
+  cont.innerHTML = productos.map(p => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="width:40px;height:40px;border-radius:8px;background:var(--bg-base);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📦</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nombre)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${esc(p.categoria || 'Sin categoría')}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:700;font-size:13px;color:var(--accent)">${fmtC(p.precio)}</div>
+        <div style="font-size:10.5px;color:${p.activo?'var(--success)':'var(--text-muted)'}">${p.activo?'Activo':'Inactivo'}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderActividadReciente(todosLosProductos) {
+  const eventos = [];
+  STATE.catalogos.forEach(c => {
+    eventos.push({ icono: c.estado==='publicado'?'✅':'📁', texto: c.estado==='publicado' ? `${c.nombre} fue publicado` : `${c.nombre} creado`, fecha: c.estado==='publicado' && c.published_at ? c.published_at : c.created_at });
+  });
+  todosLosProductos.slice(0, 5).forEach(p => {
+    eventos.push({ icono:'➕', texto: `Nuevo producto agregado "${p.nombre}"`, fecha: p.created_at });
+  });
+  eventos.sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+  const cont = document.getElementById('c360-actividad-reciente');
+  if (!eventos.length) { cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px">Sin actividad todavía.</p>`; return; }
+  cont.innerHTML = eventos.slice(0, 6).map(e => `
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <div style="width:26px;height:26px;border-radius:50%;background:var(--bg-base);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${e.icono}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;line-height:1.35">${esc(e.texto)}</div>
+        <div style="font-size:10.5px;color:var(--text-muted)">${tiempoRelativo(e.fecha)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function accionRapida(tipo) {
+  if (!STATE.catalogos.length) { showToast('Primero crea un catálogo', 'error'); return; }
+  const catalogoObjetivo = STATE.catalogos[0];
+  if (tipo === 'producto') { abrirEditorCatalogo(catalogoObjetivo.id).then(() => { cambiarTabEditor('productos'); abrirModalProductoCatalogo(); }); }
+  else if (tipo === 'fotos') { abrirEditorCatalogo(catalogoObjetivo.id).then(() => cambiarTabEditor('productos')); }
+  else if (tipo === 'ver') {
+    const archivo = archivoDePlantilla(catalogoObjetivo.plantilla);
+    if (catalogoObjetivo.slug_publico && catalogoObjetivo.estado === 'publicado') window.open(`${archivo}?c=${catalogoObjetivo.slug_publico}`, '_blank');
+    else window.open(`${archivo}?preview=${catalogoObjetivo.id}`, '_blank');
+  }
+  else if (tipo === 'compartir') {
+    if (catalogoObjetivo.slug_publico) { navigator.clipboard?.writeText(`${window.location.origin}/${archivoDePlantilla(catalogoObjetivo.plantilla)}?c=${catalogoObjetivo.slug_publico}`); showToast('🔗 Enlace copiado'); }
+    else showToast('Publica el catálogo primero para poder compartirlo', 'error');
+  }
+}
+
+function abrirModalCrearCatalogo() {
+  if (STATE.catalogos.length >= STATE.limites.catalogos_max) {
+    showToast(`Tu plan permite hasta ${STATE.limites.catalogos_max} catálogo(s). Mejora tu plan para crear más.`, 'error');
+    return;
+  }
+  document.getElementById('cc-nombre').value = '';
+  document.getElementById('cc-error').textContent = '';
+  openModal('modal-crear-catalogo');
+}
+
+async function crearCatalogo() {
+  const nombre = document.getElementById('cc-nombre').value.trim();
+  const errEl = document.getElementById('cc-error');
+  if (!nombre) { errEl.textContent = 'Escribe un nombre para tu catálogo.'; return; }
+  errEl.textContent = '';
+  try {
+    const { data, error } = await sb.from('catalogos').insert({ auth_user_id: STATE.userId, nombre }).select().single();
+    if (error) throw error;
+    closeModal('modal-crear-catalogo');
+    showToast('✅ Catálogo creado');
+    await cargarListaCatalogos();
+    abrirEditorCatalogo(data.id);
+  } catch (e) {
+    errEl.textContent = e.message?.includes('row-level security') ? 'Alcanzaste el límite de catálogos de tu plan.' : 'No se pudo crear el catálogo, intenta de nuevo.';
+  }
+}
+
+function volverAListaCatalogos() {
+  document.getElementById('c360-vista-editor').style.display = 'none';
+  document.getElementById('c360-vista-lista').style.display = 'block';
+  STATE.catalogoActual = null;
+  cargarListaCatalogos();
+}
+
+/* =====================================================
+   EDITOR DE UN CATÁLOGO
+===================================================== */
+async function abrirEditorCatalogo(id) {
+  const { data, error } = await sb.from('catalogos').select('*').eq('id', id).eq('auth_user_id', STATE.userId).maybeSingle();
+  if (error || !data) { showToast('No se pudo abrir el catálogo', 'error'); return; }
+  STATE.catalogoActual = data;
+
+  document.getElementById('c360-vista-lista').style.display = 'none';
+  document.getElementById('c360-vista-editor').style.display = 'block';
+  document.getElementById('c360-editor-titulo').textContent = data.nombre;
+
+  renderEstadoPublicacion();
+  cargarTabInfo();
+  cargarTabApariencia();
+  cambiarTabEditor('info');
+  await cargarTabCategorias();
+  await cargarTabProductos();
+  renderChecklistCatalogo();
+}
+
+/* ---------- CHECKLIST DE PRIMEROS PASOS ---------- */
+function claveChecklistOculto() { return `c360_checklist_oculto_${STATE.catalogoActual?.id}`; }
+function claveCompartido() { return `c360_compartido_${STATE.catalogoActual?.id}`; }
+function marcarCatalogoComoCompartido() {
+  if (!STATE.catalogoActual) return;
+  localStorage.setItem(claveCompartido(), '1');
+  renderChecklistCatalogo();
+}
+function ocultarChecklistCatalogo() {
+  localStorage.setItem(claveChecklistOculto(), '1');
+  document.getElementById('c360-checklist').style.display = 'none';
+}
+function renderChecklistCatalogo() {
+  const cont = document.getElementById('c360-checklist');
+  if (!cont || !STATE.catalogoActual) return;
+  if (localStorage.getItem(claveChecklistOculto())) { cont.style.display = 'none'; return; }
+
+  const c = STATE.catalogoActual;
+  const items = [
+    { hecho: !!(c.nombre_comercial && c.whatsapp), texto: 'Configura el nombre y WhatsApp de tu negocio', tab: 'info' },
+    { hecho: (STATE.productosActual || []).length > 0, texto: 'Agrega tu primer producto', tab: 'productos' },
+    { hecho: c.estado === 'publicado', texto: 'Publica tu catálogo', tab: 'apariencia' },
+    { hecho: !!localStorage.getItem(claveCompartido()), texto: 'Comparte el enlace con tu primer cliente', tab: 'info' },
+  ];
+  const completados = items.filter(i => i.hecho).length;
+
+  if (completados === items.length) { cont.style.display = 'none'; return; }
+
+  cont.style.display = 'block';
+  document.getElementById('c360-checklist-sub').textContent = `${completados} de ${items.length} completados -- ya casi tienes tu catálogo listo`;
+  document.getElementById('c360-checklist-items').innerHTML = items.map((it, i) => `
+    <div class="c360-check-fila ${it.hecho ? 'hecho' : ''}" ${it.hecho ? '' : `onclick="cambiarTabEditor('${it.tab}')" style="cursor:pointer"`}>
+      <div class="c360-check-circulo">${it.hecho ? '✓' : ''}</div>
+      <span class="c360-check-texto">${it.texto}</span>
+    </div>
+  `).join('');
+}
+
+function renderEstadoPublicacion() {
+  const c = STATE.catalogoActual;
+  const estadoTexto = document.getElementById('c360-editor-estado-texto');
+  const panel = document.getElementById('c360-panel-publicado');
+  const btnPublicar = document.getElementById('c360-btn-publicar');
+  const btnPausar = document.getElementById('c360-btn-pausar');
+
+  if (c.estado === 'publicado' && c.slug_publico) {
+    estadoTexto.textContent = 'Publicado y visible al público.';
+    panel.style.display = 'block';
+    const url = `${window.location.origin}/${archivoDePlantilla(c.plantilla)}?c=${c.slug_publico}`;
+    document.getElementById('c360-url-publica').textContent = url;
+    btnPublicar.textContent = '🔄 Actualizar publicación';
+    btnPausar.style.display = '';
+    btnPausar.textContent = '⏸ Desactivar';
+  } else if (c.estado === 'pausado' && c.slug_publico) {
+    estadoTexto.textContent = 'Desactivado — el enlace no muestra el catálogo hasta que lo reactives.';
+    panel.style.display = 'none';
+    btnPublicar.textContent = '🚀 Publicar';
+    btnPausar.style.display = '';
+    btnPausar.textContent = '▶ Reactivar';
+  } else {
+    estadoTexto.textContent = 'Todavía en borrador — nadie más puede verlo hasta que lo publiques.';
+    panel.style.display = 'none';
+    btnPublicar.textContent = '🚀 Publicar';
+    btnPausar.style.display = 'none';
+  }
+}
+
+async function togglePausarCatalogo() {
+  const c = STATE.catalogoActual;
+  const nuevoEstado = c.estado === 'publicado' ? 'pausado' : 'publicado';
+  try {
+    const { error } = await sb.from('catalogos').update({ estado: nuevoEstado, updated_at: new Date().toISOString() }).eq('id', c.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    c.estado = nuevoEstado;
+    renderEstadoPublicacion();
+    showToast(nuevoEstado === 'pausado' ? '⏸ Catálogo desactivado' : '✅ Catálogo reactivado');
+  } catch (e) {
+    console.error('togglePausarCatalogo:', e);
+    showToast('No se pudo cambiar el estado: ' + (e.message || 'intenta de nuevo'), 'error');
+  }
+}
+
+function abrirEliminarCatalogo() {
+  const c = STATE.catalogoActual;
+  document.getElementById('ec-nombre-catalogo').textContent = c.nombre;
+  document.getElementById('ec-aviso-publicado').style.display = (c.estado === 'publicado') ? 'block' : 'none';
+  document.getElementById('ec-conteo-productos').textContent = `Este catálogo tiene ${STATE.productosActual.length} producto${STATE.productosActual.length===1?'':'s'} — se eliminarán junto con el catálogo.`;
+  document.getElementById('ec-error').textContent = '';
+  openModal('modal-eliminar-catalogo');
+}
+
+function rutaDesdeUrlStorage(url) {
+  if (!url) return null;
+  const marcador = '/catalogo360/';
+  const idx = url.indexOf(marcador);
+  return idx === -1 ? null : url.slice(idx + marcador.length);
+}
+
+async function confirmarEliminarCatalogo() {
+  const c = STATE.catalogoActual;
+  const errEl = document.getElementById('ec-error');
+  const btn = document.getElementById('btn-confirmar-eliminar-catalogo');
+  errEl.textContent = '';
+  btn.disabled = true; const textoOriginalBtn = btn.textContent; btn.textContent = 'Eliminando…';
+  try {
+    const idsProductos = STATE.productosActual.map(p => p.id);
+    let rutas = [];
+    if (idsProductos.length) {
+      const { data: fotos } = await sb.from('catalogo_producto_fotos').select('storage_path').in('catalogo_producto_id', idsProductos);
+      rutas = (fotos || []).map(f => f.storage_path).filter(Boolean);
+    }
+    const rutaLogo = rutaDesdeUrlStorage(c.logo_url);
+    const rutaBanner = rutaDesdeUrlStorage(c.banner_url);
+    if (rutaLogo) rutas.push(rutaLogo);
+    if (rutaBanner) rutas.push(rutaBanner);
+
+    const { error } = await sb.from('catalogos').delete().eq('id', c.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+
+    if (rutas.length) {
+      try { await sb.storage.from('catalogo360').remove(rutas); }
+      catch (eStorage) { console.warn('No se pudieron borrar todos los archivos de Storage (best-effort):', eStorage); }
+    }
+
+    closeModal('modal-eliminar-catalogo');
+    showToast('Catálogo eliminado');
+    volverAListaCatalogos();
+  } catch (e) {
+    console.error('confirmarEliminarCatalogo:', e);
+    errEl.textContent = 'Error al eliminar: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    btn.disabled = false; btn.textContent = textoOriginalBtn;
+  }
+}
+
+function cambiarTabEditor(tab) {
+  document.querySelectorAll('.c360-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  ['info','categorias','productos','apariencia','estadisticas','catalogos-pdf'].forEach(t => {
+    document.getElementById(`c360-tab-${t}`).style.display = t === tab ? 'block' : 'none';
+  });
+  if (tab === 'estadisticas') cargarEstadisticasCatalogo();
+  if (tab === 'catalogos-pdf') renderPlantillasPDF();
+  mostrarCoachMarkSiAplica(tab);
+}
+
+/* ---------- COACH MARKS CONTEXTUALES POR PESTAÑA ---------- */
+const COACH_MARKS_CATALOGO360 = {
+  categorias: { elId: 'c360-btn-nueva-categoria', texto: 'Crea categorías para organizar tus productos -- tus clientes podrán filtrar por categoría en el catálogo público.' },
+  productos: { elId: 'c360-btn-nuevo-producto', texto: 'Aquí agregas cada producto -- nombre, precio, fotos, y si quieres marcarlo como destacado.' },
+  apariencia: { elId: 'c360-a-plantillas', texto: 'Elige el diseño con el que tus clientes verán tu catálogo. Tus productos se acomodan solos en cualquiera que elijas.' },
+};
+function claveCoachVisto(tab) { return `c360_coach_${tab}_visto`; }
+function mostrarCoachMarkSiAplica(tab) {
+  const cfg = COACH_MARKS_CATALOGO360[tab];
+  if (!cfg) return;
+  if (localStorage.getItem(claveCoachVisto(tab))) return;
+  const target = document.getElementById(cfg.elId);
+  if (!target) return;
+  setTimeout(() => {
+    const rect = target.getBoundingClientRect();
+    const coach = document.getElementById('c360-coach');
+    document.getElementById('c360-coach-texto').textContent = cfg.texto;
+    coach.style.top = `${window.scrollY + rect.bottom + 10}px`;
+    coach.style.left = `${Math.max(12, window.scrollX + rect.left)}px`;
+    coach.style.display = 'block';
+    coach.dataset.tabActual = tab;
+  }, 200); // pequena espera para que la pestaña ya este visible y medible
+}
+function cerrarCoachMark() {
+  const coach = document.getElementById('c360-coach');
+  const tab = coach.dataset.tabActual;
+  if (tab) localStorage.setItem(claveCoachVisto(tab), '1');
+  coach.style.display = 'none';
+}
+
+/* ---------- TAB: ESTADÍSTICAS ---------- */
+let CHART_ESTADISTICAS_CATALOGO = null;
+
+async function cargarEstadisticasCatalogo() {
+  const catalogo = STATE.catalogoActual;
+  if (!catalogo) return;
+
+  const dias = Number(document.getElementById('c360-e-rango').value);
+  let query = sb.from('catalogo_eventos').select('tipo_evento, catalogo_producto_id, created_at').eq('catalogo_id', catalogo.id);
+  if (dias > 0) {
+    const desde = new Date(); desde.setDate(desde.getDate() - dias);
+    query = query.gte('created_at', desde.toISOString());
+  }
+  const { data, error } = await query;
+  const eventos = error ? [] : (data || []);
+
+  const vacio = document.getElementById('c360-e-vacio');
+  const contenido = document.getElementById('c360-e-contenido');
+  if (!eventos.length) { vacio.style.display = 'block'; contenido.style.display = 'none'; return; }
+  vacio.style.display = 'none'; contenido.style.display = 'block';
+
+  const visitas = eventos.filter(e => e.tipo_evento === 'visita');
+  const whatsapp = eventos.filter(e => e.tipo_evento === 'click_whatsapp');
+  const vistasProducto = eventos.filter(e => e.tipo_evento === 'vista_producto');
+
+  document.getElementById('c360-e-visitas').textContent = visitas.length;
+  document.getElementById('c360-e-whatsapp').textContent = whatsapp.length;
+  document.getElementById('c360-e-vistas-producto').textContent = vistasProducto.length;
+  document.getElementById('c360-e-conversion').textContent = visitas.length ? `${Math.round((whatsapp.length / visitas.length) * 100)}%` : '—';
+
+  // Visitas por día (siempre los últimos N días reales del rango, aunque algún día tenga 0)
+  const porDia = {};
+  const diasAMostrar = dias > 0 ? dias : 30;
+  const hoy = new Date();
+  for (let i = diasAMostrar - 1; i >= 0; i--) {
+    const d = new Date(hoy); d.setDate(d.getDate() - i);
+    porDia[d.toISOString().slice(0, 10)] = 0;
+  }
+  visitas.forEach(v => {
+    const clave = v.created_at.slice(0, 10);
+    if (clave in porDia) porDia[clave]++;
+  });
+  const etiquetas = Object.keys(porDia).map(f => new Date(f + 'T12:00:00').toLocaleDateString('es-NI', { day: 'numeric', month: 'short' }));
+  const valores = Object.values(porDia);
+
+  const ctx = document.getElementById('c360-e-grafico').getContext('2d');
+  if (CHART_ESTADISTICAS_CATALOGO) CHART_ESTADISTICAS_CATALOGO.destroy();
+  CHART_ESTADISTICAS_CATALOGO = new Chart(ctx, {
+    type: 'line',
+    data: { labels: etiquetas, datasets: [{ label: 'Visitas', data: valores, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.12)', fill: true, tension: .3, pointRadius: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+
+  // Top productos por vistas
+  const conteoPorProducto = {};
+  vistasProducto.forEach(v => { if (v.catalogo_producto_id) conteoPorProducto[v.catalogo_producto_id] = (conteoPorProducto[v.catalogo_producto_id] || 0) + 1; });
+  const top = Object.entries(conteoPorProducto).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const contTop = document.getElementById('c360-e-top-productos');
+  if (!top.length) {
+    contTop.innerHTML = `<p style="font-size:12px;color:var(--text-muted)">Todavía no hay vistas de producto en este período.</p>`;
+  } else {
+    const maxConteo = top[0][1];
+    contTop.innerHTML = top.map(([id, conteo]) => {
+      const prod = (STATE.productosActual || []).find(p => p.id === id);
+      const nombre = prod ? prod.nombre : 'Producto eliminado';
+      const pct = Math.round((conteo / maxConteo) * 100);
+      return `
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px">
+            <span>${esc(nombre)}</span>
+            <span style="color:var(--text-muted)">${conteo} vista${conteo===1?'':'s'}</span>
+          </div>
+          <div style="height:6px;border-radius:99px;background:var(--bg-base)"><div style="height:100%;width:${pct}%;border-radius:99px;background:var(--accent)"></div></div>
+        </div>`;
+    }).join('');
+  }
+}
+
+function cargarTabInfo() {
+  const c = STATE.catalogoActual;
+  document.getElementById('c360-i-nombre-comercial').value = c.nombre_comercial || '';
+  document.getElementById('c360-i-descripcion').value = c.descripcion || '';
+  document.getElementById('c360-i-whatsapp').value = c.whatsapp || '';
+  document.getElementById('c360-i-telefono').value = c.telefono || '';
+  document.getElementById('c360-i-email').value = c.email || '';
+  document.getElementById('c360-i-ubicacion').value = c.ubicacion || '';
+  const logoImg = document.getElementById('c360-i-logo-preview');
+  if (c.logo_url) { logoImg.src = c.logo_url; logoImg.style.display = 'block'; } else { logoImg.style.display = 'none'; }
+}
+
+async function subirLogoCatalogo(archivo) {
+  if (!archivo) return;
+  showToast('Subiendo logo…');
+  try {
+    const { blob } = await comprimirImagen(archivo, 400, 0.85);
+    const { url } = await subirImagenCatalogo(blob, 'logo');
+    const { error } = await sb.from('catalogos').update({ logo_url: url, updated_at: new Date().toISOString() }).eq('id', STATE.catalogoActual.id);
+    if (error) throw error;
+    STATE.catalogoActual.logo_url = url;
+    const logoImg = document.getElementById('c360-i-logo-preview');
+    logoImg.src = url; logoImg.style.display = 'block';
+    showToast('✅ Logo actualizado');
+  } catch (e) {
+    console.error('subirLogoCatalogo:', e);
+    showToast('No se pudo subir el logo', 'error');
+  }
+}
+
+
+async function guardarInfoCatalogo() {
+  const payload = {
+    nombre_comercial: document.getElementById('c360-i-nombre-comercial').value.trim() || null,
+    descripcion: document.getElementById('c360-i-descripcion').value.trim() || null,
+    whatsapp: document.getElementById('c360-i-whatsapp').value.trim() || null,
+    telefono: document.getElementById('c360-i-telefono').value.trim() || null,
+    email: document.getElementById('c360-i-email').value.trim() || null,
+    ubicacion: document.getElementById('c360-i-ubicacion').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+  try {
+    const { error } = await sb.from('catalogos').update(payload).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    Object.assign(STATE.catalogoActual, payload);
+    showToast('✅ Información guardada');
+    renderChecklistCatalogo();
+  } catch (e) {
+    console.error('guardarInfoCatalogo:', e);
+    showToast('No se pudo guardar: ' + (e.message || 'intenta de nuevo'), 'error');
+  }
+}
+
+/* ---------- TAB: APARIENCIA ---------- */
+const PALETAS_CATALOGO360 = [
+  { nombre: 'Índigo',       color: '#6366f1' },
+  { nombre: 'Esmeralda',    color: '#10b981' },
+  { nombre: 'Rosa',         color: '#ec4899' },
+  { nombre: 'Ámbar',        color: '#f59e0b' },
+  { nombre: 'Coral',        color: '#ef4444' },
+  { nombre: 'Azul océano',  color: '#3b82f6' },
+  { nombre: 'Púrpura',      color: '#a855f7' },
+  { nombre: 'Grafito',      color: '#475569' },
+];
+
+const PLANTILLAS_CATALOGO360 = [
+  { key:'profesional', nombre:'Boutique', icono:'💎', desc:'Oscura, editorial, con vitrina de producto destacado.', disponible:true, archivo:'c360.html' },
+  { key:'plantilla2', nombre:'Vibrante', icono:'✨', desc:'Clara, colorida, con degradados y burbujas animadas.', disponible:true, archivo:'c360-vibrante.html' },
+  { key:'navidad', nombre:'Navidad', icono:'🎄', desc:'Cálida y editorial -- vino, verde pino, crema y dorado.', disponible:true, archivo:'c360-navidad.html' },
+  { key:'navidad2', nombre:'Navidad Premium', icono:'🎅', desc:'Elegante y festiva -- rojo intenso, verde bosque, dorado y detalles nevados.', disponible:true, archivo:'c360-navidad2.html' },
+   { key:'navidadroja', nombre:'Navidad Roja', icono:'🎁', desc:'Ultra navideña con rojo profundo, efectos de nieve y transiciones cinematográficas.', disponible:true, archivo:'c360-navidad3.html' },
+  { key:'valentin', nombre:'San Valentín', icono:'❤️', desc:'Romántica y sofisticada -- borgoña, rosa empolvado, crema y dorado.', disponible:true, archivo:'c360-valentin.html' },
+  { key:'halloween', nombre:'Halloween', icono:'🎃', desc:'Misteriosa y oscura -- púrpura profundo, naranja vibrante y detalles espeluznantes.', disponible:true, archivo:'c360-halloween.html' },
+  { key:'backtoschool', nombre:'Back to School', icono:'🎒', desc:'Editorial y comercial, energía de temporada sin caer en lo infantil.', disponible:true, archivo:'c360-backtoschool.html' },
+  { key: 'verano', nombre: 'Verano', icono: '☀️', desc: 'Fresca, luminosa y editorial — perfecta para colecciones de temporada.', disponible: true, archivo: 'c360-verano.html' },
+  { key:'veranocoastal', nombre:'Verano Coastal', icono:'🌊', desc:'Inmersiva con scroll progresivo de playa a profundidad submarina -- arena, olas, vida marina.', disponible:true, archivo:'c360-verano2.html' },
+  { key:'Lujo y estilo', nombre:'Lujo y estilo', icono:'🤵', desc:'Totalmente de lujo, para tus clientes mas sofisticados', disponible:true, archivo:'c360-luxury.html' },
+  { key:'Cafeteria', nombre:'Cafeteria', icono:'☕', desc:'Es hora de tomar un café, ofrecelo de manera profesional a tus clientes', disponible:true, archivo:'c360-cafeteria.html' },
+  { key:'Restaurante', nombre:'Restaurante', icono:'🍽️', desc:'Es hora de comer, ofrecelo de manera profesional a tus clientes', disponible:true, archivo:'c360-restaurant.html' },
+  { key:'blackfriday', nombre:'Black Friday', icono:'🏷️', desc:'Agresiva y llamativa -- negro, amarillo neón y rojo, cuenta regresiva, ruleta de ofertas y bolsa de pedido por WhatsApp.', disponible:true, archivo:'c360-blackfriday.html' },
+  { key:'purisima', nombre:'La Purísima', icono:'🕯️', desc:'Noche de Gritería -- celeste, blanco y oro, pólvora animada, altares con luces y botón "¡Gritá!" con gorra sorpresa.', disponible:true, archivo:'c360-purisima.html' },
+  { key:'madres', nombre:'Día de las Madres', icono:'💐', desc:'Una carta para mamá -- papel, flores que se dibujan solas, polaroids, regalos por presupuesto y dedicatoria que viaja con el pedido.', disponible:true, archivo:'c360-madres.html' },
+  { key:'showroom', nombre:'Showroom', icono:'🎬', desc:'Experiencia inmersiva de gran marca -- anillo 3D, escenas a pantalla completa que se cuentan con el scroll, comparador y tu color de marca.', disponible:true, archivo:'c360-showroom.html' },
+  { key:'belleza', nombre:'Belleza & Salón', icono:'💄', desc:'Atelier de belleza -- reserva de citas con día y hora, menú de servicios con duración, antes y después deslizable y portafolio.', disponible:true, archivo:'c360-belleza.html' },
+  { key:'anonuevo', nombre:'Año Nuevo', icono:'🥂', desc:'Gala de medianoche -- partículas de oro que forman el año, reloj de paletas 3D, fuegos artificiales al tocar, las 12 uvas y brindis con champán.', disponible:true, archivo:'c360-anonuevo.html' },
+  { key:'tecnologia', nombre:'Tecnología', icono:'💻', desc:'Laboratorio futurista -- circuito con pulsos de luz, producto en holograma, ficha técnica automática, comparador de specs y simulador de cuotas.', disponible:true, archivo:'c360-tecnologia.html' },
+  { key:'navidadvip', nombre:'Navidad VIP', icono:'🎄', desc:'Noche de invierno de lujo -- intro con globo de nieve, esferas de cristal colgantes con tus productos, calendario de Adviento de 24 puertas, carta a Santa compartible y pedido con envoltura de regalo.', disponible:true, archivo:'c360-navidad-vip.html' },
+  { key:'graduacion', nombre:'Graduaciones', icono:'🎓', desc:'Ceremonia de graduación -- lluvia de birretes, diploma en pergamino, banderines de facultad, cuadro de honor y diploma personalizado descargable para el graduado.', disponible:true, archivo:'c360-graduacion.html' },
+  { key:'supermercado', nombre:'Supermercado', icono:'🛒', desc:'Súper, pulpería o distribuidora -- precios de góndola, +/− en cada producto, pasillos, volante de ofertas, pegá tu lista de compras y pedido en ticket de caja con entrega y pago.', disponible:true, archivo:'c360-supermercado.html' },
+  { key:'ferreteria', nombre:'Ferretería', icono:'🔧', desc:'Ferretería y materiales de construcción -- estética de plano, calculadoras de obra (pintura, bloques, piso, concreto), filtro por medidas y cotización formal imprimible por WhatsApp.', disponible:true, archivo:'c360-ferreteria.html' },
+  { key:'mascotas', nombre:'Mascotas', icono:'🐾', desc:'Tienda de mascotas o veterinaria -- huellitas que siguen el cursor, perro y gato animados, perfil de la mascota que personaliza la tienda y calculadora de comida con recordatorio de recompra.', disponible:true, archivo:'c360-mascotas.html' },
+  { key:'reposteria', nombre:'Repostería', icono:'🧁', desc:'Pastelería y repostería -- pastel con velitas que se soplan, armá tu pastel con vista en vivo (tamaño, sabor, relleno, color y mensaje), vitrina con banderitas y pedido con fecha de entrega.', disponible:true, archivo:'c360-reposteria.html' },
+  { key:'streetwear', nombre:'Moda urbana', icono:'🧢', desc:'Streetwear en modo drop: tallas y colores, armá tu outfit y guía de tallas', disponible:true, archivo:'c360-streetwear.html' },
+  { key:'farmacia', nombre:'Farmacia', icono:'💊', desc:'Clínica y confiable: buscador por síntomas, botiquín del hogar y pedidos con receta', disponible:true, archivo:'c360-farmacia.html' },
+  { key:'floristeria', nombre:'Floristería', icono:'💐', desc:'Botánica y romántica: ocasiones, lenguaje de las flores, tarjeta dedicatoria y entrega programada', disponible:true, archivo:'c360-floristeria.html' },
+  { key:'deportes', nombre:'Deportes / Gym', icono:'🏆', desc:'Energía pura: filtro por deporte, asesor técnico (bate, guantes, proteína) y marcador LED', disponible:true, archivo:'c360-deportes.html' },
+];
+
+function archivoDePlantilla(key) {
+  return PLANTILLAS_CATALOGO360.find(p => p.key === key)?.archivo || 'c360.html';
+}
+
+function cargarTabApariencia() {
+  const c = STATE.catalogoActual;
+  renderPlantillasApariencia(c.plantilla || 'profesional');
+  document.getElementById('c360-a-color').value = c.color_acento || '#6366f1';
+  renderPaletasApariencia(c.color_acento || '#6366f1');
+  elegirTemaCatalogo(c.tema_default || 'claro', false);
+}
+
+function renderPlantillasApariencia(plantillaActiva) {
+  document.getElementById('c360-a-plantillas').innerHTML = PLANTILLAS_CATALOGO360.map(p => `
+    <div class="c360-plantilla-card ${p.key===plantillaActiva?'activa':''} ${!p.disponible?'deshabilitada':''}"
+         onclick="${p.disponible ? `elegirPlantilla('${p.key}')` : ''}">
+      <div class="c360-plantilla-preview" style="background:${p.disponible?'linear-gradient(135deg,#14161f,#1b1f29)':'var(--bg-base)'};color:${p.disponible?'#fff':'inherit'}">${p.icono}</div>
+      <div class="c360-plantilla-info">
+        <div class="c360-plantilla-nombre">${esc(p.nombre)} ${p.key===plantillaActiva?'<span class="c360-plantilla-badge">Activa</span>':(!p.disponible?'<span class="c360-plantilla-badge proximamente">Próximamente</span>':'')}</div>
+        <div class="c360-plantilla-desc">${esc(p.desc)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function elegirPlantilla(key) {
+  try {
+    const { error } = await sb.from('catalogos').update({ plantilla: key, updated_at: new Date().toISOString() }).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    STATE.catalogoActual.plantilla = key;
+    renderPlantillasApariencia(key);
+    showToast('✅ Plantilla aplicada — tus productos ya se acomodaron en ella');
+  } catch (e) {
+    console.error('elegirPlantilla:', e);
+    showToast('No se pudo cambiar la plantilla: ' + (e.message || 'intenta de nuevo'), 'error');
+  }
+}
+
+/* ---------- PESTAÑA: CATÁLOGOS PDF ---------- */
+// Sistema APARTE del catálogo web -- no reutiliza ninguna de las
+// plantillas de Apariencia. Cada plantilla PDF aquí es un diseño
+// propio, construido con jsPDF (texto real, no una imagen).
+const PLANTILLAS_PDF_CATALOGO360 = [
+  { key: 'clasica', nombre: 'Clásica', icono: '📄', desc: 'Portada con tu color de marca, cuadrícula de productos en 3 columnas', disponible: true },
+];
+
+function renderPlantillasPDF() {
+  document.getElementById('c360-pdf-plantillas').innerHTML = PLANTILLAS_PDF_CATALOGO360.map(p => `
+    <div class="c360-plantilla-card ${!p.disponible?'deshabilitada':''}"
+         onclick="${p.disponible ? `elegirPlantillaPDF('${p.key}')` : ''}">
+      <div class="c360-plantilla-preview" style="background:${p.disponible?'linear-gradient(135deg,#14161f,#1b1f29)':'var(--bg-base)'};color:${p.disponible?'#fff':'inherit'}">${p.icono}</div>
+      <div class="c360-plantilla-info">
+        <div class="c360-plantilla-nombre">${esc(p.nombre)} ${!p.disponible?'<span class="c360-plantilla-badge proximamente">Próximamente</span>':''}</div>
+        <div class="c360-plantilla-desc">${esc(p.desc)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function elegirPlantillaPDF(key) {
+  STATE.plantillaPdfSeleccionada = key;
+  abrirModalCatalogoPDF();
+}
+
+function renderPaletasApariencia(colorActivo) {
+  document.getElementById('c360-a-paletas').innerHTML = PALETAS_CATALOGO360.map(p => `
+    <button type="button" class="c360-paleta-btn ${p.color === colorActivo ? 'active' : ''}" onclick="elegirPaletaApariencia('${p.color}')">
+      <span class="c360-paleta-swatch" style="background:${p.color}"></span>${p.nombre}
+    </button>
+  `).join('');
+}
+function elegirPaletaApariencia(color) {
+  document.getElementById('c360-a-color').value = color;
+  renderPaletasApariencia(color);
+}
+
+function elegirTemaCatalogo(tema, marcarCambio = true) {
+  document.getElementById('c360-a-tema-claro').classList.toggle('active', tema === 'claro');
+  document.getElementById('c360-a-tema-oscuro').classList.toggle('active', tema === 'oscuro');
+  STATE._temaElegido = tema;
+}
+async function guardarApariencia() {
+  const payload = {
+    color_acento: document.getElementById('c360-a-color').value,
+    tema_default: STATE._temaElegido || STATE.catalogoActual.tema_default || 'claro',
+    updated_at: new Date().toISOString(),
+  };
+  try {
+    const { error } = await sb.from('catalogos').update(payload).eq('id', STATE.catalogoActual.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    Object.assign(STATE.catalogoActual, payload);
+    showToast('✅ Apariencia guardada');
+  } catch (e) {
+    console.error('guardarApariencia:', e);
+    showToast('No se pudo guardar: ' + (e.message || 'intenta de nuevo'), 'error');
+  }
+}
+
+/* ---------- TAB: CATEGORÍAS ---------- */
+async function cargarTabCategorias() {
+  try {
+    const { data } = await sb.from('catalogo_categorias').select('*').eq('catalogo_id', STATE.catalogoActual.id).order('orden').order('created_at');
+    STATE.categorias = data || [];
+  } catch (e) { STATE.categorias = []; }
+  renderTabCategorias();
+}
+
+function renderTabCategorias() {
+  const cont = document.getElementById('c360-lista-categorias');
+  if (!STATE.categorias.length) {
+    cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px;grid-column:1/-1">Aún no has creado ninguna categoría — tus productos se muestran directo en el catálogo.</p>`;
+    return;
+  }
+  const conteo = {};
+  (STATE.productosActual || []).forEach(p => { if (p.categoria_id) conteo[p.categoria_id] = (conteo[p.categoria_id]||0) + 1; });
+
+  cont.innerHTML = STATE.categorias.map(cat => `
+    <div class="c360-card-producto">
+      ${cat.imagen_url ? `<img src="${esc(cat.imagen_url)}" style="height:100px;width:100%;object-fit:cover">` : `<div style="height:100px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;background:var(--bg-base)">Sin imagen</div>`}
+      <div style="padding:10px 12px">
+        <div style="font-weight:700;font-size:13.5px">${esc(cat.nombre)}</div>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${conteo[cat.id]||0} producto${(conteo[cat.id]||0)===1?'':'s'}</div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn-secondary btn-sm" style="flex:1" onclick="abrirModalCategoria('${cat.id}')">Editar</button>
+          <button class="btn-icon btn-icon-danger" onclick="eliminarCategoria('${cat.id}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function abrirModalCategoria(id) {
+  document.getElementById('cat-error').textContent = '';
+  document.getElementById('cat-imagen-preview').style.display = 'none';
+  if (id) {
+    const cat = STATE.categorias.find(c => c.id === id);
+    if (!cat) return;
+    document.getElementById('cat-titulo').textContent = 'Editar categoría';
+    document.getElementById('cat-id').value = cat.id;
+    document.getElementById('cat-nombre').value = cat.nombre;
+    document.getElementById('cat-descripcion').value = cat.descripcion || '';
+    if (cat.imagen_url) { const img = document.getElementById('cat-imagen-preview'); img.src = cat.imagen_url; img.style.display = 'block'; }
+  } else {
+    document.getElementById('cat-titulo').textContent = 'Nueva categoría';
+    document.getElementById('cat-id').value = '';
+    document.getElementById('cat-nombre').value = '';
+    document.getElementById('cat-descripcion').value = '';
+  }
+  openModal('modal-categoria');
+}
+
+async function subirImagenCategoria(archivo) {
+  if (!archivo) return;
+  const idCat = document.getElementById('cat-id').value;
+  try {
+    const { blob } = await comprimirImagen(archivo, 800, 0.82);
+    const { url } = await subirImagenCatalogo(blob, 'categorias');
+    const img = document.getElementById('cat-imagen-preview');
+    img.src = url; img.style.display = 'block';
+    STATE._imagenCategoriaTemp = url;
+    if (idCat) {
+      const { error } = await sb.from('catalogo_categorias').update({ imagen_url: url }).eq('id', idCat).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+    }
+    showToast('✅ Imagen subida');
+  } catch (e) {
+    console.error('subirImagenCategoria:', e);
+    showToast('No se pudo subir la imagen', 'error');
+  }
+}
+
+async function guardarCategoria() {
+  const id = document.getElementById('cat-id').value;
+  const nombre = document.getElementById('cat-nombre').value.trim();
+  const errEl = document.getElementById('cat-error');
+  if (!nombre) { errEl.textContent = 'Escribe un nombre.'; return; }
+  errEl.textContent = '';
+  const payload = { nombre, descripcion: document.getElementById('cat-descripcion').value.trim() || null };
+  try {
+    if (id) {
+      const { error } = await sb.from('catalogo_categorias').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from('catalogo_categorias').insert({
+        ...payload, catalogo_id: STATE.catalogoActual.id, auth_user_id: STATE.userId,
+        imagen_url: STATE._imagenCategoriaTemp || null,
+      });
+      if (error) throw error;
+    }
+    STATE._imagenCategoriaTemp = null;
+    closeModal('modal-categoria');
+    showToast('✅ Categoría guardada');
+    await cargarTabCategorias();
+  } catch (e) {
+    console.error('guardarCategoria:', e);
+    errEl.textContent = 'No se pudo guardar: ' + (e.message || 'intenta de nuevo');
+  }
+}
+
+async function eliminarCategoria(id) {
+  if (!confirm('¿Eliminar esta categoría? Los productos que tenía no se borran, solo dejan de estar agrupados.')) return;
+  try {
+    const { error } = await sb.from('catalogo_categorias').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    showToast('Categoría eliminada');
+    await cargarTabCategorias();
+    await cargarTabProductos();
+  } catch (e) { console.error('eliminarCategoria:', e); showToast('No se pudo eliminar', 'error'); }
+}
+
+function poblarSelectorCategorias(categoriaIdActual) {
+  const sel = document.getElementById('cp-categoria-id');
+  sel.innerHTML = '<option value="">Sin categoría (aparece directo)</option>' +
+    STATE.categorias.map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+  sel.value = categoriaIdActual || '';
+}
+
+/* ---------- TAB: PRODUCTOS ---------- */
+async function cargarTabProductos() {
+  try {
+    const { data: productos } = await sb.from('catalogo_productos').select('*')
+      .eq('catalogo_id', STATE.catalogoActual.id).order('orden').order('created_at');
+    const ids = (productos || []).map(p => p.id);
+    let fotosPorProducto = {};
+    if (ids.length) {
+      const { data: fotos } = await sb.from('catalogo_producto_fotos').select('*')
+        .in('catalogo_producto_id', ids).order('orden');
+      (fotos || []).forEach(f => {
+        (fotosPorProducto[f.catalogo_producto_id] ||= []).push(f);
+      });
+    }
+    STATE.productosActual = (productos || []).map(p => ({ ...p, fotos: fotosPorProducto[p.id] || [] }));
+  } catch (e) { STATE.productosActual = []; }
+  renderTabProductos();
+  renderTabCategorias();
+}
+
+function renderTabProductos() {
+  const contador = document.getElementById('c360-productos-contador');
+  contador.textContent = `${STATE.productosActual.length} / ${STATE.limites.productos_por_catalogo_max} productos`;
+
+  const cont = document.getElementById('c360-lista-productos');
+  if (!STATE.productosActual.length) {
+    cont.innerHTML = `<p style="color:var(--text-muted);font-size:13px;grid-column:1/-1">Todavía no has agregado productos a este catálogo.</p>`;
+    return;
+  }
+  cont.innerHTML = STATE.productosActual.map(p => {
+    const principal = p.fotos.find(f => f.es_principal) || p.fotos[0];
+    const etiquetas = { nuevo: {texto:'🆕 Nuevo', color:'#3b82f6'}, oferta: {texto:'🔥 Oferta', color:'#ef4444'}, agotado: {texto:'⛔ Agotado', color:'#6b7280'} };
+    const et = etiquetas[p.etiqueta];
+    return `
+    <div class="c360-card-producto" style="position:relative">
+      ${p.destacado ? `<span style="position:absolute;top:8px;left:8px;background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;z-index:1">⭐ Destacado</span>` : ''}
+      ${et ? `<span style="position:absolute;top:8px;right:8px;background:${et.color};color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;z-index:1">${et.texto}</span>` : ''}
+      ${principal ? `<img src="${esc(principal.url)}" alt="">` : `<div style="height:130px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;background:var(--bg-base)">Sin foto</div>`}
+      <div style="padding:10px 12px">
+        <div style="font-weight:700;font-size:13.5px">${esc(p.nombre)}</div>
+        <div style="margin-top:2px">
+          ${p.etiqueta==='oferta' && p.precio_oferta ? `<span style="font-family:var(--font-mono);color:var(--text-muted);text-decoration:line-through;font-size:11.5px;margin-right:6px">${fmtC(p.precio)}</span><span style="font-family:var(--font-mono);color:#ef4444;font-weight:700;font-size:13px">${fmtC(p.precio_oferta)}</span>` : `<span style="font-family:var(--font-mono);color:var(--accent);font-weight:700;font-size:13px">${fmtC(p.precio)}</span>`}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn-secondary btn-sm" style="flex:1" onclick="abrirModalProductoCatalogo('${p.id}')">Editar</button>
+          <button class="btn-icon btn-icon-danger" onclick="eliminarProductoCatalogo('${p.id}')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function abrirModalProductoCatalogo(id) {
+  document.getElementById('cp-error').textContent = '';
+  document.getElementById('cp-fotos-lista').innerHTML = '';
+  if (id) {
+    const p = STATE.productosActual.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('cp-titulo').textContent = 'Editar producto';
+    document.getElementById('cp-id').value = p.id;
+    document.getElementById('cp-nombre').value = p.nombre;
+    document.getElementById('cp-precio').value = p.precio;
+    poblarSelectorCategorias(p.categoria_id);
+    document.getElementById('cp-descripcion').value = p.descripcion || '';
+    document.getElementById('cp-etiqueta').value = p.etiqueta || '';
+    document.getElementById('cp-precio-oferta').value = p.precio_oferta || '';
+    document.getElementById('cp-destacado').checked = !!p.destacado;
+    onCambiarEtiquetaProducto();
+    renderFotosEnModal(p.fotos);
+    document.getElementById('cp-fotos-contador').textContent = `(${p.fotos.length}/${STATE.limites.fotos_por_producto_max})`;
+    document.getElementById('cp-btn-agregar-foto').disabled = p.fotos.length >= STATE.limites.fotos_por_producto_max;
+  } else {
+    if (STATE.productosActual.length >= STATE.limites.productos_por_catalogo_max) {
+      showToast(`Tu plan permite hasta ${STATE.limites.productos_por_catalogo_max} productos por catálogo.`, 'error');
+      return;
+    }
+    document.getElementById('cp-titulo').textContent = 'Nuevo producto';
+    document.getElementById('cp-id').value = '';
+    document.getElementById('cp-nombre').value = '';
+    document.getElementById('cp-precio').value = '';
+    poblarSelectorCategorias(null);
+    document.getElementById('cp-descripcion').value = '';
+    document.getElementById('cp-etiqueta').value = '';
+    document.getElementById('cp-precio-oferta').value = '';
+    document.getElementById('cp-destacado').checked = false;
+    onCambiarEtiquetaProducto();
+    document.getElementById('cp-fotos-contador').textContent = `(0/${STATE.limites.fotos_por_producto_max})`;
+    document.getElementById('cp-btn-agregar-foto').disabled = false;
+  }
+  openModal('modal-producto-catalogo');
+}
+
+function onCambiarEtiquetaProducto() {
+  const esOferta = document.getElementById('cp-etiqueta').value === 'oferta';
+  document.getElementById('cp-wrap-precio-oferta').style.display = esOferta ? '' : 'none';
+}
+
+function renderFotosEnModal(fotos) {
+  document.getElementById('cp-fotos-lista').innerHTML = (fotos||[]).map(f => `
+    <div style="position:relative">
+      <img src="${esc(f.url)}" class="c360-foto-mini"/>
+      <button onclick="eliminarFotoProducto('${f.id}')" title="Quitar" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:11px;cursor:pointer;line-height:1">✕</button>
+    </div>
+  `).join('');
+}
+
+async function guardarProductoCatalogo() {
+  const id = document.getElementById('cp-id').value;
+  const nombre = document.getElementById('cp-nombre').value.trim();
+  const precio = parseFloat(document.getElementById('cp-precio').value);
+  const errEl = document.getElementById('cp-error');
+  if (!nombre) { errEl.textContent = 'Escribe un nombre.'; return; }
+  if (isNaN(precio) || precio < 0) { errEl.textContent = 'Escribe un precio válido.'; return; }
+  const etiqueta = document.getElementById('cp-etiqueta').value || null;
+  const precioOfertaTexto = document.getElementById('cp-precio-oferta').value;
+  const precioOferta = etiqueta === 'oferta' && precioOfertaTexto ? parseFloat(precioOfertaTexto) : null;
+  if (etiqueta === 'oferta' && (!precioOferta || precioOferta <= 0 || precioOferta >= precio)) {
+    errEl.textContent = 'El precio de oferta debe ser mayor a 0 y menor al precio normal.';
+    return;
+  }
+  errEl.textContent = '';
+
+  const payload = {
+    nombre, precio,
+    categoria_id: document.getElementById('cp-categoria-id').value || null,
+    descripcion: document.getElementById('cp-descripcion').value.trim() || null,
+    etiqueta, precio_oferta: precioOferta,
+    destacado: document.getElementById('cp-destacado').checked,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    if (id) {
+      const { error } = await sb.from('catalogo_productos').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from('catalogo_productos').insert({
+        ...payload, catalogo_id: STATE.catalogoActual.id, auth_user_id: STATE.userId,
+      });
+      if (error) throw error;
+    }
+    closeModal('modal-producto-catalogo');
+    showToast('✅ Producto guardado');
+    await cargarTabProductos();
+    renderChecklistCatalogo();
+  } catch (e) {
+    errEl.textContent = e.message?.includes('row-level security') ? 'Alcanzaste el límite de productos de tu plan.' : 'No se pudo guardar, intenta de nuevo.';
+  }
+}
+
+async function eliminarProductoCatalogo(id) {
+  if (!confirm('¿Eliminar este producto del catálogo?')) return;
+  try {
+    const { error } = await sb.from('catalogo_productos').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    showToast('Producto eliminado');
+    await cargarTabProductos();
+  } catch (e) { console.error('eliminarProductoCatalogo:', e); showToast('No se pudo eliminar', 'error'); }
+}
+
+async function subirFotosProducto(archivos) {
+  let idProducto = document.getElementById('cp-id').value;
+
+  if (!idProducto) {
+    const nombre = document.getElementById('cp-nombre').value.trim();
+    const precio = parseFloat(document.getElementById('cp-precio').value);
+    if (!nombre || isNaN(precio) || precio < 0) {
+      showToast('Escribe primero el nombre y el precio del producto', 'error');
+      return;
+    }
+    if (STATE.productosActual.length >= STATE.limites.productos_por_catalogo_max) {
+      showToast(`Tu plan permite hasta ${STATE.limites.productos_por_catalogo_max} productos por catálogo.`, 'error');
+      return;
+    }
+    try {
+      const { data, error } = await sb.from('catalogo_productos').insert({
+        catalogo_id: STATE.catalogoActual.id, auth_user_id: STATE.userId,
+        nombre, precio,
+        categoria_id: document.getElementById('cp-categoria-id').value || null,
+        descripcion: document.getElementById('cp-descripcion').value.trim() || null,
+      }).select().single();
+      if (error) throw error;
+      idProducto = data.id;
+      document.getElementById('cp-id').value = idProducto;
+      document.getElementById('cp-titulo').textContent = 'Editar producto';
+      showToast('✅ Producto guardado, agregando foto…');
+    } catch (e) {
+      console.error('Guardado automático antes de subir foto:', e);
+      showToast('No se pudo guardar el producto: ' + (e.message?.includes('row-level security') ? 'alcanzaste el límite de tu plan' : 'intenta de nuevo'), 'error');
+      return;
+    }
+  }
+
+  if (STATE.fotosSubiendo) return;
+  STATE.fotosSubiendo = true;
+  const btn = document.getElementById('cp-btn-agregar-foto');
+  btn.disabled = true; btn.textContent = 'Subiendo…';
+
+  try {
+    for (const archivo of archivos) {
+      const { data: existentes } = await sb.from('catalogo_producto_fotos').select('id').eq('catalogo_producto_id', idProducto);
+      if ((existentes||[]).length >= STATE.limites.fotos_por_producto_max) {
+        showToast(`Máximo ${STATE.limites.fotos_por_producto_max} fotos por producto en tu plan`, 'error');
+        break;
+      }
+      const { blob, ancho, alto } = await comprimirImagen(archivo);
+      const { url, ruta } = await subirImagenCatalogo(blob, `productos/${idProducto}`);
+      const esPrincipal = (existentes||[]).length === 0;
+      const { error: errorFoto } = await sb.from('catalogo_producto_fotos').insert({
+        catalogo_producto_id: idProducto, auth_user_id: STATE.userId,
+        storage_path: ruta, url, orden: (existentes||[]).length, es_principal: esPrincipal,
+        ancho, alto, tamano_bytes: blob.size,
+      });
+      if (errorFoto) {
+        console.error('Error al guardar la foto en la base de datos:', errorFoto);
+        showToast('No se pudo guardar una foto: ' + (errorFoto.message?.includes('row-level security') ? 'alcanzaste el límite de tu plan' : 'intenta de nuevo'), 'error');
+        break;
+      }
+    }
+    const { data: fotosAhora } = await sb.from('catalogo_producto_fotos').select('*').eq('catalogo_producto_id', idProducto).order('orden');
+    renderFotosEnModal(fotosAhora || []);
+    document.getElementById('cp-fotos-contador').textContent = `(${(fotosAhora||[]).length}/${STATE.limites.fotos_por_producto_max})`;
+    showToast('✅ Fotos agregadas');
+    await cargarTabProductos();
+  } catch (e) {
+    console.error('subirFotosProducto:', e);
+    showToast('No se pudieron subir todas las fotos', 'error');
+  } finally {
+    STATE.fotosSubiendo = false;
+    btn.disabled = false; btn.textContent = '+ Agregar foto';
+    document.getElementById('cp-fotos-input').value = '';
+  }
+}
+
+async function eliminarFotoProducto(idFoto) {
+  try {
+    const { data: foto } = await sb.from('catalogo_producto_fotos').select('storage_path').eq('id', idFoto).maybeSingle();
+    const { error } = await sb.from('catalogo_producto_fotos').delete().eq('id', idFoto).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    if (foto?.storage_path) await sb.storage.from('catalogo360').remove([foto.storage_path]);
+    const idProducto = document.getElementById('cp-id').value;
+    const { data: fotosAhora } = await sb.from('catalogo_producto_fotos').select('*').eq('catalogo_producto_id', idProducto).order('orden');
+    renderFotosEnModal(fotosAhora || []);
+    document.getElementById('cp-fotos-contador').textContent = `(${(fotosAhora||[]).length}/${STATE.limites.fotos_por_producto_max})`;
+    await cargarTabProductos();
+  } catch (e) { console.error('eliminarFotoProducto:', e); showToast('No se pudo quitar la foto', 'error'); }
+}
+
+/* ---------- IMPORTAR DESDE NEGOCIO360 ---------- */
+async function abrirImportarDeNegocio360() {
+  STATE.seleccionImportar = new Set();
+  const mensaje = document.getElementById('ip-mensaje');
+  const lista = document.getElementById('ip-lista');
+  lista.innerHTML = 'Buscando tus productos…';
+  openModal('modal-importar-productos');
+
+  try {
+    const { data } = await sb.from('productos').select('id, nombre, precio, categoria, descripcion')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).eq('tipo', 'producto').eq('es_materia_prima', false).order('nombre');
+    const yaAgregados = new Set(STATE.productosActual.filter(p => p.producto_id).map(p => p.producto_id));
+    STATE.productosNegocio360 = (data || []).filter(p => !yaAgregados.has(p.id));
+
+    if (!STATE.productosNegocio360.length) {
+      mensaje.textContent = 'No encontramos productos disponibles para agregar (puede que ya estén todos en este catálogo).';
+      lista.innerHTML = '';
+      return;
+    }
+    mensaje.textContent = `Elige cuáles productos de tu inventario quieres mostrar en este catálogo:`;
+    lista.innerHTML = STATE.productosNegocio360.map(p => `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" onchange="toggleSeleccionImportar('${p.id}',this.checked)"/>
+        <span style="flex:1">${esc(p.nombre)}</span>
+        <span style="font-family:var(--font-mono);color:var(--text-muted)">${fmtC(p.precio)}</span>
+      </label>
+    `).join('');
+  } catch (e) {
+    mensaje.textContent = 'No se pudo cargar tu inventario, intenta de nuevo.';
+    lista.innerHTML = '';
+  }
+}
+function toggleSeleccionImportar(id, marcado) {
+  if (marcado) STATE.seleccionImportar.add(id); else STATE.seleccionImportar.delete(id);
+}
+async function confirmarImportarProductos() {
+  const seleccionados = STATE.productosNegocio360.filter(p => STATE.seleccionImportar.has(p.id));
+  if (!seleccionados.length) { closeModal('modal-importar-productos'); return; }
+
+  const espacioDisponible = STATE.limites.productos_por_catalogo_max - STATE.productosActual.length;
+  if (seleccionados.length > espacioDisponible) {
+    showToast(`Solo puedes agregar ${espacioDisponible} más (límite de tu plan)`, 'error');
+    return;
+  }
+  try {
+    const filas = seleccionados.map(p => ({
+      catalogo_id: STATE.catalogoActual.id, auth_user_id: STATE.userId, producto_id: p.id,
+      nombre: p.nombre, precio: p.precio, categoria: p.categoria, descripcion: p.descripcion,
+    }));
+    const { error } = await sb.from('catalogo_productos').insert(filas);
+    if (error) throw error;
+    closeModal('modal-importar-productos');
+    showToast(`✅ ${seleccionados.length} producto(s) agregado(s)`);
+    await cargarTabProductos();
+  } catch (e) {
+    showToast('No se pudieron agregar todos — revisa el límite de tu plan', 'error');
+  }
+}
+
+/* ---------- PUBLICAR / QR / VISTA PREVIA ---------- */
+async function publicarCatalogoActual() {
+  if (!STATE.productosActual.length) {
+    showToast('Agrega al menos un producto antes de publicar', 'error');
+    return;
+  }
+  try {
+    const { data: slug, error } = await sb.rpc('catalogo_publicar', { p_catalogo_id: STATE.catalogoActual.id });
+    if (error) throw error;
+    STATE.catalogoActual.slug_publico = slug;
+    STATE.catalogoActual.estado = 'publicado';
+    renderEstadoPublicacion();
+    renderChecklistCatalogo();
+    showToast('🚀 ¡Catálogo publicado!');
+  } catch (e) {
+    console.error('publicarCatalogoActual:', e);
+    showToast('No se pudo publicar, intenta de nuevo', 'error');
+  }
+}
+
+function urlPublicaActual() {
+  return `${window.location.origin}/${archivoDePlantilla(STATE.catalogoActual.plantilla)}?c=${STATE.catalogoActual.slug_publico}`;
+}
+function verCatalogoPublicado() {
+  marcarCatalogoComoCompartido();
+  window.open(urlPublicaActual(), '_blank');
+}
+function copiarEnlaceCatalogo() {
+  navigator.clipboard?.writeText(urlPublicaActual());
+  marcarCatalogoComoCompartido();
+  showToast('🔗 Enlace copiado');
+}
+// Abre el catalogo publico en una pestaña nueva con ?pdf=1 -- ese
+// parametro le dice a la plantilla que dispare la descarga sola, sin
+// que el dueño del negocio tenga que ir a buscar el boton flotante
+// dentro de su propio catalogo publico.
+function descargarCatalogoComoPDF() {
+  marcarCatalogoComoCompartido();
+  window.open(`${urlPublicaActual()}&pdf=1`, '_blank');
+}
+
+// ============================================================
+// CATÁLOGO PDF -- sistema aparte del catálogo web (no "fotografía"
+// ninguna plantilla). Diseño propio con jsPDF: texto real y
+// seleccionable, no una imagen. Los productos se toman automáticos
+// del catálogo ya cargado (STATE.productosActual) -- solo el título,
+// subtítulo y nota final son editables antes de generar.
+// ============================================================
+// ============================================================
+// CATÁLOGO PDF -- sistema aparte del catálogo web (no "fotografía"
+// ninguna plantilla). Diseño propio con jsPDF: texto real y
+// seleccionable, no una imagen. Los productos se toman automáticos
+// del catálogo ya cargado (STATE.productosActual). El dueño del
+// negocio elige textos, color, si agrupar por categorías (y cuáles
+// incluir), y cuántas columnas -- antes de generar.
+// ============================================================
+const PALETAS_PDF_CATALOGO360 = {
+  indigo:    { nombre: 'Índigo elegante', primario: '#4338ca', claro: '#eef2ff' },
+  esmeralda: { nombre: 'Esmeralda',       primario: '#047857', claro: '#ecfdf5' },
+  rosa:      { nombre: 'Rosa moderno',    primario: '#be185d', claro: '#fdf2f8' },
+  negro:     { nombre: 'Negro editorial', primario: '#18181b', claro: '#f4f4f5' },
+  dorado:    { nombre: 'Dorado lujo',     primario: '#92400e', claro: '#fffbeb' },
+  azul:      { nombre: 'Azul océano',     primario: '#0369a1', claro: '#f0f9ff' },
+};
+
+function abrirModalCatalogoPDF() {
+  const cat = STATE.catalogoActual;
+  document.getElementById('cpdf-titulo').value = cat?.nombre_comercial || cat?.nombre || 'Nuestro Catálogo';
+  document.getElementById('cpdf-subtitulo').value = 'Descubre nuestros productos';
+  document.getElementById('cpdf-nota').value = 'Precios sujetos a cambio sin previo aviso';
+  document.getElementById('cpdf-error').textContent = '';
+  document.getElementById('cpdf-agrupar-categorias').checked = true;
+  document.getElementById('cpdf-mostrar-descripcion').checked = false;
+  document.getElementById('cpdf-solo-destacados').checked = false;
+  document.getElementById('cpdf-columnas').value = '3';
+
+  renderPaletasPDF('indigo');
+  renderListaCategoriasPDF();
+  alternarListaCategoriasPDF();
+  openModal('modal-catalogo-pdf');
+}
+
+function renderPaletasPDF(claveActiva) {
+  document.getElementById('cpdf-color-elegido').value = claveActiva;
+  document.getElementById('cpdf-paletas').innerHTML = Object.entries(PALETAS_PDF_CATALOGO360).map(([key, p]) => `
+    <div onclick="elegirPaletaPDF('${key}')" title="${esc(p.nombre)}"
+         style="cursor:pointer;height:40px;border-radius:8px;background:${p.primario};display:flex;align-items:center;justify-content:center;border:3px solid ${key===claveActiva?'var(--text-primary)':'transparent'};transition:transform .15s"
+         onmouseover="this.style.transform='scale(1.06)'" onmouseout="this.style.transform='scale(1)'">
+      ${key===claveActiva ? '<span style="color:#fff;font-size:15px">✓</span>' : ''}
+    </div>
+  `).join('');
+}
+function elegirPaletaPDF(key) {
+  renderPaletasPDF(key);
+}
+
+function renderListaCategoriasPDF() {
+  const categorias = STATE.categorias || [];
+  const wrap = document.getElementById('cpdf-lista-categorias');
+  if (!categorias.length) {
+    wrap.innerHTML = `<p style="font-size:11.5px;color:var(--text-muted)">Este catálogo todavía no tiene categorías -- se incluirán todos los productos juntos.</p>`;
+    return;
+  }
+  wrap.innerHTML = categorias.map(c => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;margin:0">
+      <input type="checkbox" class="cpdf-cat-check" value="${c.id}" checked style="width:15px;height:15px"/>
+      ${esc(c.nombre)}
+    </label>
+  `).join('');
+}
+function alternarListaCategoriasPDF() {
+  const agrupar = document.getElementById('cpdf-agrupar-categorias').checked;
+  document.getElementById('cpdf-categorias-wrap').style.opacity = agrupar ? '1' : '0.45';
+  document.querySelectorAll('.cpdf-cat-check').forEach(chk => chk.disabled = !agrupar);
+}
+function alternarTodasCategoriasPDF() {
+  const checks = document.querySelectorAll('.cpdf-cat-check');
+  const hayAlgunoDesmarcado = Array.from(checks).some(c => !c.checked);
+  checks.forEach(c => c.checked = hayAlgunoDesmarcado);
+}
+
+// Carga una foto externa (Supabase Storage) y la convierte a base64
+// para poder insertarla en el PDF -- si una foto en particular falla
+// (red lenta, url rota), se sigue sin ella en vez de tumbar todo el
+// documento.
+function cargarImagenComoBase64(url) {
+  return new Promise((resolve) => {
+    if (!url) { resolve(null); return; }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      } catch (e) { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+async function generarCatalogoPDFDiseño() {
+  const btn = document.getElementById('cpdf-btn-generar');
+  const error = document.getElementById('cpdf-error');
+  error.textContent = '';
+
+  const todos = (STATE.productosActual || []).filter(p => p.activo !== false);
+  if (!todos.length) {
+    error.textContent = 'Este catálogo todavía no tiene productos agregados.';
+    return;
+  }
+
+  const titulo = document.getElementById('cpdf-titulo').value.trim() || 'Nuestro Catálogo';
+  const subtitulo = document.getElementById('cpdf-subtitulo').value.trim();
+  const nota = document.getElementById('cpdf-nota').value.trim();
+  const claveColor = document.getElementById('cpdf-color-elegido').value;
+  const paleta = PALETAS_PDF_CATALOGO360[claveColor] || PALETAS_PDF_CATALOGO360.indigo;
+  const C = {
+    primario: hexARgb(paleta.primario),
+    claro: hexARgb(paleta.claro),
+    tinta: { r: 24, g: 24, b: 27 },
+    grisSuave: { r: 113, g: 113, b: 122 },
+    linea: { r: 228, g: 228, b: 231 },
+  };
+  const agruparCategorias = document.getElementById('cpdf-agrupar-categorias').checked;
+  const mostrarDescripcion = document.getElementById('cpdf-mostrar-descripcion').checked;
+  const soloDestacados = document.getElementById('cpdf-solo-destacados').checked;
+  const columnas = parseInt(document.getElementById('cpdf-columnas').value) || 3;
+  const idsCategoriasElegidas = new Set(
+    Array.from(document.querySelectorAll('.cpdf-cat-check:checked')).map(c => c.value)
+  );
+
+  let productos = todos;
+  if (soloDestacados) productos = productos.filter(p => p.destacado);
+  if (agruparCategorias && (STATE.categorias || []).length) {
+    productos = productos.filter(p => !p.categoria_id || idsCategoriasElegidas.has(p.categoria_id));
+  }
+  if (!productos.length) {
+    error.textContent = 'No hay productos que coincidan con lo que seleccionaste.';
+    return;
+  }
+
+  const cat = STATE.catalogoActual;
+  btn.disabled = true;
+  btn.textContent = 'Generando…';
+
+  try {
+    const fotosPorId = {};
+    await Promise.all(productos.map(async p => {
+      const foto = (p.fotos || []).find(f => f.es_principal) || (p.fotos || [])[0];
+      fotosPorId[p.id] = await cargarImagenComoBase64(foto?.url);
+    }));
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const M = 18;
+
+    const estado = { pagina: 0 };
+
+    // ---- Agrupar en secciones ANTES de dibujar (la portada necesita saberlas) ----
+    let secciones;
+    if (agruparCategorias && (STATE.categorias || []).length) {
+      secciones = (STATE.categorias || [])
+        .filter(c => idsCategoriasElegidas.has(c.id))
+        .map(c => ({ nombre: c.nombre, items: productos.filter(p => p.categoria_id === c.id) }))
+        .filter(s => s.items.length);
+      const sinCategoria = productos.filter(p => !p.categoria_id);
+      if (sinCategoria.length) secciones.push({ nombre: 'Otros productos', items: sinCategoria });
+    } else {
+      secciones = [{ nombre: null, items: productos }];
+    }
+
+    dibujarPortadaPDF(doc, W, H, M, cat, titulo, subtitulo, C, secciones, productos.length);
+
+    // ---- Cuadrícula de productos ----
+    const gutter = 7;
+    const anchoCelda = (W - M * 2 - gutter * (columnas - 1)) / columnas;
+    const altoFoto = anchoCelda * 0.95;
+    const altoTexto = mostrarDescripcion ? 26 : 18;
+    const altoCelda = altoFoto + altoTexto;
+    const topContenido = 34;
+    const finContenido = H - 24;
+
+    doc.addPage(); estado.pagina++;
+    dibujarCabeceraPagina(doc, W, M, cat, C);
+    dibujarPiePagina(doc, W, H, M, nota, C, estado.pagina);
+    let x = M, y = topContenido, col = 0;
+
+    secciones.forEach((seccion, iSeccion) => {
+      if (seccion.nombre) {
+        if (col !== 0) { x = M; y += altoCelda + gutter; col = 0; }
+        // Si el encabezado no cabe con al menos una fila debajo, pasar de pagina
+        if (y + 14 + altoCelda > finContenido) {
+          doc.addPage(); estado.pagina++;
+          dibujarCabeceraPagina(doc, W, M, cat, C);
+          dibujarPiePagina(doc, W, H, M, nota, C, estado.pagina);
+          x = M; y = topContenido; col = 0;
+        }
+        if (iSeccion > 0) y += 4;
+        dibujarTituloSeccion(doc, W, M, y, seccion.nombre, seccion.items.length, C);
+        y += 16;
+      }
+
+      seccion.items.forEach(p => {
+        if (y + altoCelda > finContenido) {
+          doc.addPage(); estado.pagina++;
+          dibujarCabeceraPagina(doc, W, M, cat, C);
+          dibujarPiePagina(doc, W, H, M, nota, C, estado.pagina);
+          x = M; y = topContenido; col = 0;
+        }
+
+        dibujarTarjetaProducto(doc, x, y, anchoCelda, altoFoto, altoCelda, p, fotosPorId[p.id], C, mostrarDescripcion);
+
+        col++;
+        if (col >= columnas) { col = 0; x = M; y += altoCelda + gutter; }
+        else { x += anchoCelda + gutter; }
+      });
+
+      if (col !== 0) { col = 0; x = M; y += altoCelda + gutter; }
+    });
+
+    const nombreArchivo = (cat?.nombre_comercial || cat?.nombre || 'Catalogo')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '-');
+    doc.save(`Catalogo-${nombreArchivo}.pdf`);
+    closeModal('modal-catalogo-pdf');
+  } catch (e) {
+    console.error('generarCatalogoPDFDiseño:', e);
+    error.textContent = 'No se pudo generar el PDF. Intenta de nuevo.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generar PDF';
+  }
+}
+
+// ---- PORTADA: composicion editorial, no una banda plana ----
+function dibujarPortadaPDF(doc, W, H, M, cat, titulo, subtitulo, C, secciones, totalProductos) {
+  // Bloque de color que ocupa 62% de la pagina, con un corte diagonal
+  // suave abajo -- da profundidad sin depender de degradados (que jsPDF
+  // no soporta de forma nativa y confiable).
+  const altoBloque = H * 0.62;
+  doc.setFillColor(C.primario.r, C.primario.g, C.primario.b);
+  doc.rect(0, 0, W, altoBloque, 'F');
+
+  // Corte diagonal: triangulo blanco en la esquina inferior derecha
+  doc.setFillColor(255, 255, 255);
+  doc.triangle(W, altoBloque - 32, W, altoBloque, 0, altoBloque, 'F');
+
+  // Linea fina de acento sobre el titulo
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.8);
+  doc.line(M, 52, M + 22, 52);
+  doc.setLineWidth(0.2);
+
+  // Nombre del negocio, en versalitas amplias
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  const nombreNegocio = (cat?.nombre_comercial || cat?.nombre || 'CATALOGO').toUpperCase();
+  doc.text(espaciarLetras(nombreNegocio), M, 46);
+
+  // Titulo grande, dividido en varias lineas si hace falta
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(34);
+  const lineasTitulo = doc.splitTextToSize(titulo, W - M * 2 - 20).slice(0, 3);
+  let yTitulo = 74;
+  lineasTitulo.forEach(linea => { doc.text(linea, M, yTitulo); yTitulo += 14; });
+
+  if (subtitulo) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(12);
+    const lineasSub = doc.splitTextToSize(subtitulo, W - M * 2 - 30).slice(0, 2);
+    yTitulo += 3;
+    lineasSub.forEach(linea => { doc.text(linea, M, yTitulo); yTitulo += 6.5; });
+  }
+
+  // Dato de volumen, como sello editorial
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  doc.text(espaciarLetras(`${totalProductos} PRODUCTOS`), M, altoBloque - 42);
+
+  // ---- Zona blanca inferior: indice + contacto ----
+  let y = altoBloque + 14;
+  const conNombre = secciones.filter(s => s.nombre);
+  if (conNombre.length) {
+    doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.text(espaciarLetras('CONTENIDO'), M, y);
+    y += 7;
+
+    doc.setFontSize(10.5);
+    conNombre.slice(0, 8).forEach((s, i) => {
+      doc.setTextColor(C.tinta.r, C.tinta.g, C.tinta.b);
+      doc.setFont('helvetica', 'bold');
+      doc.text(String(i + 1).padStart(2, '0'), M, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(s.nombre, M + 10, y);
+      doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+      doc.setFontSize(9);
+      doc.text(`${s.items.length}`, W - M, y, { align: 'right' });
+      doc.setFontSize(10.5);
+      // Linea punteada sutil entre el nombre y el conteo
+      doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+      doc.line(M + 12 + doc.getTextWidth(s.nombre), y - 1, W - M - 6, y - 1);
+      y += 7.5;
+    });
+  }
+
+  // Contacto, anclado abajo
+  const yContacto = H - 26;
+  doc.setDrawColor(C.primario.r, C.primario.g, C.primario.b);
+  doc.setLineWidth(0.6);
+  doc.line(M, yContacto - 8, M + 16, yContacto - 8);
+  doc.setLineWidth(0.2);
+  doc.setTextColor(C.tinta.r, C.tinta.g, C.tinta.b);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  if (cat?.whatsapp) doc.text(`WhatsApp  ${cat.whatsapp}`, M, yContacto);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+  doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+  doc.text(new Date().toLocaleDateString('es-NI', { month: 'long', year: 'numeric' }), W - M, yContacto, { align: 'right' });
+}
+
+// ---- Cabecera discreta en cada pagina interior ----
+function dibujarCabeceraPagina(doc, W, M, cat, C) {
+  doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+  doc.text(espaciarLetras((cat?.nombre_comercial || cat?.nombre || '').toUpperCase().slice(0, 40)), M, 14);
+  doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+  doc.line(M, 18, W - M, 18);
+}
+
+// ---- Titulo de seccion: numeracion + regla, estilo editorial ----
+function dibujarTituloSeccion(doc, W, M, y, nombre, cantidad, C) {
+  doc.setFillColor(C.primario.r, C.primario.g, C.primario.b);
+  doc.rect(M, y - 4, 3, 10, 'F');
+  doc.setTextColor(C.tinta.r, C.tinta.g, C.tinta.b);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+  doc.text(nombre, M + 7, y + 4);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+  doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+  doc.text(`${cantidad} ${cantidad === 1 ? 'producto' : 'productos'}`, W - M, y + 4, { align: 'right' });
+  doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+  doc.line(M, y + 8, W - M, y + 8);
+}
+
+// ---- Tarjeta de producto ----
+function dibujarTarjetaProducto(doc, x, y, ancho, altoFoto, altoCelda, p, fotoB64, C, mostrarDescripcion) {
+  // Marco sutil de la foto
+  doc.setFillColor(C.claro.r, C.claro.g, C.claro.b);
+  doc.rect(x, y, ancho, altoFoto, 'F');
+  if (fotoB64) {
+    try { doc.addImage(fotoB64, 'JPEG', x, y, ancho, altoFoto); } catch (e) {}
+  } else {
+    doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+    doc.text(espaciarLetras('SIN IMAGEN'), x + ancho / 2, y + altoFoto / 2, { align: 'center' });
+  }
+  doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+  doc.rect(x, y, ancho, altoFoto);
+
+  // Cinta de destacado, si aplica
+  if (p.destacado) {
+    doc.setFillColor(C.primario.r, C.primario.g, C.primario.b);
+    doc.rect(x, y, 16, 5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5);
+    doc.text('DESTACADO', x + 8, y + 3.5, { align: 'center' });
+  }
+
+  let cy = y + altoFoto + 5.5;
+  doc.setTextColor(C.tinta.r, C.tinta.g, C.tinta.b);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+  const lineasNombre = doc.splitTextToSize(p.nombre || '', ancho).slice(0, 2);
+  lineasNombre.forEach(l => { doc.text(l, x, cy); cy += 4; });
+
+  cy += 1.5;
+  const precio = Number(p.precio_oferta ?? p.precio ?? 0);
+  const hayOferta = p.precio_oferta != null && Number(p.precio_oferta) < Number(p.precio ?? 0);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5);
+  doc.setTextColor(C.primario.r, C.primario.g, C.primario.b);
+  doc.text(`C$${precio.toFixed(2)}`, x, cy);
+  if (hayOferta) {
+    const anchoPrecio = doc.getTextWidth(`C$${precio.toFixed(2)}`);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+    const precioViejo = `C$${Number(p.precio).toFixed(2)}`;
+    doc.text(precioViejo, x + anchoPrecio + 3, cy);
+    doc.setLineWidth(0.3);
+    doc.line(x + anchoPrecio + 3, cy - 1.2, x + anchoPrecio + 3 + doc.getTextWidth(precioViejo), cy - 1.2);
+    doc.setLineWidth(0.2);
+  }
+
+  if (mostrarDescripcion && p.descripcion) {
+    cy += 4.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.8);
+    doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+    doc.splitTextToSize(p.descripcion, ancho).slice(0, 2).forEach(l => { doc.text(l, x, cy); cy += 3.2; });
+  }
+}
+
+function dibujarPiePagina(doc, W, H, M, nota, C, numeroPagina) {
+  doc.setDrawColor(C.linea.r, C.linea.g, C.linea.b);
+  doc.line(M, H - 18, W - M, H - 18);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+  doc.setTextColor(C.grisSuave.r, C.grisSuave.g, C.grisSuave.b);
+  if (nota) doc.text(String(nota).slice(0, 90), M, H - 12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(String(numeroPagina).padStart(2, '0'), W - M, H - 12, { align: 'right' });
+}
+
+// jsPDF no tiene control de espaciado entre letras -- se simula
+// insertando espacios finos, para lograr el look de versalitas amplias
+// tipico del diseño editorial.
+function espaciarLetras(texto) {
+  return String(texto || '').split('').join(' ');
+}
+
+function hexARgb(hex) {
+  const limpio = (hex || '#5a5af4').replace('#', '');
+  const num = parseInt(limpio.length === 3
+    ? limpio.split('').map(c => c + c).join('')
+    : limpio, 16);
+  return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+}
+
+function abrirVistaPrevia() {
+  window.open(`${archivoDePlantilla(STATE.catalogoActual.plantilla)}?preview=${STATE.catalogoActual.id}`, '_blank');
+}
+function mostrarQR() {
+  if (!STATE.catalogoActual.slug_publico) { showToast('Publica el catálogo primero', 'error'); return; }
+  dibujarQRConDiseno();
+  openModal('modal-qr-catalogo');
+}
+
+function dibujarQRConDiseno() {
+  const cont = document.getElementById('qr-catalogo-canvas');
+  if (typeof qrcode === 'undefined') {
+    cont.innerHTML = 'No se pudo cargar el generador de QR. Recarga la página e intenta de nuevo.';
+    return;
+  }
+  cont.innerHTML = 'Generando…';
+
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(urlPublicaActual());
+    qr.make();
+
+    const modulos = qr.getModuleCount();
+    const c = STATE.catalogoActual;
+    const titulo = c.nombre_comercial || c.nombre;
+    const ancho = 340, alto = 460;
+    const tamanoQR = 220;
+    const celda = tamanoQR / modulos;
+
+    const final = document.createElement('canvas');
+    final.width = ancho; final.height = alto;
+    const ctx = final.getContext('2d');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, ancho, alto);
+    ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, ancho-2, alto-2);
+
+    ctx.fillStyle = c.color_acento || '#6366f1';
+    ctx.fillRect(0, 0, ancho, 10);
+
+    ctx.fillStyle = '#111827';
+    ctx.font = '700 22px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ajustarTextoEnCanvas(ctx, titulo, ancho/2, 60, ancho - 40, 26);
+
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '400 13px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('Escanea para ver el catálogo', ancho/2, 92);
+
+    const qrX = (ancho - tamanoQR) / 2, qrY = 115;
+    ctx.fillStyle = '#111827';
+    for (let r = 0; r < modulos; r++) {
+      for (let cCol = 0; cCol < modulos; cCol++) {
+        if (qr.isDark(r, cCol)) ctx.fillRect(qrX + cCol*celda, qrY + r*celda, celda+0.5, celda+0.5);
+      }
+    }
+
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '600 11px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('Creado con Catálogo360', ancho/2, alto - 20);
+
+    cont.innerHTML = '';
+    cont.appendChild(final);
+    STATE._qrCanvasFinal = final;
+  } catch (e) {
+    console.error('dibujarQRConDiseno:', e);
+    cont.textContent = 'No se pudo generar el QR';
+  }
+}
+
+function ajustarTextoEnCanvas(ctx, texto, x, yInicial, anchoMax, salto) {
+  const palabras = texto.split(' ');
+  let linea = '', y = yInicial;
+  for (const palabra of palabras) {
+    const prueba = linea ? `${linea} ${palabra}` : palabra;
+    if (ctx.measureText(prueba).width > anchoMax && linea) {
+      ctx.fillText(linea, x, y);
+      linea = palabra; y += salto;
+    } else { linea = prueba; }
+  }
+  ctx.fillText(linea, x, y);
+}
+
+function descargarQR() {
+  const canvas = STATE._qrCanvasFinal;
+  if (!canvas) { showToast('Espera a que se genere el QR', 'error'); return; }
+  const link = document.createElement('a');
+  link.download = `QR_${STATE.catalogoActual.nombre.replace(/[^\w\-]/g,'_')}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  showToast('✅ QR descargado');
+}
+
+/* ---------- TUTORIAL DE BIENVENIDA ---------- */
+const TUTORIAL_TOTAL_PASOS = 5;
+let TUTORIAL_PASO_ACTUAL = 1;
+
+// Cuenta de DEMOSTRACION de Catalogo360: siempre ve el tutorial, en
+// cada sesion, sin importar cuantas veces ya lo haya cerrado -- util
+// para hacer demos del catalogo una y otra vez a clientes
+// potenciales. Nunca se marca como "visto" para esta cuenta.
+const CATALOGO360_CUENTA_SIEMPRE_DEMO = '5ee31e5b-1e71-48ce-a590-17c8227b828b';
+
+function mostrarTutorial() {
+  TUTORIAL_PASO_ACTUAL = 1;
+  renderTutorialPaso();
+  openModal('modal-tutorial');
+}
+
+function renderTutorialPaso() {
+  document.querySelectorAll('.tutorial-paso').forEach(el => {
+    el.style.display = Number(el.dataset.paso) === TUTORIAL_PASO_ACTUAL ? 'block' : 'none';
+  });
+  const puntos = document.getElementById('tutorial-puntos');
+  puntos.innerHTML = Array.from({ length: TUTORIAL_TOTAL_PASOS }, (_, i) => {
+    const activo = i + 1 === TUTORIAL_PASO_ACTUAL;
+    return `<span style="width:${activo?18:6}px;height:6px;border-radius:99px;background:${activo?'var(--accent,#6366f1)':'var(--border,#e5e7eb)'};transition:all .2s"></span>`;
+  }).join('');
+  const btn = document.getElementById('btn-tutorial-siguiente');
+  btn.textContent = TUTORIAL_PASO_ACTUAL === TUTORIAL_TOTAL_PASOS ? 'Empezar' : 'Siguiente';
+}
+
+function avanzarTutorial() {
+  if (TUTORIAL_PASO_ACTUAL >= TUTORIAL_TOTAL_PASOS) { cerrarTutorial(); return; }
+  TUTORIAL_PASO_ACTUAL++;
+  renderTutorialPaso();
+}
+
+async function cerrarTutorial() {
+  closeModal('modal-tutorial');
+  if (STATE.userId === CATALOGO360_CUENTA_SIEMPRE_DEMO) return; // nunca se marca como visto para la cuenta de demo
+  try {
+    await sb.from('configuracion_empresa').update({ catalogo360_tutorial_visto: true }).eq('auth_user_id', STATE.userId);
+    if (STATE.empresaConfig) STATE.empresaConfig.catalogo360_tutorial_visto = true;
+  } catch (e) { console.error('cerrarTutorial:', e); }
+}
+
+// Permite volver a verlo cuando quiera, desde donde se enganche el boton correspondiente.
+function reabrirTutorial() { mostrarTutorial(); }
