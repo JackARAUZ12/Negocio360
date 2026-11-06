@@ -2797,11 +2797,17 @@
     const bizName = CS.empresaConfig?.nombre_comercial || CS.currentUser?.nombre_negocio || 'La Empresa';
     const bizRuc = CS.empresaConfig?.ruc || '';
     const bizDireccion = CS.empresaConfig?.direccion || '';
-    const moneda = monedaParaMostrar(CS.empresaConfig?.moneda);
+    const monedaOficial = CS.empresaConfig?.moneda;
+    const moneda = monedaParaMostrar(monedaOficial);
+    // Si hay otra moneda activa en el sistema (💱), los montos del pagaré se convierten con la MISMA tasa
+    // que ven en pantalla; el crédito guardado no se toca.
+    const cv = x => Math.round(convertirParaMostrar(Number(x||0), monedaOficial) * 100) / 100;
+    const convertido = moneda !== (monedaOficial || 'NIO');
+    const tasaVis = tasaVisualizacionActiva();
     const nombreCliente = cliente ? `${cliente.nombre||''} ${cliente.apellido||''}`.trim() : '________________';
     const hoy = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
     const numCuotas = (cuotas||[]).length || credito.num_cuotas || 0;
-    const valorCuota = numCuotas ? (Number(credito.total_financiado||0) / numCuotas) : Number(credito.valor_cuota_aprox||0);
+    const valorCuota = cv(numCuotas ? (Number(credito.total_financiado||0) / numCuotas) : Number(credito.valor_cuota_aprox||0));
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
@@ -2815,16 +2821,17 @@
     doc.text(`N.º ${credito.numero_credito}`, W/2, y, { align:'center' }); y += 12;
     const prPagare = (window.N360ProformaCredito && N360ProformaCredito._cache[credito.id]) || null; // ya se cargó al abrir el detalle
     if (prPagare) { y -= 6; doc.setFontSize(9); doc.text(`Proforma ${prPagare}`, W/2, y, { align:'center' }); doc.setFontSize(10); y += 6; }
+    if (convertido && tasaVis) { doc.setFontSize(8.5); doc.text(`Montos expresados en ${moneda} a tasa de cambio C$ ${tasaVis.toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:4})} por US$ 1 (los montos originales del crédito están en ${monedaOficial || 'NIO'}).`, W/2, y, { align:'center' }); doc.setFontSize(10); y += 8; }
 
-    const parrafo1 = `Yo, ${nombreCliente}${cliente?.direccion ? ', con domicilio en ' + cliente.direccion : ''}${cliente?.telefono ? ', teléfono ' + cliente.telefono : ''}, por medio del presente documento me comprometo a pagar incondicionalmente a la orden de ${bizName}${bizRuc ? ', con RUC ' + bizRuc : ''}${bizDireccion ? ', con domicilio en ' + bizDireccion : ''}, la cantidad de ${moneda} ${Number(credito.total_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})} (${numeroALetrasSimple(Number(credito.total_financiado||0))}), correspondiente a la compra/financiamiento detallado a continuación.`;
+    const parrafo1 = `Yo, ${nombreCliente}${cliente?.direccion ? ', con domicilio en ' + cliente.direccion : ''}${cliente?.telefono ? ', teléfono ' + cliente.telefono : ''}, por medio del presente documento me comprometo a pagar incondicionalmente a la orden de ${bizName}${bizRuc ? ', con RUC ' + bizRuc : ''}${bizDireccion ? ', con domicilio en ' + bizDireccion : ''}, la cantidad de ${moneda} ${cv(credito.total_financiado).toLocaleString('es-NI',{minimumFractionDigits:2})} (${numeroALetrasSimple(cv(credito.total_financiado), moneda)}), correspondiente a la compra/financiamiento detallado a continuación.`;
     const lineas1 = doc.splitTextToSize(parrafo1, W - M*2);
     doc.text(lineas1, M, y); y += lineas1.length * 5 + 8;
 
     doc.setFont(undefined,'bold'); doc.text('CONDICIONES DEL PAGO:', M, y); y += 6;
     doc.setFont(undefined,'normal'); doc.setFontSize(9.5);
     const condiciones = [
-      `Capital financiado: ${moneda} ${Number(credito.capital_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`,
-      `Total a pagar (con intereses/impuestos si aplica): ${moneda} ${Number(credito.total_financiado||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`,
+      `Capital financiado: ${moneda} ${cv(credito.capital_financiado).toLocaleString('es-NI',{minimumFractionDigits:2})}`,
+      `Total a pagar (con intereses/impuestos si aplica): ${moneda} ${cv(credito.total_financiado).toLocaleString('es-NI',{minimumFractionDigits:2})}`,
       `Número de cuotas: ${numCuotas}`,
       `Valor aproximado por cuota: ${moneda} ${valorCuota.toLocaleString('es-NI',{minimumFractionDigits:2})}`,
       `Fecha de inicio: ${credito.fecha_inicio ? fmtDate(credito.fecha_inicio) : '—'}`,
@@ -2836,7 +2843,7 @@
       doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.text('CALENDARIO DE PAGOS:', M, y); y += 3;
       doc.autoTable({
         startY: y, head: [['Cuota', 'Vencimiento', 'Monto']],
-        body: cuotas.map(c => [c.numero, fmtDate(c.fecha_vencimiento), `${moneda} ${Number(c.monto_total).toLocaleString('es-NI',{minimumFractionDigits:2})}`]),
+        body: cuotas.map(c => [c.numero, fmtDate(c.fecha_vencimiento), `${moneda} ${cv(c.monto_total).toLocaleString('es-NI',{minimumFractionDigits:2})}`]),
         theme:'grid', styles:{ fontSize:8.5, cellPadding:2 }, headStyles:{ fillColor:[108,99,255] }, margin:{ left:M, right:M },
       });
       y = doc.lastAutoTable.finalY + 8;
@@ -2868,9 +2875,10 @@
 
   // Conversión simple de número a letras, solo para el monto del
   // pagaré — cubre los montos típicos de un crédito comercial.
-  function numeroALetrasSimple(n) {
+  function numeroALetrasSimple(n, moneda) {
+    const nombreMoneda = moneda === 'USD' ? 'dólares' : 'córdobas';
     n = Math.round(n);
-    if (n === 0) return 'cero córdobas';
+    if (n === 0) return 'cero ' + nombreMoneda;
     const UNIDADES = ['','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve'];
     const DECENAS = ['','diez','veinte','treinta','cuarenta','cincuenta','sesenta','setenta','ochenta','noventa'];
     const ESPECIALES = {11:'once',12:'doce',13:'trece',14:'catorce',15:'quince',16:'dieciséis',17:'diecisiete',18:'dieciocho',19:'diecinueve',21:'veintiuno',22:'veintidós',23:'veintitrés',24:'veinticuatro',25:'veinticinco',26:'veintiséis',27:'veintisiete',28:'veintiocho',29:'veintinueve'};
@@ -2899,7 +2907,7 @@
     const millones = Math.floor(n/1000000), resto = n%1000000;
     let texto = millones > 0 ? (millones===1?'un millón':miles(millones)+' millones') + (resto>0?' ':'') : '';
     texto += miles(resto);
-    return (texto.trim() || 'cero') + ' córdobas';
+    return (texto.trim() || 'cero') + ' ' + nombreMoneda;
   }
 
   async function enriquecerItemsConCombo(items) { const r = await _enriquecerItemsConComboBase(items); return (window.N360CR && window.N360CR.conCabys) ? window.N360CR.conCabys(r) : r; }
