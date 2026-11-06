@@ -219,7 +219,14 @@
     document.body.style.overflow = 'hidden'; // bloquea el scroll de fondo -- el tutorial se queda fijo y centrado aunque desliken por accidente
   }
 
+  // Tutoriales automaticos por modulo: APAGADOS (pedido de Jack, nov-2026:
+  // salian en cada modulo y molestaban). Los tutoriales siguen en el modulo
+  // "Tutoriales" y la guia de inicio esta en el Dashboard (primeros-pasos.js).
+  // Para volver a encenderlos: poner true.
+  const TM_AUTO_POR_MODULO = false;
+
   async function verificarYMostrar(moduloKey, pasos) {
+    if (!TM_AUTO_POR_MODULO) return;
     if (await yaVisto(moduloKey)) return;
     mostrar(moduloKey, pasos);
   }
@@ -232,6 +239,7 @@
    * Negocio360Tutorial.mostrar(...) directamente.
    */
   function agregarBotonAyuda(moduloKey, pasos) {
+    if (!TM_AUTO_POR_MODULO) return; // el boton "?" flotante tambien se apaga
     inyectarEstilos();
     let btn = document.getElementById('tm-ayuda-flotante');
     if (!btn) {

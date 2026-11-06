@@ -5261,6 +5261,9 @@ async function init() {
   // Llegó desde Configuración (?series=1) al activar números de serie: abre el asistente.
   try { if (new URLSearchParams(location.search).get('series') === '1' && STATE.usaNumeroSerie) setTimeout(abrirAsistenteSeries, 400); } catch (e) {}
 
+  // Llegó desde la guía "Primeros pasos" del Dashboard (?nuevo=1): abre el formulario de producto nuevo.
+  try { if (new URLSearchParams(location.search).get('nuevo') === '1') { history.replaceState(null, '', 'productos.html'); setTimeout(() => abrirModalNuevo('producto'), 400); } } catch (e) {}
+
   if (window.Negocio360Tutorial) {
     const pasosProductos = [
       { icono: '📦', titulo: 'Bienvenido a Productos/Servicios', texto: 'Aquí cargas todo lo que vendes -- productos con stock, o servicios sin inventario.' },

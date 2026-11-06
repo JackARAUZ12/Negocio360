@@ -20,7 +20,7 @@
   <script src="periodo-mes.js?v=20261024a"></script>
   <script src="cierre-pendiente.js?v=20261028a"></script>
   <script src="auditoria-guard.js"></script>
-  <script src="tutorial-motor.js?v=20261013a"></script>
+  <script src="tutorial-motor.js?v=20261106a"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <!-- Lucide Icons -->
@@ -2949,6 +2949,9 @@ async function initDashboard() {
     actualizarBotonMonedaVis();
     _dashboardUserId = userId; // guardado para poder recargar solo los datos después (ej. al cambiar la moneda de visualización)
 
+    // Guia de inicio (3 pasos) para cuentas nuevas -- solo lectura, nunca rompe el dashboard
+    if (window.N360PrimerosPasos) N360PrimerosPasos.iniciar(sbClient, userId);
+
     if (window.Negocio360Tutorial) {
       const pasosDashboard = [
         { icono: '👋', titulo: '¡Bienvenido a Negocio360!', texto: 'Este es tu Dashboard -- el resumen general de tu negocio. Aquí ves tus ventas, gastos y caja de un vistazo.' },
@@ -3126,6 +3129,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.lucide) lucide.createIcons();
 });
 </script>
+<script src="primeros-pasos.js?v=20261106a"></script>
 <script src="bienvenida-negocio360.js?v=11"></script>
 <script src="ventas-config.js?v=20261021a"></script>
 <script src="embudo-ventas.js?v=20261106b"></script>

@@ -1,0 +1,319 @@
+/* ============================================================
+   TUTORIAL-MOTOR.JS — NEGOCIO360
+   ------------------------------------------------------------
+   Motor de tutoriales reutilizable para CUALQUIER modulo del
+   sistema. Se incluye con una sola linea en cada pagina:
+
+     <script src="tutorial-motor.js"></script>
+
+   Y se usa asi, en cualquier punto despues de saber quien es el
+   usuario (normalmente dentro del init() de cada modulo):
+
+     Negocio360Tutorial.verificarYMostrar('ventas', [
+       { icono: '💰', titulo: 'Bienvenido a Ventas',
+         texto: 'Aqui registras cada venta...' },
+       { icono: '🛒', titulo: 'Arma el carrito',
+         texto: 'Busca el producto y da clic...' },
+       ...
+     ]);
+
+   'ventas' es la modulo_key -- debe coincidir con la key que ya
+   usa modulos-registro.js para ese modulo (asi el sistema entero
+   habla del mismo modulo con el mismo nombre).
+
+   QUE HACE:
+   1) verificarYMostrar(moduloKey, pasos) -- consulta si el
+      usuario YA vio el tutorial de ese modulo especifico
+      (tabla tutoriales_vistos). Si nunca lo vio, lo muestra
+      automaticamente. Si ya lo vio, no hace nada.
+   2) mostrar(moduloKey, pasos) -- lo muestra SIEMPRE, sin
+      consultar nada (para el boton de "Ver tutorial de nuevo"
+      que cada pagina puede agregar en su propio encabezado).
+   3) Al cerrarse (saltar o terminar), marca ese modulo como
+      visto para siempre en esa cuenta -- nunca vuelve a
+      interrumpir solo, pero el boton de "ver de nuevo" sigue
+      funcionando cuando el usuario quiera repasarlo.
+
+   DISEÑO: el motor trae su propio sistema visual completo
+   (colores, tipografia, animaciones) inyectado en un <style>
+   propio -- no depende de las variables CSS de cada modulo (que
+   no son consistentes entre paginas), asi se ve exactamente
+   igual de profesional en cualquier parte del sistema.
+
+   Responsive: en pantallas angostas la tarjeta ocupa el ancho
+   disponible con margenes comodos, la imagen decorativa se
+   reduce, y los botones se mantienes con area tactil comoda.
+
+   No depende de ningun modulo propio (ventas.js, productos.js,
+   etc.) -- corre con su propia conexion a Supabase, igual que
+   modulos-guard.js y perfiles-guard.js. No reemplaza ni modifica
+   nada existente.
+   ============================================================ */
+'use strict';
+
+(function () {
+  const TM_SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+  const TM_SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+  const tmSb = window.supabase.createClient(TM_SUPABASE_URL, TM_SUPABASE_KEY);
+
+  // Cuenta de DEMOSTRACION: siempre ve el tutorial, en cada sesion,
+  // sin importar cuantas veces ya lo haya cerrado -- util para hacer
+  // demos del sistema una y otra vez. Nunca se marca como "visto"
+  // para esta cuenta especifica.
+  const TM_CUENTA_SIEMPRE_DEMO = '64b4804b-7b2b-44d8-a365-bc04ec5950ec'; // Juan Perez (cuenta de prueba)
+  // Demos por rubro (selector del login): se comportan igual que la demo original.
+  const TM_CUENTAS_DEMO = [
+    TM_CUENTA_SIEMPRE_DEMO,
+    '04c0a5d7-1bc2-4359-8c10-1e5b3010b3da', // restaurante
+    '0aad4d1d-d18b-4430-9e8d-a42d4e453716', // hotel
+    '788123cf-d5a0-4aba-b60b-45703a8993a3', // transporte
+    '5e169dea-ac7a-499c-9c25-db7d4d30c024', // farmacia
+    '649a26bc-7481-447c-b5e0-9d3d73bc2a38', // veterinaria
+    '32ed20a4-92dd-4f53-92d9-8f963c3dce7d', // boutique
+  ];
+  const esCuentaDemo = id => TM_CUENTAS_DEMO.includes(id);
+
+  let inyectado = false;
+  let pasoActual = 0;
+  let pasosActivos = [];
+  let moduloActivoKey = null;
+
+  function inyectarEstilos() {
+    if (inyectado) return;
+    inyectado = true;
+    const style = document.createElement('style');
+    style.textContent = `
+      #tm-overlay {
+        position: fixed; inset: 0; z-index: 99999;
+        background: rgba(15,15,20,.55); backdrop-filter: blur(3px);
+        display: none; align-items: center; justify-content: center;
+        padding: 20px; font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+        animation: tm-fade-in .2s ease;
+      }
+      #tm-overlay.tm-open { display: flex; }
+      @keyframes tm-fade-in { from { opacity: 0; } to { opacity: 1; } }
+      #tm-card {
+        background: #ffffff; border-radius: 18px; width: 100%; max-width: 420px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.3); overflow: hidden;
+        animation: tm-pop .25s cubic-bezier(.34,1.56,.64,1);
+        max-height: 88vh; display: flex; flex-direction: column;
+      }
+      @keyframes tm-pop { from { opacity:0; transform: scale(.94) translateY(8px); } to { opacity:1; transform: scale(1) translateY(0); } }
+      #tm-media {
+        height: 140px; flex-shrink: 0;
+        background: linear-gradient(135deg, #5a5af4, #8b8bf9);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 46px;
+      }
+      #tm-body { padding: 24px 24px 4px; overflow-y: auto; }
+      #tm-titulo { margin: 0 0 8px; font-size: 19px; font-weight: 700; color: #111014; }
+      #tm-texto { margin: 0; font-size: 13.5px; line-height: 1.6; color: #5c5c6b; }
+      #tm-footer { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px 22px; gap: 10px; flex-shrink: 0; }
+      #tm-puntos { display: flex; gap: 6px; flex-wrap: wrap; }
+      .tm-punto { width: 6px; height: 6px; border-radius: 99px; background: #e4e2db; transition: all .2s ease; }
+      .tm-punto.tm-activo { width: 18px; background: #5a5af4; }
+      .tm-btn { border: none; border-radius: 9px; font-weight: 700; font-size: 13px; cursor: pointer; padding: 10px 16px; font-family: inherit; transition: transform .15s ease, opacity .15s ease; }
+      .tm-btn:active { transform: scale(.96); }
+      .tm-btn-saltar { background: #f2f1ed; color: #5c5c6b; }
+      .tm-btn-saltar:hover { background: #e9e7e1; }
+      .tm-btn-siguiente { background: #5a5af4; color: #fff; }
+      .tm-btn-siguiente:hover { background: #4747d1; }
+      #tm-ayuda-flotante {
+        position: fixed; bottom: 20px; right: 20px; z-index: 9998;
+        width: 46px; height: 46px; border-radius: 50%; background: #5a5af4; color: #fff;
+        border: none; cursor: pointer; box-shadow: 0 8px 20px rgba(90,90,244,.4);
+        display: none; align-items: center; justify-content: center; font-size: 20px;
+        font-family: inherit; transition: transform .15s ease;
+      }
+      #tm-ayuda-flotante:hover { transform: scale(1.06); }
+      @media (max-width: 480px) {
+        #tm-card { max-width: 100%; }
+        #tm-media { height: 110px; font-size: 38px; }
+        #tm-body { padding: 20px 20px 4px; }
+        #tm-footer { padding: 14px 20px 20px; }
+      }
+      @media (max-height: 560px) {
+        #tm-media { display: none; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'tm-overlay';
+    overlay.innerHTML = `
+      <div id="tm-card">
+        <div id="tm-media">💡</div>
+        <div id="tm-body">
+          <h2 id="tm-titulo"></h2>
+          <p id="tm-texto"></p>
+        </div>
+        <div id="tm-footer">
+          <div id="tm-puntos"></div>
+          <div style="display:flex;gap:8px">
+            <button class="tm-btn tm-btn-saltar" id="tm-btn-saltar">Saltar</button>
+            <button class="tm-btn tm-btn-siguiente" id="tm-btn-siguiente">Siguiente</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrar(); });
+    document.getElementById('tm-btn-saltar').addEventListener('click', cerrar);
+    document.getElementById('tm-btn-siguiente').addEventListener('click', avanzar);
+  }
+
+  function renderPaso() {
+    const p = pasosActivos[pasoActual];
+    document.getElementById('tm-media').textContent = p.icono || '💡';
+    document.getElementById('tm-titulo').textContent = p.titulo || '';
+    document.getElementById('tm-texto').textContent = p.texto || '';
+    document.getElementById('tm-puntos').innerHTML = pasosActivos.map((_, i) =>
+      `<span class="tm-punto ${i === pasoActual ? 'tm-activo' : ''}"></span>`
+    ).join('');
+    document.getElementById('tm-btn-siguiente').textContent =
+      pasoActual === pasosActivos.length - 1 ? 'Entendido' : 'Siguiente';
+  }
+
+  function avanzar() {
+    if (pasoActual >= pasosActivos.length - 1) { cerrar(); return; }
+    pasoActual++;
+    renderPaso();
+  }
+
+  async function cerrar() {
+    document.getElementById('tm-overlay').classList.remove('tm-open');
+    document.body.style.overflow = ''; // restaura el scroll de fondo
+    if (moduloActivoKey) await marcarVisto(moduloActivoKey);
+  }
+
+  async function marcarVisto(moduloKey) {
+    try {
+      const { data: { user } } = await tmSb.auth.getUser();
+      if (!user) return;
+      if (esCuentaDemo(user.id)) return; // nunca se marca como visto para la cuenta de demo
+      await tmSb.from('tutoriales_vistos')
+        .upsert({ auth_user_id: user.id, modulo_key: moduloKey, visto_en: new Date().toISOString() },
+                { onConflict: 'auth_user_id,modulo_key' });
+    } catch (e) { console.warn('tutorial-motor: no se pudo guardar', e); }
+  }
+
+  async function yaVisto(moduloKey) {
+    try {
+      const { data: { user } } = await tmSb.auth.getUser();
+      if (!user) return true; // sin sesion, no interrumpir con un tutorial
+      if (esCuentaDemo(user.id)) return false; // esta cuenta SIEMPRE lo ve, en cada sesion
+      const { data } = await tmSb.from('tutoriales_vistos')
+        .select('modulo_key').eq('auth_user_id', user.id).eq('modulo_key', moduloKey).maybeSingle();
+      return !!data;
+    } catch (e) { return true; } // ante cualquier duda, no interrumpir
+  }
+
+  function mostrar(moduloKey, pasos) {
+    if (!pasos || !pasos.length) return;
+    inyectarEstilos();
+    moduloActivoKey = moduloKey;
+    pasosActivos = pasos;
+    pasoActual = 0;
+    renderPaso();
+    document.getElementById('tm-overlay').classList.add('tm-open');
+    document.body.style.overflow = 'hidden'; // bloquea el scroll de fondo -- el tutorial se queda fijo y centrado aunque desliken por accidente
+  }
+
+  async function verificarYMostrar(moduloKey, pasos) {
+    if (await yaVisto(moduloKey)) return;
+    mostrar(moduloKey, pasos);
+  }
+
+  /**
+   * Agrega el botoncito flotante de ayuda (abajo a la derecha) que
+   * reabre el tutorial de este modulo cuando el usuario quiera
+   * repasarlo. Opcional -- cada pagina decide si lo quiere o prefiere
+   * poner su propio boton en el encabezado llamando a
+   * Negocio360Tutorial.mostrar(...) directamente.
+   */
+  function agregarBotonAyuda(moduloKey, pasos) {
+    inyectarEstilos();
+    let btn = document.getElementById('tm-ayuda-flotante');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'tm-ayuda-flotante';
+      btn.innerHTML = '?';
+      btn.title = 'Ver tutorial de este módulo';
+      document.body.appendChild(btn);
+    }
+    btn.style.display = 'flex';
+    btn.onclick = () => mostrar(moduloKey, pasos);
+  }
+
+  /**
+   * Boton "Adquirir sistema" -- SOLO se muestra en la cuenta de
+   * demostracion (Juan Perez). Lleva a WhatsApp para cotizar.
+   * Se autoejecuta al cargar cualquier pagina que incluya este
+   * archivo, pero no hace absolutamente nada si la cuenta no es la
+   * de demostracion: ninguna otra cuenta lo ve jamas.
+   */
+  const TM_WHATSAPP_VENTAS = '50581294177';
+
+  async function mostrarBotonAdquirirSiEsDemo() {
+    try {
+      if (!tmSb) return;
+      const { data: { user } } = await tmSb.auth.getUser();
+      if (!user || !esCuentaDemo(user.id)) return;
+      if (document.getElementById('tm-btn-adquirir')) return;
+
+      const style = document.createElement('style');
+      style.textContent = `
+        #tm-btn-adquirir {
+          position: fixed; right: 20px; bottom: 84px; z-index: 99998;
+          display: flex; align-items: center; gap: 8px;
+          padding: 11px 18px; border: 0; border-radius: 999px;
+          background: #25D366; color: #fff; cursor: pointer;
+          font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+          font-size: 13.5px; font-weight: 700;
+          box-shadow: 0 6px 20px -4px rgba(37,211,102,.55);
+          transition: transform .18s ease, box-shadow .18s ease;
+        }
+        #tm-btn-adquirir:hover { transform: translateY(-2px); box-shadow: 0 10px 26px -4px rgba(37,211,102,.65); }
+        @media (max-width: 640px) {
+          #tm-btn-adquirir { right: 14px; bottom: 76px; padding: 10px 15px; font-size: 12.5px; }
+        }
+      `;
+      document.head.appendChild(style);
+
+      const btn = document.createElement('button');
+      btn.id = 'tm-btn-adquirir';
+      btn.type = 'button';
+      btn.title = 'Cotizar Negocio360 por WhatsApp';
+      btn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M17.5 14.4c-.3-.2-1.7-.9-2-1-.3-.1-.5-.2-.7.2-.2.3-.7 1-.9 1.2-.2.2-.3.2-.6.1-1.8-.9-3-1.6-4.2-3.6-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5 0-.2-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5 1.9.8 2.6.9 3.5.8.6-.1 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3z"/>
+          <path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3.1.8.8-3-.2-.3a8.2 8.2 0 1 1 7.2 3.9z"/>
+        </svg>
+        Adquirir sistema
+      `;
+      btn.onclick = () => {
+        const msg = encodeURIComponent('Hola, estuve probando la demostración de Negocio360 y quiero cotizar el sistema.');
+        window.open(`https://wa.me/${TM_WHATSAPP_VENTAS}?text=${msg}`, '_blank', 'noopener');
+      };
+      document.body.appendChild(btn);
+    } catch (e) {
+      // Si algo falla aqui, simplemente no se muestra el boton --
+      // nunca debe afectar el funcionamiento normal de la pagina.
+      console.warn('mostrarBotonAdquirirSiEsDemo:', e);
+    }
+  }
+
+  // Se intenta al cargar la pagina. Si la sesion todavia no esta
+  // lista, se reintenta una sola vez tras un momento.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      mostrarBotonAdquirirSiEsDemo();
+      setTimeout(mostrarBotonAdquirirSiEsDemo, 2500);
+    });
+  } else {
+    mostrarBotonAdquirirSiEsDemo();
+    setTimeout(mostrarBotonAdquirirSiEsDemo, 2500);
+  }
+
+  window.Negocio360Tutorial = { mostrar, verificarYMostrar, agregarBotonAyuda };
+})();
