@@ -20,7 +20,7 @@
 <script src="reloj-sesion.js?v=20261028b"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261030a"></script>
-<script src="modulos-registro.js?v=20261105a"></script>
+<script src="modulos-registro.js?v=20261107a"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
@@ -1928,6 +1928,27 @@
           <div class="cfg-status" id="certificados-status"></div>
         </div>
 
+        <div class="cfg-card fade-in stagger-1" id="recepcion-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🛎️</div>
+            <div>
+              <div class="cfg-card-title">Recepción (Turnos)</div>
+              <div class="cfg-card-desc">Turnos tipo banco: das un número, llamas al siguiente desde tu puesto y la pantalla del televisor lo anuncia con voz. Incluye kiosko "Tome su turno", seguimiento por QR en el celular y estadísticas. No toca ventas, caja ni inventario.</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar Recepción (Turnos)</div>
+              <div class="cfg-row-sub" id="recepcion-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="recepcion-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleRecepcionClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="recepcion-status"></div>
+        </div>
+
         <div class="cfg-card fade-in stagger-1" id="puntos-card">
           <div class="cfg-card-header">
             <div class="cfg-card-icon">🎁</div>
@@ -3470,6 +3491,49 @@ async function guardarModuloCertificados(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Recepción (Turnos) (7-nov-2026): mismo criterio que Certificados. Apagado por defecto. Las clínicas usan su Sala de espera.
+async function cargarModuloRecepcion() {
+  const toggle = document.getElementById('recepcion-toggle');
+  const sub = document.getElementById('recepcion-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_recepcion, usa_modulo_clinica').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    if (data?.usa_modulo_clinica === true) {
+      sub.textContent = 'Tu clínica ya tiene turnos y pantalla en "Sala de espera".';
+      toggle.checked = false; toggle.disabled = true; return;
+    }
+    const activo = data?.usa_modulo_recepcion === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — Recepción aparece en el menú.' : 'Desactivado — no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloRecepcion:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleRecepcionClick(evt) {
+  const toggle = document.getElementById('recepcion-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloRecepcion(toggle.checked);
+}
+async function guardarModuloRecepcion(activo) {
+  const toggle = document.getElementById('recepcion-toggle');
+  const sub = document.getElementById('recepcion-row-sub');
+  const statusEl = document.getElementById('recepcion-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_recepcion: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — Recepción aparece en el menú.' : 'Desactivado — no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Recepción activada. Recarga la página para ver el menú.' : 'Recepción desactivada (el historial de turnos se conserva; las pantallas dejan de mostrar datos).', true);
+  } catch (e) {
+    console.error('guardarModuloRecepcion:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 function onToggleFiadosClick(evt) {
   const toggle = document.getElementById('fiados-toggle');
   if (toggle.disabled) { evt.preventDefault(); return; }
@@ -4351,6 +4415,7 @@ async function initConfiguracion() {
       cargarModuloFiados();
       cargarModuloCotizaciones();
       cargarModuloCertificados();
+      cargarModuloRecepcion();
       cargarIva();
       cargarDatosFacturacion();
       cargarCierresAuto();
@@ -4378,7 +4443,7 @@ document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
 <script src="perfiles-guard.js?v=20261106e"></script>
-<script src="modulos-guard.js?v=20261105a"></script>
+<script src="modulos-guard.js?v=20261107a"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>

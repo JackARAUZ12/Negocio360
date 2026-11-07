@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#1d4ed8" />
+<title>Mi turno</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="recepcion-publico.css?v=20261107a" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body{overflow:auto;min-height:100%;background:radial-gradient(800px 400px at 0 -10%,#dde8ff 0,transparent 60%),var(--fondo)}
+  .m{max-width:460px;margin:0 auto;padding:18px 16px 40px;min-height:100vh;display:flex;flex-direction:column}
+  .m-head{display:flex;align-items:center;gap:12px;padding:6px 2px 16px}
+  .m-head img{height:42px;max-width:120px;object-fit:contain}
+  .m-head b{font-size:17px;font-weight:800}
+  .m-card{background:#fff;border:1px solid var(--borde);border-radius:26px;padding:26px 22px;text-align:center;box-shadow:0 26px 60px -34px rgba(15,40,100,.55);position:relative;overflow:hidden}
+  .m-card::before{content:'';position:absolute;inset:0 0 auto 0;height:8px;background:linear-gradient(90deg,var(--c),var(--c2))}
+  .m-et{font-size:12px;font-weight:800;letter-spacing:.3em;color:var(--txt3);text-transform:uppercase}
+  .m-cod{font-size:84px;font-weight:900;color:var(--c);line-height:1.02;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+  .m-serv{font-size:16px;font-weight:700;color:var(--txt2)}
+  .m-est{margin-top:20px;border-radius:18px;padding:18px;background:#f4f7fd}
+  .m-est b{display:block;font-size:22px;font-weight:800}
+  .m-est span{display:block;font-size:14px;color:var(--txt2);margin-top:4px}
+  .m-prog{height:10px;border-radius:99px;background:#e3e9f3;overflow:hidden;margin-top:14px}
+  .m-prog i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--c),#60a5fa);transition:width .6s}
+  .m-llamado{background:linear-gradient(135deg,#059669,#10b981);color:#fff;animation:mLat 1.2s ease-in-out infinite}
+  .m-llamado span{color:#ecfdf5}
+  .m-llamado b{font-size:26px}
+  .m-puesto{display:inline-block;margin-top:10px;background:#fff;color:#047857;border-radius:99px;padding:8px 18px;font-size:22px;font-weight:900}
+  @keyframes mLat{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}}
+  .m-aviso{margin-top:16px;width:100%;border:0;border-radius:14px;padding:14px;font:inherit;font-size:15px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--c),var(--c2));cursor:pointer}
+  .m-aviso.ok{background:#e3f8ee;color:#047857;cursor:default}
+  .m-nota{font-size:12.5px;color:var(--txt3);text-align:center;margin-top:14px;line-height:1.5}
+  .m-pie{margin-top:auto;padding-top:24px;text-align:center;font-size:12px;color:var(--txt3)}
+</style>
+</head>
+<body>
+<div class="m">
+  <div class="m-head"><img data-marca-logo alt="" style="display:none"/><b data-marca-nombre></b></div>
+  <div class="m-card" id="m-card"><div class="m-et">Cargando…</div></div>
+  <button class="m-aviso" id="m-aviso">🔔 Activar aviso con sonido</button>
+  <div class="m-nota">Deja esta página abierta: cuando te llamen, tu celular suena y vibra.<br>Se actualiza sola.</div>
+  <div class="m-pie">Negocio360 · Recepción</div>
+</div>
+<script src="recepcion-publico.js?v=20261107a"></script>
+<script>
+(function () {
+  const R = window.RecPub, $ = id => document.getElementById(id);
+  const token = new URLSearchParams(location.search).get('t') || '';
+  let anterior = null, maxDelante = null, alarma = null, avisoOn = false;
+
+  function alarmaLlamado() {
+    clearInterval(alarma);
+    const sonar = () => { if (avisoOn) R.beep(); try { navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 600]); } catch (_) {} };
+    sonar(); let n = 0; alarma = setInterval(() => { if (++n > 8) return clearInterval(alarma); sonar(); }, 5000);
+  }
+  function pintar(d) {
+    const c = $('m-card');
+    if (!d?.ok) { c.innerHTML = '<div class="m-et">Turno no encontrado</div><p style="margin-top:12px;color:var(--txt2)">Revisa el código QR o pide ayuda en recepción.</p>'; return; }
+    R.aplicarMarca(d.marca);
+    if (maxDelante === null || d.delante > maxDelante) maxDelante = d.delante;
+    const min = Math.round((d.min_por_persona || 0) * (d.delante || 0));
+    let est = '';
+    if (!d.es_hoy) est = `<div class="m-est"><b>Este turno era de otro día</b><span>Pide un turno nuevo en recepción.</span></div>`;
+    else if (d.estado === 'espera') {
+      const pct = maxDelante ? Math.round((1 - d.delante / maxDelante) * 100) : 100;
+      est = `<div class="m-est"><b>${d.delante === 0 ? '¡Eres el siguiente!' : d.delante === 1 ? 'Falta 1 persona' : `Faltan ${d.delante} personas`}</b>
+        <span>${d.delante ? `Espera aproximada: ${min < 1 ? 'menos de 1' : min} min` : 'Prepárate, ya casi te llaman.'}</span><div class="m-prog"><i style="width:${Math.max(6, pct)}%"></i></div></div>`;
+    } else if (d.estado === 'llamado') est = `<div class="m-est m-llamado"><b>📣 ¡Es tu turno!</b><span>Pasa ahora a</span><div class="m-puesto">${R.esc(d.puesto || 'recepción')}</div></div>`;
+    else if (d.estado === 'atendiendo') est = `<div class="m-est"><b>Te están atendiendo</b><span>${R.esc(d.puesto || '')}</span></div>`;
+    else if (d.estado === 'atendido') est = `<div class="m-est"><b>¡Gracias por tu visita! 🙌</b><span>Tu turno ya fue atendido.</span></div>`;
+    else if (d.estado === 'no_vino') est = `<div class="m-est"><b>Te llamamos y no llegaste</b><span>Acércate a recepción y te ayudamos.</span></div>`;
+    else est = `<div class="m-est"><b>Turno cancelado</b><span>Si fue un error, acércate a recepción.</span></div>`;
+    c.innerHTML = `<div class="m-et">Tu turno</div><div class="m-cod">${R.esc(d.codigo)}</div><div class="m-serv">${R.esc(d.servicio || '')}</div>${est}`;
+    const clave = d.estado + '|' + d.llamadas;
+    if (d.estado === 'llamado' && anterior !== null && clave !== anterior) alarmaLlamado();
+    anterior = clave;
+    const fin = ['atendido', 'no_vino', 'cancelado'].includes(d.estado) || !d.es_hoy;
+    $('m-aviso').style.display = fin ? 'none' : '';
+    return fin;
+  }
+  let terminado = false;
+  async function ciclo() {
+    if (terminado) return;
+    try {
+      const { data } = await R.sb.rpc('recepcion_seguimiento', { p_token: token });
+      $('rp-offline') && ($('rp-offline').style.display = 'none');
+      terminado = !!pintar(data) && data?.ok;
+    } catch (_) {}
+  }
+  $('m-aviso').onclick = async () => {
+    avisoOn = await R.desbloquearAudio() || true; R.beep(); R.noApagar();
+    $('m-aviso').textContent = '✅ Aviso activado'; $('m-aviso').classList.add('ok');
+  };
+  if (!token) pintar(null); else { ciclo(); setInterval(() => ciclo(), 5000); }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) ciclo(); });
+})();
+</script>
+</body>
+</html>

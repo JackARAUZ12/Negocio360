@@ -254,6 +254,10 @@
     'certificados.html': { key: 'certificados', label: 'Certificados de regalo', icon: '🎁', obligatorio: false, flagPropio: 'usa_modulo_certificados',
                        desc: 'Certificados de regalo (gift cards) de monto libre: cobrados por adelantado, como venta o de cortesía. Se usan en Ventas con su código.' },
 
+    // ---- Recepción (Turnos) (general opcional: apagado por defecto, interruptor propio en Configuración; no aplica a clínicas) ----
+    'recepcion.html': { key: 'recepcion', label: 'Recepción (Turnos)', icon: '🛎️', obligatorio: false, flagPropio: 'usa_modulo_recepcion',
+                       desc: 'Turnos tipo banco: da turnos, llama al siguiente y la pantalla del televisor los anuncia con voz. Kiosko "Tome su turno" y seguimiento por QR. No toca ventas, caja ni inventario.' },
+
     // ---- Calculadora costo-precio (herramienta aislada: no guarda ni cambia datos) ----
     'calculadora-precio.html': { key: 'calculadora_precio', label: 'Calculadora costo-precio', icon: '🧮', obligatorio: false,
                        desc: 'Escribe el costo de un producto y te sugiere a qué precio venderlo para ganar y ser competitivo. Solo calcula: no guarda nada.' },
