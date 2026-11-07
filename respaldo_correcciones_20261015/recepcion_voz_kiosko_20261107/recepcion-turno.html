@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="robots" content="noindex" />
+<title>Tome su turno</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="recepcion-publico.css?v=20261107a" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="qrcode-lib.js"></script>
+<style>
+  body{user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  .k{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto;
+    background:radial-gradient(1200px 600px at -10% -20%,#dde8ff 0,transparent 55%),radial-gradient(900px 500px at 120% 130%,#e3edff 0,transparent 60%),var(--fondo)}
+  .k-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:clamp(12px,2.2vh,22px) clamp(16px,3vw,36px);background:#fff;border-bottom:1px solid var(--borde)}
+  .k-marca{display:flex;align-items:center;gap:14px;min-width:0}
+  .k-marca img{height:clamp(36px,6vh,60px);max-width:30vw;object-fit:contain}
+  .k-marca b{font-size:clamp(18px,2.6vh,28px);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .k-hora{font-size:clamp(18px,3vh,30px);font-weight:800;color:var(--c);font-variant-numeric:tabular-nums}
+  .k-body{overflow:auto;padding:clamp(18px,4vh,48px) clamp(16px,4vw,56px);display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .k-tit{font-size:clamp(26px,4.6vh,52px);font-weight:900;letter-spacing:-.02em;text-align:center}
+  .k-sub{font-size:clamp(15px,2.2vh,22px);color:var(--txt2);margin-top:6px;text-align:center}
+  .k-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:clamp(12px,2vh,22px);width:100%;max-width:1100px;margin-top:clamp(18px,4vh,40px)}
+  .k-s{position:relative;display:flex;align-items:center;gap:clamp(14px,2vw,22px);text-align:left;background:#fff;border:2px solid var(--borde);border-radius:clamp(18px,3vh,28px);
+    padding:clamp(16px,3vh,30px) clamp(16px,2vw,26px);cursor:pointer;font:inherit;color:var(--txt);box-shadow:0 18px 40px -28px rgba(15,40,100,.5);transition:transform .12s,border-color .12s}
+  .k-s:active{transform:scale(.98)}
+  .k-s:hover{border-color:var(--c)}
+  .k-s:disabled{opacity:.55}
+  .k-l{flex:0 0 auto;width:clamp(64px,10vh,96px);height:clamp(64px,10vh,96px);border-radius:clamp(14px,2.4vh,24px);background:linear-gradient(135deg,var(--c),var(--c2));color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:clamp(30px,5vh,48px);font-weight:900}
+  .k-s.pref .k-l{background:linear-gradient(135deg,#7c3aed,#5b21b6)}
+  .k-n{font-size:clamp(20px,3.2vh,32px);font-weight:800;line-height:1.15}
+  .k-e{font-size:clamp(13px,1.9vh,18px);color:var(--txt2);margin-top:4px}
+  .k-flecha{margin-left:auto;font-size:clamp(24px,4vh,40px);color:var(--c);font-weight:800}
+  .k-pie{text-align:center;padding:12px;font-size:13px;color:var(--txt3)}
+  /* resultado */
+  .k-res{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(238,243,251,.97)}
+  .k-tk{background:#fff;border-radius:32px;padding:clamp(24px,4vh,44px) clamp(22px,4vw,48px);text-align:center;max-width:620px;width:100%;
+    box-shadow:0 40px 80px -36px rgba(15,40,100,.55);position:relative;overflow:hidden;animation:kIn .45s cubic-bezier(.2,1.3,.4,1)}
+  .k-tk::before{content:'';position:absolute;inset:0 0 auto 0;height:10px;background:linear-gradient(90deg,var(--c),var(--c2))}
+  @keyframes kIn{from{transform:translateY(30px) scale(.94);opacity:0}to{transform:none;opacity:1}}
+  .k-tk-et{font-size:clamp(14px,2vh,18px);font-weight:800;letter-spacing:.3em;color:var(--txt3);text-transform:uppercase}
+  .k-tk-cod{font-size:clamp(84px,17vh,170px);font-weight:900;color:var(--c);line-height:1;margin:6px 0;font-variant-numeric:tabular-nums}
+  .k-tk-s{font-size:clamp(18px,2.8vh,26px);font-weight:800}
+  .k-tk-d{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:14px 0 4px}
+  .k-tk-d span{background:#eef3ff;color:var(--c2);border-radius:99px;padding:7px 14px;font-size:clamp(14px,2vh,18px);font-weight:700}
+  .k-tk-qr{display:flex;align-items:center;gap:16px;justify-content:center;margin-top:18px;text-align:left}
+  .k-tk-qr svg{width:clamp(110px,17vh,160px);height:clamp(110px,17vh,160px);background:#fff;padding:6px;border:1px solid var(--borde);border-radius:14px}
+  .k-tk-qr p{font-size:clamp(14px,2vh,18px);color:var(--txt2);max-width:230px;line-height:1.4}
+  .k-ok{margin-top:22px;width:100%;border:0;border-radius:18px;padding:clamp(14px,2.4vh,20px);font:inherit;font-size:clamp(18px,2.6vh,24px);font-weight:800;color:#fff;cursor:pointer;
+    background:linear-gradient(135deg,var(--c),var(--c2))}
+  .k-err{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#fdecec;color:#b91c1c;border-radius:14px;padding:12px 18px;font-weight:700;display:none;z-index:30}
+  @media print{body *{visibility:hidden}}
+</style>
+</head>
+<body>
+<div id="rp-par-w" class="rp-par-w" style="display:none"></div>
+<div class="rp-offline" id="rp-offline">Sin conexión · reintentando…</div>
+<div class="k" id="k" style="display:none">
+  <header class="k-head">
+    <div class="k-marca"><img data-marca-logo alt="" style="display:none"/><b data-marca-nombre></b></div>
+    <div class="k-hora" id="k-hora">--:--</div>
+  </header>
+  <main class="k-body">
+    <div class="k-tit">Bienvenido 👋</div>
+    <div class="k-sub">Toque el servicio que necesita para tomar su turno</div>
+    <div class="k-grid" id="k-grid"></div>
+  </main>
+  <div class="k-pie">Su turno aparecerá en la pantalla. También puede seguirlo desde su celular.</div>
+</div>
+<div class="k-res" id="k-res"></div>
+<div class="k-err" id="k-err"></div>
+
+<script src="recepcion-publico.js?v=20261107a"></script>
+<script>
+(function () {
+  const R = window.RecPub, $ = id => document.getElementById(id);
+  const CLAVE = 'n360_rec_kiosko';
+  let secreto = R.lsGet(CLAVE), info = null, ocupado = false, regreso = null;
+
+  async function cargarInfo() {
+    try {
+      const { data, error } = await R.sb.rpc('recepcion_kiosko_info', { p_secreto: secreto });
+      if (error) throw error;
+      $('rp-offline').style.display = 'none';
+      if (!data?.ok) { R.lsDel(CLAVE); secreto = null; $('k').style.display = 'none'; return arrancar(); }
+      info = data; R.aplicarMarca(data.marca); pintar();
+    } catch (_) { $('rp-offline').style.display = 'block'; }
+  }
+  function pintar() {
+    const ss = info?.servicios || [];
+    $('k-grid').innerHTML = ss.length ? ss.map(s => `
+      <button class="k-s ${s.preferencial ? 'pref' : ''}" data-id="${s.id}">
+        <span class="k-l">${R.esc(s.letra)}</span>
+        <span><span class="k-n">${R.esc(s.nombre)}</span><span class="k-e" style="display:block">${s.en_espera ? s.en_espera + ' en espera' : 'Sin espera'}${s.preferencial ? ' · Tercera edad, embarazadas y personas con discapacidad' : ''}</span></span>
+        <span class="k-flecha">›</span>
+      </button>`).join('') : '<div class="k-sub">Por ahora no hay servicios disponibles.</div>';
+    $('k-grid').querySelectorAll('.k-s').forEach(b => b.onclick = () => tomar(b.dataset.id));
+  }
+  function error(msg) { const e = $('k-err'); e.textContent = msg; e.style.display = 'block'; setTimeout(() => e.style.display = 'none', 3500); }
+
+  async function tomar(id) {
+    if (ocupado) return; ocupado = true;
+    document.querySelectorAll('.k-s').forEach(b => b.disabled = true);
+    try {
+      const { data, error: er } = await R.sb.rpc('recepcion_kiosko_turno', { p_secreto: secreto, p_servicio: id });
+      if (er) throw er;
+      if (!data?.ok) { error(data?.motivo === 'rapido' ? 'Espere un momento y vuelva a intentarlo.' : 'No se pudo dar el turno. Pida ayuda en recepción.'); return; }
+      mostrar(data);
+      if ((info?.marca?.cfg || {}).kiosko_imprimir) imprimir(data);
+    } catch (_) { error('Sin conexión. Intente de nuevo.'); }
+    finally { ocupado = false; document.querySelectorAll('.k-s').forEach(b => b.disabled = false); cargarInfo(); }
+  }
+  function urlSeg(tok) { return R.baseURL() + 'recepcion-mi-turno.html?t=' + encodeURIComponent(tok); }
+  function mostrar(t) {
+    const min = Math.round((t.min_por_persona || 0) * (t.delante || 0));
+    let seg = 20;
+    $('k-res').innerHTML = `<div class="k-tk">
+      <div class="k-tk-et">Su turno</div>
+      <div class="k-tk-cod">${R.esc(t.codigo)}</div>
+      <div class="k-tk-s">${R.esc(t.servicio || '')}</div>
+      <div class="k-tk-d"><span>${t.delante === 0 ? 'Usted es el siguiente' : t.delante + (t.delante === 1 ? ' persona antes' : ' personas antes')}</span>
+        ${t.delante ? `<span>⏱ aprox. ${min < 1 ? 'menos de 1' : min} min</span>` : ''}</div>
+      <div class="k-tk-qr">${R.qrSVG(urlSeg(t.token), 4)}<p>📱 Escanee con su celular para ver cuánto falta. Le avisaremos cuando sea su turno.</p></div>
+      <button class="k-ok" id="k-ok">Listo (<span id="k-seg">${seg}</span>)</button></div>`;
+    $('k-res').style.display = 'flex';
+    $('k-ok').onclick = cerrar;
+    clearInterval(regreso);
+    regreso = setInterval(() => { seg--; const s = $('k-seg'); if (s) s.textContent = seg; if (seg <= 0) cerrar(); }, 1000);
+  }
+  function cerrar() { clearInterval(regreso); $('k-res').style.display = 'none'; $('k-res').innerHTML = ''; }
+  function imprimir(t) {
+    const c = info?.marca?.cfg || {}; const ancho = c.ticket_ancho === '80mm' ? '72mm' : '48mm';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:0;size:auto}body{margin:0;font-family:Arial,Helvetica,sans-serif}
+      .t{width:${ancho};margin:0 auto;padding:4mm 0;text-align:center}.n{font-size:13px;font-weight:700}.c{font-size:44px;font-weight:900;margin:2mm 0}.d{font-size:11px}
+      .q svg{width:30mm;height:30mm;margin-top:2mm}</style></head><body><div class="t"><div class="n">${R.esc(info?.marca?.nombre || '')}</div><div class="d">SU TURNO</div>
+      <div class="c">${R.esc(t.codigo)}</div><div class="d">${R.esc(t.servicio || '')}</div><div class="d">${new Date().toLocaleString('es-NI', { dateStyle: 'short', timeStyle: 'short' })}</div>
+      <div class="d">${t.delante === 0 ? 'Es el siguiente' : t.delante + ' antes de usted'}</div><div class="q">${R.qrSVG(urlSeg(t.token), 3)}</div></div></body></html>`;
+    const fr = document.createElement('iframe'); fr.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
+    document.body.appendChild(fr); fr.contentDocument.open(); fr.contentDocument.write(html); fr.contentDocument.close();
+    setTimeout(() => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (_) {} setTimeout(() => fr.remove(), 5000); }, 300);
+  }
+
+  async function arrancar() {
+    if (!secreto) { $('rp-par-w').style.display = 'flex'; secreto = await R.vincularEquipo('kiosko', CLAVE, $('rp-par-w')); }
+    $('rp-par-w').style.display = 'none'; $('k').style.display = 'grid';
+    await cargarInfo();
+  }
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('click', () => { R.pantallaCompleta(); R.noApagar(); }, { once: false });
+  R.reloj($('k-hora'), null); R.noApagar();
+  setInterval(() => { if (secreto && !document.hidden && $('k-res').style.display !== 'flex') cargarInfo(); }, 20000);
+  arrancar();
+})();
+</script>
+</body>
+</html>

@@ -100,9 +100,9 @@
   </footer>
 </div>
 <button class="tv-fs" id="tv-fs" title="Pantalla completa" onclick="RecPub.pantallaCompleta()">⛶</button>
-<div class="rp-sonido" id="rp-sonido" style="display:none"><div><div style="font-size:48px">🔊</div><b>Toque la pantalla para activar el sonido</b><p>Así la pantalla anuncia cada turno con voz. Solo hace falta una vez.</p></div></div>
+<div class="rp-sonido" id="rp-sonido" style="display:none"><div><div style="font-size:48px">🔊</div><b>Toque la pantalla para activar la voz</b><p>Así la pantalla anuncia cada turno en voz alta. Hace falta cada vez que se enciende o recarga la pantalla.</p></div></div>
 
-<script src="recepcion-publico.js?v=20261107a"></script>
+<script src="recepcion-publico.js?v=20261107b"></script>
 <script>
 (function () {
   const R = window.RecPub, $ = id => document.getElementById(id);
@@ -174,7 +174,8 @@
 
   function avisoSonido() {
     const c = cfg();
-    if ((c.voz === false && c.sonido === false) || R.audioListo()) { $('rp-sonido').style.display = 'none'; return; }
+    const falta = (c.voz !== false && !R.vozLista()) || (c.sonido !== false && !R.audioListo());
+    if (!falta) { $('rp-sonido').style.display = 'none'; return; }
     $('rp-sonido').style.display = 'flex';
   }
 
@@ -190,7 +191,7 @@
   }
 
   document.addEventListener('click', async () => {
-    await R.desbloquearAudio(); R.pantallaCompleta(); R.noApagar();
+    await R.desbloquearAudio(cfg().voz !== false ? 'Voz activada' : null); R.pantallaCompleta(); R.noApagar();
     $('rp-sonido').style.display = 'none';
   });
   R.reloj($('tv-hora'), $('tv-fecha'));

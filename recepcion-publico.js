@@ -58,11 +58,21 @@
     try { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { ctx = null; }
     return ctx;
   }
-  async function desbloquearAudio() {
+  // Chrome solo deja hablar después de que alguien toca la pantalla: este toque "abre" la voz.
+  // (Antes se probaba con un texto vacío, que en algunos equipos trababa la cola de voz.)
+  let vozActivada = false;
+  async function desbloquearAudio(decir) {
     const a = audio(); try { if (a && a.state !== 'running') await a.resume(); } catch (_) {}
-    try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } } catch (_) {}
+    try {
+      if (window.speechSynthesis && !vozActivada) {
+        vozActivada = true;
+        speechSynthesis.cancel();
+        if (decir) hablar(decir);
+      }
+    } catch (_) {}
     return !!(a && a.state === 'running');
   }
+  function vozLista() { return vozActivada || !window.speechSynthesis; }
   function audioListo() { const a = audio(); return !!(a && a.state === 'running'); }
   function tono(frec, ini, dur, vol) {
     const a = audio(); if (!a || a.state !== 'running') return;
@@ -89,12 +99,16 @@
     const m = String(cod || '').match(/^([A-Z]{1,2})-0*(\d+)$/);
     return m ? `${m[1].split('').join(' ')}, ${parseInt(m[2], 10)}` : String(cod || '');
   }
+  const vivos = [];   // Chrome borra el anuncio de memoria a medias si no se guarda una referencia
   function hablar(texto) {
     return new Promise(res => {
       try {
         if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return res();
+        if (!vozES) elegirVoz();
+        try { if (speechSynthesis.paused) speechSynthesis.resume(); if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel(); } catch (_) {}
         const u = new SpeechSynthesisUtterance(texto);
-        u.lang = (vozES && vozES.lang) || 'es-MX'; if (vozES) u.voice = vozES;
+        vivos.push(u); if (vivos.length > 5) vivos.shift();
+        if (vozES) { u.voice = vozES; u.lang = vozES.lang; } else u.lang = 'es-MX';
         u.rate = 0.92; u.pitch = 1; u.volume = 1;
         let listo = false; const fin = () => { if (!listo) { listo = true; res(); } };
         u.onend = fin; u.onerror = fin; setTimeout(fin, 9000);
@@ -153,6 +167,6 @@
   }
   function baseURL() { return location.href.split('#')[0].split('?')[0].replace(/[^/]*$/, ''); }
 
-  window.RecPub = { sb, lsGet, lsSet, lsDel, esc, espera, aplicarMarca, reloj, audio, desbloquearAudio, audioListo, dinDon, beep,
+  window.RecPub = { sb, lsGet, lsSet, lsDel, esc, espera, aplicarMarca, reloj, audio, desbloquearAudio, audioListo, vozLista, dinDon, beep,
                     hablar, codigoHablado, pantallaCompleta, noApagar, vincularEquipo, qrSVG, baseURL };
 })();

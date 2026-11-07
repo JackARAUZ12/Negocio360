@@ -73,7 +73,7 @@
 <div class="k-res" id="k-res"></div>
 <div class="k-err" id="k-err"></div>
 
-<script src="recepcion-publico.js?v=20261107a"></script>
+<script src="recepcion-publico.js?v=20261107b"></script>
 <script>
 (function () {
   const R = window.RecPub, $ = id => document.getElementById(id);
@@ -101,13 +101,25 @@
   }
   function error(msg) { const e = $('k-err'); e.textContent = msg; e.style.display = 'block'; setTimeout(() => e.style.display = 'none', 3500); }
 
+  // Candado contra turnos repetidos: después de dar un turno, este kiosko espera unos segundos
+  // antes de dar otro (el servidor también lo frena, aunque alguien salte esta pantalla).
+  const PAUSA_SEG = 10;
+  let esperarHasta = 0;
   async function tomar(id) {
-    if (ocupado) return; ocupado = true;
+    if (ocupado) return;
+    const resta = Math.ceil((esperarHasta - Date.now()) / 1000);
+    if (resta > 0) { error(`Para evitar turnos repetidos, espere ${resta} segundo${resta === 1 ? '' : 's'}.`); return; }
+    ocupado = true;
     document.querySelectorAll('.k-s').forEach(b => b.disabled = true);
     try {
       const { data, error: er } = await R.sb.rpc('recepcion_kiosko_turno', { p_secreto: secreto, p_servicio: id });
       if (er) throw er;
-      if (!data?.ok) { error(data?.motivo === 'rapido' ? 'Espere un momento y vuelva a intentarlo.' : 'No se pudo dar el turno. Pida ayuda en recepción.'); return; }
+      if (!data?.ok) {
+        if (data?.motivo === 'rapido') { esperarHasta = Date.now() + (data.espera_seg || PAUSA_SEG) * 1000; error(`Para evitar turnos repetidos, espere ${data.espera_seg || PAUSA_SEG} segundos.`); }
+        else error('No se pudo dar el turno. Pida ayuda en recepción.');
+        return;
+      }
+      esperarHasta = Date.now() + PAUSA_SEG * 1000;
       mostrar(data);
       if ((info?.marca?.cfg || {}).kiosko_imprimir) imprimir(data);
     } catch (_) { error('Sin conexión. Intente de nuevo.'); }
@@ -126,7 +138,10 @@
       <div class="k-tk-qr">${R.qrSVG(urlSeg(t.token), 4)}<p>📱 Escanee con su celular para ver cuánto falta. Le avisaremos cuando sea su turno.</p></div>
       <button class="k-ok" id="k-ok">Listo (<span id="k-seg">${seg}</span>)</button></div>`;
     $('k-res').style.display = 'flex';
-    $('k-ok').onclick = cerrar;
+    // "Listo" se habilita a los 4 segundos: así nadie cierra y vuelve a pedir sin ver su número.
+    const ok = $('k-ok'); ok.disabled = true; ok.style.opacity = '.55';
+    setTimeout(() => { ok.disabled = false; ok.style.opacity = ''; }, 4000);
+    ok.onclick = cerrar;
     clearInterval(regreso);
     regreso = setInterval(() => { seg--; const s = $('k-seg'); if (s) s.textContent = seg; if (seg <= 0) cerrar(); }, 1000);
   }
