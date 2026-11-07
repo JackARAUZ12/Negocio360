@@ -3500,13 +3500,10 @@ async function cargarModuloRecepcion() {
     const { data, error } = await sbClient.from('configuracion_empresa')
       .select('usa_modulo_recepcion, usa_modulo_clinica').eq('auth_user_id', currentAuthUserId).maybeSingle();
     if (error) throw error;
-    if (data?.usa_modulo_clinica === true) {
-      sub.textContent = 'Tu clínica ya tiene turnos y pantalla en "Sala de espera".';
-      toggle.checked = false; toggle.disabled = true; return;
-    }
     const activo = data?.usa_modulo_recepcion === true;
     toggle.checked = activo;
-    sub.textContent = activo ? 'Activado — Recepción aparece en el menú.' : 'Desactivado — no aparece en ningún lado.';
+    sub.textContent = (activo ? 'Activado — Recepción aparece en el menú.' : 'Desactivado — no aparece en ningún lado.')
+      + (data?.usa_modulo_clinica === true ? ' (Tu clínica ya tiene "Sala de espera"; esto es opcional.)' : '');
     toggle.disabled = false;
   } catch (e) { console.error('cargarModuloRecepcion:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
 }
@@ -4443,7 +4440,7 @@ document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
 <script src="perfiles-guard.js?v=20261106e"></script>
-<script src="modulos-guard.js?v=20261107a"></script>
+<script src="modulos-guard.js?v=20261107b"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>

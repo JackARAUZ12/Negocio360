@@ -160,8 +160,8 @@
         const co = fila;
         cfg._flagsPropios.usa_modulo_cotizaciones = co?.usa_modulo_cotizaciones === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_cotizaciones = false; }
-      // Recepción (Turnos): general opcional; las clínicas usan su propia Sala de espera.
-      cfg._flagsPropios.usa_modulo_recepcion = fila?.usa_modulo_recepcion === true && fila?.usa_modulo_clinica !== true;
+      // Recepción (Turnos): general opcional, apagado por defecto. Una clínica también puede activarlo a propósito.
+      cfg._flagsPropios.usa_modulo_recepcion = fila?.usa_modulo_recepcion === true;
       // Certificados de regalo: consulta aparte, mismo criterio.
       try {
         const ce = fila;

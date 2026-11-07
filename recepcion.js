@@ -575,10 +575,6 @@ async function init() {
     const ha = $('header-avatar'); if (ha) ha.textContent = (name || 'U')[0].toUpperCase();
     $('loader').classList.add('hidden'); $('app').style.display = 'flex';
 
-    if (STATE.empresaConfig.usa_modulo_clinica === true) {
-      $('rc-bloqueo').innerHTML = '🩺 Las clínicas ya tienen su propia <b>Sala de espera</b> con turnos y pantalla. <a href="clinica-sala.html">Ir a Sala de espera →</a>';
-      $('rc-bloqueo').style.display = ''; $('rc-cuerpo').style.display = 'none'; return;
-    }
     if (STATE.empresaConfig.usa_modulo_recepcion !== true) {
       $('rc-bloqueo').innerHTML = '🛎️ El módulo de <b>Recepción</b> está apagado. Actívalo en <a href="configuracion.html">Configuración → Recepción (Turnos)</a>.';
       $('rc-bloqueo').style.display = ''; $('rc-cuerpo').style.display = 'none'; return;
