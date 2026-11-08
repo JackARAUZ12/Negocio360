@@ -89,8 +89,11 @@ function getFilterDates(filter, from, to) {
   switch (filter) {
     case 'hoy':    return { from: today,             to: today };
     case 'semana': return { from: startOfWeekISO(),  to: today };
-    case 'mes':    return { from: startOfMonthISO(), to: today };
-    case 'año':    return { from: startOfYearISO(),  to: today };
+    // Mes y Año llegan hasta el último día del periodo: si algo se registró con una fecha
+    // más adelante (por error o a propósito), igual se ve en la lista.
+    case 'mes':    { const d = new Date(); const fin = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+                     return { from: startOfMonthISO(), to: `${fin.getFullYear()}-${String(fin.getMonth()+1).padStart(2,'0')}-${String(fin.getDate()).padStart(2,'0')}` }; }
+    case 'año':    return { from: startOfYearISO(),  to: `${new Date().getFullYear()}-12-31` };
     case 'custom': return { from: from || today,     to: to || today };
     default:       return { from: startOfMonthISO(), to: today };
   }
