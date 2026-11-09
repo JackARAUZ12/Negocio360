@@ -302,7 +302,7 @@
   }
 
   async function loadProductosYServicios() {
-    const { data } = await N360Leer.todo(() => _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo')
+    const { data } = await N360Leer.todo(() => _sb.from('productos').select('id,tipo,nombre,precio,costo,stock_actual,sku,tipo_precio,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo,proveedor_nombre')
       .eq('auth_user_id', CS.userId).eq('activo', true).eq('es_materia_prima', false).order('nombre'), 'productos');
     const todos = data || [];
     CS.productos = todos.filter(p => p.tipo === 'producto' || p.tipo === 'servicio');
@@ -721,8 +721,17 @@
     const texto = (q || '').trim().toLowerCase();
     if (!texto) { cont.innerHTML = ''; return; }
 
+    // Marca / proveedor: nombre y marca juntos, en cualquier orden (ej. "loratadina bengeochea").
+    // Lo que antes aparecía sigue apareciendo; esto solo ayuda a filtrar.
+    const palabrasQ = texto.split(/\s+/).filter(Boolean);
+    const coincideTexto = (p) => {
+      const t = [p.nombre, p.sku, p.codigo_barras, p.proveedor_nombre].map(x => String(x || '').toLowerCase()).join(' \u0001 ');
+      return palabrasQ.every(w => t.includes(w));
+    };
+    const marcaHtml = (p) => p.proveedor_nombre ? ' · 🏷️ ' + esc(p.proveedor_nombre) : '';
+
     const resultados = CS.productos.filter(p =>
-      (p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto)
+      (p.nombre || '').toLowerCase().includes(texto) || (p.sku || '').toLowerCase().includes(texto) || coincideTexto(p)
     ).slice(0, 10);
 
     // Alcance restringido (específicas, solo bodegas o solo sucursales): igual que
@@ -736,7 +745,7 @@
         if (p.tipo !== 'producto' || !clave || p.es_materia_prima || p.activo === false) return;
         const stock = Number(p.stock_actual || 0);
         if (!(stock > 0)) return;
-        if (!(clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto))) return;
+        if (!(clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto) || coincideTexto(p))) return;
         const cuenta = CS.cuentasGrupo?.[p.auth_user_id]?.nombre || '';
         const g = porNombre.get(clave);
         if (g) { g.stockTotal += stock; if (cuenta && !g.cuentas.includes(cuenta)) g.cuentas.push(cuenta); }
@@ -757,7 +766,7 @@
       <div class="search-result-item" onclick="${onclick}">
         <div class="sri-info">
           <span class="sri-nombre">${esc(p.nombre)}${p.tipo_precio === 'escala' ? ' <span style="font-size:10px;color:var(--accent)">📊 escala</span>' : ''}</span>
-          <span class="sri-meta">Disponible: ${Number(p.stockTotal).toLocaleString('es-NI', { maximumFractionDigits: 2 })}${p.cuentas.length ? ' · 📦 ' + p.cuentas.map(esc).join(' · ') : ''}</span>
+          <span class="sri-meta">Disponible: ${Number(p.stockTotal).toLocaleString('es-NI', { maximumFractionDigits: 2 })}${marcaHtml(p)}${p.cuentas.length ? ' · 📦 ' + p.cuentas.map(esc).join(' · ') : ''}</span>
         </div>
         <span class="sri-costo">${p.tipo_precio === 'escala' ? 'Elegir precio' : fmt((local || p).precio)}</span>
       </div>`;
@@ -779,7 +788,7 @@
       resultadosGrupo = CS.productosCacheGrupo.filter(p => {
         const clave = (p.nombre||'').trim().toLowerCase();
         if (p.tipo !== 'producto' || !clave || p.es_materia_prima || nombresLocales.has(clave) || vistos.has(clave)) return false;
-        const coincide = clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto);
+        const coincide = clave.includes(texto) || (p.sku||'').toLowerCase().includes(texto) || coincideTexto(p);
         if (coincide) vistos.add(clave);
         return coincide;
       }).slice(0, 10 - resultados.length);
@@ -793,7 +802,7 @@
       <div class="search-result-item" onclick="agregarItemCredito('${p.id}')">
         <div class="sri-info">
           <span class="sri-nombre">${p.esCombo ? '📦 ' : ''}${esc(p.nombre)}${esEscala ? ' <span style="font-size:10px;color:var(--accent)">📊 escala</span>' : ''}</span>
-          <span class="sri-meta">${p.esCombo ? 'Combo' : (p.tipo === 'servicio' ? 'Servicio' : 'Producto')}${p.sku ? ' · SKU: ' + esc(p.sku) : ''}${p.tipo === 'producto' ? ' · Stock: ' + (p.stock_actual || 0) : ''}</span>
+          <span class="sri-meta">${p.esCombo ? 'Combo' : (p.tipo === 'servicio' ? 'Servicio' : 'Producto')}${p.sku ? ' · SKU: ' + esc(p.sku) : ''}${p.tipo === 'producto' ? ' · Stock: ' + (p.stock_actual || 0) : ''}${marcaHtml(p)}</span>
         </div>
         <span class="sri-costo">${esEscala ? 'Elegir precio' : fmt(p.precio)}</span>
       </div>`;

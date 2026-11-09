@@ -405,8 +405,17 @@ function buscarProductoProf() {
   const res = document.getElementById('np-search-results');
   if (!res) return;
   if (!q) { res.innerHTML = ''; return; }
+
+  // Marca / proveedor: nombre y marca juntos, en cualquier orden (ej. "loratadina bengeochea").
+  // Lo que antes aparecía sigue apareciendo; esto solo ayuda a filtrar.
+  const palabrasQ = q.split(/\s+/).filter(Boolean);
+  const coincideTexto = (p) => {
+    const t = [p.nombre, p.sku, p.codigo_barras, p.categoria, p.proveedor_nombre].map(x => String(x || '').toLowerCase()).join(' \u0001 ');
+    return palabrasQ.every(w => t.includes(w));
+  };
+  const marcaHtml = (p) => p.proveedor_nombre ? ' · 🏷️ ' + esc(p.proveedor_nombre) : '';
   const filtrados = STATE.productos.filter(p =>
-    p.nombre.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.categoria||'').toLowerCase().includes(q)
+    p.nombre.toLowerCase().includes(q) || (p.sku||'').toLowerCase().includes(q) || (p.categoria||'').toLowerCase().includes(q) || coincideTexto(p)
   ).slice(0, 10);
 
   let filtradosGrupo = [];
@@ -416,7 +425,7 @@ function buscarProductoProf() {
     filtradosGrupo = STATE.productosCacheGrupo.filter(p => {
       const clave = (p.nombre||'').trim().toLowerCase();
       if (p.tipo !== 'producto' || !clave || p.es_materia_prima || nombresLocales.has(clave) || vistos.has(clave)) return false;
-      const coincide = clave.includes(q) || (p.sku||'').toLowerCase().includes(q);
+      const coincide = clave.includes(q) || (p.sku||'').toLowerCase().includes(q) || coincideTexto(p);
       if (coincide) vistos.add(clave);
       return coincide;
     }).slice(0, 10 - filtrados.length);
@@ -441,7 +450,7 @@ function buscarProductoProf() {
     <div class="search-result-item" onclick="agregarAlCarritoProf('${p.id}')">
       <div class="sri-info">
         <span class="sri-nombre">${esc(p.nombre)}${p.esCombo?' <span style="font-size:10px;color:var(--accent-4,var(--accent))">📦 combo</span>':''}${esEscala?' <span style="font-size:10px;color:var(--accent)">📊 escala</span>':''}</span>
-        <span class="sri-meta">${p.esCombo?'Combo':(p.tipo==='servicio'?'Servicio':'Producto')}${p.sku?' · SKU: '+esc(p.sku):''}${p.tipo==='producto'?' · Stock: '+fmtNum(p.stock_actual):''}</span>
+        <span class="sri-meta">${p.esCombo?'Combo':(p.tipo==='servicio'?'Servicio':'Producto')}${p.sku?' · SKU: '+esc(p.sku):''}${p.tipo==='producto'?' · Stock: '+fmtNum(p.stock_actual):''}${marcaHtml(p)}</span>
       </div>
       <span class="sri-costo">${precioLabel}</span>
     </div>`;
@@ -451,7 +460,7 @@ function buscarProductoProf() {
     <div class="search-result-item" onclick="agregarProductoSoloEnGrupoProf('${esc(p.nombre).replace(/'/g,"\\'")}')">
       <div class="sri-info">
         <span class="sri-nombre">${esc(p.nombre)} <span style="font-size:10px;color:var(--accent-3,#e08e0b)">📦 en otra cuenta</span></span>
-        <span class="sri-meta">Producto · Solo en otra sucursal/bodega</span>
+        <span class="sri-meta">Producto · Solo en otra sucursal/bodega${marcaHtml(p)}</span>
       </div>
       <span class="sri-costo">${fmt(p.precio)}</span>
     </div>`).join('');
