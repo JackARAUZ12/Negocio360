@@ -3953,8 +3953,48 @@ function appendSheetXLSX(wb, nombreHoja, headers, rows, formatos, opts) {
     ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rows.length,c:headers.length-1} }) };
   }
 
+  // Presentación (solo estilo: no cambia ningún dato ni fórmula). Si la librería no soporta estilos, se ignoran sin error.
+  try { estilizarHojaXLSX(ws, headers.length, rows.length, formatos); } catch (e) { console.warn('Estilo Excel omitido:', e); }
+
   XLSX.utils.book_append_sheet(wb, ws, nombreHoja.slice(0, 31));
   return ws;
+}
+
+/* Estilo visual de las hojas de Excel: encabezado oscuro con texto blanco, filas con rayas suaves,
+   bordes finos, números alineados a la derecha, fechas centradas y filas de TOTALES resaltadas. */
+function estilizarHojaXLSX(ws, nCols, nFilas, formatos) {
+  if (!ws['!ref'] || !nCols) return;
+  const FUENTE = 'Arial';
+  const borde = (c) => ({ style: 'thin', color: { rgb: c } });
+  const bordes = { top: borde('D5DAE3'), bottom: borde('D5DAE3'), left: borde('D5DAE3'), right: borde('D5DAE3') };
+  const ultima = XLSX.utils.decode_range(ws['!ref']).e.r;
+  const filaTot = nFilas + 2;      // las filas de totales empiezan aquí (0-based), tras una fila en blanco
+  for (let r = 0; r <= ultima; r++) {
+    if (r === nFilas + 1 && ultima >= filaTot) continue;   // fila en blanco que separa los totales
+    const esEnc = r === 0, esTot = r >= filaTot;
+    for (let c = 0; c < nCols; c++) {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      let cell = ws[ref];
+      if (!cell) { if (!esTot && !esEnc) continue; cell = ws[ref] = { t: 's', v: '' }; }
+      const esNum = cell.t === 'n';
+      const z = String(cell.z || '');
+      const esFecha = esNum && /d{1,2}[\/\-]m{1,2}|yy/i.test(z);
+      if (esEnc) {
+        cell.s = { font: { name: FUENTE, sz: 10, bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '1F3864' } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: bordes };
+      } else if (esTot) {
+        cell.s = { font: { name: FUENTE, sz: 10, bold: true, color: { rgb: '1F3864' } }, fill: { patternType: 'solid', fgColor: { rgb: 'DCE6F4' } },
+          alignment: { horizontal: esNum ? 'right' : 'left', vertical: 'center' },
+          border: { top: { style: 'medium', color: { rgb: '1F3864' } }, bottom: borde('1F3864'), left: borde('D5DAE3'), right: borde('D5DAE3') } };
+      } else {
+        cell.s = { font: { name: FUENTE, sz: 10, color: { rgb: '1F2937' } },
+          fill: r % 2 === 0 ? { patternType: 'solid', fgColor: { rgb: 'F3F6FB' } } : { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } },
+          alignment: { horizontal: esFecha ? 'center' : (esNum ? 'right' : 'left'), vertical: 'center' }, border: bordes };
+      }
+    }
+  }
+  ws['!rows'] = ws['!rows'] || [];
+  ws['!rows'][0] = { hpt: 28 };
 }
 
 const NUM_MONEDA = '#,##0.00';
