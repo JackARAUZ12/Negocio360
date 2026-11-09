@@ -1206,12 +1206,12 @@ async function loadProductosCache() {
     // en el historial de Ventas igual que cualquier otra.
     // Lectura con copia en la pestaña: solo se piden los productos que cambiaron desde la última vez
     // (ante cualquier duda se lee el catálogo completo, igual que antes; ver cache-productos.js).
-    const baseVR = () => sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo,updated_at')
+    const baseVR = () => sb.from('productos').select('id,nombre,sku,descripcion,tipo,precio,costo,tipo_precio,stock_actual,activo,garantia_meses,es_materia_prima,unidad_medida,es_sustancia_controlada,principio_activo,ubicacion_fisica,unidad_codigo,permite_fraccion,contenido_cantidad,contenido_unidad_codigo,proveedor_nombre,updated_at')
       .eq('auth_user_id', S.userId);
     const completoVR = () => N360Leer.todo(() => baseVR().eq('activo', true).order('nombre'), 'productos');
     const { data } = window.N360Cache
       ? await N360Cache.lista({
-          clave: 'ventas_productos', userId: S.userId, completo: completoVR,
+          clave: 'ventas_productos_v2', userId: S.userId, completo: completoVR,
           delta: (desde) => N360Leer.todo(() => baseVR().gte('updated_at', desde), 'productos'),
           contar: () => sb.from('productos').select('id', { count: 'exact', head: true }).eq('auth_user_id', S.userId).eq('activo', true),
           filtro: (f) => f.activo === true, camposOrden: ['nombre'],
@@ -2251,10 +2251,20 @@ function buscarProductosParaVenta(q, tipo) {
   // Buscar tambien por principio activo (ej. "paracetamol" encuentra
   // la marca que sea) -- solo Farmacia fase 2, sin afectar a nadie mas.
   const buscaPorGenerico = S.empresaConfig?.usa_farmacia_fase2 === true;
+  // Marca / proveedor: se puede escribir el nombre y la marca juntos, en
+  // cualquier orden (ej. "loratadina bengeochea") y solo quedan los que
+  // cumplen TODAS las palabras. Lo que antes aparecía sigue apareciendo.
+  const palabrasQ = qLower.split(/\s+/).filter(Boolean);
+  const coincideTexto = (p) => {
+    const texto = [p.nombre, p.sku, p.codigo_barras, p.descripcion, p.proveedor_nombre,
+      buscaPorGenerico ? p.principio_activo : ''].map(x => String(x || '').toLowerCase()).join(' \u0001 ');
+    return palabrasQ.every(w => texto.includes(w));
+  };
   const lista = alcanceRestringido ? [] : S.productosCache.filter(p =>
     p.tipo === tipo && !p.es_materia_prima &&
     (p.nombre.toLowerCase().includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower)
-      || (buscaPorGenerico && (p.principio_activo||'').toLowerCase().includes(qLower)))
+      || (buscaPorGenerico && (p.principio_activo||'').toLowerCase().includes(qLower))
+      || coincideTexto(p))
   ).slice(0, 10);
 
   // Con Stock Compartido activo, también se muestran productos que
@@ -2276,7 +2286,7 @@ function buscarProductosParaVenta(q, tipo) {
         if (p.tipo !== 'producto' || !clave || p.es_materia_prima || p.activo === false) return;
         const stock = Number(p.stock_actual || 0);
         if (!(stock > 0)) return;
-        if (!(clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.codigo_barras||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower))) return;
+        if (!(clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || (p.codigo_barras||'').toLowerCase().includes(qLower) || (p.descripcion||'').toLowerCase().includes(qLower) || coincideTexto(p))) return;
         const cuenta = S.cuentasGrupo[p.auth_user_id]?.nombre || '';
         const g = porNombre.get(clave);
         if (g) { g.stockTotal += stock; if (cuenta && !g.cuentas.includes(cuenta)) g.cuentas.push(cuenta); }
@@ -2290,7 +2300,7 @@ function buscarProductosParaVenta(q, tipo) {
         if (p.tipo !== 'producto' || !clave || p.es_materia_prima) return false;
         if (nombresLocales.has(clave)) return false; // ya está en la lista local, no se duplica
         if (vistos.has(clave)) return false;
-        const coincide = clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower);
+        const coincide = clave.includes(qLower) || (p.sku||'').toLowerCase().includes(qLower) || coincideTexto(p);
         if (coincide) vistos.add(clave);
         return coincide;
       }).slice(0, 10 - lista.length);
@@ -2338,6 +2348,7 @@ function buscarProductosParaVenta(q, tipo) {
       <div style="flex:1">
         <div class="pri-name">${esc(p.nombre)} ${p.esCombo ? '<span style="font-size:10px;color:var(--accent-4,var(--accent));font-weight:700">📦 COMBO</span>' : ''}${esEscala ? '<span style="font-size:10px;color:var(--accent);font-weight:700">📊 ESCALA</span>' : ''}</div>
         <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
+        ${p.proveedor_nombre ? `<div style="font-size:11.5px;color:var(--text-secondary,var(--text-muted));font-weight:600">🏷️ ${esc(p.proveedor_nombre)}</div>` : ''}
         ${p.ubicacion_fisica ? `<div style="font-size:11.5px;color:var(--accent);font-weight:600">📍 ${esc(p.ubicacion_fisica)}</div>` : ''}
         ${p.descripcion ? `<div style="font-family:inherit;font-size:11px;color:var(--text-muted);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">${esc(p.descripcion)}</div>` : ''}
         ${(() => {
@@ -2377,6 +2388,7 @@ function buscarProductosParaVenta(q, tipo) {
       <div style="flex:1">
         <div class="pri-name">${esc(p.nombre)} <span style="font-size:10px;color:var(--accent-3,#e08e0b);font-weight:700">📦 EN OTRA CUENTA</span></div>
         <div class="pri-sku">${p.sku ? esc(p.sku) : ''}</div>
+        ${p.proveedor_nombre ? `<div style="font-size:11.5px;color:var(--text-muted);font-weight:600">🏷️ ${esc(p.proveedor_nombre)}</div>` : ''}
       </div>
       <span class="pri-stock stock-low">Solo en otra sucursal/bodega</span>
       <span class="pri-precio">${fmt(p.precio)}</span>
