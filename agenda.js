@@ -214,9 +214,25 @@ async function cargarAgenda() {
 
     const items = [];
 
+    // Citas enviadas a Recepción: se muestra en qué va su turno (solo lectura).
+    const recTurnos = {};
+    const idsRec = (eventos.data || []).filter(e => e.rec_turno_id).map(e => e.rec_turno_id);
+    if (idsRec.length) {
+      try {
+        const { data: tr } = await sb.from('recepcion_turnos').select('id, codigo, estado').in('id', idsRec);
+        (tr || []).forEach(t => { recTurnos[t.id] = t; });
+      } catch (_) {}
+    }
+    const REC_TXT = { espera: 'en fila', llamado: 'llamado', atendiendo: 'atendiendo', atendido: 'atendido', no_vino: 'no se presentó', cancelado: 'cancelado' };
+    const subRec = e => {
+      if (!e.rec_vincular) return '';
+      const t = e.rec_turno_id && recTurnos[e.rec_turno_id];
+      return t ? `🛎️ ${t.codigo} · ${REC_TXT[t.estado] || t.estado}` : '🛎️ Va a Recepción';
+    };
+
     (eventos.data||[]).forEach(e => items.push({
       fecha: e.fecha, tipo: 'evento', categoria: e.categoria || 'otro',
-      titulo: e.titulo, hora: e.hora ? e.hora.slice(0,5) : null, sub: e.descripcion || '',
+      titulo: e.titulo, hora: e.hora ? e.hora.slice(0,5) : null, sub: [subRec(e), e.descripcion || ''].filter(Boolean).join(' · '),
       id: e.id, completado: e.estado === 'completado', clickeable: true,
     }));
 
@@ -470,6 +486,7 @@ function abrirNuevoEvento(fechaPrellenada) {
   document.getElementById('ne-evento-id').value = '';
   document.getElementById('ne-titulo').value = '';
   document.getElementById('ne-fecha').value = fechaPrellenada || todayLocalISO();
+  prepararRecAgenda(null);
   document.getElementById('ne-hora').value = '';
   document.getElementById('ne-cliente').value = '';
   document.getElementById('ne-descripcion').value = '';
@@ -477,6 +494,57 @@ function abrirNuevoEvento(fechaPrellenada) {
   document.getElementById('btn-eliminar-evento').style.display = 'none';
   elegirCategoriaEvento('otro');
   openModal('modal-nuevo-evento');
+}
+
+/* ---------- Agenda -> Recepción (9-nov-2026) ----------
+   Solo aparece si el negocio tiene Recepción activa. El turno lo crea el
+   SERVIDOR a la hora de la cita (o con "Ya llegó"); aquí solo se marca. */
+let REC_SERVICIOS = null;
+function recAgendaDisponible() { return STATE.empresaConfig?.usa_modulo_recepcion === true; }
+async function prepararRecAgenda(ev) {
+  const box = document.getElementById('ne-rec-box'); if (!box) return;
+  STATE.recEventoActual = ev || null;
+  if (!recAgendaDisponible()) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  if (!REC_SERVICIOS) {
+    try { const { data } = await sb.from('recepcion_servicios').select('id, nombre, letra, activo').eq('auth_user_id', STATE.userId).order('orden'); REC_SERVICIOS = data || []; }
+    catch (_) { REC_SERVICIOS = []; }
+  }
+  const sel = document.getElementById('ne-rec-serv');
+  sel.innerHTML = REC_SERVICIOS.filter(x => x.activo || x.id === ev?.rec_servicio_id)
+    .map(x => `<option value="${x.id}">${esc(x.letra)} · ${esc(x.nombre)}</option>`).join('') || '<option value="">Crea servicios en Recepción → Ajustes</option>';
+  document.getElementById('ne-rec').checked = !!ev?.rec_vincular;
+  if (ev?.rec_servicio_id) sel.value = ev.rec_servicio_id;
+  const est = document.getElementById('ne-rec-estado'), llego = document.getElementById('ne-rec-llego');
+  est.textContent = ''; llego.style.display = 'none';
+  if (ev?.rec_turno_id) {
+    try { const { data: t } = await sb.from('recepcion_turnos').select('codigo, estado').eq('id', ev.rec_turno_id).maybeSingle();
+      if (t) est.textContent = `Ya está en Recepción con el turno ${t.codigo} (${t.estado === 'espera' ? 'en fila' : t.estado.replace('_', ' ')}).`; } catch (_) {}
+  } else if (ev?.rec_vincular) {
+    est.textContent = 'Entrará sola a la fila de Recepción a su hora.';
+    if (ev.fecha === todayLocalISO()) llego.style.display = '';
+  } else {
+    est.textContent = 'El día de la cita, a su hora, entra sola a la fila de Recepción.';
+  }
+  toggleRecAgenda();
+}
+function toggleRecAgenda() {
+  const on = !!document.getElementById('ne-rec')?.checked;
+  const det = document.getElementById('ne-rec-det'); if (det) det.style.display = on ? '' : 'none';
+}
+async function citaYaLlego() {
+  const ev = STATE.recEventoActual; if (!ev) return;
+  const b = document.getElementById('ne-rec-llego'); b.disabled = true;
+  try {
+    const { data, error } = await sb.rpc('recepcion_cita_llego', { p_evento: ev.id });
+    if (error) throw error;
+    const M = { ya_en_fila: 'Ya tiene turno en Recepción.', no_es_hoy: 'Solo se puede el mismo día de la cita.', modulo: 'Recepción está apagada.',
+                citas_apagadas: 'Recepción no está recibiendo citas (Ajustes).', servicio: 'Ese servicio ya no está activo.', estado: 'La cita está cancelada o terminada.', no_vinculada: 'Guarda la cita con "Enviar a Recepción" primero.' };
+    if (!data?.ok) { showToast(M[data?.motivo] || 'No se pudo dar el turno.', 'error'); return; }
+    showToast(`✅ Turno ${data.codigo} en Recepción`);
+    closeModal('modal-nuevo-evento'); await cargarAgenda();
+  } catch (e) { console.error(e); showToast('No se pudo dar el turno. Revisa tu internet.', 'error'); }
+  finally { b.disabled = false; }
 }
 
 async function abrirEditarEvento(eventoId) {
@@ -488,6 +556,7 @@ async function abrirEditarEvento(eventoId) {
   document.getElementById('ne-fecha').value = e.fecha;
   document.getElementById('ne-hora').value = e.hora || '';
   document.getElementById('ne-cliente').value = e.cliente_id || '';
+  prepararRecAgenda(e);
   document.getElementById('ne-descripcion').value = e.descripcion || '';
   document.getElementById('ne-error').textContent = '';
   document.getElementById('btn-eliminar-evento').style.display = '';
@@ -508,10 +577,15 @@ async function guardarEvento() {
 
   if (!titulo) { errEl.textContent = 'El título es obligatorio.'; return; }
   if (!fecha) { errEl.textContent = 'La fecha es obligatoria.'; return; }
+  const recOn = recAgendaDisponible() && !!document.getElementById('ne-rec')?.checked;
+  const recServ = recOn ? (document.getElementById('ne-rec-serv')?.value || null) : null;
+  if (recOn && !hora) { errEl.textContent = 'Para enviarla a Recepción, la cita necesita hora.'; return; }
+  if (recOn && !recServ) { errEl.textContent = 'Elige el servicio de Recepción.'; return; }
 
   setBtnLoading('btn-guardar-evento', true);
   try {
     const payload = { titulo, fecha, hora, cliente_id: clienteId, descripcion, categoria, updated_at: new Date().toISOString() };
+    if (recAgendaDisponible()) { payload.rec_vincular = recOn; payload.rec_servicio_id = recServ; }
     let error;
     if (id) {
       ({ error } = await sb.from('agenda_eventos').update(payload).eq('id', id).eq('auth_user_id', STATE.userId));

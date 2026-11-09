@@ -91,7 +91,7 @@ async function cargarTurnos(forzar) {
     const { data: ver } = await sb.rpc('recepcion_version');
     if (!forzar && ver && ver === RC.version) return;
     const { data, error } = await sb.from('recepcion_turnos')
-      .select('id,codigo,letra,numero,servicio_id,servicio_nombre,nombre,telefono,nota,preferencial,estado,puesto_id,puesto_nombre,llamadas,origen,token_publico,orden_cola,creado_por,atendido_por,created_at,llamado_at,atencion_at,fin_at')
+      .select('id,codigo,letra,numero,servicio_id,servicio_nombre,nombre,telefono,nota,preferencial,estado,puesto_id,puesto_nombre,llamadas,origen,token_publico,orden_cola,creado_por,atendido_por,created_at,llamado_at,atencion_at,fin_at,cita_hora')
       .eq('auth_user_id', STATE.userId).eq('fecha', hoyISO()).order('orden_cola').range(0, 2999);
     if (error) throw error;
     RC.turnos = data || []; RC.version = ver;
@@ -99,9 +99,40 @@ async function cargarTurnos(forzar) {
   } catch (e) { console.warn('recepcion cargarTurnos:', e); }
   finally { RC.cargando = false; }
 }
+/* ---------- Citas de hoy que vienen de Agenda (todavía no están en la fila) ---------- */
+async function cargarCitasHoy() {
+  const cont = $('rc-citas'); if (!cont) return;
+  if (cfgRec().citas_activas === false) { $('rc-citas-card').style.display = 'none'; return; }
+  try {
+    const { data } = await sb.from('agenda_eventos').select('id,titulo,hora,cliente_id,rec_servicio_id')
+      .eq('auth_user_id', STATE.userId).eq('fecha', hoyISO()).eq('rec_vincular', true).is('rec_turno_id', null)
+      .neq('estado', 'cancelado').order('hora').limit(100);
+    const l = data || [];
+    $('rc-citas-card').style.display = l.length ? '' : 'none';
+    $('rc-citas-n').textContent = l.length;
+    const min = parseInt(cfgRec().citas_min_antes || 0, 10);
+    cont.innerHTML = l.map(e => {
+      const sv = RC.servicios.find(x => x.id === e.rec_servicio_id);
+      return `<div class="rc-fila"><div class="rc-cod" style="min-width:58px;font-size:15px">${esc(String(e.hora || '').slice(0, 5))}</div>
+        <div class="rc-info"><b>${esc(e.titulo || '')}</b><span>${sv ? esc(sv.letra + ' · ' + sv.nombre) : 'Servicio'} · entra sola a la fila${min ? ` ${min} min antes` : ' a su hora'}</span></div>
+        <div class="rc-acc"><button class="rc-btn rc-sec" style="min-height:34px;padding:6px 10px" onclick="citaLlego('${e.id}', this)">✅ Ya llegó</button></div></div>`;
+    }).join('');
+  } catch (e) { console.warn('citas hoy:', e); }
+}
+async function citaLlego(id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const { data, error } = await sb.rpc('recepcion_cita_llego', { p_evento: id });
+    if (error) throw error;
+    if (!data?.ok) showToast(data?.motivo === 'ya_en_fila' ? 'Esa cita ya está en la fila.' : motivo(data), 'error');
+    else showToast(`✅ Turno ${data.codigo} en la fila`);
+  } catch (e) { console.error(e); showToast('No se pudo. Revisa tu internet.', 'error'); }
+  await Promise.all([cargarTurnos(true), cargarCitasHoy()]);
+}
 function arrancarSondeo() {
   clearInterval(RC.timer);
   RC.timer = setInterval(() => { if (!document.hidden && RC.tab === 'atender') cargarTurnos(false); }, 3000);
+  setInterval(() => { if (!document.hidden && RC.tab === 'atender') cargarCitasHoy(); }, 45000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) cargarTurnos(false); });
   setInterval(() => { if (RC.tab === 'atender') pintarRelojes(); }, 15000);
 }
@@ -181,7 +212,7 @@ function renderAtender() {
     <div class="rc-fila ${t.preferencial ? 'pref' : ''}">
       <div class="rc-pos">${i + 1}</div>
       <div class="rc-cod">${esc(t.codigo)}</div>
-      <div class="rc-info"><b>${esc(t.servicio_nombre || '')}</b><span>${t.nombre ? esc(t.nombre) + ' · ' : ''}${t.origen === 'kiosko' ? 'Kiosko · ' : ''}<i class="rc-reloj" data-desde="${t.created_at}"></i></span></div>
+      <div class="rc-info"><b>${esc(t.servicio_nombre || '')}${t.cita_hora ? ` <span class="rc-chip rc-cita">📅 Cita ${esc(String(t.cita_hora).slice(0, 5))}</span>` : ''}</b><span>${t.nombre ? esc(t.nombre) + ' · ' : ''}${t.origen === 'kiosko' ? 'Kiosko · ' : ''}<i class="rc-reloj" data-desde="${t.created_at}"></i></span></div>
       <div class="rc-acc">
         <button class="rc-mini" title="Llamar a este turno a mi puesto" onclick="accion('${t.id}','llamar')">📣</button>
         <button class="rc-mini" title="Pasar al final" onclick="accion('${t.id}','al_final')">↓</button>
@@ -316,7 +347,7 @@ function irTab(t) {
   RC.tab = t;
   document.querySelectorAll('.rc-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   document.querySelectorAll('.rc-panel').forEach(p => p.style.display = p.id === 'rc-p-' + t ? '' : 'none');
-  if (t === 'atender') cargarTurnos(true);
+  if (t === 'atender') { cargarTurnos(true); cargarCitasHoy(); }
   if (t === 'equipos') cargarEquipos();
   if (t === 'ajustes') renderAjustes();
   if (t === 'estadisticas') cargarStats();
@@ -389,6 +420,9 @@ function renderAjustes() {
   $('rc-o-ticket').checked = c.kiosko_imprimir === true;
   $('rc-o-ancho').value = c.ticket_ancho === '80mm' ? '80mm' : '58mm';
   $('rc-o-msg').value = c.mensaje || '';
+  $('rc-o-citas').checked = c.citas_activas !== false;
+  $('rc-o-citas-min').value = String([0, 5, 10, 15].includes(+c.citas_min_antes) ? +c.citas_min_antes : 0);
+  $('rc-o-citas-pri').checked = c.citas_prioridad === true;
 }
 function agregarServicio() {
   const usadas = new Set(RC.servicios.map(s => s.letra));
@@ -442,7 +476,8 @@ async function guardarAjustes() {
       if (r.error) throw r.error;
     }
     const cfg = { ...cfgRec(), voz: $('rc-o-voz').checked, sonido: $('rc-o-sonido').checked, mostrar_nombre: $('rc-o-nombre').checked,
-                  kiosko_imprimir: $('rc-o-ticket').checked, ticket_ancho: $('rc-o-ancho').value, mensaje: $('rc-o-msg').value.trim().slice(0, 240) };
+                  kiosko_imprimir: $('rc-o-ticket').checked, ticket_ancho: $('rc-o-ancho').value, mensaje: $('rc-o-msg').value.trim().slice(0, 240),
+                  citas_activas: $('rc-o-citas').checked, citas_min_antes: parseInt($('rc-o-citas-min').value, 10) || 0, citas_prioridad: $('rc-o-citas-pri').checked };
     const r = await sb.from('configuracion_empresa').update({ recepcion_cfg: cfg }).eq('auth_user_id', STATE.userId);
     if (r.error) throw r.error;
     STATE.empresaConfig.recepcion_cfg = cfg;
@@ -583,6 +618,7 @@ async function init() {
     await sb.rpc('recepcion_iniciar');      // crea servicios y puestos de ejemplo solo la primera vez
     await cargarCatalogos();
     await cargarTurnos(true);
+    cargarCitasHoy();
     arrancarSondeo();
   } catch (e) {
     console.error('init recepcion:', e);
