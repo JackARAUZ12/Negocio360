@@ -17,11 +17,30 @@
   var ESC = 0x1B, GS = 0x1D;
 
   function esAndroid() { return /Android/i.test(navigator.userAgent || ''); }
+  // App Negocio360 para Android (v1.1+): imprime directo a la impresora interna (Sunmi) o Bluetooth, sin RawBT.
+  function appNativa() { try { return !!(window.N360Android && typeof window.N360Android.imprimir === 'function'); } catch (e) { return false; } }
+  var pendientes = {}, nPend = 0;
+  window.N360AndroidResultado = function (id, r) {
+    var cb = pendientes[id]; delete pendientes[id];
+    if (cb) cb(r || { ok: false });
+  };
+  var MOTIVOS_APP = { sin_bluetooth: 'Este equipo no tiene Bluetooth.', bluetooth_apagado: 'Enciende el Bluetooth del equipo.',
+    sin_impresora: 'No hay impresora emparejada. Empareja la impresora en el Bluetooth del equipo.', conexion: 'No se pudo conectar con la impresora. ¿Está encendida y con papel?',
+    permiso: 'Acepta el permiso de Bluetooth y vuelve a imprimir.', datos: 'El ticket no se pudo preparar.', origen: 'Impresión bloqueada por seguridad.' };
+  function enviarAApp(bytes) {
+    return new Promise(function (resolve) {
+      var id = 't' + Date.now() + '_' + (++nPend);
+      var t = setTimeout(function () { if (pendientes[id]) { delete pendientes[id]; resolve({ ok: false, motivo: 'tiempo' }); } }, 25000);
+      pendientes[id] = function (r) { clearTimeout(t); resolve(r); };
+      try { window.N360Android.imprimir(id, aBase64(bytes), ''); }
+      catch (e) { clearTimeout(t); delete pendientes[id]; resolve({ ok: false, motivo: 'datos' }); }
+    });
+  }
   // ¿Esta configuración pide RawBT y el equipo puede usarlo?
   function rawbtActivo(cfg) {
     // Papel de 58 mm (ej. impresora interna de Sunmi V2): 32 letras por línea. Cualquier otro: 48 como siempre.
     if (cfg) COLS = cfg.ancho_ticket === '58mm' ? 32 : 48;
-    return !!(cfg && cfg.imprimir_rawbt && cfg.ancho_ticket !== 'carta' && esAndroid());
+    return !!(cfg && cfg.imprimir_rawbt && cfg.ancho_ticket !== 'carta' && (esAndroid() || appNativa()));
   }
 
   /* ---------- texto → bytes CP437 (la tabla que usa la impresora) ---------- */
@@ -209,7 +228,13 @@
     try {
       var listos = elementos;
       try { listos = await resolverLogos(elementos); } catch (e) { listos = elementos.filter(function (x) { return !x || x.t !== 'logo'; }); }
-      enviarARawBT(armarBytes(listos));
+      var bytes = armarBytes(listos);
+      if (appNativa()) {
+        var r = await enviarAApp(bytes);
+        if (!r.ok && typeof showToast === 'function') showToast('No se imprimió: ' + (MOTIVOS_APP[r.motivo] || 'intenta de nuevo.'), 'error');
+        return { ok: !!r.ok };
+      }
+      enviarARawBT(bytes);
       return { ok: true };
     } catch (e) {
       console.error('RawBT:', e);
@@ -294,6 +319,7 @@
 
   window.rawbtPrecargarLogo = precargarLogo;
   window.rawbtActivo = rawbtActivo;
+  window.rawbtAppNativa = appNativa;
   window.rawbtImprimirElementos = imprimirElementos;
   window.rawbtImprimirDesdeContenedor = imprimirDesdeContenedor;
   window.rawbtArmarBytes = armarBytes;            // para pruebas
