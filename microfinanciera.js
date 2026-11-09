@@ -34,6 +34,11 @@ function masDias(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.ge
 function masMeses(iso, n) { const d = new Date(iso + 'T12:00:00'); const dia = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + n); const ult = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); d.setDate(Math.min(dia, ult)); return ymd(d); }
 function diasEntre(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5); }
 function fCorta(iso) { if (!iso) return '—'; return new Date(String(iso).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-NI', { weekday: 'short', day: 'numeric', month: 'short' }); }
+// Días de cobro: 'todos' | 'lun_sab' (sin domingo) | 'lun_vie' (sin sábado ni domingo). Mismo cálculo que el servidor.
+const DIAS_COBRO = { lun_vie: 'Lunes a viernes', lun_sab: 'Lunes a sábado', todos: 'Todos los días' };
+function diasCobroNegocio() { const d = MF.cfg?.mf_dias_cobro; return DIAS_COBRO[d] ? d : 'lun_sab'; }
+function seCobra(iso, dias) { const w = new Date(iso + 'T12:00:00').getDay(); return dias === 'lun_vie' ? (w >= 1 && w <= 5) : dias === 'lun_sab' ? w !== 0 : true; }
+function siguienteCobro(iso, dias) { let d = iso, g = 0; while (!seCobra(d, dias) && g++ < 7) d = masDias(d, 1); return d; }
 function diaSemana(iso) { return new Date(iso + 'T12:00:00').toLocaleDateString('es-NI', { weekday: 'long' }); }
 function ref() { try { return crypto.randomUUID(); } catch (_) { return 'r' + Date.now() + Math.random().toString(36).slice(2); } }
 function nombreCli(c) { return c ? `${c.nombre || ''} ${c.apellido || ''}`.trim() || 'Cliente' : 'Cliente'; }
@@ -404,7 +409,7 @@ async function guardarGestion(creditoId, tipo, gref) {
 function ventaNueva() {
   const hoy = hoyISO();
   MF.venta = { ref: ref(), tipo: 'productos', clienteId: '', items: [], monto: '', interes: '', recargo: '', prima: '', primaMetodo: (MF.metodos.find(m => /efectivo/i.test(m.nombre)) || MF.metodos[0] || {}).id || '',
-    frec: 'semanal', n: 4, primera: masDias(hoy, 7), sinDom: true, nota: '', busca: '', buscaCli: '', cobrador: '' };
+    frec: 'semanal', n: 4, primera: masDias(hoy, 7), dias: diasCobroNegocio(), nota: '', busca: '', buscaCli: '', cobrador: '' };
 }
 function primeraPorFrec(f) { const h = hoyISO(); return f === 'diaria' ? masDias(h, 1) : f === 'semanal' ? masDias(h, 7) : f === 'quincenal' ? masDias(h, 15) : masMeses(h, 1); }
 function calcVenta() {
@@ -420,10 +425,10 @@ function calcVenta() {
 }
 function fechaCuota(i) {
   const V = MF.venta;
-  if (V.frec === 'diaria') { let d = V.primera; if (V.sinDom && new Date(d + 'T12:00:00').getDay() === 0) d = masDias(d, 1); for (let k = 0; k < i; k++) { d = masDias(d, 1); if (V.sinDom && new Date(d + 'T12:00:00').getDay() === 0) d = masDias(d, 1); } return d; }
-  if (V.frec === 'semanal') return masDias(V.primera, 7 * i);
-  if (V.frec === 'quincenal') return masDias(V.primera, 15 * i);
-  return masMeses(V.primera, i);
+  const dias = V.dias || 'lun_sab';
+  if (V.frec === 'diaria') { let d = siguienteCobro(V.primera, dias); for (let k = 0; k < i; k++) d = siguienteCobro(masDias(d, 1), dias); return d; }
+  const base = V.frec === 'semanal' ? masDias(V.primera, 7 * i) : V.frec === 'quincenal' ? masDias(V.primera, 15 * i) : masMeses(V.primera, i);
+  return dias === 'lun_vie' ? siguienteCobro(base, dias) : base;   // con lunes a viernes, si cae fin de semana pasa al lunes
 }
 function pintarVender(v) {
   if (!MF.venta) ventaNueva();
@@ -448,7 +453,8 @@ function pintarVender(v) {
       <div class="pd-tabs">${Object.entries(FREC).map(([k, t]) => `<button class="pd-tab ${V.frec === k ? 'activa' : ''}" onclick="MF.venta.frec='${k}';MF.venta.primera=primeraPorFrec('${k}');pintarVender(document.getElementById('pd-vista'))">${t}</button>`).join('')}</div>
       <div class="tl-grid"><div class="tl-f"><label for="mf-n">¿Cuántas cuotas?</label><input class="tl-inp" id="mf-n" type="number" inputmode="numeric" min="1" max="365" step="1" value="${esc(V.n)}" oninput="MF.venta.n=this.value;pintarResumenVenta()"></div>
         <div class="tl-f"><label for="mf-pf">Primer pago</label><input class="tl-inp" id="mf-pf" type="date" min="${hoyISO()}" value="${esc(V.primera)}" onchange="MF.venta.primera=this.value;pintarResumenVenta()"></div>
-        ${V.frec === 'diaria' ? `<label class="tl-f full" style="flex-direction:row;align-items:center;gap:8px;font-weight:600"><input type="checkbox" ${V.sinDom ? 'checked' : ''} onchange="MF.venta.sinDom=this.checked;pintarResumenVenta()" style="width:18px;height:18px"> No cobrar los domingos</label>` : ''}
+        <div class="tl-f full"><label>Días de cobro</label><div class="pd-tabs" style="margin:0">${['lun_vie', 'lun_sab', 'todos'].map(k => `<button type="button" class="pd-tab ${(V.dias || 'lun_sab') === k ? 'activa' : ''}" onclick="MF.venta.dias='${k}';pintarVender(document.getElementById('pd-vista'))">${DIAS_COBRO[k]}</button>`).join('')}</div>
+          <span class="tl-muted" style="font-size:12px">${V.dias === 'lun_vie' ? (V.frec === 'diaria' ? 'Nunca se cobra sábado ni domingo.' : 'Si una cuota cae sábado o domingo, se cobra el lunes.') : V.dias === 'todos' ? 'Se cobra cualquier día.' : (V.frec === 'diaria' ? 'No se cobra el domingo.' : 'Las cuotas caen el día que toca.')} El atraso cuenta solo días de cobro.</span></div>
         ${conEquipo() && MF.ses?.rol === 'dueno' && MF.equipo.some(e => e.activo) ? `<div class="tl-f full"><label for="mf-vcob">¿Quién lo cobra?</label><select class="tl-sel" id="mf-vcob" onchange="MF.venta.cobrador=this.value">
           <option value="">Sin cobrador (lo cobra el dueño)</option>${MF.equipo.filter(e => e.activo).map(e => `<option value="${e.perfil_id}" ${V.cobrador === e.perfil_id ? 'selected' : ''}>${esc(e.nombre)} · ${e.rol === 'supervisor' ? 'Supervisor' : 'Cobrador'}</option>`).join('')}</select></div>` : ''}
         <div class="tl-f full"><label for="mf-vnota">Nota (opcional)</label><input class="tl-inp" id="mf-vnota" maxlength="300" value="${esc(V.nota)}" oninput="MF.venta.nota=this.value"></div></div></div>
@@ -506,7 +512,7 @@ function pintarResumenVenta() {
   if (!V.primera) faltas.push('elige el primer pago');
   const pw = document.getElementById('mf-pmet-w'); if (pw) pw.style.display = k.prima > 0 ? '' : 'none';
   const ult = V.primera ? fechaCuota(k.n - 1) : null;
-  const cada = V.frec === 'semanal' && V.primera ? 'cada ' + diaSemana(V.primera) : V.frec === 'diaria' ? (V.sinDom ? 'cada día (menos domingo)' : 'cada día') : V.frec === 'quincenal' ? 'cada 15 días' : 'cada mes';
+  const cada = V.frec === 'semanal' && V.primera ? 'cada ' + diaSemana(V.primera) : V.frec === 'diaria' ? (V.dias === 'lun_vie' ? 'de lunes a viernes' : V.dias === 'todos' ? 'cada día' : 'cada día (menos domingo)') : V.frec === 'quincenal' ? 'cada 15 días' : 'cada mes';
   el.innerHTML = `<h3>4. Resumen</h3>
     <div class="mf-montos">${V.tipo === 'productos' ? `<div><span>Productos</span><b>${fmt(k.sub)}</b></div>${k.rec > 0 ? `<div><span>Recargo</span><b>${fmt(k.rec)}</b></div>` : ''}`
       : `<div><span>Prestas</span><b>${fmt(k.cap)}</b></div><div><span>Interés</span><b>${fmt(k.interes)}</b></div>`}
@@ -531,7 +537,7 @@ async function confirmarVenta() {
     if (!a.ok) { const e = document.getElementById('mf-verr'); e.textContent = a.msg; e.style.display = ''; return; }
   }
   MF.ocupado = true; const b = document.getElementById('mf-vok'); b.disabled = true; b.textContent = 'Guardando…';
-  const p = { tipo: V.tipo, cliente_id: V.clienteId, frecuencia: V.frec, num_cuotas: k.n, primera_fecha: V.primera, sin_domingos: V.frec === 'diaria' ? !!V.sinDom : false,
+  const p = { tipo: V.tipo, cliente_id: V.clienteId, frecuencia: V.frec, num_cuotas: k.n, primera_fecha: V.primera, sin_domingos: V.frec === 'diaria' ? (V.dias || 'lun_sab') !== 'todos' : false, dias_cobro: V.dias || 'lun_sab',
     nota: V.nota, ref: V.ref, creado_por: perfilNombre(), token: tk() };
   if (conEquipo() && MF.ses?.rol === 'dueno' && V.cobrador) p.cobrador_id = V.cobrador;
   if (V.tipo === 'productos') Object.assign(p, { items: V.items.map(i => ({ producto_id: i.producto_id, cantidad: r2(i.cantidad), precio: r2(i.precio) })), recargo_pct: Number(V.recargo) || 0,
@@ -778,6 +784,24 @@ function moraEstimada(cr) {
 }
 function metodosEf() { const c = MF.cfg.mf_metodos_efectivo; return Array.isArray(c) && c.length ? c : null; }
 function esEfectivo(metId, nombre) { const c = metodosEf(); return c && metId ? c.includes(metId) : /efectivo/i.test(nombre || 'Efectivo'); }
+function tarjetaDiasCobro() {
+  if (!esDueno()) return '';
+  const d = diasCobroNegocio();
+  return `<div class="pd-card"><h3>📅 Días de cobro: <span class="pd-pill ok">${DIAS_COBRO[d]}</span></h3>
+    <p class="tl-muted">Los días en que tu negocio cobra. Cada crédito nuevo ya viene así (se puede cambiar en un crédito puntual). Las cuotas no caen en los días que no cobras y el atraso cuenta <b>solo días de cobro</b>: si un cliente no paga el viernes, el lunes lleva 1 día de atraso, no 3. Los créditos que ya existen no cambian.</p>
+    <div class="pd-tabs">${['lun_vie', 'lun_sab', 'todos'].map(k => `<button type="button" class="pd-tab ${d === k ? 'activa' : ''}" ${d === k ? 'disabled' : ''} onclick="guardarDiasCobro('${k}')">${DIAS_COBRO[k]}</button>`).join('')}</div></div>`;
+}
+async function guardarDiasCobro(dias) {
+  if (MF.ocupado) return;
+  MF.ocupado = true;
+  const r = await rpc('mf_dias_cobro_config', { p: { token: tk(), dias } });
+  MF.ocupado = false;
+  if (!r.ok) { showToast(r.msg, 'error'); return; }
+  MF.cfg.mf_dias_cobro = r.dias;
+  if (MF.venta) MF.venta.dias = r.dias;
+  showToast('Guardado: ' + DIAS_COBRO[r.dias] + '.');
+  pintarEquipo(document.getElementById('pd-vista'));
+}
 function tarjetaEfectivo() {
   if (!esDueno()) return '';
   const c = metodosEf();
@@ -1412,7 +1436,7 @@ function pintarEquipo(v) {
         : '<div class="tl-muted" style="flex-basis:100%">🔒 Solo entra al Panel</div>') : ''}</div>`; };
   const sinAsig = MF.creditos.filter(c => !c.mf_cobrador_id).length;
   const porCob = MF.equipo.filter(e => e.activo).map(e => { const cs = MF.creditos.filter(c => c.mf_cobrador_id === e.perfil_id); return { e, n: cs.length, saldo: r2(cs.reduce((a, c) => a + Number(c.saldo_pendiente || 0), 0)) }; });
-  v.innerHTML = tarjetaPrestar() + tarjetaMora() + tarjetaEfectivo() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
+  v.innerHTML = tarjetaPrestar() + tarjetaDiasCobro() + tarjetaMora() + tarjetaEfectivo() + `<div class="pd-card"><h3>👥 Trabajo en equipo: ${on ? '<span class="pd-pill ok">Encendido</span>' : '<span class="pd-pill">Apagado</span>'}</h3>
       <p class="tl-muted">${on ? 'Cada persona entra al Panel con su usuario del sistema. Los cobradores ven y cobran solo su cartera, no pueden anular, y al final del día entregan el efectivo en “Caja del día”.'
         : 'Enciéndelo si tienes cobradores o vendedores. Cada uno entrará con su usuario del sistema, cobrará solo su cartera y cada cobro quedará a su nombre. Mientras esté apagado, el Panel funciona como siempre.'}</p>
       <div class="pd-acciones"><button class="${on ? 'btn-secondary' : 'btn-primary'}" onclick="abrirEncender(${!on})">${on ? 'Apagar trabajo en equipo' : '✅ Encender trabajo en equipo'}</button></div>
