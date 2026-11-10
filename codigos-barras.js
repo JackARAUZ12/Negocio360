@@ -36,6 +36,10 @@ const TAMANOS_ETIQUETA = {
   '50x25': { anchoMM: 50, altoMM: 25, label: '50 × 25 mm (rectangular, impresoras Zebra/DYMO)' },
   '60x40': { anchoMM: 60, altoMM: 40, label: '60 × 40 mm (grande)' },
   '100x50': { anchoMM: 100, altoMM: 50, label: '100 × 50 mm (tipo envío/caja)' },
+  // Rollo de impresora de TICKETS de 58 mm: solo imprime ~48 mm al centro,
+  // por eso el contenido se deja dentro de esa franja (5 mm a cada lado).
+  '58x30': { anchoMM: 58, altoMM: 30, margenLatMM: 5, label: 'Rollo 58 mm · etiqueta corta' },
+  '58x40': { anchoMM: 58, altoMM: 40, margenLatMM: 5, label: 'Rollo 58 mm · etiqueta alta' },
 };
 
 /* =====================================================
@@ -417,10 +421,13 @@ async function generarPDFEtiquetas() {
     document.body.removeChild(svgTmp);
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: 'mm', format: [tamano.anchoMM, tamano.altoMM] });
+    // La orientación se indica SIEMPRE: sin ella jsPDF voltea las etiquetas
+    // horizontales (40×30 salía como 30×40 y el código quedaba cortado).
+    const orient = tamano.anchoMM >= tamano.altoMM ? 'landscape' : 'portrait';
+    const doc = new jsPDF({ unit: 'mm', format: [tamano.anchoMM, tamano.altoMM], orientation: orient });
 
     for (let i = 0; i < cantidad; i++) {
-      if (i > 0) doc.addPage([tamano.anchoMM, tamano.altoMM]);
+      if (i > 0) doc.addPage([tamano.anchoMM, tamano.altoMM], orient);
       dibujarEtiqueta(doc, tamano, c, dataUrl, dimensiones);
     }
 
@@ -438,7 +445,7 @@ function dibujarEtiqueta(doc, tamano, c, dataUrlBarcode, dimensionesImg) {
   doc.setDrawColor(200,200,200);
   doc.rect(0.5, 0.5, W-1, H-1); // guía de corte, tenue
 
-  const margenLat = Math.max(1.5, W * 0.05); // margen lateral proporcional al tamaño de la etiqueta
+  const margenLat = tamano.margenLatMM || Math.max(1.5, W * 0.05); // margen lateral proporcional (o el del rollo 58 mm)
   const anchoUtil = W - margenLat * 2;
 
   // Nombre del producto arriba — se ajusta al ancho útil, máximo 2 líneas
