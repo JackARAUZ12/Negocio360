@@ -440,6 +440,38 @@ async function generarPDFEtiquetas() {
   }
 }
 
+/* Imprime las etiquetas DIRECTO en la impresora térmica conectada a la
+   computadora (Bluetooth/USB), sin PDF. Ver impresion-directa-serial.js */
+async function imprimirDirectoEtiquetas(cambiarImpresora) {
+  const errEl = document.getElementById('imp-error');
+  errEl.textContent = '';
+  const c = STATE.codigoActual;
+  if (!c) return;
+  const S = window.N360ImpresionSerial;
+  if (!S || !S.disponible()) { errEl.textContent = (S && S.MOTIVOS.navegador) || 'Use Google Chrome o Microsoft Edge en la computadora.'; return; }
+  const tamano = TAMANOS_ETIQUETA[document.getElementById('imp-tamano').value] || TAMANOS_ETIQUETA['58x40'];
+  const cantidad = parseInt(document.getElementById('imp-cantidad').value, 10);
+  if (!cantidad || cantidad < 1 || cantidad > 200) { errEl.textContent = 'La cantidad debe ser entre 1 y 200.'; return; }
+  let bytes;
+  try {
+    bytes = S.bytesEtiquetas({
+      nombre: c.nombre || '', codigo: c.codigo, copias: cantidad,
+      puntos: tamano.anchoMM >= 72 ? 576 : 384,
+      alto: Math.round(tamano.altoMM * 8 * 0.45),
+    });
+  } catch (e) { errEl.textContent = e.message || 'No se pudo armar la etiqueta.'; return; }
+  const btn = document.getElementById('btn-imprimir-directo');
+  if (btn) { btn.disabled = true; btn.textContent = 'Imprimiendo…'; }
+  const r = await S.imprimir(bytes, { cambiarImpresora: !!cambiarImpresora });
+  if (btn) { btn.disabled = false; btn.textContent = '🖨️ Imprimir directo'; }
+  if (r.ok) {
+    showToast(`${cantidad} etiqueta${cantidad === 1 ? '' : 's'} enviada${cantidad === 1 ? '' : 's'} a la impresora`);
+  } else if (r.motivo !== 'cancelado') {
+    errEl.textContent = S.MOTIVOS[r.motivo] || 'No se pudo imprimir.';
+    if (r.detalle) console.warn('imprimirDirectoEtiquetas:', r.detalle);
+  }
+}
+
 function dibujarEtiqueta(doc, tamano, c, dataUrlBarcode, dimensionesImg) {
   const W = tamano.anchoMM, H = tamano.altoMM;
   doc.setDrawColor(200,200,200);

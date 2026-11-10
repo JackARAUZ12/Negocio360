@@ -1372,9 +1372,15 @@
         </div>
       </div>
       <p id="imp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+      <div id="imp-directo-ayuda" style="font-size:12px;color:var(--text-secondary);background:var(--bg-3,rgba(127,127,127,.08));border-radius:10px;padding:10px 12px;margin-top:8px;line-height:1.5">
+        🖨️ <b>Imprimir directo</b>: para impresoras térmicas (58/80 mm) conectadas a la computadora por <b>Bluetooth o USB</b>, sin PDF ni driver.
+        La primera vez elija el puerto de la impresora (en Bluetooth sale como <i>"Puerto serie estándar por vínculo Bluetooth (COM…)"</i>). Funciona en Chrome o Edge.
+        <a href="#" onclick="imprimirDirectoEtiquetas(true);return false" style="display:inline-block;margin-top:4px">Elegir otra impresora</a>
+      </div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn-ghost" onclick="closeModal('modal-imprimir-codigo')">Cancelar</button>
+      <button class="btn-ghost" id="btn-imprimir-directo" onclick="imprimirDirectoEtiquetas(false)">🖨️ Imprimir directo</button>
       <button class="btn-primary" onclick="generarPDFEtiquetas()">Generar PDF</button>
     </div>
   </div>
@@ -1402,7 +1408,8 @@
 <!-- =====================================================
      SCRIPT
 ===================================================== -->
-<script src="codigos-barras.js?v=20261110a"></script>
+<script src="impresion-directa-serial.js?v=20261110a"></script>
+<script src="codigos-barras.js?v=20261110b"></script>
 
 <script src="perfiles-guard.js?v=20261106e"></script>
 <script src="modulos-guard.js?v=20261107b"></script>
