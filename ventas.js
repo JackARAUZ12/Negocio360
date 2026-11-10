@@ -5600,24 +5600,35 @@ function dibujarRecibo(doc, venta, items) {
   doc.setLineDashPattern([], 0);
   linea(4.5);
 
+  // FIX 10-nov-2026: con nombres largos el subtotal (a la derecha del nombre)
+  // se montaba encima del texto. Ahora el nombre usa todo el ancho y el
+  // subtotal va en el renglón de "cantidad x precio", igual que el ticket impreso.
+  const mostrarSkuPdf = (typeof VR !== 'undefined') && !!VR.config?.mostrar_sku_ticket;
   (items || []).forEach(it => {
     const nombreLineas = doc.splitTextToSize(
       (it.producto_nombre || 'Ítem') + (it.escala_nombre ? ` (${it.escala_nombre})` : ''),
-      W - M*2 - 2
+      W - M*2
     );
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    nombreLineas.forEach((ln, i) => {
-      doc.text(ln, M, y);
-      if (i === 0) {
-        doc.text(fmt(it.subtotal), W - M, y, { align: 'right' });
-      }
-      linea(3.9);
-    });
+    doc.setTextColor(0, 0, 0);
+    nombreLineas.forEach(ln => { doc.text(ln, M, y); linea(3.9); });
+    const skuIt = it.producto_sku || it.sku;
+    if (mostrarSkuPdf && skuIt) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+      doc.text(`SKU: ${skuIt}`, M, y); linea(3.6);
+      doc.setFont('helvetica', 'normal');
+    }
     const cant = pedidaDe(it) ? cantTicket(it) : Number(it.cantidad).toLocaleString('es-NI', { maximumFractionDigits: 3 }) + (it.unidadAbrev ? ' ' + it.unidadAbrev : '');
     doc.setFontSize(7.8);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`${cant} x ${fmt(precioTicket(it))}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, M, y);
+    const subTxt = fmt(it.subtotal);
+    const anchoSub = doc.getTextWidth(subTxt);
+    const izqLineas = doc.splitTextToSize(`${cant} x ${fmt(precioTicket(it))}${Number(it.descuento) > 0 ? `  (desc. ${fmt(it.descuento)})` : ''}`, W - M*2 - anchoSub - 3);
+    izqLineas.forEach((ln, i) => {
+      doc.text(ln, M, y);
+      if (i === 0) { doc.setFont('helvetica', 'bold'); doc.text(subTxt, W - M, y, { align: 'right' }); doc.setFont('helvetica', 'normal'); }
+      if (i < izqLineas.length - 1) linea(3.6);
+    });
     linea(4.6);
   });
 
@@ -8389,10 +8400,10 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
     // listado de productos del combo debajo, uno por linea -- crece
     // solo lo que necesite, sea un combo chico o uno con muchos productos.
     const [nombreReal, ...lineasDetalle] = String(i.nombre || '').split('\n');
-    const detalleHtml = lineasDetalle.map(ln => `<div style="font-size:10.5px;color:#666">${esc(ln)}</div>`).join('');
+    const detalleHtml = lineasDetalle.map(ln => `<div style="font-size:10.5px;color:#000">${esc(ln)}</div>`).join('');
     return `
     <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
-    ${cfg.mostrar_sku_ticket && (i.sku || i.producto_sku) ? `<div style="font-size:10.5px;color:#444">SKU: ${esc(i.sku || i.producto_sku)}</div>` : ''}
+    ${cfg.mostrar_sku_ticket && (i.sku || i.producto_sku) ? `<div style="font-size:11px;color:#000;font-weight:600">SKU: ${esc(i.sku || i.producto_sku)}</div>` : ''}
     ${detalleHtml}
     <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(precioTicket(i))}</span><span>${fmt(round2(i.cantidad*i.precio))}</span></div>`;
   }).join('');
@@ -8586,10 +8597,10 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
     // saltos de linea), asi el nombre real queda arriba junto al
     // precio, y el listado de productos crece debajo lo que haga falta.
     const [nombreReal, ...lineasDetalle] = String(i.nombre || '').split('\n');
-    const detalleHtml = lineasDetalle.map(ln => `<div style="font-size:10.5px;color:#666">${esc(ln)}</div>`).join('');
+    const detalleHtml = lineasDetalle.map(ln => `<div style="font-size:10.5px;color:#000">${esc(ln)}</div>`).join('');
     return `
     <div style="margin-top:5px">${esc(nombreReal)}${i.escalaNombre ? ` (${esc(i.escalaNombre)})` : ''}</div>
-    ${cfg.mostrar_sku_ticket && (i.sku || i.producto_sku) ? `<div style="font-size:10.5px;color:#444">SKU: ${esc(i.sku || i.producto_sku)}</div>` : ''}
+    ${cfg.mostrar_sku_ticket && (i.sku || i.producto_sku) ? `<div style="font-size:11px;color:#000;font-weight:600">SKU: ${esc(i.sku || i.producto_sku)}</div>` : ''}
     ${detalleHtml}
     <div class="fila-dato"><span>${cantTicket(i)} x ${fmt(precioTicket(i))}</span><span>${fmt(i.subtotal!=null ? i.subtotal : round2(i.cantidad*i.precio))}</span></div>`;
   }).join('');

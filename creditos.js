@@ -3055,7 +3055,7 @@
       const [nombreReal, ...detalle] = String(i.nombre || i.producto_nombre || 'Ítem').split('\n');
       const sub = i.subtotal != null ? Number(i.subtotal) : round2(Number(i.cantidad) * Number(i.precio));
       return `<div style="margin-top:5px">${esc(nombreReal)}</div>
-        ${cfg.mostrar_sku_ticket && (i.producto_sku || i.sku) ? `<div style="font-size:10.5px;color:#444">SKU: ${esc(i.producto_sku || i.sku)}</div>` : ''}
+        ${cfg.mostrar_sku_ticket && (i.producto_sku || i.sku) ? `<div style="font-size:11px;color:#000;font-weight:600">SKU: ${esc(i.producto_sku || i.sku)}</div>` : ''}
         ${detalle.map(ln => `<div style="font-size:10.5px;color:#666">${esc(ln)}</div>`).join('')}
         <div class="tp-row"><span>${Number(i.cantidad || 0).toLocaleString('es-NI', { maximumFractionDigits: 3 })} x ${fmt(i.precio)}</span><span>${fmt(sub)}</span></div>`;
     }).join('');
