@@ -2380,7 +2380,8 @@ async function loadOtrosMovimientosCaja(userId) {
       .gte('fecha', monthStart)
       .lte('fecha', today);
 
-    const movs = data || [];
+    // Plata que el dueño mete a caja (CAPITAL_AGREGADO) NO es ganancia: se excluye.
+    const movs = (data || []).filter(r => r.tipo_movimiento !== 'CAPITAL_AGREGADO');
 
     dashData.otrosIngresosM = movs
       .filter(r => r.tipo_flujo === 'INGRESO')

@@ -396,7 +396,7 @@ function calcularSalud() {
   // criterio que usa Dashboard para su margen neto — así ambas pantallas
   // siempre coinciden en el mismo número.
   const otrosIngresos = d.movFin
-    .filter(m => m.tipo_flujo === 'INGRESO' && !m.referencia_tipo)
+    .filter(m => m.tipo_flujo === 'INGRESO' && !m.referencia_tipo && m.tipo_movimiento !== 'CAPITAL_AGREGADO')
     .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
   const otrosEgresosCaja = d.movFin
     .filter(m => m.tipo_flujo === 'EGRESO' && !m.referencia_tipo)
@@ -758,7 +758,7 @@ function renderRentabilidad() {
   // egresos de caja, todo sobre los ingresos del período.
   const gastosOp = d.gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
   const otrosIngresos = d.movFin
-    .filter(m => m.tipo_flujo === 'INGRESO' && !m.referencia_tipo)
+    .filter(m => m.tipo_flujo === 'INGRESO' && !m.referencia_tipo && m.tipo_movimiento !== 'CAPITAL_AGREGADO')
     .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
   const otrosEgresos = d.movFin
     .filter(m => m.tipo_flujo === 'EGRESO' && !m.referencia_tipo)

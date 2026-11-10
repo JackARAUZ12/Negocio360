@@ -792,13 +792,14 @@ async function fetchOtrosMovimientos() {
   const { from, to } = getDateRange();
   try {
     const { data } = await N360Leer.todo(() => sb.from('movimientos_financieros')
-      .select('tipo_flujo, monto, referencia_tipo')
+      .select('tipo_flujo, monto, referencia_tipo, tipo_movimiento')
       .eq('auth_user_id', R.userId)
       .eq('estado', 'completado')
       .is('referencia_tipo', null)
       .gte('fecha', from).lte('fecha', to), 'movimientos de caja');
 
-    const movs = data || [];
+    // Plata que el dueño mete a caja (CAPITAL_AGREGADO) NO es ganancia: se excluye.
+    const movs = (data || []).filter(m => m.tipo_movimiento !== 'CAPITAL_AGREGADO');
     const otrosIngresos = movs.filter(m => m.tipo_flujo === 'INGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
     const otrosEgresos  = movs.filter(m => m.tipo_flujo === 'EGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
     return { otrosIngresos, otrosEgresos };
