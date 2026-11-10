@@ -1645,6 +1645,10 @@
             <span class="financial-label">Otros ingresos</span>
             <span class="financial-value positive" id="fin-otros-ingresos">—</span>
           </div>
+          <div class="financial-row" id="fin-intereses-row" style="display:none" title="Solo la parte de interés de lo que le pagaron de préstamos este mes (el capital que regresa no es ganancia)">
+            <span class="financial-label">Intereses cobrados (préstamos)</span>
+            <span class="financial-value positive" id="fin-intereses-cobrados">—</span>
+          </div>
           <div class="financial-row">
             <span class="financial-label">Otros egresos</span>
             <span class="financial-value negative" id="fin-otros-egresos">—</span>
@@ -2383,9 +2387,11 @@ async function loadOtrosMovimientosCaja(userId) {
     // Plata que el dueño mete a caja (CAPITAL_AGREGADO) NO es ganancia: se excluye.
     const movs = (data || []).filter(r => r.tipo_movimiento !== 'CAPITAL_AGREGADO');
 
+    // Ganancia de los préstamos: solo la parte de INTERÉS de lo cobrado este mes.
+    dashData.interesesM = window.N360InteresesCobrados ? await N360InteresesCobrados.total(sbClient, userId, monthStart, today) : 0;
     dashData.otrosIngresosM = movs
       .filter(r => r.tipo_flujo === 'INGRESO')
-      .reduce((s, r) => s + Number(r.monto || 0), 0);
+      .reduce((s, r) => s + Number(r.monto || 0), 0) + dashData.interesesM;
 
     dashData.otrosEgresosM = movs
       .filter(r => r.tipo_flujo === 'EGRESO')
@@ -2395,6 +2401,7 @@ async function loadOtrosMovimientosCaja(userId) {
     console.warn('loadOtrosMovimientosCaja:', e);
     dashData.otrosIngresosM = 0;
     dashData.otrosEgresosM  = 0;
+    dashData.interesesM     = 0;
   }
 }
 
@@ -2421,7 +2428,10 @@ function renderFinancial() {
   setVal('fin-costo-ventas',   noData ? '—' : fmt(cos, sym));
   setVal('fin-ganancia-bruta', noData ? '—' : fmt(brut, sym), brut >= 0 ? 'positive' : 'negative');
   setVal('fin-gastos',         noData ? '—' : fmt(gas, sym), 'negative');
-  setVal('fin-otros-ingresos', noData ? '—' : fmt(otrosIng, sym), 'positive');
+  const intereses = dashData.interesesM || 0;
+  setVal('fin-otros-ingresos', noData ? '—' : fmt(otrosIng - intereses, sym), 'positive');
+  setVal('fin-intereses-cobrados', fmt(intereses, sym), 'positive');
+  { const fila = document.getElementById('fin-intereses-row'); if (fila) fila.style.display = intereses > 0 ? '' : 'none'; }
   setVal('fin-otros-egresos',  noData ? '—' : fmt(otrosEgr, sym), 'negative');
   setVal('fin-ganancia-neta',  noData ? '—' : fmt(net, sym), net >= 0 ? 'positive' : 'negative');
   setVal('fin-margen',         noData ? '—' : `${mar}%`);
@@ -3139,6 +3149,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261106e"></script>
 <script src="selector-cuenta-grupo.js?v=20261029e"></script>
+<script src="intereses-cobrados.js?v=20261110a"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>
 <script src="modulos-guard.js?v=20261107b"></script>
 <script src="contraste-acento.js?v=20261029a"></script>

@@ -800,9 +800,11 @@ async function fetchOtrosMovimientos() {
 
     // Plata que el dueño mete a caja (CAPITAL_AGREGADO) NO es ganancia: se excluye.
     const movs = (data || []).filter(m => m.tipo_movimiento !== 'CAPITAL_AGREGADO');
-    const otrosIngresos = movs.filter(m => m.tipo_flujo === 'INGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
+    const otrosCaja     = movs.filter(m => m.tipo_flujo === 'INGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
     const otrosEgresos  = movs.filter(m => m.tipo_flujo === 'EGRESO').reduce((s,m) => s+Number(m.monto||0), 0);
-    return { otrosIngresos, otrosEgresos };
+    // Ganancia de los préstamos: solo la parte de INTERÉS de lo cobrado en el período.
+    const interesesCobrados = window.N360InteresesCobrados ? await N360InteresesCobrados.total(sbReal, R.userId, from, to) : 0;
+    return { otrosIngresos: otrosCaja + interesesCobrados, otrosEgresos, otrosCaja, interesesCobrados };
   } catch(e) {
     console.warn('fetchOtrosMovimientos:', e);
     return { otrosIngresos: 0, otrosEgresos: 0 };
@@ -1175,8 +1177,10 @@ async function loadFinanciero() {
     setEl('fin-capital',        fmt(capital));
     setEl('fin-inventario',     fmt(valorInv));
     // Otros ingresos / egresos en la grilla financiera
-    setEl('fin-otros-ingresos', fmt(otrosIngresos));
+    setEl('fin-otros-ingresos', fmt(otros.otrosCaja ?? otrosIngresos));
     setEl('fin-otros-egresos',  fmt(otrosEgresos));
+    setEl('fin-intereses-cobrados', fmt(otros.interesesCobrados || 0));
+    { const c = document.getElementById('fin-intereses-cell'); if (c) c.style.display = (otros.interesesCobrados || 0) > 0 ? '' : 'none'; }
 
     const gnEl = document.getElementById('fin-ganancia-neta');
     if (gnEl) gnEl.style.color = gananciaNeta>=0 ? 'var(--success)' : 'var(--danger)';

@@ -1069,6 +1069,12 @@
             <div class="financial-value" id="fin-otros-egresos" style="color:var(--danger)">—</div>
             <div class="financial-sub">movimientos manuales de Caja</div>
           </div>
+          <!-- Intereses cobrados de préstamos (solo aparece si hay) -->
+          <div class="financial-cell" id="fin-intereses-cell" style="display:none">
+            <div class="financial-label">Intereses cobrados</div>
+            <div class="financial-value" id="fin-intereses-cobrados" style="color:var(--success)">—</div>
+            <div class="financial-sub">ganancia de préstamos (sin el capital)</div>
+          </div>
         </div>
 
         <!-- NUEVO: IVA / Impuestos — solo lectura, misma tabla que impuestos.html -->
@@ -2301,7 +2307,8 @@
 <script src="exportar-datos.js?v=20261008a"></script>
 <script src="proforma-de-credito.js?v=20261015a"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>
-<script src="reportes.js?v=20261110a"></script>
+<script src="intereses-cobrados.js?v=20261110a"></script>
+<script src="reportes.js?v=20261110b"></script>
 <script src="reportes-anulaciones.js?v=20261106c"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261106e"></script>

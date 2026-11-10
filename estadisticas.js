@@ -321,6 +321,9 @@ async function cargarTodo() {
   const devAct = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, uid, from, to) : [];
   const devAnt = window.N360DevolucionesVenta ? await N360DevolucionesVenta.filasNegativas(sb, uid, anterior.from, anterior.to) : [];
 
+  // Ganancia de los préstamos: solo la parte de INTERÉS de lo cobrado en el período.
+  const interesesCobrados = window.N360InteresesCobrados ? await N360InteresesCobrados.total(sb, uid, from, to) : 0;
+
   EST.data = {
     ventas: (ventas.data || []).concat(devAct),
     ventasAnt: (ventasAnt.data || []).concat(devAnt),
@@ -335,6 +338,7 @@ async function cargarTodo() {
     movFin: (movFin.data || []).filter(m => m.tipo_movimiento !== 'TRANSFERENCIA'),
     movFinAnt: (movFinAnt.data || []).filter(m => m.tipo_movimiento !== 'TRANSFERENCIA'),
     capital: capital.data || null,
+    interesesCobrados,
     saldoActualReal: saldoReciente.data ? Number(saldoReciente.data.saldo_resultante) : null,
     productos: productos.data || [],
     categoriaPorProducto,
@@ -397,7 +401,7 @@ function calcularSalud() {
   // siempre coinciden en el mismo número.
   const otrosIngresos = d.movFin
     .filter(m => m.tipo_flujo === 'INGRESO' && !m.referencia_tipo && m.tipo_movimiento !== 'CAPITAL_AGREGADO')
-    .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
+    .reduce((s, m) => s + parseFloat(m.monto || 0), 0) + (d.interesesCobrados || 0);
   const otrosEgresosCaja = d.movFin
     .filter(m => m.tipo_flujo === 'EGRESO' && !m.referencia_tipo)
     .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
@@ -759,7 +763,7 @@ function renderRentabilidad() {
   const gastosOp = d.gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
   const otrosIngresos = d.movFin
     .filter(m => m.tipo_flujo === 'INGRESO' && !m.referencia_tipo && m.tipo_movimiento !== 'CAPITAL_AGREGADO')
-    .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
+    .reduce((s, m) => s + parseFloat(m.monto || 0), 0) + (d.interesesCobrados || 0);
   const otrosEgresos = d.movFin
     .filter(m => m.tipo_flujo === 'EGRESO' && !m.referencia_tipo)
     .reduce((s, m) => s + parseFloat(m.monto || 0), 0);
