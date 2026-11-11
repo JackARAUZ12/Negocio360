@@ -8488,10 +8488,13 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   // exacto del clic. Si por algún motivo no existe (ej. reimpresión
   // manual desde el historial, fuera de este flujo), se abre una
   // nueva como respaldo.
-  const win = (VR._ventanaTicketPreabierta && !VR._ventanaTicketPreabierta.closed)
+  let win = (VR._ventanaTicketPreabierta && !VR._ventanaTicketPreabierta.closed)
     ? VR._ventanaTicketPreabierta
     : window.open('', '_blank', 'width=380,height=600');
   VR._ventanaTicketPreabierta = null;
+  // Si el navegador bloquea la ventana emergente, se imprime igual desde un marco oculto
+  // dentro de la misma página (no necesita permiso de pop-ups).
+  if (!win) win = ventanaImpresionSinPopup();
   if (!win) {
     showToast('⚠️ El navegador bloqueó la ventana de impresión (permite pop-ups para imprimir el ticket)', 'error');
     return;
@@ -8541,6 +8544,23 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
    ============================================================ */
 // Mismo criterio que en Venta Rápida — usa la función compartida de
 // prioridad (nativo → USB navegador → CSS).
+/* Respaldo de impresión sin ventana emergente: un marco oculto dentro de la misma página.
+   Se usa solo si el navegador bloqueó la ventana del ticket. Se quita solo después de imprimir. */
+function ventanaImpresionSinPopup() {
+  try {
+    const f = document.createElement('iframe');
+    f.setAttribute('aria-hidden', 'true');
+    f.setAttribute('tabindex', '-1');
+    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+    document.body.appendChild(f);
+    const w = f.contentWindow;
+    if (!w) { f.remove(); return null; }
+    const quitar = () => setTimeout(() => { try { f.remove(); } catch (_) {} }, 1500);
+    try { w.addEventListener('afterprint', quitar); } catch (_) {}
+    setTimeout(() => { try { f.remove(); } catch (_) {} }, 180000);
+    return w;
+  } catch (e) { console.warn('ventanaImpresionSinPopup:', e); return null; }
+}
 function imprimirTicketNuevaVenta(venta, items, resumen) {
   imprimirConMejorViaDisponible(venta, items, VR.config || {}, () => imprimirTicketNuevaVentaCSS(venta, items, resumen), resumen);
 }
@@ -8681,10 +8701,13 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   // Reutiliza la ventana que ya se abrió DE INMEDIATO al hacer clic en
   // "Confirmar e imprimir" (antes de guardar la venta) -- mismo motivo
   // exacto que en Venta Rápida.
-  const win = (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed)
+  let win = (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed)
     ? S._ventanaTicketPreabierta
     : window.open('', '_blank', 'width=380,height=600');
   S._ventanaTicketPreabierta = null;
+  // Si el navegador bloquea la ventana emergente, se imprime igual desde un marco oculto
+  // dentro de la misma página (no necesita permiso de pop-ups).
+  if (!win) win = ventanaImpresionSinPopup();
   if (!win) {
     showToast('⚠️ El navegador bloqueó la ventana de impresión (permite pop-ups para imprimir el ticket)', 'error');
     return;
