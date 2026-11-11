@@ -5818,14 +5818,27 @@ async function reimprimirTicketVenta() {
   const venta = S.ventas.find(v => v.id === S.ventaDetalleId);
   if (!venta) return;
   try {
-    // Ventana de impresión normal: se abre YA (dentro del toque) solo si no hay vía directa lista
+    // BUG REAL CORREGIDO (reapareció): la ventana se abría DESPUÉS de "await cargarConfigVentaRapida()"
+    // (una consulta al servidor), y el navegador ya no lo reconocía como un clic -> "permite pop-ups".
+    // Ahora se abre YA, sin esperar nada, con la configuración que ya está cargada en la pantalla.
+    // Si al recargar la configuración resulta que se imprime por otra vía (carta / RawBT), se cierra sola.
+    const viaDirectaLista = (c) => {
+      const btListo = typeof btActivoLocal === 'function' && btActivoLocal() && !!ESCPOS_BT_DEVICE;
+      const usbListo = !!document.getElementById('vrc-usar-usb')?.checked && escposConectado();
+      const nativaLista = !!(window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa'));
+      return btListo || usbListo || nativaLista || (c || {}).ancho_ticket === 'carta' || !!(window.rawbtActivo && window.rawbtActivo(c || {}));
+    };
+    S._ventanaTicketPreabierta = null;
+    if (!viaDirectaLista(VR.config)) {
+      try {
+        S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
+        if (S._ventanaTicketPreabierta) S._ventanaTicketPreabierta.document.write('<p style="font-family:sans-serif;color:#888;padding:20px">Generando tu ticket…</p>');
+      } catch (_) { S._ventanaTicketPreabierta = null; }
+    }
     await cargarConfigVentaRapida();
-    const cfg = VR.config || {};
-    const btListo = typeof btActivoLocal === 'function' && btActivoLocal() && !!ESCPOS_BT_DEVICE;
-    const usbListo = !!document.getElementById('vrc-usar-usb')?.checked && escposConectado();
-    const nativaLista = !!(window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa'));
-    if (!btListo && !usbListo && !nativaLista && cfg.ancho_ticket !== 'carta' && !(window.rawbtActivo && window.rawbtActivo(cfg))) {
-      S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
+    if (S._ventanaTicketPreabierta && viaDirectaLista(VR.config)) {
+      try { S._ventanaTicketPreabierta.close(); } catch (_) {}
+      S._ventanaTicketPreabierta = null;
     }
     const { data: det } = await sb.from('venta_detalles').select('*')
       .eq('venta_id', venta.id).eq('auth_user_id', S.userId);
@@ -5848,6 +5861,8 @@ async function reimprimirTicketVenta() {
     imprimirTicketNuevaVenta(venta, items, resumen);
   } catch (e) {
     console.error('reimprimirTicketVenta:', e);
+    try { if (S._ventanaTicketPreabierta && !S._ventanaTicketPreabierta.closed) S._ventanaTicketPreabierta.close(); } catch (_) {}
+    S._ventanaTicketPreabierta = null;
     showToast('No se pudo imprimir el ticket', 'error');
   }
 }
