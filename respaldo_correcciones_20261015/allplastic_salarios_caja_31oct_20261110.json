@@ -1,0 +1,4 @@
+{"motivo":"Salarios del 31-oct-2026 de Geral Melara (SAL-29905207, C$5,000) y Samir Garcia (SAL-30288483, C$2,650) se pagaron pero no llegaron a Caja. El cliente confirmo que si se entregaron.",
+ "caja_antes":5542296.25, "caja_despues":5534646.25,
+ "movimientos_creados":["32b69c82-18d6-4283-9ea6-739bcba2eaa3","6a1ab4d2-beed-48b3-87a7-b3f9e72410fe"],
+ "revertir":"Anularlos desde Caja (no borrarlos), para que el saldo se re-encadene."}
