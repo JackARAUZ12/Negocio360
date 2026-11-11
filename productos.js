@@ -314,7 +314,16 @@ async function checkAuth() {
 function aplicarVisibilidadFarmacia() {
   const e = STATE.empresa || {};
   const negocioFarma = e.usa_modulo_farmacia === true || e.usa_farmacia_fase2 === true || e.usa_modulo_veterinaria === true
-    || String(e.tipo_negocio || '').toLowerCase().includes('farmacia');
+    || e.usa_modulo_agro === true || String(e.tipo_negocio || '').toLowerCase().includes('farmacia');
+  // Agroservicio: la misma casilla sirve para agroquímicos y medicamentos de uso restringido (IPSA).
+  if (e.usa_modulo_agro === true && e.usa_modulo_farmacia !== true) {
+    ['', 'Edit'].forEach(suf => {
+      const sc = $('wrapSustanciaControlada' + suf);
+      const lbl = sc?.querySelector('label span'); const hint = sc?.querySelector('.form-hint');
+      if (lbl) lbl.textContent = '🔒 Producto restringido (agroquímico o medicamento de uso controlado)';
+      if (hint) hint.textContent = 'Se vende con cédula y receta desde el panel Agroservicio, y queda en la bitácora para IPSA.';
+    });
+  }
   ['', 'Edit'].forEach(suf => {
     const tieneDatos = ['inputPrincipioActivo', 'inputConcentracion', 'inputPresentacion'].some(id => ($(id + suf)?.value || '').trim() !== '')
       || $('inputEsSustanciaControlada' + suf)?.checked === true;

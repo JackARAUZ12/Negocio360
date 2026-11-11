@@ -125,10 +125,10 @@
 
     // ---- Farmacia (secundario -- mismo criterio que Hotel/Restaurante) ----
     'lotes.html':        { key: 'farmacia_lotes',        label: 'Farmacia · Lotes',        icon: '📦', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
-                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos', 'usa_modulo_clinica'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Lotes', usa_modulo_insumos: 'Insumos · Lotes', usa_modulo_clinica: 'Clínica · Lotes' },
+                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos', 'usa_modulo_clinica', 'usa_modulo_agro'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Lotes', usa_modulo_insumos: 'Insumos · Lotes', usa_modulo_clinica: 'Clínica · Lotes', usa_modulo_agro: 'Agroservicio · Lotes' },
                                desc: 'Todos los lotes de todos los productos en un solo lugar, con búsqueda y edición.' },
     'vencimientos.html': { key: 'farmacia_vencimientos', label: 'Farmacia · Vencimientos', icon: '⏰', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
-                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos', 'usa_modulo_clinica'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Vencimientos', usa_modulo_insumos: 'Insumos · Vencimientos', usa_modulo_clinica: 'Clínica · Vencimientos' },
+                               flagsAlternos: ['usa_modulo_veterinaria', 'usa_modulo_insumos', 'usa_modulo_clinica', 'usa_modulo_agro'], etiquetasPorFlag: { usa_modulo_veterinaria: 'Veterinaria · Vencimientos', usa_modulo_insumos: 'Insumos · Vencimientos', usa_modulo_clinica: 'Clínica · Vencimientos', usa_modulo_agro: 'Agroservicio · Vencimientos' },
                                desc: 'Todo lo que vence pronto o ya venció, ordenado por urgencia.' },
     'sustancias-controladas.html': { key: 'farmacia_sustancias', label: 'Farmacia · Control de Sustancias', icon: '🔒', obligatorio: false, flagPropio: 'usa_modulo_farmacia',
                                desc: 'Registro de venta de medicamentos controlados -- quien compro que, y cuando.' },
@@ -145,7 +145,7 @@
     'puntos.html': { key: 'puntos', label: 'Puntos · Programa de puntos', icon: '🎁', obligatorio: false, flagPropio: 'usa_puntos',
                                desc: 'Tus clientes acumulan puntos por sus compras y los canjean por recompensas.' },
     'rotacion.html': { key: 'farmacia_rotacion', label: 'Farmacia · Rotación y Margen', icon: '📊', obligatorio: false, flagPropio: 'usa_farmacia_fase2',
-                               flagsAlternos: ['usa_modulo_insumos'], etiquetasPorFlag: { usa_modulo_insumos: 'Insumos · Rotación y Margen' },
+                               flagsAlternos: ['usa_modulo_insumos', 'usa_modulo_agro'], etiquetasPorFlag: { usa_modulo_insumos: 'Insumos · Rotación y Margen', usa_modulo_agro: 'Agroservicio · Rotación y Margen' },
                                desc: 'Que se vende mas, que se vende menos, y cuanto deja de ganancia cada producto.' },
 
     // ---- Clínica (secundario: apagado para toda cuenta hasta encender "Módulo de Clínica" en Configuración) ----
@@ -177,6 +177,9 @@
     // Panel Microfinanciera (Nivel 1): vender al crédito, ruta de cobro, cobrar con recibo. Apagado por defecto.
     'microfinanciera.html': { key: 'microfinanciera', label: 'Microfinanciera · Panel', icon: '💼', obligatorio: false, flagPropio: 'usa_modulo_microfinanciera',
                        desc: 'Para quien vende o presta al crédito y cobra de casa en casa: vender al crédito (productos o efectivo), la ruta de cobro del día, cobrar con recibo y la tarjeta de cada cliente. Usa Créditos, Caja e Inventario de siempre.' },
+    // Agroservicio: panel único (productores, crédito a cosecha, restringidos e IPSA, vencimientos). Apagado por defecto.
+    'agroservicio.html': { key: 'agroservicio', label: 'Agroservicio · Panel', icon: '🌾', obligatorio: false, flagPropio: 'usa_modulo_agro',
+                       desc: 'Todo el agroservicio en un solo lugar: productores con su finca, cultivos y límite de crédito, cobros de cosecha, venta de productos restringidos con cédula y receta (bitácora para IPSA) y vencimientos. Usa Ventas, Fiados, Caja e Inventario de siempre.' },
     // Panadería: plan de horneado (usa Producción), cierre del día con merma. Apagado por defecto.
     'panaderia.html': { key: 'panaderia', label: 'Panadería · Panel', icon: '🥖', obligatorio: false, flagPropio: 'usa_modulo_panaderia',
                        desc: 'Qué hornear hoy y cuánto (según la vitrina y lo que se vende), los ingredientes que se van a usar, y el cierre del día con lo que sobró, se botó o faltó. Usa tus recetas de Producción; no toca Caja.' },

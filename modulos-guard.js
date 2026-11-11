@@ -130,6 +130,8 @@
       try {
         cfg._flagsPropios.usa_modulo_microfinanciera = fila?.usa_modulo_microfinanciera === true;
       } catch (_) { cfg._flagsPropios.usa_modulo_microfinanciera = false; }
+      // Agroservicio: mismo criterio (apagado por defecto).
+      try { cfg._flagsPropios.usa_modulo_agro = fila?.usa_modulo_agro === true; } catch (_) { cfg._flagsPropios.usa_modulo_agro = false; }
       // Panadería: consulta aparte, mismo criterio.
       try {
         const pa = fila;

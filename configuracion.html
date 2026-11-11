@@ -20,7 +20,7 @@
 <script src="reloj-sesion.js?v=20261028b"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261030a"></script>
-<script src="modulos-registro.js?v=20261107a"></script>
+<script src="modulos-registro.js?v=20261111a"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
@@ -1726,6 +1726,37 @@
             </label>
           </div>
           <div class="cfg-status" id="microfinanciera-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="agro-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">🌾</div>
+            <div>
+              <div class="cfg-card-title">Módulo de Agroservicio</div>
+              <div class="cfg-card-desc">Para agroservicios y agroveterinarias: un solo panel con productores (finca, cultivos, ganado, fecha de cosecha y límite de crédito), cobros de cosecha, venta de productos restringidos con cédula y receta (bitácora para IPSA) y vencimientos. Activa también lotes y vencimientos y Fiados (para el crédito a cosecha).</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar módulo de Agroservicio</div>
+              <div class="cfg-row-sub" id="agro-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="agro-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleAgroClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-row" id="agro-receta-row" style="display:none">
+            <div>
+              <div class="cfg-row-label">Exigir receta para vender productos restringidos</div>
+              <div class="cfg-row-sub">Recomendado. Si lo apagas, la receta queda opcional; cédula, dirección, uso y mayoría de edad siempre se piden.</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="agro-receta-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleAgroRecetaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="agro-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="panaderia-card">
@@ -3696,6 +3727,70 @@ async function guardarModuloMicrofinanciera(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Modulo de Agroservicio: se activa/desactiva desde aqui. Apagado por defecto.
+async function cargarModuloAgro() {
+  const toggle = document.getElementById('agro-toggle');
+  const sub = document.getElementById('agro-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa')
+      .select('usa_modulo_agro, agro_receta_obligatoria').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_agro === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el panel de Agroservicio, Lotes y Vencimientos aparecen en el menú.' : 'Desactivado — el módulo de Agroservicio no aparece en ningún lado.';
+    toggle.disabled = false;
+    const rr = document.getElementById('agro-receta-row'), rt = document.getElementById('agro-receta-toggle');
+    if (rr) rr.style.display = activo ? '' : 'none';
+    if (rt) { rt.checked = data?.agro_receta_obligatoria !== false; rt.disabled = false; }
+  } catch (e) { console.error('cargarModuloAgro:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleAgroClick(evt) {
+  const toggle = document.getElementById('agro-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloAgro(toggle.checked);
+}
+async function guardarModuloAgro(activo) {
+  const toggle = document.getElementById('agro-toggle');
+  const sub = document.getElementById('agro-row-sub');
+  const statusEl = document.getElementById('agro-status');
+  toggle.disabled = true;
+  try {
+    // Al activarlo tambien se encienden lotes y vencimientos y Fiados (el credito a cosecha). Al apagarlo NO se apagan (pueden usarlos otros modulos).
+    const { error } = await sbClient.from('configuracion_empresa')
+      .update({ usa_modulo_agro: activo, ...(activo ? { maneja_lotes_vencimiento: true, usa_modulo_fiados: true } : {}) }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el panel de Agroservicio, Lotes y Vencimientos aparecen en el menú.' : 'Desactivado — el módulo de Agroservicio no aparece en ningún lado.';
+    const rr = document.getElementById('agro-receta-row'); if (rr) rr.style.display = activo ? '' : 'none';
+    setStatus(statusEl, activo ? 'Módulo de Agroservicio activado. Recarga la página para ver el menú.' : 'Módulo de Agroservicio desactivado (tus datos se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloAgro:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+function onToggleAgroRecetaClick(evt) {
+  const t = document.getElementById('agro-receta-toggle');
+  if (t.disabled) { evt.preventDefault(); return; }
+  t.checked = !t.checked;
+  guardarAgroReceta(t.checked);
+}
+async function guardarAgroReceta(obligatoria) {
+  const t = document.getElementById('agro-receta-toggle');
+  const statusEl = document.getElementById('agro-status');
+  t.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ agro_receta_obligatoria: obligatoria }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    setStatus(statusEl, obligatoria ? 'Ahora la receta es obligatoria para vender productos restringidos.' : 'La receta ahora es opcional.', true);
+  } catch (e) {
+    console.error('guardarAgroReceta:', e);
+    t.checked = !obligatoria;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { t.disabled = false; }
+}
+
 // Modulo de Panaderia: se activa/desactiva desde aqui. Apagado por defecto.
 async function cargarModuloPanaderia() {
   const toggle = document.getElementById('panaderia-toggle');
@@ -4403,6 +4498,7 @@ async function initConfiguracion() {
       cargarModuloTransporte();
       cargarModuloTaller();
       cargarModuloMensajeria();
+      cargarModuloAgro();
       cargarModuloPanaderia();
       cargarModuloMicrofinanciera();
       cargarModuloVendedores();
@@ -4440,7 +4536,7 @@ document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
 <script src="perfiles-guard.js?v=20261106e"></script>
-<script src="modulos-guard.js?v=20261107b"></script>
+<script src="modulos-guard.js?v=20261111a"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>
