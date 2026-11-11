@@ -1,0 +1,2847 @@
+/* =====================================================
+   SALARIOS.JS — NEGOCIO360
+   Administración de empleados y pago de salarios.
+
+   ARQUITECTURA:
+     Salarios → Caja (todo pago SIEMPRE crea un egreso en Caja,
+                       vía window.CajaAPI — nunca se omite, igual
+                       que Créditos y Cuentas por Pagar)
+     Salarios → Empleados (actualiza último pago / próximo pago)
+   No modifica Inventario, Productos, Servicios, Clientes, Ventas,
+   Compras, Créditos ni Cuentas por Pagar.
+===================================================== */
+
+'use strict';
+
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sbClient     = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* =====================================================
+   ESTADO GLOBAL
+===================================================== */
+let STATE = {
+  userId: null, userEmail: null, empresaConfig: {}, currentUser: {},
+
+  empleados: [],
+  metodosPago: [],
+
+  filtro: 'todos',
+  search: '',
+  page: 1,
+  perPage: 15,
+
+  empleadoActual: null,
+  adelantosPendientes: [],
+  bonos: [],        // [{descripcion, monto}]
+  deducciones: [],  // [{descripcion, monto}]
+  conceptos: [],
+  aportesPatronales: [],
+  planillas: [],
+  planillaSeleccion: new Map(),
+  bonoAnualConfig: null,
+
+  ultimoComprobante: null,
+};
+
+/* =====================================================
+   HELPERS: FECHA (mismo fix de huso horario que el resto del sistema)
+===================================================== */
+function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function todayISO() { return ymd(new Date()); }
+function ymdUTC(dt) { return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`; }
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+// Calcula la fecha del próximo pago según el tipo de salario.
+function sumarPeriodoSalario(fechaISO, tipoSalario, n) {
+  const [y, m, d] = fechaISO.split('-').map(Number);
+  if (tipoSalario === 'diario')    { const dt = new Date(Date.UTC(y,m-1,d)); dt.setUTCDate(dt.getUTCDate()+1*n);  return ymdUTC(dt); }
+  if (tipoSalario === 'semanal')   { const dt = new Date(Date.UTC(y,m-1,d)); dt.setUTCDate(dt.getUTCDate()+7*n);  return ymdUTC(dt); }
+  if (tipoSalario === 'quincenal') { const dt = new Date(Date.UTC(y,m-1,d)); dt.setUTCDate(dt.getUTCDate()+15*n); return ymdUTC(dt); }
+  // mensual — respeta fin de mes
+  let mm = (m - 1) + n;
+  const yy = y + Math.floor(mm / 12);
+  mm = ((mm % 12) + 12) % 12;
+  const ultimoDiaMes = new Date(Date.UTC(yy, mm + 1, 0)).getUTCDate();
+  return ymdUTC(new Date(Date.UTC(yy, mm, Math.min(d, ultimoDiaMes))));
+}
+
+/* =====================================================
+   HELPERS: FORMATO
+===================================================== */
+function sym() { return monedaParaMostrar(STATE.empresaConfig?.moneda); }
+function fmt(amount) {
+  const n = convertirParaMostrar(amount, STATE.empresaConfig?.moneda);
+  return `${sym()} ${n.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function fmtNum(v) { return Number(v || 0).toLocaleString('es-NI'); }
+function esc(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+const TIPO_SALARIO_LABEL = { mensual:'Mensual', quincenal:'Quincenal', semanal:'Semanal', diario:'Diario' };
+
+/* =====================================================
+   THEME / SIDEBAR / NAV (idéntico al resto del sistema)
+===================================================== */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('n360_theme', theme);
+  const sun = document.getElementById('icon-sun'), moon = document.getElementById('icon-moon');
+  if (sun)  sun.style.display  = theme === 'dark'  ? 'block' : 'none';
+  if (moon) moon.style.display = theme === 'light' ? 'block' : 'none';
+}
+function toggleTheme() {
+  const curr = document.documentElement.getAttribute('data-theme');
+  applyTheme(curr === 'dark' ? 'light' : 'dark');
+}
+function isMobileViewport() { return window.innerWidth <= 860; }
+function toggleSidebar() {
+  if (isMobileViewport()) {
+    document.getElementById('sidebar').classList.toggle('mobile-open');
+    document.getElementById('sidebar-overlay').classList.toggle('active');
+  } else {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    document.getElementById('main').classList.toggle('sidebar-collapsed');
+  }
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('active');
+}
+function navigate(url) { closeMobileSidebar(); window.location.href = url; }
+
+/* =====================================================
+   CONFIG EMPRESA / PERFIL / ADMIN (idéntico al resto del sistema)
+===================================================== */
+async function loadEmpresaConfig(userId) {
+  try {
+    const { data } = await sbClient.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
+    STATE.empresaConfig = data || {};
+    if (data) {
+      const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
+      const lt = document.getElementById('sidebar-logo-text');
+      if (lt) lt.textContent = bizName;
+      if (data.color_principal || data.color_primario) {
+        const col = data.color_principal || data.color_primario;
+        document.documentElement.style.setProperty('--accent', col);
+        document.documentElement.style.setProperty('--accent-soft', col + '22');
+        document.documentElement.style.setProperty('--border-focus', col);
+      }
+      if (data.logo_principal_url || data.logo_url) {
+        const li = document.querySelector('.logo-icon');
+        if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+      }
+    }
+  } catch (e) { console.warn('loadEmpresaConfig:', e); }
+}
+async function loadUserProfile(userId) {
+  try {
+    const { data } = await sbClient.from('usuarios').select('*').eq('auth_user_id', userId).maybeSingle();
+    STATE.currentUser = data || {};
+    return data;
+  } catch (e) { console.warn('loadUserProfile:', e); return null; }
+}
+function renderUserInfo(profile, email) {
+  const name = profile?.nombre || email?.split('@')[0] || 'Usuario';
+  const biz  = STATE.empresaConfig?.nombre_comercial || 'Mi negocio';
+  const hName = document.getElementById('header-name'); if (hName) hName.textContent = name;
+  const hBiz  = document.getElementById('header-biz');  if (hBiz)  hBiz.textContent  = biz;
+  const hAv   = document.getElementById('header-avatar'); if (hAv) hAv.textContent = (name || 'U')[0].toUpperCase();
+}
+async function checkAdminAccess(email) {
+  try {
+    const { data } = await sbClient.from('administradores').select('email, activo').eq('email', email).eq('activo', true).maybeSingle();
+    if (data) { const nav = document.getElementById('nav-admin'); if (nav) nav.style.display = 'flex'; }
+  } catch (e) { /* silencioso */ }
+}
+
+/* =====================================================
+   MÉTODOS DE PAGO
+===================================================== */
+async function loadMetodosPago() {
+  try {
+    const { data } = await sbClient.from('metodos_pago').select('id, nombre, activo, es_default')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('orden');
+    STATE.metodosPago = data || [];
+  } catch (e) {
+    console.warn('loadMetodosPago:', e);
+    STATE.metodosPago = [{ id: null, nombre: 'Efectivo', es_default: true }];
+  }
+  const opciones = (STATE.metodosPago.length?STATE.metodosPago:[{id:null,nombre:'Efectivo',es_default:true}])
+    .map(m => `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+  const def = STATE.metodosPago.find(m => m.es_default);
+  const sel = document.getElementById('pg-sal-metodo');
+  if (sel) { sel.innerHTML = opciones; if (def) sel.value = def.id || ''; }
+}
+
+/* =====================================================
+   EMPLEADOS — CRUD
+===================================================== */
+async function loadEmpleados() {
+  const tbody = document.getElementById('sal-tbody');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Cargando empleados…</td></tr>`;
+  try {
+    const { data, error } = await sbClient.from('empleados').select('*').eq('auth_user_id', STATE.userId).order('nombre');
+    if (error) throw error;
+    STATE.empleados = data || [];
+    STATE.page = 1;
+    renderTablaSal();
+  } catch (e) {
+    console.error('loadEmpleados:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">No se pudieron cargar los empleados</td></tr>`;
+  }
+}
+
+function abrirNuevoEmpleado() {
+  document.getElementById('emp-modal-title').textContent = 'Nuevo empleado';
+  document.getElementById('emp-id').value = '';
+  ['emp-nombre','emp-cargo','emp-telefono','emp-correo','emp-observaciones',
+   'emp-cedula','emp-fecha-nacimiento','emp-direccion','emp-contacto-nombre','emp-contacto-telefono',
+   'emp-departamento','emp-fecha-fin-contrato'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+  document.getElementById('emp-fecha-ingreso').value = todayISO();
+  document.getElementById('emp-tipo-salario').value = 'mensual';
+  document.getElementById('emp-salario').value = '';
+  document.getElementById('emp-estado').value = 'activo';
+  document.getElementById('emp-pais').value = 'NI';
+  document.getElementById('emp-tipo-contrato').value = 'indefinido';
+  document.getElementById('emp-fecha-fin-wrap').style.display = 'none';
+  poblarSelectReportaA(null);
+  document.getElementById('emp-error').textContent = '';
+  document.getElementById('btn-generar-contrato').style.display = 'none';
+  document.getElementById('btn-generar-constancia').style.display = 'none';
+  openModal('modal-empleado');
+}
+function poblarSelectReportaA(excluirId) {
+  const sel = document.getElementById('emp-reporta-a');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Nadie / gerencia —</option>' +
+    STATE.empleados.filter(e => e.id !== excluirId).map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('');
+}
+function abrirEditarEmpleado(id) {
+  const emp = STATE.empleados.find(e => e.id === id);
+  if (!emp) return;
+  document.getElementById('emp-modal-title').textContent = 'Editar empleado';
+  document.getElementById('emp-id').value = emp.id;
+  document.getElementById('emp-nombre').value = emp.nombre || '';
+  document.getElementById('emp-cargo').value = emp.cargo || '';
+  document.getElementById('emp-telefono').value = emp.telefono || '';
+  document.getElementById('emp-correo').value = emp.correo || '';
+  document.getElementById('emp-fecha-ingreso').value = emp.fecha_ingreso || '';
+  document.getElementById('emp-tipo-salario').value = emp.tipo_salario || 'mensual';
+  document.getElementById('emp-salario').value = emp.salario || '';
+  document.getElementById('emp-estado').value = emp.estado || 'activo';
+  document.getElementById('emp-observaciones').value = emp.observaciones || '';
+  document.getElementById('emp-cedula').value = emp.cedula || '';
+  document.getElementById('emp-fecha-nacimiento').value = emp.fecha_nacimiento || '';
+  document.getElementById('emp-direccion').value = emp.direccion || '';
+  document.getElementById('emp-contacto-nombre').value = emp.contacto_emergencia_nombre || '';
+  document.getElementById('emp-contacto-telefono').value = emp.contacto_emergencia_telefono || '';
+  document.getElementById('emp-pais').value = emp.pais || 'NI';
+  document.getElementById('emp-departamento').value = emp.departamento || '';
+  document.getElementById('emp-tipo-contrato').value = emp.tipo_contrato || 'indefinido';
+  document.getElementById('emp-fecha-fin-contrato').value = emp.fecha_fin_contrato || '';
+  document.getElementById('emp-fecha-fin-wrap').style.display = emp.tipo_contrato === 'plazo_fijo' ? '' : 'none';
+  poblarSelectReportaA(emp.id);
+  document.getElementById('emp-reporta-a').value = emp.reporta_a || '';
+  document.getElementById('emp-error').textContent = '';
+  document.getElementById('btn-generar-contrato').style.display = '';
+  document.getElementById('btn-generar-constancia').style.display = '';
+  openModal('modal-empleado');
+}
+
+/* =====================================================
+   CONTRATO DE TRABAJO — se llena solo con los datos que ya tienes
+   en el expediente del empleado, sin tener que redactarlo desde
+   cero cada vez. Plantilla base — el negocio puede ajustarla a sus
+   necesidades específicas o revisarla con un abogado si hace falta.
+===================================================== */
+/* =====================================================
+   BOLETA DE PAGO INDIVIDUAL — a diferencia de la planilla completa
+   (todos los empleados juntos), esto es el recibo de UN pago ya
+   hecho, para que el empleado lo pida cuando lo necesite (trámites
+   bancarios, alquileres, etc.). Nunca recalcula nada — usa
+   exactamente los montos ya guardados en el momento del pago.
+===================================================== */
+function generarBoletaPago(pago) {
+  const emp = STATE.empleados.find(e => e.id === pago.empleado_id) || STATE.empleadoActual || {};
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio';
+  const bizRuc = STATE.empresaConfig?.ruc || '';
+  const moneda = STATE.empresaConfig?.moneda_simbolo || 'C$';
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 18;
+  let y = 20;
+
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text(bizName, M, y);
+  if (bizRuc) { doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.text(`RUC: ${bizRuc}`, M, y+5); }
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text('BOLETA DE PAGO', W-M, y, { align:'right' });
+  doc.setFontSize(9); doc.setFont(undefined,'normal');
+  doc.text(`N.º ${pago.comprobante_numero || '—'}`, W-M, y+5, { align:'right' });
+  y += 14;
+  doc.setDrawColor(200); doc.line(M, y, W-M, y); y += 8;
+
+  doc.setFontSize(10);
+  const filaDato = (label, valor) => { doc.setFont(undefined,'bold'); doc.text(label, M, y); doc.setFont(undefined,'normal'); doc.text(String(valor), M+45, y); y += 6; };
+  filaDato('Empleado:', emp.nombre || '—');
+  filaDato('Cargo:', emp.cargo || '—');
+  filaDato('Cédula:', emp.cedula || '—');
+  filaDato('Fecha de pago:', fmtDate(pago.fecha));
+  filaDato('Período:', TIPO_SALARIO_LABEL[emp.tipo_salario] || '—');
+  filaDato('Método de pago:', pago.metodo_pago_nombre || '—');
+  y += 4;
+
+  const filas = [];
+  filas.push(['Salario base', fmt(pago.salario_base)]);
+  (pago.bonificaciones_detalle||[]).forEach(b => filas.push([`(+) ${b.descripcion||'Bonificación'}`, fmt(b.monto)]));
+  if (Number(pago.dias_vacaciones_pagados||0) > 0) filas.push([`(+) Vacaciones pagadas (${pago.dias_vacaciones_pagados} días)`, '']);
+  (pago.deducciones_detalle||[]).forEach(d => filas.push([`(-) ${d.descripcion||'Deducción'}`, '-' + fmt(d.monto)]));
+  if (Number(pago.adelantos_descontados||0) > 0) filas.push(['(-) Adelantos descontados', '-' + fmt(pago.adelantos_descontados)]);
+
+  doc.autoTable({
+    startY: y, head: [['Concepto', 'Monto']], body: filas, theme: 'plain',
+    styles: { fontSize: 9.5, cellPadding: 2.5 }, columnStyles: { 1: { halign:'right' } },
+    margin: { left:M, right:M },
+  });
+  y = doc.lastAutoTable.finalY + 6;
+  doc.setDrawColor(200); doc.line(M, y, W-M, y); y += 8;
+
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text('NETO PAGADO:', M, y);
+  doc.text(`${moneda} ${Number(pago.total_pagado||0).toLocaleString('es-NI',{minimumFractionDigits:2})}`, W-M, y, { align:'right' });
+  y += 20;
+
+  doc.setFontSize(9); doc.setFont(undefined,'normal');
+  doc.text('_____________________________', M, y);
+  doc.text('_____________________________', W-M-70, y);
+  y += 5;
+  doc.text('Firma del empleador', M, y);
+  doc.text('Firma del empleado', W-M-70, y);
+
+  doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+  doc.text('Este documento certifica el pago realizado según los registros del negocio.', M, doc.internal.pageSize.getHeight() - 10);
+
+  doc.save(`Boleta_${(emp.nombre||'empleado').replace(/[^\w]/g,'_')}_${pago.fecha}.pdf`);
+  showToast('Boleta generada');
+}
+
+/* =====================================================
+   CONSTANCIA SALARIAL — carta corta que certifica el salario y
+   tiempo laborando de un empleado, para trámites bancarios,
+   alquileres, etc. Distinta a la Boleta de Pago: esta certifica la
+   situación general, no un pago específico ya hecho.
+===================================================== */
+function generarConstanciaSalarial() {
+  const id = document.getElementById('emp-id').value;
+  if (!id) { showToast('Guarda el empleado primero', 'error'); return; }
+
+  const nombre = document.getElementById('emp-nombre').value.trim();
+  const cedula = document.getElementById('emp-cedula').value.trim();
+  const cargo = document.getElementById('emp-cargo').value.trim();
+  const salario = parseFloat(document.getElementById('emp-salario').value) || 0;
+  const tipoSalario = document.getElementById('emp-tipo-salario').value;
+  const fechaIngreso = document.getElementById('emp-fecha-ingreso').value;
+
+  if (!nombre) { showToast('Falta el nombre del empleado', 'error'); return; }
+  if (!fechaIngreso) { showToast('Falta la fecha de ingreso del empleado', 'error'); return; }
+
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'La Empresa';
+  const bizRuc = STATE.empresaConfig?.ruc || '';
+  const moneda = STATE.empresaConfig?.moneda_simbolo || 'C$';
+  const PERIODO_LABEL = { mensual:'mensuales', quincenal:'quincenales', semanal:'semanales', diario:'diarios' };
+
+  // Tiempo laborando, calculado en años/meses — para que la carta
+  // diga algo como "desde hace 1 año y 3 meses", más natural que
+  // solo la fecha.
+  const hoy = new Date();
+  const inicio = new Date(fechaIngreso+'T00:00:00');
+  let meses = (hoy.getFullYear()-inicio.getFullYear())*12 + (hoy.getMonth()-inicio.getMonth());
+  if (hoy.getDate() < inicio.getDate()) meses--;
+  if (meses < 0) meses = 0;
+  const anios = Math.floor(meses/12), mesesRestantes = meses%12;
+  let tiempoTexto = '';
+  if (anios > 0) tiempoTexto += `${anios} año${anios!==1?'s':''}`;
+  if (mesesRestantes > 0) tiempoTexto += (tiempoTexto?' y ':'') + `${mesesRestantes} mes${mesesRestantes!==1?'es':''}`;
+  if (!tiempoTexto) tiempoTexto = 'menos de un mes';
+
+  const fechaHoyTexto = hoy.toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+  const fechaIngresoTexto = inicio.toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 22;
+  let y = 25;
+
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text(bizName, M, y);
+  if (bizRuc) { doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.text(`RUC: ${bizRuc}`, M, y+5); }
+  y += 20;
+
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text('CONSTANCIA SALARIAL', W/2, y, { align:'center' }); y += 14;
+
+  doc.setFontSize(10.5); doc.setFont(undefined,'normal');
+  doc.text('A quien interese:', M, y); y += 10;
+
+  const cuerpo = `Por medio de la presente, ${bizName} hace constar que el/la señor(a) ${nombre}${cedula ? ', portador(a) de cédula de identidad N.º ' + cedula : ''}, labora en nuestras instalaciones desempeñando el cargo de ${cargo || '________________'} desde el ${fechaIngresoTexto} (aproximadamente ${tiempoTexto} a la fecha), devengando un salario ${PERIODO_LABEL[tipoSalario]||'mensuales'} de ${moneda} ${salario.toLocaleString('es-NI',{minimumFractionDigits:2})}.`;
+  const lineasCuerpo = doc.splitTextToSize(cuerpo, W - M*2);
+  doc.text(lineasCuerpo, M, y); y += lineasCuerpo.length * 5.5 + 8;
+
+  const cierre = 'Se extiende la presente constancia a solicitud del interesado, para los fines que estime conveniente.';
+  const lineasCierre = doc.splitTextToSize(cierre, W - M*2);
+  doc.text(lineasCierre, M, y); y += lineasCierre.length * 5.5 + 16;
+
+  doc.text(`Dado en la ciudad de _________________, a los ${fechaHoyTexto}.`, M, y); y += 26;
+
+  doc.text('_____________________________', M, y); y += 5;
+  doc.setFont(undefined,'bold');
+  doc.text(bizName, M, y); y += 5;
+  doc.setFont(undefined,'normal'); doc.setFontSize(9);
+  doc.text('Recursos Humanos / Gerencia', M, y);
+
+  doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+  doc.text('Este documento es una plantilla base generada automáticamente — revísala antes de firmarla.', M, doc.internal.pageSize.getHeight() - 10);
+
+  doc.save(`Constancia_Salarial_${nombre.replace(/[^\w]/g,'_')}.pdf`);
+  showToast('Constancia generada');
+}
+
+function generarContratoTrabajo() {
+  const id = document.getElementById('emp-id').value;
+  if (!id) { showToast('Guarda el empleado primero', 'error'); return; }
+
+  const nombre = document.getElementById('emp-nombre').value.trim();
+  const cedula = document.getElementById('emp-cedula').value.trim();
+  const direccion = document.getElementById('emp-direccion').value.trim();
+  const cargo = document.getElementById('emp-cargo').value.trim();
+  const salario = parseFloat(document.getElementById('emp-salario').value) || 0;
+  const tipoSalario = document.getElementById('emp-tipo-salario').value;
+  const fechaIngreso = document.getElementById('emp-fecha-ingreso').value;
+  const tipoContrato = document.getElementById('emp-tipo-contrato').value;
+  const fechaFin = document.getElementById('emp-fecha-fin-contrato').value;
+  const pais = document.getElementById('emp-pais').value;
+
+  if (!nombre) { showToast('Falta el nombre del empleado', 'error'); return; }
+  if (!cargo) { showToast('Falta el cargo del empleado', 'error'); return; }
+
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'La Empresa';
+  const bizRuc = STATE.empresaConfig?.ruc || '';
+  const bizDireccion = STATE.empresaConfig?.direccion || '';
+  const moneda = STATE.empresaConfig?.moneda_simbolo || 'C$';
+
+  const PERIODO_LABEL = { mensual:'mensual', quincenal:'quincenal', semanal:'semanal', diario:'diario' };
+  const TIPO_CONTRATO_LABEL = { indefinido:'por tiempo indefinido', plazo_fijo:'a plazo fijo', por_obra:'por obra o servicio determinado' };
+  const hoy = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+  const fechaIngresoTexto = fechaIngreso ? new Date(fechaIngreso+'T00:00:00').toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' }) : '________________';
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const M = 20;
+  let y = 20;
+
+  doc.setFontSize(14); doc.setFont(undefined,'bold');
+  doc.text('CONTRATO INDIVIDUAL DE TRABAJO', W/2, y, { align:'center' }); y += 12;
+
+  doc.setFontSize(10); doc.setFont(undefined,'normal');
+  const parrafo1 = pais === 'NI'
+    ? `Entre ${bizName}${bizRuc ? ', con RUC ' + bizRuc : ''}${bizDireccion ? ', con domicilio en ' + bizDireccion : ''}, a quien en adelante se le denominará "EL EMPLEADOR", y el/la señor(a) ${nombre}, portador(a) de cédula de identidad N.º ${cedula || '____________________'}${direccion ? ', con domicilio en ' + direccion : ''}, a quien en adelante se le denominará "EL TRABAJADOR", de mutuo acuerdo celebran el presente Contrato Individual de Trabajo, sujeto a las leyes laborales vigentes en la República de Nicaragua, bajo las siguientes cláusulas:`
+    : `Entre ${bizName}, a quien en adelante se le denominará "EL EMPLEADOR", y el/la señor(a) ${nombre}, portador(a) de identificación N.º ${cedula || '____________________'}${direccion ? ', con domicilio en ' + direccion : ''}, a quien en adelante se le denominará "EL TRABAJADOR", de mutuo acuerdo celebran el presente Contrato Individual de Trabajo, bajo las siguientes cláusulas:`;
+  const lineas1 = doc.splitTextToSize(parrafo1, W - M*2);
+  doc.text(lineas1, M, y); y += lineas1.length * 5 + 6;
+
+  const clausula = (titulo, texto) => {
+    doc.setFont(undefined,'bold'); doc.text(titulo, M, y); y += 6;
+    doc.setFont(undefined,'normal');
+    const lns = doc.splitTextToSize(texto, W - M*2);
+    doc.text(lns, M, y); y += lns.length * 5 + 6;
+  };
+
+  clausula('PRIMERA — CARGO Y FUNCIONES:', `EL TRABAJADOR se compromete a desempeñar el cargo de ${cargo}, así como las funciones inherentes al mismo y las que razonablemente le sean asignadas por EL EMPLEADOR dentro del giro normal del negocio.`);
+
+  clausula('SEGUNDA — DURACIÓN:', `El presente contrato se celebra ${TIPO_CONTRATO_LABEL[tipoContrato] || 'por tiempo indefinido'}, iniciando labores el ${fechaIngresoTexto}${tipoContrato==='plazo_fijo' && fechaFin ? `, con fecha de finalización el ${new Date(fechaFin+'T00:00:00').toLocaleDateString('es-NI',{day:'numeric',month:'long',year:'numeric'})}` : ''}.`);
+
+  clausula('TERCERA — SALARIO:', `EL EMPLEADOR pagará a EL TRABAJADOR un salario ${PERIODO_LABEL[tipoSalario]||'mensual'} de ${moneda} ${salario.toLocaleString('es-NI',{minimumFractionDigits:2})}, sujeto a las deducciones de ley correspondientes.`);
+
+  clausula('CUARTA — JORNADA DE TRABAJO:', 'EL TRABAJADOR se compromete a cumplir con el horario de trabajo establecido por EL EMPLEADOR, respetando los descansos y días de asueto de acuerdo a la legislación laboral vigente.');
+
+  clausula('QUINTA — OBLIGACIONES DEL TRABAJADOR:', 'EL TRABAJADOR se compromete a desempeñar sus funciones con honestidad, eficiencia y buena fe, cuidando los bienes y materiales que se le confíen, y guardando la debida confidencialidad sobre la información del negocio.');
+
+  clausula('SEXTA — TERMINACIÓN:', 'El presente contrato podrá darse por terminado por cualquiera de las causales establecidas en la legislación laboral vigente, respetando en todo momento los derechos y prestaciones que correspondan a EL TRABAJADOR.');
+
+  y += 4;
+  doc.text(`Firmado en la ciudad de _________________, a los ${hoy}.`, M, y); y += 20;
+
+  doc.text('_____________________________', M, y);
+  doc.text('_____________________________', W - M - 70, y);
+  y += 5;
+  doc.setFont(undefined,'bold');
+  doc.text('EL EMPLEADOR', M, y);
+  doc.text('EL TRABAJADOR', W - M - 70, y);
+  y += 5;
+  doc.setFont(undefined,'normal'); doc.setFontSize(9);
+  doc.text(bizName, M, y);
+  doc.text(nombre, W - M - 70, y);
+
+  doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+  doc.text('Este documento es una plantilla base generada automáticamente — revísala y ajústala según las necesidades específicas de tu negocio antes de firmarla.', M, doc.internal.pageSize.getHeight() - 10);
+
+  doc.save(`Contrato_${nombre.replace(/[^\w]/g,'_')}.pdf`);
+  showToast('Contrato generado');
+}
+
+async function guardarEmpleado() {
+  const errEl = document.getElementById('emp-error');
+  errEl.textContent = '';
+  const id = document.getElementById('emp-id').value || null;
+  const nombre = document.getElementById('emp-nombre').value.trim();
+  const salario = parseFloat(document.getElementById('emp-salario').value);
+  const tipoSalario = document.getElementById('emp-tipo-salario').value;
+  const fechaIngreso = document.getElementById('emp-fecha-ingreso').value || null;
+
+  if (!nombre) { errEl.textContent = 'El nombre es requerido.'; return; }
+  if (isNaN(salario) || salario < 0) { errEl.textContent = 'Indica un salario válido.'; return; }
+
+  const tipoContrato = document.getElementById('emp-tipo-contrato').value;
+  const payload = {
+    nombre, cargo: document.getElementById('emp-cargo').value.trim() || null,
+    telefono: document.getElementById('emp-telefono').value.trim() || null,
+    correo: document.getElementById('emp-correo').value.trim() || null,
+    fecha_ingreso: fechaIngreso, tipo_salario: tipoSalario, salario,
+    estado: document.getElementById('emp-estado').value,
+    observaciones: document.getElementById('emp-observaciones').value.trim() || null,
+    cedula: document.getElementById('emp-cedula').value.trim() || null,
+    fecha_nacimiento: document.getElementById('emp-fecha-nacimiento').value || null,
+    direccion: document.getElementById('emp-direccion').value.trim() || null,
+    contacto_emergencia_nombre: document.getElementById('emp-contacto-nombre').value.trim() || null,
+    contacto_emergencia_telefono: document.getElementById('emp-contacto-telefono').value.trim() || null,
+    pais: document.getElementById('emp-pais').value || 'NI',
+    departamento: document.getElementById('emp-departamento').value.trim() || null,
+    reporta_a: document.getElementById('emp-reporta-a').value || null,
+    tipo_contrato: tipoContrato,
+    fecha_fin_contrato: tipoContrato === 'plazo_fijo' ? (document.getElementById('emp-fecha-fin-contrato').value || null) : null,
+  };
+
+  setBtnLoading('btn-guardar-empleado', true);
+  try {
+    if (id) {
+      const emp = STATE.empleados.find(e => e.id === id);
+      // Si cambia el tipo de salario o el salario, se recalcula el
+      // próximo pago desde el último pago (o desde el ingreso si aún no
+      // ha cobrado), para que quede coherente con el nuevo periodo.
+      const base = emp?.ultimo_pago || fechaIngreso || todayISO();
+      payload.proximo_pago = sumarPeriodoSalario(base, tipoSalario, 1);
+      payload.updated_at = new Date().toISOString();
+      const { error } = await sbClient.from('empleados').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+      if (error) throw error;
+
+      // Nunca se pierde el dato anterior — si cambia el salario o el
+      // cargo, queda registrado en el historial del empleado.
+      const cambios = [];
+      if (emp && Number(emp.salario) !== Number(salario)) cambios.push({ campo:'salario', anterior:String(emp.salario), nuevo:String(salario) });
+      if (emp && (emp.cargo||'') !== (payload.cargo||'')) cambios.push({ campo:'cargo', anterior:emp.cargo||'—', nuevo:payload.cargo||'—' });
+      if (cambios.length) {
+        try {
+          await sbClient.from('empleados_historial_cambios').insert(cambios.map(c => ({
+            auth_user_id: STATE.userId, empleado_id: id, campo: c.campo,
+            valor_anterior: c.anterior, valor_nuevo: c.nuevo,
+            usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+          })));
+        } catch (eHist) { console.warn('No se pudo registrar el historial:', eHist); }
+      }
+      showToast('Empleado actualizado');
+    } else {
+      payload.proximo_pago = sumarPeriodoSalario(fechaIngreso || todayISO(), tipoSalario, 1);
+      const { error } = await sbClient.from('empleados').insert({ auth_user_id: STATE.userId, ...payload });
+      if (error) throw error;
+      showToast('Empleado registrado');
+    }
+    closeModal('modal-empleado');
+    await Promise.allSettled([loadEmpleados(), loadKPIsSal()]);
+  } catch (e) {
+    console.error('guardarEmpleado:', e);
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-empleado', false);
+  }
+}
+
+function confirmarEliminarEmpleado(id) {
+  const emp = STATE.empleados.find(e => e.id === id);
+  if (!emp) return;
+  STATE.empleadoActual = emp;
+  openModal('modal-confirmar-eliminar-emp');
+}
+async function eliminarEmpleado() {
+  const emp = STATE.empleadoActual;
+  if (!emp) return;
+  setBtnLoading('btn-confirmar-eliminar-emp', true);
+  try {
+    const { error } = await sbClient.from('empleados').delete().eq('id', emp.id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    showToast('Empleado eliminado');
+    closeModal('modal-confirmar-eliminar-emp');
+    await Promise.allSettled([loadEmpleados(), loadKPIsSal()]);
+  } catch (e) {
+    console.error('eliminarEmpleado:', e);
+    showToast('Error al eliminar: ' + (e.message||''), 'error');
+  } finally {
+    setBtnLoading('btn-confirmar-eliminar-emp', false);
+  }
+}
+
+/* =====================================================
+   TABLA / FILTROS / BÚSQUEDA
+===================================================== */
+function empleadosFiltrados() {
+  const q = STATE.search.toLowerCase().trim();
+  const hoy = todayISO();
+  return STATE.empleados.filter(e => {
+    if (STATE.filtro === 'activo'    && e.estado !== 'activo')    return false;
+    if (STATE.filtro === 'inactivo'  && e.estado !== 'inactivo')  return false;
+    if (STATE.filtro === 'pendiente' && !(e.proximo_pago && e.proximo_pago <= hoy)) return false;
+    if (STATE.filtro === 'pagado'    && e.ultimo_pago !== hoy)    return false;
+    if (!q) return true;
+    return (e.nombre||'').toLowerCase().includes(q) || (e.cargo||'').toLowerCase().includes(q) ||
+           (TIPO_SALARIO_LABEL[e.tipo_salario]||'').toLowerCase().includes(q);
+  });
+}
+function renderTablaSal() {
+  const tbody = document.getElementById('sal-tbody');
+  if (!tbody) return;
+  const filtrados = empleadosFiltrados();
+  const totalPag = Math.max(1, Math.ceil(filtrados.length / STATE.perPage));
+  STATE.page = Math.min(STATE.page, totalPag);
+  const inicio = (STATE.page-1)*STATE.perPage;
+  const pagina = filtrados.slice(inicio, inicio+STATE.perPage);
+  const hoy = todayISO();
+
+  if (!pagina.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">No hay empleados con estos filtros</td></tr>`;
+  } else {
+    tbody.innerHTML = pagina.map(e => {
+      const vencido = e.proximo_pago && e.proximo_pago <= hoy;
+      return `
+      <tr>
+        <td style="font-weight:500">${esc(e.nombre)}</td>
+        <td>${esc(e.cargo||'—')}</td>
+        <td>${TIPO_SALARIO_LABEL[e.tipo_salario]||e.tipo_salario}</td>
+        <td class="td-right td-money">${fmt(e.salario)}</td>
+        <td>${e.proximo_pago ? `<span style="${vencido?'color:var(--danger);font-weight:700':''}">${fmtDate(e.proximo_pago)}</span>` : '—'}</td>
+        <td><span class="status-badge badge-${e.estado}">${e.estado==='activo'?'Activo':'Inactivo'}</span></td>
+        <td class="td-actions">
+          <button class="btn-icon" title="Editar" onclick="abrirEditarEmpleado('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+          <button class="btn-icon" title="Ver historial" onclick="verHistorialEmpleado('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+          <button class="btn-icon" title="Registrar pago" onclick="abrirPagarDesdeTabla('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></button>
+          <button class="btn-icon" title="Pagar Bono Anual" onclick="abrirPagarBonoAnual('${e.id}')">🎁</button>
+          <button class="btn-icon" title="Vacaciones" onclick="abrirVacaciones('${e.id}')">🏖️</button>
+          <button class="btn-icon" title="Registrar ausencia" onclick="abrirAusencia('${e.id}')">📋</button>
+          <button class="btn-icon" title="Liquidar / terminar contrato" onclick="abrirLiquidar('${e.id}')">💼</button>
+          <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarEmpleado('${e.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  const info = document.getElementById('paginacion-info');
+  if (info) info.textContent = filtrados.length ? `${inicio+1}–${Math.min(inicio+STATE.perPage,filtrados.length)} de ${filtrados.length}` : '—';
+  const prev = document.getElementById('btn-pag-prev'); if (prev) prev.disabled = STATE.page<=1;
+  const next = document.getElementById('btn-pag-next'); if (next) next.disabled = STATE.page>=totalPag;
+}
+function setFiltroSal(f) {
+  STATE.filtro = f; STATE.page = 1;
+  document.querySelectorAll('.filter-btn[data-filtro]').forEach(b => b.classList.toggle('active', b.dataset.filtro===f));
+  renderTablaSal();
+}
+function buscarSal() { STATE.search = document.getElementById('sal-search')?.value || ''; STATE.page = 1; renderTablaSal(); }
+function paginaAnterior() { if (STATE.page>1) { STATE.page--; renderTablaSal(); } }
+function paginaSiguiente() { STATE.page++; renderTablaSal(); }
+
+/* =====================================================
+   KPIs
+===================================================== */
+async function loadKPIsSal() {
+  try {
+    const hoy = todayISO();
+    const activos = STATE.empleados.filter(e => e.estado === 'activo');
+    const pendientesHoy = STATE.empleados.filter(e => e.proximo_pago && e.proximo_pago <= hoy).length;
+
+    const inicioMes = hoy.slice(0,7)+'-01';
+    const { data: pagosMes } = await N360Leer.todo(() => sbClient.from('empleados_pagos').select('total_pagado')
+      .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').gte('fecha', inicioMes), 'pagos');
+    const totalMes = (pagosMes||[]).reduce((s,p)=>s+Number(p.total_pagado||0),0);
+
+    const { data: adelantosPend } = await sbClient.from('empleados_adelantos').select('monto')
+      .eq('auth_user_id', STATE.userId).eq('estado','pendiente');
+    const totalAdelantos = (adelantosPend||[]).reduce((s,a)=>s+Number(a.monto||0),0);
+
+    const proximos = activos.filter(e=>e.proximo_pago).sort((a,b)=>a.proximo_pago.localeCompare(b.proximo_pago));
+    const proximo = proximos[0];
+
+    const set = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+    set('kpi-total-empleados', fmtNum(STATE.empleados.length));
+    set('kpi-pagos-pendientes', fmtNum(pendientesHoy));
+    set('kpi-pagos-mes', fmtNum((pagosMes||[]).length));
+    set('kpi-total-mes', fmt(totalMes));
+    set('kpi-proximo-pago', proximo ? `${esc(proximo.nombre)} · ${fmtDate(proximo.proximo_pago)}` : '—');
+    set('kpi-adelantos-pendientes', fmt(totalAdelantos));
+  } catch (e) { console.warn('loadKPIsSal:', e); }
+}
+
+/* =====================================================
+   HISTORIAL DEL EMPLEADO (pagos + adelantos)
+===================================================== */
+async function verHistorialEmpleado(id) {
+  const emp = STATE.empleados.find(e => e.id === id);
+  if (!emp) return;
+  STATE.empleadoActual = emp;
+  document.getElementById('hist-emp-title').textContent = `${emp.nombre} — Historial`;
+  const body = document.getElementById('historial-empleado-body');
+  body.innerHTML = 'Cargando…';
+  openModal('modal-historial-empleado');
+
+  try {
+    const [{ data: pagos }, { data: adelantos }] = await Promise.all([
+      sbClient.from('empleados_pagos').select('*').eq('empleado_id', id).order('fecha', { ascending:false }),
+      sbClient.from('empleados_adelantos').select('*').eq('empleado_id', id).order('fecha', { ascending:false }),
+    ]);
+
+    let html = `
+      <div class="form-row">
+        <div><label>Cargo</label><div class="stat-readonly">${esc(emp.cargo||'—')}</div></div>
+        <div><label>Tipo de salario</label><div class="stat-readonly">${TIPO_SALARIO_LABEL[emp.tipo_salario]||'—'}</div></div>
+        <div><label>Salario</label><div class="stat-readonly">${fmt(emp.salario)}</div></div>
+        <div><label>Próximo pago</label><div class="stat-readonly">${fmtDate(emp.proximo_pago)}</div></div>
+      </div>
+
+      <div class="nc-paso-title" style="margin-top:16px">Historial de pagos</div>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Fecha</th><th class="th-right">Base</th><th class="th-right">Bonos</th><th class="th-right">Deducciones</th><th class="th-right">Adelantos</th><th class="th-right">Total</th><th>Método</th><th>Estado</th><th></th>
+      </tr></thead><tbody>
+      ${(pagos||[]).map(p => `<tr${p.estado==='anulado' ? ' class="mov-anulado" title="Este pago se anuló en Caja: no cuenta en los totales"' : ''}>
+        <td>${fmtDate(p.fecha)}</td>
+        <td class="td-right td-money">${fmt(p.salario_base)}</td>
+        <td class="td-right td-money">${fmt(p.bonificaciones)}</td>
+        <td class="td-right td-money">${fmt(p.deducciones)}</td>
+        <td class="td-right td-money">${fmt(p.adelantos_descontados)}</td>
+        <td class="td-right td-money" style="font-weight:700">${fmt(p.total_pagado)}</td>
+        <td>${esc(p.metodo_pago_nombre||'—')}</td>
+        <td>${p.estado==='anulado' ? '<span class="status-badge badge-cancelado">Anulado</span>' : `<span class="status-badge badge-${p.estado==='pagado'?'pagado':'pendiente'}">${p.estado==='pagado'?'Pagado':'Pendiente'}</span>`}</td>
+        <td>${p.estado==='pagado' ? `<button class="btn-icon" title="Descargar boleta de pago" onclick='generarBoletaPago(${JSON.stringify(p).replace(/'/g,"&apos;")})'>📄</button>` : ''}</td>
+      </tr>`).join('') || '<tr><td colspan="9" class="empty-cell">Sin pagos registrados todavía</td></tr>'}
+      </tbody></table></div>
+
+      <div class="nc-paso-title" style="margin-top:16px">Adelantos</div>
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th class="th-right">Monto</th><th>Motivo</th><th>Estado</th></tr></thead><tbody>
+      ${(adelantos||[]).map(a => `<tr>
+        <td>${fmtDate(a.fecha)}</td>
+        <td class="td-right td-money">${fmt(a.monto)}</td>
+        <td>${esc(a.motivo||'—')}</td>
+        <td><span class="status-badge ${a.estado==='pendiente'?'badge-pendiente':'badge-pagado'}">${a.estado==='pendiente'?'Pendiente':'Descontado'}</span></td>
+      </tr>`).join('') || '<tr><td colspan="4" class="empty-cell">Sin adelantos registrados</td></tr>'}
+      </tbody></table></div>
+    `;
+    body.innerHTML = html;
+  } catch (e) {
+    console.error('verHistorialEmpleado:', e);
+    body.innerHTML = 'No se pudo cargar el historial.';
+  }
+}
+function abrirPagarDesdeHistorial() {
+  const emp = STATE.empleadoActual;
+  closeModal('modal-historial-empleado');
+  if (emp) abrirPagarDesdeTabla(emp.id);
+}
+function abrirAdelantoDesdeHistorial() {
+  const emp = STATE.empleadoActual;
+  closeModal('modal-historial-empleado');
+  if (emp) abrirAdelanto(emp.id);
+}
+
+/* =====================================================
+   ADELANTOS
+===================================================== */
+function abrirAdelanto(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  STATE.empleadoActual = emp;
+  document.getElementById('adel-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('adel-monto').value = '';
+  document.getElementById('adel-fecha').value = todayISO();
+  document.getElementById('adel-motivo').value = '';
+  poblarSelectMetodoPago('adel-metodo');
+  document.getElementById('adel-wrap-banco').style.display = 'none';
+  document.getElementById('adel-banco').value = '';
+  document.getElementById('adel-error').textContent = '';
+  openModal('modal-adelanto');
+}
+async function guardarAdelanto() {
+  const errEl = document.getElementById('adel-error');
+  errEl.textContent = '';
+  const emp = STATE.empleadoActual;
+  if (!emp) return;
+  const monto = round2(parseFloat(document.getElementById('adel-monto').value));
+  if (!(monto > 0)) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
+  const fecha = document.getElementById('adel-fecha').value || todayISO();
+  const motivo = document.getElementById('adel-motivo').value.trim() || null;
+  const mb = leerMetodoYBancoSalarios('adel', errEl);
+  if (!mb) return;
+  const { metodoId, metodoNombre, bancoId } = mb;
+
+  setBtnLoading('btn-guardar-adelanto', true);
+  try {
+    const { data: adel, error } = await sbClient.from('empleados_adelantos').insert({
+      auth_user_id: STATE.userId, empleado_id: emp.id, monto, fecha, motivo, estado: 'pendiente',
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+    }).select().single();
+    if (error) throw error;
+
+    // Un adelanto es dinero real que sale de Caja en ese momento —
+    // después, al pagar el salario, se descuenta lo ya adelantado del
+    // monto final (eso ya funcionaba); lo que faltaba era registrar
+    // ESTA salida real de dinero cuando se entrega el adelanto.
+    if (window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+        concepto: `Adelanto de salario — ${emp.nombre}${motivo ? ': '+motivo : ''}`,
+        monto, referencia_tipo: 'empleado', referencia_id: adel.id, fecha,
+      });
+      if (!cajaRes.ok) showToast('El adelanto se registró, pero no se pudo descontar de Caja: ' + cajaRes.error, 'error');
+    }
+
+    showToast('Adelanto registrado y descontado de Caja');
+    closeModal('modal-adelanto');
+    await loadKPIsSal();
+  } catch (e) {
+    console.error('guardarAdelanto:', e);
+    errEl.textContent = 'Error al registrar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-adelanto', false);
+  }
+}
+
+/* =====================================================
+   REGISTRAR PAGO
+===================================================== */
+async function abrirPagarDesdeTabla(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  STATE._clinicaHonorario = null;   // honorarios de la Clínica: solo cuando se viene desde allá (ver aplicarHonorariosClinica)
+  STATE.empleadoActual = emp;
+  STATE.bonos = [];
+  STATE.deducciones = [];
+  STATE.aportesPatronales = [];
+
+  // Se calculan solos los conceptos activos configurados en "Conceptos
+  // de Nómina" para el país de este empleado — quedan como deducciones
+  // normales (editables/quitables), nunca se imponen sin que se vean.
+  if (!STATE.conceptos.length) await cargarConceptos();
+  const base = Number(emp.salario||0);
+  STATE.conceptos.filter(c => c.activo && c.tipo === 'deduccion').forEach(c => {
+    const monto = calcularConcepto(c, base);
+    if (monto > 0) STATE.deducciones.push({ descripcion: `${c.nombre} (automático)`, monto, esConcepto: true });
+  });
+  STATE.conceptos.filter(c => c.activo && c.tipo === 'aporte_patronal').forEach(c => {
+    const monto = calcularConcepto(c, base);
+    if (monto > 0) STATE.aportesPatronales.push({ descripcion: c.nombre, monto });
+  });
+
+  document.getElementById('pg-sal-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('pg-sal-base').textContent = fmt(emp.salario);
+  document.getElementById('pg-sal-bono-desc').value = '';
+  document.getElementById('pg-sal-bono-monto').value = '';
+  document.getElementById('pg-sal-deduccion-desc').value = '';
+  document.getElementById('pg-sal-deduccion-monto').value = '';
+  document.getElementById('pg-sal-observaciones').value = '';
+  document.getElementById('pg-sal-fecha').value = todayISO();
+  document.getElementById('pg-sal-error').textContent = '';
+  populateMetodosSelectSal();
+  renderBonosSal();
+  renderDeduccionesSal();
+  renderAportesPatronalesSal();
+
+  try {
+    const { data: adelantos } = await sbClient.from('empleados_adelantos').select('*')
+      .eq('empleado_id', emp.id).eq('estado', 'pendiente').order('fecha');
+    STATE.adelantosPendientes = adelantos || [];
+  } catch (e) { STATE.adelantosPendientes = []; }
+
+  const wrap = document.getElementById('pg-sal-adelantos-wrap');
+  const check = document.getElementById('pg-sal-descontar-adelantos');
+  if (STATE.adelantosPendientes.length) {
+    wrap.style.display = 'block';
+    check.checked = false;
+    document.getElementById('pg-sal-adelantos-lista').innerHTML = STATE.adelantosPendientes.map(a =>
+      `<div class="resumen-fila"><span class="resumen-label">${fmtDate(a.fecha)}${a.motivo?' — '+esc(a.motivo):''}</span><span class="resumen-val">${fmt(a.monto)}</span></div>`
+    ).join('');
+  } else {
+    wrap.style.display = 'none';
+  }
+
+  recalcularTotalPagoSal();
+  openModal('modal-pagar-sal');
+}
+function populateMetodosSelectSal() {
+  const opciones = (STATE.metodosPago.length?STATE.metodosPago:[{id:null,nombre:'Efectivo',es_default:true}])
+    .map(m => `<option value="${m.id||''}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+  const def = STATE.metodosPago.find(m => m.es_default);
+  const sel = document.getElementById('pg-sal-metodo');
+  if (sel) { sel.innerHTML = opciones; if (def) sel.value = def.id || ''; }
+}
+
+function renderBonosSal() {
+  const cont = document.getElementById('pg-sal-bonos-lista');
+  cont.innerHTML = STATE.bonos.length ? STATE.bonos.map((b, idx) => `
+    <div class="resumen-fila">
+      <span class="resumen-label">${esc(b.descripcion)}</span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="resumen-val">${fmt(b.monto)}</span>
+        <button class="btn-icon btn-icon-danger" onclick="eliminarBonoSal(${idx})" title="Quitar"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </span>
+    </div>`).join('') : '<p style="font-size:12px;color:var(--text-muted);padding:4px 0">Sin bonificaciones agregadas</p>';
+}
+function agregarBonoSal() {
+  const desc = document.getElementById('pg-sal-bono-desc').value.trim();
+  const monto = round2(parseFloat(document.getElementById('pg-sal-bono-monto').value));
+  if (!desc || !(monto > 0)) { showToast('Escribe una descripción y un monto válido', 'error'); return; }
+  STATE.bonos.push({ descripcion: desc, monto });
+  document.getElementById('pg-sal-bono-desc').value = '';
+  document.getElementById('pg-sal-bono-monto').value = '';
+  renderBonosSal();
+  recalcularTotalPagoSal();
+}
+function eliminarBonoSal(idx) { STATE.bonos.splice(idx,1); renderBonosSal(); recalcularTotalPagoSal(); }
+
+function renderDeduccionesSal() {
+  const cont = document.getElementById('pg-sal-deducciones-lista');
+  cont.innerHTML = STATE.deducciones.length ? STATE.deducciones.map((d, idx) => `
+    <div class="resumen-fila">
+      <span class="resumen-label">${esc(d.descripcion)}</span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <span class="resumen-val" style="color:var(--danger)">${fmt(d.monto)}</span>
+        <button class="btn-icon btn-icon-danger" onclick="eliminarDeduccionSal(${idx})" title="Quitar"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </span>
+    </div>`).join('') : '<p style="font-size:12px;color:var(--text-muted);padding:4px 0">Sin deducciones agregadas</p>';
+}
+function agregarDeduccionSal() {
+  const desc = document.getElementById('pg-sal-deduccion-desc').value.trim();
+  const monto = round2(parseFloat(document.getElementById('pg-sal-deduccion-monto').value));
+  if (!desc || !(monto > 0)) { showToast('Escribe una descripción y un monto válido', 'error'); return; }
+  STATE.deducciones.push({ descripcion: desc, monto });
+  document.getElementById('pg-sal-deduccion-desc').value = '';
+  document.getElementById('pg-sal-deduccion-monto').value = '';
+  renderDeduccionesSal();
+  recalcularTotalPagoSal();
+}
+function eliminarDeduccionSal(idx) { STATE.deducciones.splice(idx,1); renderDeduccionesSal(); recalcularTotalPagoSal(); }
+
+// Los aportes patronales son informativos aquí — el negocio los paga
+// aparte (no se le descuentan al empleado), así que no afectan el
+// total a pagar, pero sí quedan guardados para saber el costo real
+// de esa persona para el negocio.
+function renderAportesPatronalesSal() {
+  const cont = document.getElementById('pg-sal-aportes-lista');
+  if (!cont) return;
+  if (!STATE.aportesPatronales.length) { cont.parentElement.style.display = 'none'; return; }
+  cont.parentElement.style.display = '';
+  const total = STATE.aportesPatronales.reduce((s,a)=>s+a.monto,0);
+  cont.innerHTML = STATE.aportesPatronales.map(a => `
+    <div class="resumen-fila"><span class="resumen-label">${esc(a.descripcion)}</span><span class="resumen-val">${fmt(a.monto)}</span></div>
+  `).join('') + `<div class="resumen-fila" style="font-weight:700;border-top:1px solid var(--border);padding-top:6px;margin-top:4px"><span>Costo adicional para el negocio</span><span>${fmt(total)}</span></div>`;
+}
+
+function recalcularTotalPagoSal() {
+  const emp = STATE.empleadoActual;
+  if (!emp) return;
+  const base = Number(emp.salario||0);
+  const totalBonos = STATE.bonos.reduce((s,b)=>s+b.monto, 0);
+  const totalDeducciones = STATE.deducciones.reduce((s,d)=>s+d.monto, 0);
+  const descontar = document.getElementById('pg-sal-descontar-adelantos')?.checked;
+  const totalAdelantos = descontar ? STATE.adelantosPendientes.reduce((s,a)=>s+Number(a.monto||0), 0) : 0;
+  const total = round2(base + totalBonos - totalDeducciones - totalAdelantos);
+
+  const set = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  set('pg-sal-resumen-base', fmt(base));
+  set('pg-sal-resumen-bonos', totalBonos>0?fmt(totalBonos):'—');
+  set('pg-sal-resumen-deducciones', totalDeducciones>0?`-${fmt(totalDeducciones)}`:'—');
+  set('pg-sal-resumen-adelantos', totalAdelantos>0?`-${fmt(totalAdelantos)}`:'—');
+  set('pg-sal-resumen-total', fmt(total));
+}
+
+async function confirmarPagoSal() {
+  const errEl = document.getElementById('pg-sal-error');
+  errEl.textContent = '';
+  const emp = STATE.empleadoActual;
+  if (!emp) return;
+
+  const base = Number(emp.salario||0);
+  const totalBonos = round2(STATE.bonos.reduce((s,b)=>s+b.monto, 0));
+  const totalDeducciones = round2(STATE.deducciones.reduce((s,d)=>s+d.monto, 0));
+  const descontarAdelantos = document.getElementById('pg-sal-descontar-adelantos')?.checked || false;
+  const totalAdelantos = descontarAdelantos ? round2(STATE.adelantosPendientes.reduce((s,a)=>s+Number(a.monto||0), 0)) : 0;
+  const total = round2(base + totalBonos - totalDeducciones - totalAdelantos);
+
+  if (total <= 0) { errEl.textContent = 'El total a pagar debe ser mayor a cero.'; return; }
+
+  const mb = leerMetodoYBancoSalarios('pg-sal', errEl);
+  if (!mb) return;
+  const { metodoId, metodoNombre, bancoId } = mb;
+  const fecha = document.getElementById('pg-sal-fecha').value || todayISO();
+  const observaciones = document.getElementById('pg-sal-observaciones').value.trim() || null;
+
+  setBtnLoading('btn-confirmar-pago-sal', true);
+  try {
+    const comprobanteNumero = `SAL-${Date.now().toString().slice(-8)}`;
+    const totalAportesPatronales = round2((STATE.aportesPatronales||[]).reduce((s,a)=>s+a.monto, 0));
+    const { data: pago, error: errPago } = await sbClient.from('empleados_pagos').insert({
+      auth_user_id: STATE.userId, empleado_id: emp.id, fecha,
+      salario_base: base, bonificaciones: totalBonos, bonificaciones_detalle: STATE.bonos,
+      deducciones: totalDeducciones, deducciones_detalle: STATE.deducciones,
+      adelantos_descontados: totalAdelantos, total_pagado: total,
+      aportes_patronales: totalAportesPatronales, aportes_patronales_detalle: STATE.aportesPatronales||[],
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, observaciones,
+      estado: 'pagado', comprobante_numero: comprobanteNumero,
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail?.split('@')[0] || 'Usuario',
+    }).select().single();
+    if (errPago) throw errPago;
+
+    // Honorarios de la Clínica: la liquidación queda pagada y ligada a este pago, solo si la
+    // bonificación se pagó tal cual. Aislado: el pago YA se guardó, nada de esto lo revierte.
+    try {
+      const ch = STATE._clinicaHonorario;
+      if (ch && STATE.bonos.includes(ch.bono)) {
+        const { error: eCh } = await sbClient.from('clinica_honorarios').update({ estado: 'pagada', empleado_pago_id: pago.id })
+          .eq('id', ch.id).eq('auth_user_id', STATE.userId).eq('estado', 'enviada');
+        if (eCh) { console.warn('Honorarios de la clínica:', eCh); showToast('El pago se guardó, pero no se pudo marcar la liquidación de la clínica como pagada.', 'error'); }
+      }
+    } catch (eCh) { console.warn('Honorarios de la clínica:', eCh); }
+    STATE._clinicaHonorario = null;
+
+    // Marca los adelantos como descontados (si el usuario aceptó)
+    if (descontarAdelantos && STATE.adelantosPendientes.length) {
+      await sbClient.from('empleados_adelantos')
+        .update({ estado: 'descontado', pago_id: pago.id })
+        .in('id', STATE.adelantosPendientes.map(a => a.id));
+    }
+
+    // Egreso en Caja — NUNCA se omite, sea cual sea el monto
+    const cajaRes = await window.CajaAPI.registrarMovimiento({
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+      concepto: `Pago de salario a ${emp.nombre}`, monto: total,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+      referencia_tipo: 'salario', referencia_id: pago.id, observaciones, fecha,
+    });
+    if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
+
+    // Actualiza último pago / próximo pago del empleado
+    const proximoPago = sumarPeriodoSalario(fecha, emp.tipo_salario, 1);
+    await sbClient.from('empleados').update({
+      ultimo_pago: fecha, proximo_pago: proximoPago, updated_at: new Date().toISOString(),
+    }).eq('id', emp.id);
+
+    showToast('Pago registrado correctamente');
+    closeModal('modal-pagar-sal');
+    mostrarComprobanteSal({
+      titulo: 'Pago de salario', numero: comprobanteNumero, empleado: emp.nombre, cargo: emp.cargo || '—',
+      fecha, base, bonos: totalBonos, deducciones: totalDeducciones, adelantos: totalAdelantos, total,
+      observaciones, usuario: STATE.currentUser?.nombre || STATE.userEmail,
+    });
+    await Promise.allSettled([loadEmpleados(), loadKPIsSal()]);
+  } catch (e) {
+    console.error('confirmarPagoSal:', e);
+    errEl.textContent = 'Error al registrar el pago: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-confirmar-pago-sal', false);
+  }
+}
+
+/* =====================================================
+   COMPROBANTE
+===================================================== */
+function mostrarComprobanteSal(c) {
+  STATE.ultimoComprobante = c;
+  document.getElementById('comprobante-sal-body').innerHTML = `
+    <div class="ticket-print">
+      <div style="text-align:center;font-weight:800;margin-bottom:4px">${esc(STATE.empresaConfig?.nombre_comercial || 'Negocio360')}</div>
+      <div style="text-align:center;color:var(--text-muted);margin-bottom:8px">${esc(c.titulo)}</div>
+      <hr/>
+      <div class="tp-row"><span>N° comprobante:</span><b>${esc(c.numero)}</b></div>
+      <div class="tp-row"><span>Empleado:</span><b>${esc(c.empleado)}</b></div>
+      <div class="tp-row"><span>Cargo:</span><b>${esc(c.cargo)}</b></div>
+      <div class="tp-row"><span>Fecha:</span><b>${fmtDate(c.fecha)}</b></div>
+      <hr/>
+      <div class="tp-row"><span>Salario base:</span><b>${fmt(c.base)}</b></div>
+      <div class="tp-row"><span>Bonificaciones:</span><b>${fmt(c.bonos)}</b></div>
+      <div class="tp-row"><span>Deducciones:</span><b>-${fmt(c.deducciones)}</b></div>
+      <div class="tp-row"><span>Adelantos descontados:</span><b>-${fmt(c.adelantos)}</b></div>
+      <hr/>
+      <div class="tp-row"><span>Total pagado:</span><b>${fmt(c.total)}</b></div>
+      ${c.observaciones ? `<div class="tp-row"><span>Observaciones:</span><b>${esc(c.observaciones)}</b></div>` : ''}
+    </div>`;
+  openModal('modal-comprobante-sal');
+}
+function imprimirComprobanteSal() {
+  const html = document.getElementById('comprobante-sal-body').innerHTML;
+  const w = window.open('', '_blank', 'width=380,height=600');
+  w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
+    <style>body{font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:16px}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
+    </head><body>${html}<script>window.print();</script></body></html>`);
+  w.document.close();
+}
+
+/* =====================================================
+   MODAL / TOAST / UI HELPERS (idénticos al resto del sistema)
+===================================================== */
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.style.display='flex'; el.classList.add('modal-open'); document.body.style.overflow='hidden'; }
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.style.display='none'; el.classList.remove('modal-open'); document.body.style.overflow=''; }
+}
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) { e.target.style.display='none'; document.body.style.overflow=''; }
+});
+function showToast(msg, type='success') {
+  const el = document.getElementById('toast'); if (!el) return;
+  el.textContent = msg; el.className = `toast toast-${type} toast-show`;
+  clearTimeout(el._timer); el._timer = setTimeout(()=>el.classList.remove('toast-show'), 3500);
+}
+function setBtnLoading(id, loading) {
+  const el = document.getElementById(id); if (!el) return;
+  el.disabled = loading; el.style.opacity = loading ? '0.6' : '1';
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+/* =====================================================
+   CONCEPTOS DE NÓMINA — motor genérico de deducciones/aportes.
+   Cada negocio configura los suyos según su país; el sistema no
+   asume ninguna ley específica de por sí, solo ofrece plantillas
+   opcionales como punto de partida.
+===================================================== */
+STATE.conceptos = [];
+
+async function abrirConceptosNomina() {
+  openModal('modal-conceptos-nomina');
+  await cargarConceptos();
+}
+async function cargarConceptos() {
+  try {
+    const { data } = await sbClient.from('nomina_conceptos').select('*')
+      .eq('auth_user_id', STATE.userId).order('orden');
+    STATE.conceptos = data || [];
+    renderConceptos();
+  } catch (e) { console.warn('cargarConceptos:', e); }
+}
+function renderConceptos() {
+  const tbody = document.getElementById('conceptos-tbody');
+  if (!tbody) return;
+  if (!STATE.conceptos.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Todavía no has configurado ningún concepto — carga una plantilla o agrega uno personalizado.</td></tr>`;
+    return;
+  }
+  const metodoLabel = { porcentaje: c => `${c.valor}%`, monto_fijo: c => fmt(c.valor), tabla_progresiva: () => 'Tabla progresiva' };
+  tbody.innerHTML = STATE.conceptos.map(c => `
+    <tr>
+      <td style="font-weight:600">${esc(c.nombre)}${c.obligatorio ? ' <span style="font-size:10.5px;color:var(--text-muted)">(por ley)</span>' : ''}</td>
+      <td>${c.tipo === 'deduccion' ? 'Deducción' : 'Aporte patronal'}</td>
+      <td>${metodoLabel[c.metodo_calculo] ? metodoLabel[c.metodo_calculo](c) : '—'}</td>
+      <td><label class="switch-mini"><input type="checkbox" ${c.activo?'checked':''} onchange="toggleConceptoActivo('${c.id}', this.checked)"/></label></td>
+      <td class="td-actions">
+        <button class="btn-icon" title="Editar" onclick="abrirEditarConcepto('${c.id}')">✏️</button>
+        <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="eliminarConcepto('${c.id}')">🗑️</button>
+      </td>
+    </tr>`).join('');
+}
+async function toggleConceptoActivo(id, activo) {
+  try {
+    await sbClient.from('nomina_conceptos').update({ activo, updated_at:new Date().toISOString() }).eq('id', id).eq('auth_user_id', STATE.userId);
+    const c = STATE.conceptos.find(x=>x.id===id); if (c) c.activo = activo;
+  } catch (e) { showToast('No se pudo actualizar', 'error'); }
+}
+async function eliminarConcepto(id) {
+  if (!confirm('¿Eliminar este concepto? Ya no se aplicará en los próximos pagos (los pagos ya hechos no cambian).')) return;
+  try {
+    await sbClient.from('nomina_conceptos').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    showToast('Concepto eliminado');
+    await cargarConceptos();
+  } catch (e) { showToast('Error al eliminar', 'error'); }
+}
+
+// Plantillas por país — solo son un punto de partida editable, nunca
+// se aplican solas ni se imponen: el negocio elige cargarlas y puede
+// modificar o borrar cualquier concepto después.
+const PLANTILLAS_PAIS = {
+  NI: {
+    nombre: 'Nicaragua',
+    conceptos: [
+      { nombre: 'INSS Laboral', tipo: 'deduccion', metodo_calculo: 'porcentaje', valor: 7, obligatorio: true },
+      // 21.5% aplica a empresas con MENOS de 50 trabajadores (la gran
+      // mayoría de negocios) — si el negocio tiene 50 o más, debe
+      // cambiarlo a mano a 22.5% desde "Editar" en Conceptos de Nómina.
+      { nombre: 'INSS Patronal', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 21.5, obligatorio: true },
+      { nombre: 'INATEC', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 2, obligatorio: true },
+      { nombre: 'IR sobre salarios', tipo: 'deduccion', metodo_calculo: 'tabla_progresiva', obligatorio: true,
+        tabla_progresiva: [
+          { hasta: 100000, tasa: 0 },
+          { hasta: 200000, tasa: 15 },
+          { hasta: 350000, tasa: 20 },
+          { hasta: 500000, tasa: 25 },
+          { hasta: null,   tasa: 30 },
+        ] },
+    ],
+  },
+};
+// Costa Rica: cargas sociales de la CCSS con los porcentajes de REFERENCIA 2026. NO incluye el impuesto de renta de salarios
+// ni el aporte del INS (riesgos del trabajo), que varían: el contador del negocio debe validarlos y completarlos desde "Editar".
+PLANTILLAS_PAIS.CR = {
+  nombre: 'Costa Rica (valores 2026 de referencia: valídalos con tu contador; no incluye renta de salarios ni INS)',
+  conceptos: [
+    { nombre: 'CCSS Seguro de Salud (SEM) obrero',        tipo: 'deduccion',        metodo_calculo: 'porcentaje', valor: 5.5,  obligatorio: true },
+    { nombre: 'CCSS Invalidez, Vejez y Muerte (IVM) obrero', tipo: 'deduccion',     metodo_calculo: 'porcentaje', valor: 4.33, obligatorio: true },
+    { nombre: 'Banco Popular obrero',                     tipo: 'deduccion',        metodo_calculo: 'porcentaje', valor: 1,    obligatorio: true },
+    { nombre: 'CCSS Seguro de Salud (SEM) patronal',      tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 9.25, obligatorio: true },
+    { nombre: 'CCSS Invalidez, Vejez y Muerte (IVM) patronal', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 5.58, obligatorio: true },
+    { nombre: 'Fondo de Capitalización Laboral (FCL)',    tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 1.5,  obligatorio: true },
+    { nombre: 'Operadora de Pensiones Complementaria (OPC)', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 2,  obligatorio: true },
+    { nombre: 'FODESAF',                                  tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 5,    obligatorio: true },
+    { nombre: 'IMAS',                                     tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 0.5,  obligatorio: true },
+    { nombre: 'INA',                                      tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 1.5,  obligatorio: true },
+    { nombre: 'Banco Popular patronal',                   tipo: 'aporte_patronal',  metodo_calculo: 'porcentaje', valor: 0.25, obligatorio: true },
+    { nombre: 'Banco Popular (Ley de Protección al Trabajador)', tipo: 'aporte_patronal', metodo_calculo: 'porcentaje', valor: 0.25, obligatorio: true },
+  ],
+};
+// Cada país ve solo SU botón de plantilla.
+function aplicarBotonesPlantillaPais() {
+  let cr = false; try { cr = !!(window.N360CR && window.N360CR.activo()); } catch (_) {}
+  const ni = document.getElementById('btn-plantilla-ni'), c = document.getElementById('btn-plantilla-cr');
+  if (c) c.style.display = cr ? '' : 'none';
+  const oc = document.getElementById('emp-pais-cr'); if (oc) { oc.hidden = !cr; oc.disabled = !cr; }
+  if (ni && cr) ni.style.display = 'none';
+}
+if (window.N360CR && window.N360CR.listo) window.N360CR.listo.then(aplicarBotonesPlantillaPais);
+document.addEventListener('DOMContentLoaded', aplicarBotonesPlantillaPais);
+
+async function cargarPlantillaConceptos(pais) {
+  const plantilla = PLANTILLAS_PAIS[pais];
+  if (!plantilla) { showToast('Todavía no hay plantilla para ese país', 'error'); return; }
+  if (!confirm(`Se agregarán ${plantilla.conceptos.length} conceptos típicos de ${plantilla.nombre}. Podrás editarlos o borrarlos después. ¿Continuar?`)) return;
+  try {
+    // Nunca se duplica: si ya existe un concepto con el mismo nombre
+    // (sin importar mayúsculas), se actualiza ese en vez de crear uno
+    // nuevo — antes, cargar la plantilla 2 veces sumaba el doble de
+    // deducciones al pago.
+    const { data: existentes } = await sbClient.from('nomina_conceptos').select('id, nombre').eq('auth_user_id', STATE.userId);
+    const mapaExistentes = new Map((existentes||[]).map(e => [e.nombre.toLowerCase().trim(), e.id]));
+
+    let creados = 0, actualizados = 0;
+    for (let i = 0; i < plantilla.conceptos.length; i++) {
+      const c = plantilla.conceptos[i];
+      const payloadC = {
+        nombre: c.nombre, tipo: c.tipo, metodo_calculo: c.metodo_calculo,
+        valor: c.valor || null, tabla_progresiva: c.tabla_progresiva || null,
+        obligatorio: c.obligatorio, pais_plantilla: pais, updated_at: new Date().toISOString(),
+      };
+      const idExistente = mapaExistentes.get(c.nombre.toLowerCase().trim());
+      if (idExistente) {
+        await sbClient.from('nomina_conceptos').update(payloadC).eq('id', idExistente).eq('auth_user_id', STATE.userId);
+        actualizados++;
+      } else {
+        await sbClient.from('nomina_conceptos').insert({ auth_user_id: STATE.userId, activo: true, orden: i, ...payloadC });
+        creados++;
+      }
+    }
+
+    // Cada concepto (deducción o aporte) también se refleja en el
+    // catálogo de Impuestos que ya usan Ventas/Créditos/Proformas —
+    // si ya existe uno con ese mismo nombre, NUNCA se duplica, se
+    // actualiza el existente.
+    for (const c of plantilla.conceptos) {
+      try {
+        await sbClient.rpc('sincronizar_concepto_a_impuestos', {
+          p_nombre: c.nombre, p_tipo_valor: c.metodo_calculo === 'monto_fijo' ? 'fijo' : c.metodo_calculo,
+          p_valor: c.valor || null, p_tabla_progresiva: c.tabla_progresiva || null, p_pais: pais,
+        });
+      } catch (eSync) { console.warn('No se pudo sincronizar a Impuestos:', c.nombre, eSync); }
+    }
+
+    showToast(`Plantilla de ${plantilla.nombre}: ${creados} concepto(s) nuevo(s), ${actualizados} actualizado(s) — nunca duplicados`);
+    await cargarConceptos();
+  } catch (e) { showToast('Error al cargar la plantilla', 'error'); }
+}
+
+let CONCEPTO_TRAMOS = [];
+function abrirNuevoConcepto() {
+  document.getElementById('con-modal-title').textContent = 'Nuevo concepto';
+  document.getElementById('con-id').value = '';
+  document.getElementById('con-nombre').value = '';
+  document.getElementById('con-tipo').value = 'deduccion';
+  document.getElementById('con-metodo').value = 'porcentaje';
+  document.getElementById('con-valor').value = '';
+  document.getElementById('con-obligatorio').checked = false;
+  document.getElementById('con-error').textContent = '';
+  CONCEPTO_TRAMOS = [{ hasta: '', tasa: '' }];
+  toggleMetodoConceptoUI();
+  renderTramosConcepto();
+  openModal('modal-nuevo-concepto');
+}
+function abrirEditarConcepto(id) {
+  const c = STATE.conceptos.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('con-modal-title').textContent = 'Editar concepto';
+  document.getElementById('con-id').value = c.id;
+  document.getElementById('con-nombre').value = c.nombre;
+  document.getElementById('con-tipo').value = c.tipo;
+  document.getElementById('con-metodo').value = c.metodo_calculo;
+  document.getElementById('con-valor').value = c.valor || '';
+  document.getElementById('con-obligatorio').checked = !!c.obligatorio;
+  document.getElementById('con-error').textContent = '';
+  CONCEPTO_TRAMOS = c.tabla_progresiva && c.tabla_progresiva.length ? c.tabla_progresiva.map(t => ({ hasta: t.hasta ?? '', tasa: t.tasa })) : [{ hasta:'', tasa:'' }];
+  toggleMetodoConceptoUI();
+  renderTramosConcepto();
+  openModal('modal-nuevo-concepto');
+}
+function toggleMetodoConceptoUI() {
+  const metodo = document.getElementById('con-metodo').value;
+  document.getElementById('con-valor-wrap').style.display = metodo === 'tabla_progresiva' ? 'none' : '';
+  document.getElementById('con-tabla-wrap').style.display = metodo === 'tabla_progresiva' ? '' : 'none';
+  document.getElementById('con-valor-label').textContent = metodo === 'porcentaje' ? 'Porcentaje (%)' : 'Monto fijo';
+}
+function renderTramosConcepto() {
+  const cont = document.getElementById('con-tabla-tramos');
+  cont.innerHTML = CONCEPTO_TRAMOS.map((t, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <input type="number" placeholder="Hasta (vacío = sin límite)" value="${t.hasta}" style="flex:1" onchange="CONCEPTO_TRAMOS[${i}].hasta = this.value ? parseFloat(this.value) : null"/>
+      <input type="number" placeholder="Tasa %" value="${t.tasa}" style="width:90px" onchange="CONCEPTO_TRAMOS[${i}].tasa = parseFloat(this.value)||0"/>
+      <button type="button" class="btn-icon btn-icon-danger" onclick="CONCEPTO_TRAMOS.splice(${i},1); renderTramosConcepto();">🗑️</button>
+    </div>`).join('');
+}
+function agregarTramoConcepto() { CONCEPTO_TRAMOS.push({ hasta:'', tasa:'' }); renderTramosConcepto(); }
+
+async function guardarConcepto() {
+  const errEl = document.getElementById('con-error');
+  errEl.textContent = '';
+  const id = document.getElementById('con-id').value || null;
+  const nombre = document.getElementById('con-nombre').value.trim();
+  const tipo = document.getElementById('con-tipo').value;
+  const metodo = document.getElementById('con-metodo').value;
+  if (!nombre) { errEl.textContent = 'El nombre es requerido.'; return; }
+
+  const payload = {
+    nombre, tipo, metodo_calculo: metodo,
+    valor: metodo !== 'tabla_progresiva' ? (parseFloat(document.getElementById('con-valor').value) || 0) : null,
+    tabla_progresiva: metodo === 'tabla_progresiva' ? CONCEPTO_TRAMOS.filter(t => t.tasa !== '' && t.tasa != null) : null,
+    obligatorio: document.getElementById('con-obligatorio').checked,
+    updated_at: new Date().toISOString(),
+  };
+  setBtnLoading('btn-guardar-concepto', true);
+  try {
+    if (id) {
+      await sbClient.from('nomina_conceptos').update(payload).eq('id', id).eq('auth_user_id', STATE.userId);
+    } else {
+      payload.activo = true; payload.orden = STATE.conceptos.length;
+      await sbClient.from('nomina_conceptos').insert({ auth_user_id: STATE.userId, ...payload });
+    }
+
+    // También se refleja en el catálogo de Impuestos — sin duplicar
+    // si ya existe uno con el mismo nombre.
+    try {
+      await sbClient.rpc('sincronizar_concepto_a_impuestos', {
+        p_nombre: nombre, p_tipo_valor: metodo === 'monto_fijo' ? 'fijo' : metodo,
+        p_valor: payload.valor, p_tabla_progresiva: payload.tabla_progresiva,
+        p_pais: document.getElementById('emp-pais')?.value || null,
+      });
+    } catch (eSync) { console.warn('No se pudo sincronizar a Impuestos:', eSync); }
+
+    showToast('Concepto guardado — también visible en Impuestos');
+    closeModal('modal-nuevo-concepto');
+    await cargarConceptos();
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-concepto', false);
+  }
+}
+
+// Aplica un concepto sobre un monto base — usado al calcular un pago.
+function calcularConcepto(concepto, montoBase) {
+  if (concepto.metodo_calculo === 'porcentaje') return round2(montoBase * (Number(concepto.valor)||0) / 100);
+  if (concepto.metodo_calculo === 'monto_fijo') return round2(Number(concepto.valor)||0);
+  if (concepto.metodo_calculo === 'tabla_progresiva') {
+    // La tabla de IR de Nicaragua (Ley 822, Arto. 23) esta expresada
+    // en terminos ANUALES -- pero el salario que se paga aqui es
+    // siempre periodico (mensual). Sin anualizar primero, casi
+    // cualquier sueldo mensual normal cae siempre en el primer tramo
+    // (exento), asi que el IR nunca se calculaba: este era el bug real.
+    // Ademas, el calculo es VERDADERAMENTE progresivo: cada tramo solo
+    // cobra su tasa sobre el EXCEDENTE de ese tramo, sumado a la cuota
+    // ya acumulada de los tramos anteriores completos -- no toda la
+    // base a la tasa del tramo en que cae (eso sobre-cobraria a
+    // cualquiera que pase de tramo). Se calcula dinamicamente a partir
+    // de los propios tramos configurados, para seguir funcionando bien
+    // si se editan los montos/tasas desde Conceptos de Nomina.
+    const anual = montoBase * 12;
+    const tramos = concepto.tabla_progresiva || [];
+    let cuotaAcumulada = 0, limiteAnterior = 0;
+    for (const t of tramos) {
+      const limite = (t.hasta == null || t.hasta === '') ? Infinity : Number(t.hasta);
+      if (anual <= limite) {
+        const impuestoAnual = cuotaAcumulada + (anual - limiteAnterior) * (Number(t.tasa)||0) / 100;
+        return round2(impuestoAnual / 12); // de vuelta a mensual, lo que realmente se descuenta del pago
+      }
+      cuotaAcumulada += (limite - limiteAnterior) * (Number(t.tasa)||0) / 100;
+      limiteAnterior = limite;
+    }
+    return 0;
+  }
+  return 0;
+}
+
+/* =====================================================
+   FASE 3 — PLANILLA: pagar a todo el equipo de una sola vez.
+   Reutiliza exactamente el mismo cálculo de conceptos que ya usa el
+   pago individual — nunca una fórmula aparte.
+===================================================== */
+STATE.planillas = [];
+STATE.planillaSeleccion = new Map(); // empleado_id -> {incluido, base, deducciones, total}
+
+/* ============================================================
+   FREELANCERS -- submodulo aparte, para quien se le paga por
+   comision (monto fijo o % de sus ventas) en vez de un salario
+   fijo periodico. No toca ninguna tabla ni funcion de Empleados.
+   ============================================================ */
+STATE.freelancers = STATE.freelancers || [];
+STATE.perfilesVendedor = STATE.perfilesVendedor || [];
+
+async function abrirFreelancers() {
+  document.getElementById('panel-freelancers').style.display = '';
+  await cargarFreelancers();
+}
+
+async function cargarFreelancers() {
+  try {
+    const { data } = await sbClient.from('freelancers').select('*')
+      .eq('auth_user_id', STATE.userId).order('created_at', { ascending: false });
+    STATE.freelancers = data || [];
+    renderFreelancers();
+  } catch (e) { console.warn('cargarFreelancers:', e); }
+}
+
+function renderFreelancers() {
+  const tbody = document.getElementById('freelancers-tbody');
+  if (!tbody) return;
+  const lista = STATE.freelancers || [];
+  if (!lista.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Aún no tienes freelancers registrados</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = lista.map(f => `
+    <tr>
+      <td style="font-weight:600">${esc(f.nombre)}</td>
+      <td>${f.tipo_comision === 'porcentaje'
+        ? `${Number(f.porcentaje_comision)}% de sus ventas (sin IVA)`
+        : `${fmt(f.monto_fijo)} fijo`}</td>
+      <td>${f.perfil_vendedor_nombre ? esc(f.perfil_vendedor_nombre) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td><span class="status-badge badge-${f.estado}">${f.estado === 'activo' ? 'Activo' : 'Inactivo'}</span></td>
+      <td style="display:flex;gap:6px">
+        <button class="btn-secondary btn-sm" onclick="abrirPagoFreelancer('${f.id}')">💵 Pagar</button>
+        <button class="btn-icon" title="Editar" onclick="editarFreelancer('${f.id}')">✏️</button>
+        <button class="btn-icon" title="Eliminar" onclick="eliminarFreelancer('${f.id}')" style="color:var(--danger)">🗑️</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function cargarPerfilesVendedorSelect() {
+  try {
+    const { data } = await sbClient.from('perfiles_acceso').select('id,nombre')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    STATE.perfilesVendedor = data || [];
+  } catch (e) { STATE.perfilesVendedor = []; }
+  const sel = document.getElementById('frl-perfil-vendedor');
+  if (sel) {
+    sel.innerHTML = '<option value="">Selecciona un perfil…</option>' +
+      STATE.perfilesVendedor.map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('');
+  }
+}
+
+function onCambiarTipoComisionFreelancer() {
+  const tipo = document.getElementById('frl-tipo-comision').value;
+  document.getElementById('frl-wrap-monto-fijo').style.display  = tipo === 'fijo' ? '' : 'none';
+  document.getElementById('frl-wrap-porcentaje').style.display  = tipo === 'porcentaje' ? '' : 'none';
+  document.getElementById('frl-wrap-vendedor').style.display    = tipo === 'porcentaje' ? '' : 'none';
+}
+
+async function abrirNuevoFreelancer() {
+  document.getElementById('frl-modal-title').textContent = 'Nuevo freelancer';
+  document.getElementById('frl-id').value = '';
+  document.getElementById('frl-nombre').value = '';
+  document.getElementById('frl-cedula').value = '';
+  document.getElementById('frl-telefono').value = '';
+  document.getElementById('frl-correo').value = '';
+  document.getElementById('frl-tipo-comision').value = 'fijo';
+  document.getElementById('frl-monto-fijo').value = '';
+  document.getElementById('frl-porcentaje').value = '';
+  document.getElementById('frl-estado').value = 'activo';
+  document.getElementById('frl-observaciones').value = '';
+  document.getElementById('frl-error').textContent = '';
+  await cargarPerfilesVendedorSelect();
+  onCambiarTipoComisionFreelancer();
+  openModal('modal-freelancer');
+}
+
+async function editarFreelancer(id) {
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('frl-modal-title').textContent = 'Editar freelancer';
+  document.getElementById('frl-id').value = f.id;
+  document.getElementById('frl-nombre').value = f.nombre || '';
+  document.getElementById('frl-cedula').value = f.cedula || '';
+  document.getElementById('frl-telefono').value = f.telefono || '';
+  document.getElementById('frl-correo').value = f.correo || '';
+  document.getElementById('frl-tipo-comision').value = f.tipo_comision || 'fijo';
+  document.getElementById('frl-monto-fijo').value = f.monto_fijo || '';
+  document.getElementById('frl-porcentaje').value = f.porcentaje_comision || '';
+  document.getElementById('frl-estado').value = f.estado || 'activo';
+  document.getElementById('frl-observaciones').value = f.observaciones || '';
+  document.getElementById('frl-error').textContent = '';
+  await cargarPerfilesVendedorSelect();
+  document.getElementById('frl-perfil-vendedor').value = f.perfil_vendedor_id || '';
+  onCambiarTipoComisionFreelancer();
+  openModal('modal-freelancer');
+}
+
+async function guardarFreelancer() {
+  const errEl = document.getElementById('frl-error');
+  errEl.textContent = '';
+
+  const nombre = document.getElementById('frl-nombre').value.trim();
+  if (!nombre) { errEl.textContent = 'El nombre es obligatorio.'; return; }
+
+  const tipo = document.getElementById('frl-tipo-comision').value;
+  const montoFijo = Math.max(0, parseFloat(document.getElementById('frl-monto-fijo').value) || 0);
+  const porcentaje = Math.min(100, Math.max(0, parseFloat(document.getElementById('frl-porcentaje').value) || 0));
+  const perfilId = document.getElementById('frl-perfil-vendedor').value || null;
+
+  if (tipo === 'porcentaje' && !perfilId) {
+    errEl.textContent = 'Elige el vendedor asociado para poder calcular sus ventas.';
+    return;
+  }
+  const perfilNombre = perfilId
+    ? (STATE.perfilesVendedor.find(p => p.id === perfilId)?.nombre || null)
+    : null;
+
+  const id = document.getElementById('frl-id').value || null;
+  const payload = {
+    auth_user_id: STATE.userId,
+    nombre,
+    cedula: document.getElementById('frl-cedula').value.trim() || null,
+    telefono: document.getElementById('frl-telefono').value.trim() || null,
+    correo: document.getElementById('frl-correo').value.trim() || null,
+    tipo_comision: tipo,
+    monto_fijo: montoFijo,
+    porcentaje_comision: porcentaje,
+    perfil_vendedor_id: tipo === 'porcentaje' ? perfilId : null,
+    perfil_vendedor_nombre: tipo === 'porcentaje' ? perfilNombre : null,
+    estado: document.getElementById('frl-estado').value,
+    observaciones: document.getElementById('frl-observaciones').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const btn = document.getElementById('frl-btn-guardar');
+  setBtnLoading('frl-btn-guardar', true);
+  try {
+    const { error } = id
+      ? await sbClient.from('freelancers').update(payload).eq('id', id).eq('auth_user_id', STATE.userId)
+      : await sbClient.from('freelancers').insert(payload);
+    if (error) throw error;
+    showToast(id ? 'Freelancer actualizado' : 'Freelancer agregado');
+    closeModal('modal-freelancer');
+    await cargarFreelancers();
+  } catch (e) {
+    console.error('guardarFreelancer:', e);
+    errEl.textContent = 'No se pudo guardar: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    setBtnLoading('frl-btn-guardar', false);
+  }
+}
+
+async function eliminarFreelancer(id) {
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f) return;
+  if (!confirm(`¿Eliminar a "${f.nombre}"? Su historial de pagos ya registrados no se borra.`)) return;
+  try {
+    const { error } = await sbClient.from('freelancers').delete().eq('id', id).eq('auth_user_id', STATE.userId);
+    if (error) throw error;
+    showToast('Freelancer eliminado');
+    await cargarFreelancers();
+  } catch (e) {
+    console.error('eliminarFreelancer:', e);
+    showToast('No se pudo eliminar', 'error');
+  }
+}
+
+/* ---------- Pagar comisión ---------- */
+
+async function cargarBancosDisponiblesFrl() {
+  if (STATE._bancosCacheFrl) return STATE._bancosCacheFrl;
+  try {
+    const { data } = await sbClient.from('bancos').select('*')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('created_at');
+    STATE._bancosCacheFrl = data || [];
+  } catch (e) { STATE._bancosCacheFrl = []; }
+  return STATE._bancosCacheFrl;
+}
+
+// Igual que ya funciona en Ventas: si el método elegido es tarjeta o
+// transferencia, se pregunta de que banco sale el dinero -- para
+// cualquier otro metodo (efectivo, etc.) el selector queda oculto y
+// el egreso se registra sin banco, igual que siempre.
+async function onCambiarMetodoPagoFreelancer() {
+  const sel = document.getElementById('pfl-metodo-pago');
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById('pfl-wrap-banco');
+  const bancoSel = document.getElementById('pfl-banco');
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponiblesFrl();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
+}
+
+// Version generica del helper de arriba -- reutilizada por los demas
+// formularios de Salarios que tambien registran un egreso en Caja
+// (adelanto, pago de planilla, bono anual, liquidacion). Se le pasa
+// el prefijo de IDs de cada modal (ej. "adel" para
+// #adel-metodo/#adel-wrap-banco/#adel-banco).
+async function onCambiarMetodoPagoSalarios(prefijo) {
+  const sel = document.getElementById(`${prefijo}-metodo`);
+  const nombreMetodo = (sel?.selectedOptions[0]?.dataset.nombre || '').toLowerCase();
+  const wrap = document.getElementById(`${prefijo}-wrap-banco`);
+  const bancoSel = document.getElementById(`${prefijo}-banco`);
+  if (!sel || !wrap || !bancoSel) return;
+  const necesitaBanco = nombreMetodo.includes('tarjeta') || nombreMetodo.includes('transferencia');
+
+  if (!necesitaBanco) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  const bancos = await cargarBancosDisponiblesFrl();
+  if (!bancos.length) { wrap.style.display = 'none'; bancoSel.value = ''; return; }
+
+  bancoSel.innerHTML = '<option value="">Selecciona un banco…</option>' +
+    bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('');
+  wrap.style.display = '';
+}
+
+// Puebla un <select> de metodo de pago con los mismos metodos reales
+// de la cuenta (STATE.metodosPago), incluido el atributo data-nombre
+// que onCambiarMetodoPagoSalarios necesita para decidir si hace
+// falta pedir banco.
+function poblarSelectMetodoPago(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Efectivo (sin método específico)</option>' +
+    (STATE.metodosPago || []).filter(m => m.id).map(m =>
+      `<option value="${m.id}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+}
+
+// Lee el metodo y (si aplica) el banco elegidos en un formulario --
+// centraliza la misma validacion ya usada en el pago a freelancer,
+// para los demas formularios de Salarios. Devuelve null si falta
+// elegir banco siendo obligatorio (y ya dejo el mensaje en errEl).
+function leerMetodoYBancoSalarios(prefijo, errEl) {
+  const metodoSel = document.getElementById(`${prefijo}-metodo`);
+  const metodoId = metodoSel?.value || null;
+  const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  let bancoId = null;
+  const wrap = document.getElementById(`${prefijo}-wrap-banco`);
+  if (wrap && wrap.style.display !== 'none') {
+    bancoId = document.getElementById(`${prefijo}-banco`).value || null;
+    if (!bancoId) { if (errEl) errEl.textContent = 'Elige de qué banco sale este pago.'; return null; }
+  }
+  return { metodoId, metodoNombre, bancoId };
+}
+
+async function abrirPagoFreelancer(id) {
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('pfl-modal-title').textContent = `Pagar comisión — ${f.nombre}`;
+  document.getElementById('pfl-freelancer-id').value = f.id;
+  document.getElementById('pfl-observaciones').value = '';
+  document.getElementById('pfl-error').textContent = '';
+  document.getElementById('pfl-wrap-banco').style.display = 'none';
+  document.getElementById('pfl-banco').value = '';
+  document.getElementById('pfl-resultado-calculo').style.display = 'none';
+  document.getElementById('pfl-lista-manual').style.display = 'none';
+  document.getElementById('pfl-lista-manual').innerHTML = '';
+  document.getElementById('pfl-resultado-manual').style.display = 'none';
+  STATE._calculoFreelancerActual = null;
+  STATE._seleccionManualFreelancer = null;
+
+  const esFijo = f.tipo_comision === 'fijo';
+  document.getElementById('pfl-bloque-fijo').style.display = esFijo ? '' : 'none';
+  document.getElementById('pfl-bloque-porcentaje').style.display = esFijo ? 'none' : '';
+
+  // Con perfil vinculado (SI entra al sistema): modo automatico, igual
+  // que siempre. Sin perfil (NO entra al sistema): modo manual, donde
+  // se elige a mano cuales ventas del periodo son suyas.
+  const tieneVendedor = !esFijo && !!f.perfil_vendedor_id;
+  document.getElementById('pfl-auto-porcentaje').style.display   = (!esFijo && tieneVendedor) ? '' : 'none';
+  document.getElementById('pfl-manual-porcentaje').style.display = (!esFijo && !tieneVendedor) ? '' : 'none';
+
+  if (esFijo) {
+    document.getElementById('pfl-monto-fijo').value = f.monto_fijo || 0;
+  } else {
+    const hoy = todayISO();
+    document.getElementById('pfl-hasta').value = hoy;
+    document.getElementById('pfl-desde').value = hoy;
+  }
+
+  // Selector de método de pago, reutilizando lo ya cargado
+  const sel = document.getElementById('pfl-metodo-pago');
+  if (sel) {
+    sel.innerHTML = '<option value="">Efectivo (sin método específico)</option>' +
+      (STATE.metodosPago || []).filter(m => m.id).map(m => `<option value="${m.id}" data-nombre="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('');
+  }
+
+  openModal('modal-pagar-freelancer');
+}
+
+// MODO MANUAL: trae TODAS las ventas completadas del rango de fechas
+// (sin filtrar por vendedor, ya que no hay ninguno vinculado) y las
+// muestra con una casilla para que quien SI tiene acceso marque a
+// mano cuales corresponden a este freelancer. Si una venta ya fue
+// contada en un pago anterior (de este u otro freelancer), se marca
+// como "ya pagada" y queda desmarcada por defecto -- para nunca pagar
+// la misma comision dos veces por accidente.
+async function buscarVentasParaSeleccionManual() {
+  const errEl = document.getElementById('pfl-error');
+  errEl.textContent = '';
+  const desde = document.getElementById('pfl-desde').value;
+  const hasta = document.getElementById('pfl-hasta').value;
+  if (!desde || !hasta) { errEl.textContent = 'Elige el rango de fechas.'; return; }
+  if (desde > hasta) { errEl.textContent = 'La fecha "Desde" no puede ser después de "Hasta".'; return; }
+
+  try {
+    const { data: ventas, error } = await N360Leer.todo(() => sbClient.from('ventas')
+      .select('id,numero_venta,fecha,cliente_nombre,subtotal')
+      .eq('auth_user_id', STATE.userId).eq('estado', 'completada')
+      .gte('fecha', desde).lte('fecha', hasta)
+      .order('fecha', { ascending: false }), 'ventas');
+    if (error) throw error;
+
+    // Ventas ya usadas en CUALQUIER pago anterior (de cualquier
+    // freelancer) -- para avisar y evitar pagarlas dos veces.
+    const { data: pagosPrevios } = await sbClient.from('freelancers_pagos')
+      .select('ventas_ids').eq('auth_user_id', STATE.userId).not('ventas_ids', 'is', null);
+    const idsYaPagados = new Set();
+    (pagosPrevios || []).forEach(p => (p.ventas_ids || []).forEach(vid => idsYaPagados.add(vid)));
+
+    STATE._ventasParaSeleccionManual = (ventas || []).map(v => ({ ...v, yaPagada: idsYaPagados.has(v.id) }));
+    renderListaSeleccionManual();
+  } catch (e) {
+    console.error('buscarVentasParaSeleccionManual:', e);
+    errEl.textContent = 'No se pudo buscar las ventas: ' + (e.message || 'intenta de nuevo');
+  }
+}
+
+function renderListaSeleccionManual() {
+  const cont = document.getElementById('pfl-lista-manual');
+  const lista = STATE._ventasParaSeleccionManual || [];
+  if (!lista.length) {
+    cont.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text-muted);font-size:12.5px">No hay ventas completadas en ese período</div>`;
+    cont.style.display = '';
+    return;
+  }
+  cont.innerHTML = lista.map(v => `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12.5px;${v.yaPagada ? 'opacity:.55' : ''}">
+      <input type="checkbox" value="${v.id}" onchange="actualizarSeleccionManual()"/>
+      <span style="flex:1">
+        <b>${esc(v.numero_venta || '')}</b> — ${esc(v.cliente_nombre || 'Cliente')}
+        <span style="color:var(--text-muted)"> · ${fmtDate(v.fecha)}</span>
+        ${v.yaPagada ? '<span style="color:var(--warning);font-weight:600"> · ya pagada antes</span>' : ''}
+      </span>
+      <span style="font-family:monospace;font-weight:600">${fmt(v.subtotal)}</span>
+    </label>`).join('');
+  cont.style.display = '';
+  actualizarSeleccionManual();
+}
+
+function actualizarSeleccionManual() {
+  const lista = STATE._ventasParaSeleccionManual || [];
+  const checks = document.querySelectorAll('#pfl-lista-manual input[type="checkbox"]:checked');
+  const idsElegidos = Array.from(checks).map(c => c.value);
+  const seleccionadas = lista.filter(v => idsElegidos.includes(v.id));
+
+  const base = round2(seleccionadas.reduce((s, v) => s + (Number(v.subtotal) || 0), 0));
+  const id = document.getElementById('pfl-freelancer-id').value;
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  const monto = round2(base * (Number(f?.porcentaje_comision) || 0) / 100);
+
+  STATE._seleccionManualFreelancer = { baseCalculo: base, monto, ventasIds: idsElegidos, pct: f?.porcentaje_comision };
+
+  document.getElementById('pfl-num-ventas-manual').textContent = idsElegidos.length;
+  document.getElementById('pfl-base-manual').textContent = fmt(base);
+  document.getElementById('pfl-monto-manual').textContent = fmt(monto);
+  document.getElementById('pfl-resultado-manual').style.display = idsElegidos.length ? '' : 'none';
+}
+
+// EL CALCULO CLAVE: suma el "subtotal" (valor del producto, SIN el
+// IVA) de las ventas completadas de ese vendedor en el rango de
+// fechas elegido -- nunca "total" (que ya incluye impuesto). Es lo
+// que el negocio pidio explicitamente: la comision es sobre el
+// valor del producto, no sobre lo que el cliente pago con IVA.
+async function calcularComisionFreelancer() {
+  const errEl = document.getElementById('pfl-error');
+  errEl.textContent = '';
+  const id = document.getElementById('pfl-freelancer-id').value;
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f || !f.perfil_vendedor_nombre) {
+    errEl.textContent = 'Este freelancer no tiene un vendedor asociado configurado.';
+    return;
+  }
+  const desde = document.getElementById('pfl-desde').value;
+  const hasta = document.getElementById('pfl-hasta').value;
+  if (!desde || !hasta) { errEl.textContent = 'Elige el rango de fechas.'; return; }
+  if (desde > hasta) { errEl.textContent = 'La fecha "Desde" no puede ser después de "Hasta".'; return; }
+
+  try {
+    const { data, error } = await N360Leer.todo(() => sbClient.from('ventas')
+      .select('subtotal')
+      .eq('auth_user_id', STATE.userId)
+      .eq('estado', 'completada')
+      .eq('creado_por_nombre', f.perfil_vendedor_nombre)
+      .gte('fecha', desde).lte('fecha', hasta), 'ventas');
+    if (error) throw error;
+
+    const ventas = data || [];
+    // Suma del SUBTOTAL -- el valor del producto, nunca "total" (que
+    // ya trae el IVA sumado).
+    const baseCalculo = round2(ventas.reduce((s, v) => s + (Number(v.subtotal) || 0), 0));
+    const monto = round2(baseCalculo * (Number(f.porcentaje_comision) || 0) / 100);
+
+    STATE._calculoFreelancerActual = { baseCalculo, monto, numVentas: ventas.length, pct: f.porcentaje_comision };
+
+    document.getElementById('pfl-num-ventas').textContent    = ventas.length;
+    document.getElementById('pfl-base-calculo').textContent  = fmt(baseCalculo);
+    document.getElementById('pfl-pct-aplicado').textContent  = `${f.porcentaje_comision}%`;
+    document.getElementById('pfl-monto-calculado').textContent = fmt(monto);
+    document.getElementById('pfl-resultado-calculo').style.display = '';
+
+    if (!ventas.length) errEl.textContent = 'No se encontraron ventas de este vendedor en ese rango de fechas.';
+  } catch (e) {
+    console.error('calcularComisionFreelancer:', e);
+    errEl.textContent = 'No se pudo calcular: ' + (e.message || 'intenta de nuevo');
+  }
+}
+
+async function confirmarPagoFreelancer() {
+  const errEl = document.getElementById('pfl-error');
+  errEl.textContent = '';
+  const id = document.getElementById('pfl-freelancer-id').value;
+  const f = (STATE.freelancers || []).find(x => x.id === id);
+  if (!f) return;
+
+  const esFijo = f.tipo_comision === 'fijo';
+  const tieneVendedor = !esFijo && !!f.perfil_vendedor_id;
+  let monto, periodoInicio = null, periodoFin = null, baseCalculo = null, pctAplicado = null, ventasIds = null;
+
+  if (esFijo) {
+    monto = Math.max(0, parseFloat(document.getElementById('pfl-monto-fijo').value) || 0);
+    if (monto <= 0) { errEl.textContent = 'El monto a pagar debe ser mayor a cero.'; return; }
+  } else if (tieneVendedor) {
+    if (!STATE._calculoFreelancerActual) {
+      errEl.textContent = 'Primero calcula la comisión del período.';
+      return;
+    }
+    monto = STATE._calculoFreelancerActual.monto;
+    baseCalculo = STATE._calculoFreelancerActual.baseCalculo;
+    pctAplicado = STATE._calculoFreelancerActual.pct;
+    periodoInicio = document.getElementById('pfl-desde').value;
+    periodoFin = document.getElementById('pfl-hasta').value;
+    if (monto <= 0) { errEl.textContent = 'La comisión calculada es C$0 — no hay nada que pagar en ese período.'; return; }
+  } else {
+    // MODO MANUAL: sin vendedor vinculado, se paga sobre las ventas
+    // elegidas a mano.
+    if (!STATE._seleccionManualFreelancer || !STATE._seleccionManualFreelancer.ventasIds.length) {
+      errEl.textContent = 'Marca al menos una venta que corresponda a este freelancer.';
+      return;
+    }
+    monto = STATE._seleccionManualFreelancer.monto;
+    baseCalculo = STATE._seleccionManualFreelancer.baseCalculo;
+    pctAplicado = STATE._seleccionManualFreelancer.pct;
+    ventasIds = STATE._seleccionManualFreelancer.ventasIds;
+    periodoInicio = document.getElementById('pfl-desde').value;
+    periodoFin = document.getElementById('pfl-hasta').value;
+    if (monto <= 0) { errEl.textContent = 'La comisión de las ventas seleccionadas es C$0 — nada que pagar.'; return; }
+  }
+
+  const metodoSel = document.getElementById('pfl-metodo-pago');
+  const metodoId = metodoSel?.value || null;
+  const metodoNombre = metodoSel?.selectedOptions[0]?.dataset.nombre || 'Efectivo';
+  const observaciones = document.getElementById('pfl-observaciones').value.trim() || null;
+  const fecha = todayISO();
+
+  // Si el metodo es tarjeta/transferencia y hay bancos configurados,
+  // el selector queda visible -- en ese caso es obligatorio elegir uno.
+  let bancoId = null;
+  if (document.getElementById('pfl-wrap-banco').style.display !== 'none') {
+    bancoId = document.getElementById('pfl-banco').value || null;
+    if (!bancoId) { errEl.textContent = 'Elige de qué banco sale este pago.'; return; }
+  }
+
+  setBtnLoading('pfl-btn-pagar', true);
+  try {
+    const { data: pago, error: errPago } = await sbClient.from('freelancers_pagos').insert({
+      auth_user_id: STATE.userId, freelancer_id: f.id,
+      periodo_inicio: periodoInicio, periodo_fin: periodoFin,
+      monto_ventas_base: baseCalculo, porcentaje_aplicado: pctAplicado, ventas_ids: ventasIds,
+      monto_pagado: monto, fecha_pago: fecha,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, observaciones,
+    }).select().single();
+    if (errPago) throw errPago;
+
+    // Egreso en Caja -- mismo mecanismo compartido que ya usa el pago
+    // de salario a empleados normales, nunca se omite.
+    const cajaRes = await window.CajaAPI.registrarMovimiento({
+      auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_COMISION',
+      concepto: `Comisión a ${f.nombre}${esFijo ? '' : ` (${periodoInicio} al ${periodoFin})`}`,
+      monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+      referencia_tipo: 'freelancer', referencia_id: pago.id, observaciones, fecha,
+    });
+    if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
+
+    showToast('Comisión pagada correctamente');
+    closeModal('modal-pagar-freelancer');
+    STATE._calculoFreelancerActual = null;
+    STATE._seleccionManualFreelancer = null;
+  } catch (e) {
+    console.error('confirmarPagoFreelancer:', e);
+    errEl.textContent = 'No se pudo registrar el pago: ' + (e.message || 'intenta de nuevo');
+  } finally {
+    setBtnLoading('pfl-btn-pagar', false);
+  }
+}
+
+async function abrirPlanillas() {
+  document.getElementById('panel-planillas').style.display = '';
+  await cargarPlanillas();
+}
+async function cargarPlanillas() {
+  try {
+    const { data } = await sbClient.from('nomina_planillas').select('*')
+      .eq('auth_user_id', STATE.userId).order('created_at', { ascending:false });
+    STATE.planillas = data || [];
+    renderPlanillas();
+  } catch (e) { console.warn('cargarPlanillas:', e); }
+}
+function renderPlanillas() {
+  const tbody = document.getElementById('planillas-tbody');
+  if (!tbody) return;
+  if (!STATE.planillas.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Todavía no has creado ninguna planilla</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = STATE.planillas.map(p => `
+    <tr>
+      <td style="font-weight:600">${esc(p.nombre)}</td>
+      <td>${fmtDate(p.periodo_desde)} — ${fmtDate(p.periodo_hasta)}</td>
+      <td>${fmtDate(p.fecha_pago)}</td>
+      <td>${p.total_empleados}</td>
+      <td>${fmt(p.total_pagado)}</td>
+      <td><span class="status-badge ${p.estado==='pagada'?'badge-activo':'badge-pendiente'}">${p.estado==='pagada'?'Pagada':'Borrador'}</span></td>
+      <td class="td-actions">${p.estado==='pagada' ? `<button class="btn-icon" title="Descargar planilla" onclick="abrirExportarPlanilla('${p.id}')">📄</button>` : ''}</td>
+    </tr>`).join('');
+}
+
+async function abrirNuevaPlanilla() {
+  document.getElementById('pl-nombre').value = '';
+  const hoy = new Date();
+  document.getElementById('pl-desde').value = ymd(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+  document.getElementById('pl-hasta').value = todayISO();
+  document.getElementById('pl-fecha-pago').value = todayISO();
+  poblarSelectMetodoPago('pl-metodo');
+  document.getElementById('pl-wrap-banco').style.display = 'none';
+  document.getElementById('pl-banco').value = '';
+  document.getElementById('pl-error').textContent = '';
+  STATE.planillaSeleccion = new Map();
+  openModal('modal-nueva-planilla');
+  document.getElementById('pl-lista-empleados').innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">Calculando deducciones…</div>';
+  // Antes esto se saltaba si STATE.conceptos todavía estaba vacío (por
+  // ejemplo, al entrar directo a Planilla sin haber abierto antes
+  // "Conceptos de Nómina" o un pago individual) — la planilla salía
+  // sin ninguna deducción aplicada, a diferencia del pago individual.
+  await cargarConceptos();
+  renderListaEmpleadosPlanilla();
+}
+
+function renderListaEmpleadosPlanilla() {
+  const cont = document.getElementById('pl-lista-empleados');
+  const activos = STATE.empleados.filter(e => e.estado === 'activo');
+  if (!activos.length) { cont.innerHTML = '<div style="padding:14px;color:var(--text-muted);font-size:12.5px">No hay empleados activos</div>'; return; }
+
+  cont.innerHTML = activos.map(e => {
+    const base = Number(e.salario||0);
+    let deducciones = 0;
+    STATE.conceptos.filter(c => c.activo && c.tipo === 'deduccion').forEach(c => { deducciones += calcularConcepto(c, base); });
+    const total = round2(base - deducciones);
+    STATE.planillaSeleccion.set(e.id, { incluido: true, nombre: e.nombre, base, deducciones: round2(deducciones), total });
+    return `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
+      <input type="checkbox" checked onchange="togglePlanillaEmpleado('${e.id}', this.checked)"/>
+      <span style="flex:1">${esc(e.nombre)} <span style="color:var(--text-muted);font-size:11.5px">${esc(e.cargo||'')}</span></span>
+      <span style="color:var(--text-muted);font-size:12px">Base: ${fmt(base)}</span>
+      ${deducciones>0 ? `<span style="color:var(--danger);font-size:12px">-${fmt(deducciones)}</span>` : ''}
+      <span style="font-weight:700">${fmt(total)}</span>
+    </label>`;
+  }).join('');
+  actualizarTotalPlanilla();
+}
+function togglePlanillaEmpleado(id, incluido) {
+  const s = STATE.planillaSeleccion.get(id); if (s) s.incluido = incluido;
+  actualizarTotalPlanilla();
+}
+function actualizarTotalPlanilla() {
+  const total = Array.from(STATE.planillaSeleccion.values()).filter(s=>s.incluido).reduce((s,x)=>s+x.total, 0);
+  document.getElementById('pl-total-general').textContent = fmt(round2(total));
+}
+
+async function guardarPlanilla(pagar) {
+  const errEl = document.getElementById('pl-error');
+  errEl.textContent = '';
+  const nombre = document.getElementById('pl-nombre').value.trim();
+  const desde = document.getElementById('pl-desde').value;
+  const hasta = document.getElementById('pl-hasta').value;
+  const fechaPago = document.getElementById('pl-fecha-pago').value;
+  if (!nombre) { errEl.textContent = 'Escribe un nombre para la planilla.'; return; }
+  const incluidos = Array.from(STATE.planillaSeleccion.entries()).filter(([id,s]) => s.incluido);
+  if (!incluidos.length) { errEl.textContent = 'Elige al menos un empleado.'; return; }
+
+  // El banco solo hace falta si se va a pagar de una vez — un
+  // borrador no genera ningun movimiento de Caja todavia.
+  let mbPlanilla = { metodoId: null, metodoNombre: 'Efectivo', bancoId: null };
+  if (pagar) {
+    const mb = leerMetodoYBancoSalarios('pl', errEl);
+    if (!mb) return;
+    mbPlanilla = mb;
+  }
+
+  const btnId = pagar ? 'btn-pagar-planilla' : 'btn-guardar-planilla-borrador';
+  setBtnLoading(btnId, true);
+  try {
+    const totalGeneral = round2(incluidos.reduce((s,[,x])=>s+x.total, 0));
+    const { data: planilla, error: errP } = await sbClient.from('nomina_planillas').insert({
+      auth_user_id: STATE.userId, nombre, periodo_desde: desde, periodo_hasta: hasta, fecha_pago: fechaPago,
+      estado: pagar ? 'pagada' : 'borrador', total_empleados: incluidos.length, total_pagado: totalGeneral,
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail, pagada_en: pagar ? new Date().toISOString() : null,
+    }).select().single();
+    if (errP) throw errP;
+
+    if (pagar) {
+      // Un pago real por cada empleado — mismo mecanismo de siempre
+      // (empleados_pagos), solo que agrupados bajo esta planilla.
+      for (const [empId, s] of incluidos) {
+        const deduccionesDetalle = [];
+        STATE.conceptos.filter(c => c.activo && c.tipo === 'deduccion').forEach(c => {
+          const monto = calcularConcepto(c, s.base);
+          if (monto > 0) deduccionesDetalle.push({ descripcion: `${c.nombre} (automático)`, monto });
+        });
+        const aportesDetalle = [];
+        STATE.conceptos.filter(c => c.activo && c.tipo === 'aporte_patronal').forEach(c => {
+          const monto = calcularConcepto(c, s.base);
+          if (monto > 0) aportesDetalle.push({ descripcion: c.nombre, monto });
+        });
+        const totalAportes = round2(aportesDetalle.reduce((sum,a)=>sum+a.monto,0));
+
+        const { data: pagoRow } = await sbClient.from('empleados_pagos').insert({
+          auth_user_id: STATE.userId, empleado_id: empId, fecha: fechaPago,
+          salario_base: s.base, bonificaciones: 0, bonificaciones_detalle: [],
+          deducciones: s.deducciones, deducciones_detalle: deduccionesDetalle,
+          adelantos_descontados: 0, total_pagado: s.total,
+          aportes_patronales: totalAportes, aportes_patronales_detalle: aportesDetalle,
+          metodo_pago_id: mbPlanilla.metodoId, metodo_pago_nombre: mbPlanilla.metodoNombre, estado: 'pagado',
+          comprobante_numero: `SAL-${Date.now().toString().slice(-8)}-${empId.slice(0,4)}`,
+          usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+          planilla_id: planilla.id,
+        }).select().single();
+
+        // Egreso en Caja por cada empleado — antes la planilla nunca
+        // tocaba Caja, aunque el pago individual sí lo hacía siempre.
+        if (window.CajaAPI && pagoRow) {
+          const cajaRes = await window.CajaAPI.registrarMovimiento({
+            auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+            concepto: `Pago de salario a ${s.nombre} — planilla ${nombre}`, monto: s.total,
+            metodo_pago_id: mbPlanilla.metodoId, metodo_pago_nombre: mbPlanilla.metodoNombre, banco_id: mbPlanilla.bancoId,
+            referencia_tipo: 'salario', referencia_id: pagoRow.id, fecha: fechaPago,
+          });
+          if (!cajaRes.ok) console.error(`No se pudo descontar de Caja el pago de ${s.nombre}:`, cajaRes.error);
+        }
+
+        await sbClient.from('empleados').update({
+          ultimo_pago: fechaPago,
+          proximo_pago: sumarPeriodoSalario(fechaPago, STATE.empleados.find(e=>e.id===empId)?.tipo_salario||'mensual', 1),
+        }).eq('id', empId).eq('auth_user_id', STATE.userId);
+      }
+    }
+
+    showToast(pagar ? `Planilla pagada — ${incluidos.length} empleado(s), ${fmt(totalGeneral)}` : 'Planilla guardada como borrador');
+    closeModal('modal-nueva-planilla');
+    await Promise.allSettled([cargarPlanillas(), loadEmpleados(), loadKPIsSal()]);
+  } catch (e) {
+    console.error('guardarPlanilla:', e);
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading(btnId, false);
+  }
+}
+
+/* =====================================================
+   BONO ANUAL (Aguinaldo / 13er mes / 13th month / Prima...) —
+   genérico: nombre, número de cuotas y fechas configurables, porque
+   varía mucho de un país a otro. El cálculo es proporcional al
+   tiempo trabajado desde el último pago de este mismo bono.
+===================================================== */
+STATE.bonoAnualConfig = null;
+
+async function abrirBonoAnualConfig() {
+  try {
+    const { data } = await sbClient.from('nomina_bono_anual_config').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
+    STATE.bonoAnualConfig = data || { activo:false, nombre:'Aguinaldo', num_cuotas:1, fechas_pago:['12-10'] };
+  } catch (e) { STATE.bonoAnualConfig = { activo:false, nombre:'Aguinaldo', num_cuotas:1, fechas_pago:['12-10'] }; }
+
+  document.getElementById('ba-activo').checked = !!STATE.bonoAnualConfig.activo;
+  document.getElementById('ba-nombre').value = STATE.bonoAnualConfig.nombre || 'Aguinaldo';
+  document.getElementById('ba-num-cuotas').value = STATE.bonoAnualConfig.num_cuotas || 1;
+  document.getElementById('ba-error').textContent = '';
+  renderFechasBonoAnual();
+  openModal('modal-bono-anual-config');
+}
+function renderFechasBonoAnual() {
+  const num = parseInt(document.getElementById('ba-num-cuotas').value) || 1;
+  const fechasActuales = STATE.bonoAnualConfig?.fechas_pago || ['12-10'];
+  const cont = document.getElementById('ba-fechas-lista');
+  cont.innerHTML = Array.from({length:num}, (_,i) => {
+    const [mes,dia] = (fechasActuales[i] || '12-10').split('-');
+    return `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span style="font-size:12.5px;width:60px">Parte ${i+1}:</span>
+      <select id="ba-fecha-mes-${i}" style="flex:1">
+        ${['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => `<option value="${m}" ${m===mes?'selected':''}>${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][parseInt(m)-1]}</option>`).join('')}
+      </select>
+      <input type="number" id="ba-fecha-dia-${i}" min="1" max="31" value="${parseInt(dia)||10}" style="width:70px"/>
+    </div>`;
+  }).join('');
+}
+async function guardarBonoAnualConfig() {
+  const errEl = document.getElementById('ba-error');
+  errEl.textContent = '';
+  const nombre = document.getElementById('ba-nombre').value.trim();
+  if (!nombre) { errEl.textContent = 'Escribe un nombre para el bono.'; return; }
+  const numCuotas = parseInt(document.getElementById('ba-num-cuotas').value) || 1;
+  const fechas = Array.from({length:numCuotas}, (_,i) => {
+    const mes = document.getElementById(`ba-fecha-mes-${i}`).value;
+    const dia = String(parseInt(document.getElementById(`ba-fecha-dia-${i}`).value)||10).padStart(2,'0');
+    return `${mes}-${dia}`;
+  });
+  setBtnLoading('btn-guardar-bono-config', true);
+  try {
+    await sbClient.from('nomina_bono_anual_config').upsert({
+      auth_user_id: STATE.userId, nombre, activo: document.getElementById('ba-activo').checked,
+      num_cuotas: numCuotas, fechas_pago: fechas, updated_at: new Date().toISOString(),
+    }, { onConflict: 'auth_user_id' });
+    showToast('Configuración de Bono Anual guardada');
+    closeModal('modal-bono-anual-config');
+    STATE.bonoAnualConfig = { activo: document.getElementById('ba-activo').checked, nombre, num_cuotas: numCuotas, fechas_pago: fechas };
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-bono-config', false);
+  }
+}
+
+let BONO_EMPLEADO_ACTUAL = null;
+async function abrirPagarBonoAnual(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  if (!STATE.bonoAnualConfig) {
+    try {
+      const { data } = await sbClient.from('nomina_bono_anual_config').select('*').eq('auth_user_id', STATE.userId).maybeSingle();
+      STATE.bonoAnualConfig = data || null;
+    } catch (e) { STATE.bonoAnualConfig = null; }
+  }
+  const cfg = STATE.bonoAnualConfig;
+  if (!cfg || !cfg.activo) { showToast('El Bono Anual no está activado — actívalo primero desde el botón "Bono Anual"', 'error'); return; }
+
+  // Se busca el último pago de este mismo bono, para calcular
+  // proporcionalmente el período trabajado desde entonces (o desde
+  // que ingresó, si nunca lo ha recibido).
+  const { data: ultimoPago } = await sbClient.from('empleados_bono_anual_pagos')
+    .select('*').eq('empleado_id', empleadoId).order('fecha', { ascending:false }).limit(1).maybeSingle();
+  const desde = ultimoPago?.fecha || emp.fecha_ingreso || todayISO();
+  const hasta = todayISO();
+  const diasPeriodo = Math.max(1, Math.round((new Date(hasta) - new Date(desde)) / 86400000));
+  const diasAnioProrrateo = Math.round(365 / (cfg.num_cuotas||1));
+  const proporcion = Math.min(1, diasPeriodo / diasAnioProrrateo);
+  const montoBase = round2((Number(emp.salario||0) / (cfg.num_cuotas||1)) * proporcion);
+  const cuotaNumero = (ultimoPago?.cuota_numero || 0) % (cfg.num_cuotas||1) + 1;
+
+  BONO_EMPLEADO_ACTUAL = { emp, desde, hasta, cuotaNumero };
+  document.getElementById('pb-titulo').textContent = `Pagar ${cfg.nombre}`;
+  document.getElementById('pb-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('pb-cuota-numero').textContent = `${cuotaNumero} de ${cfg.num_cuotas}`;
+  document.getElementById('pb-periodo').textContent = `${fmtDate(desde)} — ${fmtDate(hasta)}`;
+  document.getElementById('pb-monto').value = montoBase;
+  document.getElementById('pb-fecha').value = todayISO();
+  document.getElementById('pb-observaciones').value = '';
+  poblarSelectMetodoPago('pb-metodo');
+  document.getElementById('pb-wrap-banco').style.display = 'none';
+  document.getElementById('pb-banco').value = '';
+  document.getElementById('pb-error').textContent = '';
+  openModal('modal-pagar-bono');
+}
+async function confirmarPagoBonoAnual() {
+  const errEl = document.getElementById('pb-error');
+  errEl.textContent = '';
+  if (!BONO_EMPLEADO_ACTUAL) return;
+  const { emp, desde, hasta, cuotaNumero } = BONO_EMPLEADO_ACTUAL;
+  const monto = round2(parseFloat(document.getElementById('pb-monto').value));
+  if (!(monto > 0)) { errEl.textContent = 'El monto debe ser mayor a cero.'; return; }
+  const fecha = document.getElementById('pb-fecha').value || todayISO();
+  const mb = leerMetodoYBancoSalarios('pb', errEl);
+  if (!mb) return;
+  const { metodoId, metodoNombre, bancoId } = mb;
+
+  setBtnLoading('btn-confirmar-bono', true);
+  try {
+    const { data: bonoRow, error } = await sbClient.from('empleados_bono_anual_pagos').insert({
+      auth_user_id: STATE.userId, empleado_id: emp.id, fecha, periodo_desde: desde, periodo_hasta: hasta,
+      monto, cuota_numero: cuotaNumero, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+      observaciones: document.getElementById('pb-observaciones').value.trim() || null,
+      comprobante_numero: `BON-${Date.now().toString().slice(-8)}`,
+      usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+    }).select().single();
+    if (error) throw error;
+
+    if (window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+        concepto: `${STATE.bonoAnualConfig?.nombre || 'Bono anual'} — ${emp.nombre} (cuota ${cuotaNumero})`,
+        monto, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+        referencia_tipo: 'salario', referencia_id: bonoRow.id, fecha,
+      });
+      if (!cajaRes.ok) showToast('El bono se registró, pero no se pudo descontar de Caja: ' + cajaRes.error, 'error');
+    }
+
+    showToast(`${STATE.bonoAnualConfig?.nombre || 'Bono'} pagado a ${emp.nombre} y descontado de Caja`);
+    closeModal('modal-pagar-bono');
+  } catch (e) {
+    errEl.textContent = 'Error al registrar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-confirmar-bono', false);
+  }
+}
+
+/* =====================================================
+   EXPORTAR PLANILLA — PDF y Excel profesionales. Todo sale de los
+   pagos YA registrados (empleados_pagos), nunca se recalcula nada al
+   exportar, para que el documento sea exactamente lo que se pagó.
+===================================================== */
+STATE.planillaExportando = null;
+
+async function abrirExportarPlanilla(planillaId) {
+  try {
+    const { data: planilla } = await sbClient.from('nomina_planillas').select('*').eq('id', planillaId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (!planilla) { showToast('Planilla no encontrada', 'error'); return; }
+    const { data: pagos } = await sbClient.from('empleados_pagos')
+      .select('*, empleados(nombre, cedula, cargo)').eq('planilla_id', planillaId).eq('auth_user_id', STATE.userId).neq('estado', 'anulado').order('created_at');
+    STATE.planillaExportando = { planilla, pagos: pagos || [] };
+    document.getElementById('ep-formato').value = 'NI';
+    openModal('modal-exportar-planilla');
+  } catch (e) {
+    console.error('abrirExportarPlanilla:', e);
+    showToast('No se pudo cargar la planilla', 'error');
+  }
+}
+
+// Junta los nombres únicos de conceptos (deducciones o aportes) que
+// de verdad aparecen en los pagos de esta planilla — así las columnas
+// del documento reflejan exactamente lo que se aplicó, ni más ni menos.
+function conceptosUnicos(pagos, campoDetalle) {
+  const nombres = new Set();
+  pagos.forEach(p => (p[campoDetalle] || []).forEach(d => nombres.add(d.descripcion.replace(' (automático)', ''))));
+  return Array.from(nombres);
+}
+function montoConcepto(detalle, nombreConcepto) {
+  const item = (detalle || []).find(d => d.descripcion.replace(' (automático)', '') === nombreConcepto);
+  return item ? Number(item.monto) : 0;
+}
+
+async function exportarPlanilla(formato) {
+  const ctx = STATE.planillaExportando;
+  if (!ctx) return;
+  const { planilla, pagos } = ctx;
+  const modoNicaragua = document.getElementById('ep-formato').value === 'NI';
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio';
+
+  const nombresDeducciones = conceptosUnicos(pagos, 'deducciones_detalle');
+  const nombresAportes = conceptosUnicos(pagos, 'aportes_patronales_detalle');
+
+  if (formato === 'excel') {
+    const headers = ['#', 'Cédula', 'Nombre', 'Cargo', 'Salario Base',
+      ...nombresDeducciones, 'Total Deducciones', 'Salario Neto',
+      ...(modoNicaragua ? nombresAportes.map(n => `${n} (patronal)`) : []),
+    ];
+    // BUG REAL CORREGIDO: el PDF ya convierte (usa fmt(), que si
+    // respeta la moneda de visualizacion) -- Excel usaba los numeros
+    // crudos directo. cv() aplica la misma conversion aqui, solo
+    // para Excel, sin tocar el PDF que ya funcionaba bien.
+    const cv = v => convertirParaMostrar(Number(v)||0, STATE.empresaConfig?.moneda);
+    const rows = pagos.map((p, i) => [
+      i+1, p.empleados?.cedula || '—', p.empleados?.nombre || '—', p.empleados?.cargo || '—', cv(p.salario_base),
+      ...nombresDeducciones.map(n => cv(montoConcepto(p.deducciones_detalle, n))),
+      cv(p.deducciones), cv(p.total_pagado),
+      ...(modoNicaragua ? nombresAportes.map(n => cv(montoConcepto(p.aportes_patronales_detalle, n))) : []),
+    ]);
+    const totales = ['', '', '', 'TOTALES', cv(pagos.reduce((s,p)=>s+Number(p.salario_base),0)),
+      ...nombresDeducciones.map(n => cv(pagos.reduce((s,p)=>s+montoConcepto(p.deducciones_detalle,n),0))),
+      cv(pagos.reduce((s,p)=>s+Number(p.deducciones),0)), cv(pagos.reduce((s,p)=>s+Number(p.total_pagado),0)),
+      ...(modoNicaragua ? nombresAportes.map(n => cv(pagos.reduce((s,p)=>s+montoConcepto(p.aportes_patronales_detalle,n),0))) : []),
+    ];
+
+    // 3 filas de título + 1 en blanco antes del encabezado real — se
+    // calcula la posición exacta para que el ajuste de columnas, el
+    // encabezado congelado y el autofiltro apunten al lugar correcto,
+    // no a la fila 0 como si no hubiera título arriba.
+    const FILAS_TITULO = 4; // bizName, nombre planilla, período, blanco
+    const headerRowIdx = FILAS_TITULO;
+    const aoa = [
+      [bizName], [`Planilla: ${planilla.nombre}`],
+      [`Período: ${fmtDate(planilla.periodo_desde)} — ${fmtDate(planilla.periodo_hasta)}   Fecha de pago: ${fmtDate(planilla.fecha_pago)}`],
+      [],
+      headers, ...rows, totales,
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Título fusionado a lo ancho de toda la tabla, para que no se
+    // vea encajonado en una sola columna angosta.
+    const ultimaCol = headers.length - 1;
+    ws['!merges'] = [
+      { s:{r:0,c:0}, e:{r:0,c:ultimaCol} },
+      { s:{r:1,c:0}, e:{r:1,c:ultimaCol} },
+      { s:{r:2,c:0}, e:{r:2,c:ultimaCol} },
+    ];
+
+    // Formato de moneda en todas las columnas numéricas (Salario Base
+    // en adelante) — antes salían como "1470.5" en vez de "1,470.50".
+    const primeraColNumerica = 4;
+    for (let ri = headerRowIdx + 1; ri < headerRowIdx + 1 + rows.length + 1; ri++) {
+      for (let ci = primeraColNumerica; ci <= ultimaCol; ci++) {
+        const ref = XLSX.utils.encode_cell({ r: ri, c: ci });
+        if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = '#,##0.00';
+      }
+    }
+
+    // Ancho de columna ajustado al contenido real, igual que en Reportes.
+    ws['!cols'] = headers.map((h, ci) => {
+      const valoresCol = [...rows.map(r => r[ci]), totales[ci]];
+      const maxLen = valoresCol.reduce((m, v) => Math.max(m, String(v ?? '').length), h.length);
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 38) };
+    });
+
+    // Encabezado de la tabla congelado (no el título) para poder
+    // desplazarse por muchos empleados sin perder de vista los nombres
+    // de las columnas.
+    ws['!freeze'] = { xSplit: '0', ySplit: String(headerRowIdx + 1), topLeftCell: `A${headerRowIdx + 2}`, activePane: 'bottomLeft', state: 'frozen' };
+
+    // Autofiltro en la fila del encabezado real — permite ordenar y
+    // filtrar en Excel sin tocar las filas de título.
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:headerRowIdx,c:0}, e:{r:headerRowIdx+rows.length,c:ultimaCol} }) };
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Planilla');
+    XLSX.writeFile(wb, `Planilla_${planilla.nombre.replace(/[^a-zA-Z0-9]/g,'_')}.xlsx`);
+    showToast('Excel descargado');
+    closeModal('modal-exportar-planilla');
+    return;
+  }
+
+  // PDF
+  if (!window.jspdf) { showToast('No se pudo cargar el generador de PDF', 'error'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth();
+
+  doc.setFontSize(14); doc.setFont(undefined,'bold'); doc.text(bizName, 14, 14);
+  doc.setFontSize(10); doc.setFont(undefined,'normal');
+  doc.text(`Planilla: ${planilla.nombre}`, 14, 20);
+  doc.text(`Período: ${fmtDate(planilla.periodo_desde)} — ${fmtDate(planilla.periodo_hasta)}   Fecha de pago: ${fmtDate(planilla.fecha_pago)}`, 14, 25);
+
+  const head = ['#', 'Cédula', 'Nombre', 'Cargo', 'Sal. Base',
+    ...nombresDeducciones, 'Tot. Deducc.', 'Sal. Neto',
+    ...(modoNicaragua ? nombresAportes : []),
+  ];
+  const body = pagos.map((p, i) => [
+    i+1, p.empleados?.cedula || '—', p.empleados?.nombre || '—', p.empleados?.cargo || '—', fmt(p.salario_base),
+    ...nombresDeducciones.map(n => fmt(montoConcepto(p.deducciones_detalle, n))),
+    fmt(p.deducciones), fmt(p.total_pagado),
+    ...(modoNicaragua ? nombresAportes.map(n => fmt(montoConcepto(p.aportes_patronales_detalle, n))) : []),
+  ]);
+  const totalesRow = ['', '', '', 'TOTALES', fmt(pagos.reduce((s,p)=>s+Number(p.salario_base),0)),
+    ...nombresDeducciones.map(n => fmt(pagos.reduce((s,p)=>s+montoConcepto(p.deducciones_detalle,n),0))),
+    fmt(pagos.reduce((s,p)=>s+Number(p.deducciones),0)), fmt(pagos.reduce((s,p)=>s+Number(p.total_pagado),0)),
+    ...(modoNicaragua ? nombresAportes.map(n => fmt(pagos.reduce((s,p)=>s+montoConcepto(p.aportes_patronales_detalle,n),0))) : []),
+  ];
+
+  doc.autoTable({
+    startY: 30, head: [head], body: [...body, totalesRow],
+    theme: 'grid', headStyles: { fillColor: [108,99,255], fontSize: 7.5 }, styles: { fontSize: 7.5, cellPadding: 2 },
+    didParseCell: (data) => { if (data.row.index === body.length) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240,240,245]; } },
+  });
+
+  doc.setFontSize(8); doc.setTextColor(140,140,140);
+  doc.text('Generado por Negocio360 — los montos corresponden exactamente a lo registrado al momento del pago.', 14, doc.internal.pageSize.getHeight() - 8);
+
+  doc.save(`Planilla_${planilla.nombre.replace(/[^a-zA-Z0-9]/g,'_')}.pdf`);
+  showToast('PDF descargado');
+  closeModal('modal-exportar-planilla');
+}
+
+/* =====================================================
+   VACACIONES — se acumulan solas, en proporción al tiempo trabajado
+   y a los días/año configurados en Configuración de la empresa.
+   Nunca se guarda un número fijo: se recalcula cada vez que se abre,
+   así siempre refleja la fecha de hoy.
+===================================================== */
+let VAC_EMPLEADO_ACTUAL = null;
+function diasVacacionesAcumulados(fechaIngreso, diasPorAnio) {
+  if (!fechaIngreso) return 0;
+  const dias = Math.max(0, Math.round((new Date(todayISO()) - new Date(fechaIngreso)) / 86400000));
+  return round2((dias / 365) * (diasPorAnio || 15));
+}
+async function abrirVacaciones(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  VAC_EMPLEADO_ACTUAL = emp;
+  const diasAnio = Number(STATE.empresaConfig?.vacaciones_dias_anio) || 15;
+
+  const { data: historial } = await sbClient.from('empleados_vacaciones')
+    .select('*').eq('empleado_id', empleadoId).order('fecha_inicio', { ascending:false });
+  const tomados = round2((historial||[]).reduce((s,v)=>s+Number(v.dias||0), 0));
+  const acumulados = diasVacacionesAcumulados(emp.fecha_ingreso, diasAnio);
+  const disponibles = round2(acumulados - tomados);
+
+  document.getElementById('vac-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('vac-acumulados').textContent = `${acumulados} días`;
+  document.getElementById('vac-tomados').textContent = `${tomados} días`;
+  document.getElementById('vac-disponibles').textContent = `${disponibles} días`;
+  document.getElementById('vac-desde').value = todayISO();
+  document.getElementById('vac-hasta').value = todayISO();
+  document.getElementById('vac-dias').value = '';
+  document.getElementById('vac-nota').value = '';
+  document.getElementById('vac-error').textContent = '';
+
+  const tbody = document.getElementById('vac-historial-tbody');
+  tbody.innerHTML = (historial||[]).length ? historial.map(v => `
+    <tr><td>${fmtDate(v.fecha_inicio)}</td><td>${fmtDate(v.fecha_fin)}</td><td>${v.dias}</td><td>${esc(v.nota||'—')}</td></tr>
+  `).join('') : '<tr><td colspan="4" class="empty-cell">Sin registros todavía</td></tr>';
+
+  openModal('modal-vacaciones');
+}
+async function registrarVacacionesTomadas() {
+  const errEl = document.getElementById('vac-error');
+  errEl.textContent = '';
+  if (!VAC_EMPLEADO_ACTUAL) return;
+  const desde = document.getElementById('vac-desde').value;
+  const hasta = document.getElementById('vac-hasta').value;
+  const dias = round2(parseFloat(document.getElementById('vac-dias').value));
+  if (!(dias > 0)) { errEl.textContent = 'Indica cuántos días fueron.'; return; }
+
+  setBtnLoading('btn-registrar-vacaciones', true);
+  try {
+    await sbClient.from('empleados_vacaciones').insert({
+      auth_user_id: STATE.userId, empleado_id: VAC_EMPLEADO_ACTUAL.id,
+      fecha_inicio: desde, fecha_fin: hasta, dias, nota: document.getElementById('vac-nota').value.trim() || null,
+    });
+    showToast('Vacaciones registradas');
+    await abrirVacaciones(VAC_EMPLEADO_ACTUAL.id);
+  } catch (e) {
+    errEl.textContent = 'Error al registrar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-registrar-vacaciones', false);
+  }
+}
+
+/* =====================================================
+   AUSENCIAS / PERMISOS
+===================================================== */
+let AUS_EMPLEADO_ACTUAL = null;
+function abrirAusencia(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  AUS_EMPLEADO_ACTUAL = emp;
+  document.getElementById('aus-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('aus-desde').value = todayISO();
+  document.getElementById('aus-hasta').value = todayISO();
+  document.getElementById('aus-dias').value = '1';
+  document.getElementById('aus-tipo').value = 'sin_goce';
+  document.getElementById('aus-motivo').value = '';
+  document.getElementById('aus-error').textContent = '';
+  openModal('modal-ausencia');
+}
+async function guardarAusencia() {
+  const errEl = document.getElementById('aus-error');
+  errEl.textContent = '';
+  if (!AUS_EMPLEADO_ACTUAL) return;
+  const dias = round2(parseFloat(document.getElementById('aus-dias').value));
+  if (!(dias > 0)) { errEl.textContent = 'Indica cuántos días fueron.'; return; }
+
+  setBtnLoading('btn-guardar-ausencia', true);
+  try {
+    await sbClient.from('empleados_ausencias').insert({
+      auth_user_id: STATE.userId, empleado_id: AUS_EMPLEADO_ACTUAL.id,
+      fecha_inicio: document.getElementById('aus-desde').value, fecha_fin: document.getElementById('aus-hasta').value,
+      dias, tipo: document.getElementById('aus-tipo').value, motivo: document.getElementById('aus-motivo').value.trim() || null,
+    });
+    showToast('Ausencia registrada' + (document.getElementById('aus-tipo').value === 'sin_goce' ? ' — recuérdalo al calcular el siguiente pago' : ''));
+    closeModal('modal-ausencia');
+  } catch (e) {
+    errEl.textContent = 'Error al guardar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-guardar-ausencia', false);
+  }
+}
+
+/* =====================================================
+   LIQUIDACIÓN FINAL — indemnización por antigüedad + vacaciones
+   pendientes. Los días por año son configurables (varía por país),
+   nunca una fórmula fija de un solo lugar.
+===================================================== */
+let LIQ_EMPLEADO_ACTUAL = null;
+async function abrirLiquidar(empleadoId) {
+  const emp = STATE.empleados.find(e => e.id === empleadoId);
+  if (!emp) return;
+  if (!emp.fecha_ingreso) { showToast('Este empleado no tiene fecha de ingreso registrada — no se puede calcular la liquidación', 'error'); return; }
+  LIQ_EMPLEADO_ACTUAL = emp;
+
+  const diasPorAnioIndem = Number(STATE.empresaConfig?.indemnizacion_dias_por_anio) || 30;
+  document.getElementById('liq-empleado-nombre').textContent = emp.nombre;
+  document.getElementById('liq-fecha-ingreso').textContent = fmtDate(emp.fecha_ingreso);
+  document.getElementById('liq-dias-por-anio').value = diasPorAnioIndem;
+  document.getElementById('liq-fecha-pago').value = todayISO();
+  document.getElementById('liq-otros-monto').value = '';
+  document.getElementById('liq-otros-detalle').value = '';
+  document.getElementById('liq-observaciones').value = '';
+  poblarSelectMetodoPago('liq-metodo');
+  document.getElementById('liq-wrap-banco').style.display = 'none';
+  document.getElementById('liq-banco').value = '';
+  document.getElementById('liq-error').textContent = '';
+
+  await recalcularLiquidacion();
+  openModal('modal-liquidar');
+}
+async function recalcularLiquidacion() {
+  const emp = LIQ_EMPLEADO_ACTUAL;
+  if (!emp) return;
+  const diasPorAnioIndem = parseFloat(document.getElementById('liq-dias-por-anio').value) || 0;
+  const diasTrabajados = Math.max(0, Math.round((new Date(todayISO()) - new Date(emp.fecha_ingreso)) / 86400000));
+  const aniosTrabajados = round2(diasTrabajados / 365);
+  const salarioDiario = round2(Number(emp.salario||0) / 30);
+  const montoIndemnizacion = round2(aniosTrabajados * diasPorAnioIndem * salarioDiario);
+
+  const diasAnioVac = Number(STATE.empresaConfig?.vacaciones_dias_anio) || 15;
+  const { data: historialVac } = await sbClient.from('empleados_vacaciones').select('dias').eq('empleado_id', emp.id);
+  const tomados = round2((historialVac||[]).reduce((s,v)=>s+Number(v.dias||0),0));
+  const acumulados = diasVacacionesAcumulados(emp.fecha_ingreso, diasAnioVac);
+  const diasVacPendientes = Math.max(0, round2(acumulados - tomados));
+  const montoVacPendientes = round2(diasVacPendientes * salarioDiario);
+
+  const otros = round2(parseFloat(document.getElementById('liq-otros-monto').value) || 0);
+  const total = round2(montoIndemnizacion + montoVacPendientes + otros);
+
+  document.getElementById('liq-tiempo').textContent = `${aniosTrabajados} años (${diasTrabajados} días)`;
+  document.getElementById('liq-monto-indemnizacion').textContent = fmt(montoIndemnizacion);
+  document.getElementById('liq-dias-vacaciones').textContent = `${diasVacPendientes} días`;
+  document.getElementById('liq-monto-vacaciones').textContent = fmt(montoVacPendientes);
+  document.getElementById('liq-total').textContent = fmt(total);
+
+  LIQ_EMPLEADO_ACTUAL._calculo = { aniosTrabajados, montoIndemnizacion, diasVacPendientes, montoVacPendientes, otros, total, diasPorAnioIndem };
+}
+document.addEventListener('input', (ev) => {
+  if (['liq-dias-por-anio','liq-otros-monto'].includes(ev.target?.id)) recalcularLiquidacion();
+});
+async function confirmarLiquidacion() {
+  const errEl = document.getElementById('liq-error');
+  errEl.textContent = '';
+  const emp = LIQ_EMPLEADO_ACTUAL;
+  if (!emp || !emp._calculo) return;
+  if (!confirm(`¿Confirmar la liquidación de ${emp.nombre} por ${fmt(emp._calculo.total)}? El empleado quedará marcado como inactivo.`)) return;
+
+  const mb = leerMetodoYBancoSalarios('liq', errEl);
+  if (!mb) return;
+  const { metodoId, metodoNombre, bancoId } = mb;
+
+  setBtnLoading('btn-confirmar-liquidacion', true);
+  try {
+    const c = emp._calculo;
+    const fecha = document.getElementById('liq-fecha-pago').value || todayISO();
+    const comprobanteNumero = `LIQ-${Date.now().toString().slice(-8)}`;
+    const { data: liq, error } = await sbClient.from('empleados_liquidaciones').insert({
+      auth_user_id: STATE.userId, empleado_id: emp.id, fecha, fecha_ingreso: emp.fecha_ingreso,
+      anios_trabajados: c.aniosTrabajados, dias_indemnizacion: c.diasPorAnioIndem, monto_indemnizacion: c.montoIndemnizacion,
+      dias_vacaciones_pendientes: c.diasVacPendientes, monto_vacaciones_pendientes: c.montoVacPendientes,
+      otros_montos: c.otros, otros_detalle: document.getElementById('liq-otros-detalle').value.trim() || null,
+      total_pagado: c.total, observaciones: document.getElementById('liq-observaciones').value.trim() || null,
+      comprobante_numero: comprobanteNumero, usuario_nombre: STATE.currentUser?.nombre || STATE.userEmail,
+      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
+    }).select().single();
+    if (error) throw error;
+
+    if (window.CajaAPI) {
+      const cajaRes = await window.CajaAPI.registrarMovimiento({
+        auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
+        concepto: `Liquidación final — ${emp.nombre}`, monto: c.total,
+        metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
+        referencia_tipo: 'salario', referencia_id: liq.id, fecha,
+      });
+      if (!cajaRes.ok) showToast('La liquidación se registró, pero no se pudo descontar de Caja: ' + cajaRes.error, 'error');
+    }
+
+    await sbClient.from('empleados').update({ estado: 'inactivo', updated_at: new Date().toISOString() }).eq('id', emp.id).eq('auth_user_id', STATE.userId);
+
+    showToast(`Liquidación de ${emp.nombre} registrada y descontada de Caja`);
+    closeModal('modal-liquidar');
+    await Promise.allSettled([loadEmpleados(), loadKPIsSal()]);
+  } catch (e) {
+    errEl.textContent = 'Error al confirmar: ' + (e.message||'');
+  } finally {
+    setBtnLoading('btn-confirmar-liquidacion', false);
+  }
+}
+
+/* =====================================================
+   ORGANIGRAMA — árbol visual simple, a partir de "reporta_a".
+===================================================== */
+function abrirOrganigrama() {
+  document.getElementById('panel-organigrama').style.display = '';
+  renderOrganigrama();
+}
+function renderOrganigrama() {
+  const cont = document.getElementById('organigrama-cuerpo');
+  const activos = STATE.empleados.filter(e => e.estado === 'activo');
+  if (!activos.length) { cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Sin empleados activos</p>'; return; }
+
+  const raices = activos.filter(e => !e.reporta_a || !activos.some(x => x.id === e.reporta_a));
+  const nodo = (emp, nivel) => {
+    const hijos = activos.filter(e => e.reporta_a === emp.id);
+    return `
+      <div style="margin-left:${nivel*28}px;margin-bottom:8px">
+        <div style="display:inline-flex;align-items:center;gap:8px;background:var(--bg-app);border:1px solid var(--border);border-radius:10px;padding:8px 14px">
+          <span style="font-weight:700">${esc(emp.nombre)}</span>
+          <span style="font-size:11.5px;color:var(--text-muted)">${esc(emp.cargo||'')}${emp.departamento ? ' · '+esc(emp.departamento) : ''}</span>
+        </div>
+        ${hijos.map(h => nodo(h, nivel+1)).join('')}
+      </div>`;
+  };
+  cont.innerHTML = raices.map(r => nodo(r, 0)).join('') || '<p style="color:var(--text-muted);font-size:12.5px">Sin estructura definida — asigna "Reporta a" al editar un empleado.</p>';
+}
+
+/* =====================================================
+   REPORTES DE NÓMINA — costo total y por departamento, últimos 6
+   meses. Usa solo datos ya guardados (empleados_pagos), nunca
+   recalcula nada por su cuenta.
+===================================================== */
+function abrirReportesNomina() {
+  document.getElementById('panel-reportes-nomina').style.display = '';
+  cargarReportesNomina();
+}
+async function cargarReportesNomina() {
+  const cont = document.getElementById('reportes-nomina-cuerpo');
+  cont.innerHTML = 'Cargando…';
+  try {
+    const desde = new Date(); desde.setMonth(desde.getMonth() - 6);
+    const desdeISO = ymd(desde);
+    const { data: pagos } = await N360Leer.todo(() => sbClient.from('empleados_pagos').select('fecha, total_pagado, empleado_id')
+      .eq('auth_user_id', STATE.userId).neq('estado', 'anulado').gte('fecha', desdeISO), 'pagos');
+    const lista = pagos || [];
+    if (!lista.length) { cont.innerHTML = '<p style="color:var(--text-muted);font-size:12.5px">Todavía no hay pagos en los últimos 6 meses.</p>'; return; }
+
+    // Costo por mes
+    const porMes = new Map();
+    lista.forEach(p => {
+      const mes = p.fecha.slice(0,7);
+      porMes.set(mes, round2((porMes.get(mes)||0) + Number(p.total_pagado)));
+    });
+    const mesesOrdenados = Array.from(porMes.keys()).sort();
+
+    // Costo por departamento
+    const empMap = new Map(STATE.empleados.map(e => [e.id, e]));
+    const porDepto = new Map();
+    lista.forEach(p => {
+      const depto = empMap.get(p.empleado_id)?.departamento || 'Sin departamento';
+      porDepto.set(depto, round2((porDepto.get(depto)||0) + Number(p.total_pagado)));
+    });
+
+    const totalGeneral = round2(lista.reduce((s,p)=>s+Number(p.total_pagado),0));
+
+    cont.innerHTML = `
+      <div style="margin-bottom:18px">
+        <div style="font-size:12px;color:var(--text-muted)">Costo total de planilla (6 meses)</div>
+        <div style="font-size:24px;font-weight:800;color:var(--accent)">${fmt(totalGeneral)}</div>
+      </div>
+      <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Por mes</label>
+      <div style="margin-bottom:18px">
+        ${mesesOrdenados.map(m => {
+          const val = porMes.get(m);
+          const pct = totalGeneral ? Math.round(val/totalGeneral*100) : 0;
+          return `<div style="margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px"><span>${m}</span><span>${fmt(val)}</span></div>
+            <div style="background:var(--bg-app);border-radius:6px;height:8px;overflow:hidden"><div style="width:${pct}%;height:100%;background:#6366f1"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+      <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:6px">Por departamento</label>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Departamento</th><th>Costo (6 meses)</th><th>% del total</th></tr></thead>
+        <tbody>${Array.from(porDepto.entries()).sort((a,b)=>b[1]-a[1]).map(([depto,val]) => `
+          <tr><td>${esc(depto)}</td><td>${fmt(val)}</td><td>${totalGeneral?Math.round(val/totalGeneral*100):0}%</td></tr>
+        `).join('')}</tbody>
+      </table></div>`;
+  } catch (e) {
+    console.error('cargarReportesNomina:', e);
+    cont.innerHTML = '<p style="color:var(--danger);font-size:12.5px">No se pudo cargar el reporte.</p>';
+  }
+}
+
+async function initSalarios() {
+  const savedTheme = localStorage.getItem('n360_theme') || 'light';
+  applyTheme(savedTheme);
+
+  const fechaEl = document.getElementById('header-fecha');
+  if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+
+  try {
+    const { data: { user }, error } = await sbClient.auth.getUser();
+    if (error || !user) { window.location.href = 'login.html'; return; }
+    STATE.userId = user.id; STATE.userEmail = user.email;
+    if (user.email) checkAdminAccess(user.email);
+
+    await loadEmpresaConfig(user.id);
+    const profile = await loadUserProfile(user.id);
+    if (profile) renderUserInfo(profile, user.email);
+
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+
+    await loadMetodosPago();
+    await loadEmpleados();
+    await loadKPIsSal();
+    await aplicarHonorariosClinica();
+
+    if (window.Negocio360Tutorial) {
+      const pasosSalarios = [
+        { icono: '👔', titulo: 'Bienvenido a Salarios', texto: 'Aquí llevas el control de pagos a tus empleados -- salarios, adelantos, y comisiones.' },
+        { icono: '💵', titulo: 'Registra un pago', texto: 'Elige el empleado y registra el monto pagado -- queda guardado en su historial de pagos.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('salarios', pasosSalarios);
+      Negocio360Tutorial.agregarBotonAyuda('salarios', pasosSalarios);
+    }
+  } catch (err) {
+    console.error('initSalarios:', err);
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+  }
+}
+
+// Honorarios desde la Clínica (solo si el módulo está activo): abre el pago del empleado ligado al
+// médico con los honorarios como una bonificación más. El monto se lee de la liquidación guardada
+// (no de lo que manda la página) y el pago sigue el camino de siempre (Caja y contabilidad incluidas).
+async function aplicarHonorariosClinica() {
+  if (STATE.empresaConfig?.usa_modulo_clinica !== true) return;
+  const raw = sessionStorage.getItem('n360_clinica_honorarios');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_clinica_honorarios');   // una sola vez
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { console.error('aplicarHonorariosClinica, dato corrupto:', e); return; }
+  try {
+    const { data: liq } = await sbClient.from('clinica_honorarios').select('id, estado, monto, empleado_id, desde, hasta')
+      .eq('id', d && d.liquidacionId).eq('auth_user_id', STATE.userId).maybeSingle();
+    if (!liq || liq.estado !== 'enviada') { showToast('Esa liquidación de honorarios ya no está pendiente.', 'error'); return; }
+    const emp = (STATE.empleados || []).find(e => e.id === liq.empleado_id);
+    if (!emp) { showToast('No se encontró al empleado ligado al médico. Revísalo en Clínica · Equipo.', 'error'); return; }
+    await abrirPagarDesdeTabla(emp.id);
+    const bono = { descripcion: `Honorarios clínica ${fmtDate(liq.desde)} al ${fmtDate(liq.hasta)}`, monto: round2(Number(liq.monto) || 0) };
+    STATE.bonos.push(bono);
+    STATE._clinicaHonorario = { id: liq.id, bono };
+    renderBonosSal(); recalcularTotalPagoSal();
+    showToast('Honorarios agregados como bonificación. Revisa y confirma el pago.');
+  } catch (e) { console.error('aplicarHonorariosClinica:', e); }
+}
+
+sbClient.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') window.location.href = 'login.html'; });
+
+document.addEventListener('DOMContentLoaded', () => {
+  initSalarios();
+  if (window.lucide) lucide.createIcons();
+});
+
+
+/* ============================================================
+   MODAL DE MONEDA DE VISUALIZACION -- agregado para que este
+   modulo tambien pueda ver todo en otra moneda (nunca toca los
+   datos reales, solo como se muestran).
+   ============================================================ */
+function abrirModalMonedaVis() {
+  const oficial = STATE.empresaConfig?.moneda || 'NIO';
+  document.getElementById('mv-moneda-oficial').textContent = oficial;
+  document.getElementById('mv-select-moneda').value = monedaVisualizacionActiva() || '';
+  document.getElementById('mv-tasa').value = tasaVisualizacionActiva() || '';
+  document.getElementById('mv-error').textContent = '';
+  onCambiarSelectMonedaVis();
+  document.getElementById('modal-moneda-vis').style.display = 'flex';
+}
+function onCambiarSelectMonedaVis() {
+  const oficial = STATE.empresaConfig?.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  document.getElementById('mv-wrap-tasa').style.display = (elegida && elegida !== oficial) ? '' : 'none';
+}
+function guardarMonedaVis() {
+  const oficial = STATE.empresaConfig?.moneda || 'NIO';
+  const elegida = document.getElementById('mv-select-moneda').value;
+  const errEl = document.getElementById('mv-error');
+  errEl.textContent = '';
+  if (!elegida || elegida === oficial) {
+    desactivarMonedaVisualizacion();
+  } else {
+    const tasa = parseFloat(document.getElementById('mv-tasa').value);
+    if (!tasa || tasa <= 0) { errEl.textContent = 'Escribe tu tasa de cambio (cordobas por 1 dolar).'; return; }
+    activarMonedaVisualizacion(elegida, tasa);
+  }
+  location.reload();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  let intentos = 0;
+  const intervalo = setInterval(() => {
+    intentos++;
+    if (STATE.empresaConfig || intentos >= 30) {
+      clearInterval(intervalo);
+      const btn = document.getElementById('btn-moneda-vis-texto');
+      if (btn) btn.textContent = monedaParaMostrar(STATE.empresaConfig?.moneda);
+    }
+  }, 100);
+});

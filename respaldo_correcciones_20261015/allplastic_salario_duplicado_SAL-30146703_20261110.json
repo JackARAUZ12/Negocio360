@@ -1,0 +1,4 @@
+{"motivo":"Pago de salario duplicado (Juan David Marenco, 31-oct-2026). Se registró dos veces; SAL-30203039 es el bueno (tiene Caja). Este se anula.",
+ "empleados_pagos":{"id":"6740b89d-d1c6-446f-ac34-b56ff5e852e0","fecha":"2026-10-31","estado":"pagado","total_pagado":2000,"comprobante_numero":"SAL-30146703","observaciones":null,"auth_user_id":"46521033-5d43-40d5-844d-33ca2ff59c14"},
+ "asiento":{"id":"cbd9a7df-3725-4e8e-b3a0-6f65ab8be614","numero":"AS-009086","estado":"registrado","anulado_en":null,"anulado_motivo":null,"total_debe":2000},
+ "revertir":"update empleados_pagos set estado='pagado', observaciones=null where id='6740b89d-d1c6-446f-ac34-b56ff5e852e0'; update asientos_contables set estado='registrado', anulado_en=null, anulado_motivo=null where id='cbd9a7df-3725-4e8e-b3a0-6f65ab8be614';"}

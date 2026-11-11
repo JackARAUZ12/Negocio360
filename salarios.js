@@ -999,8 +999,19 @@ async function confirmarPagoSal() {
   const fecha = document.getElementById('pg-sal-fecha').value || todayISO();
   const observaciones = document.getElementById('pg-sal-observaciones').value.trim() || null;
 
+  if (STATE._pagandoSal) return; // candado contra doble clic
+  STATE._pagandoSal = true;
   setBtnLoading('btn-confirmar-pago-sal', true);
   try {
+    // Candado: avisa si este empleado ya tiene un pago con la misma fecha y el mismo total
+    try {
+      const { data: previos } = await sbClient.from('empleados_pagos')
+        .select('comprobante_numero, total_pagado')
+        .eq('auth_user_id', STATE.userId).eq('empleado_id', emp.id).eq('fecha', fecha).eq('estado', 'pagado');
+      const igual = (previos || []).find(p => Math.abs(Number(p.total_pagado || 0) - total) < 0.01);
+      if (igual && !confirm(`${emp.nombre} ya tiene un pago de ${fmt(total)} con fecha ${fmtDate(fecha)} (comprobante ${igual.comprobante_numero}).\n\n¿Seguro que quieres registrar OTRO pago igual?`)) return;
+    } catch (eDup) { console.warn('Revisión de pago repetido:', eDup); }
+
     const comprobanteNumero = `SAL-${Date.now().toString().slice(-8)}`;
     const totalAportesPatronales = round2((STATE.aportesPatronales||[]).reduce((s,a)=>s+a.monto, 0));
     const { data: pago, error: errPago } = await sbClient.from('empleados_pagos').insert({
@@ -1034,14 +1045,27 @@ async function confirmarPagoSal() {
         .in('id', STATE.adelantosPendientes.map(a => a.id));
     }
 
-    // Egreso en Caja — NUNCA se omite, sea cual sea el monto
-    const cajaRes = await window.CajaAPI.registrarMovimiento({
+    // Egreso en Caja — NUNCA se omite, sea cual sea el monto.
+    // Candado: si Caja falla (aun reintentando una vez), el pago se deshace para que
+    // no quede "pagado" sin su salida de dinero.
+    const movCaja = {
       auth_user_id: STATE.userId, tipo_flujo: 'EGRESO', tipo_movimiento: 'PAGO_SALARIO',
       concepto: `Pago de salario a ${emp.nombre}`, monto: total,
       metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
       referencia_tipo: 'salario', referencia_id: pago.id, observaciones, fecha,
-    });
-    if (!cajaRes.ok) showToast('El pago se guardó, pero no se pudo registrar en Caja: ' + cajaRes.error, 'error');
+    };
+    let cajaRes = await window.CajaAPI.registrarMovimiento(movCaja);
+    if (!cajaRes.ok) {
+      await new Promise(r => setTimeout(r, 1500));
+      const { data: yaEsta } = await sbClient.from('movimientos_financieros').select('id')
+        .eq('auth_user_id', STATE.userId).eq('referencia_tipo', 'salario').eq('referencia_id', pago.id).limit(1);
+      cajaRes = (yaEsta && yaEsta.length) ? { ok: true } : await window.CajaAPI.registrarMovimiento(movCaja);
+    }
+    if (!cajaRes.ok) {
+      await deshacerPagoSalSinCaja(pago.id, descontarAdelantos);
+      throw new Error('No se pudo registrar la salida en Caja (' + (cajaRes.error || 'sin conexión') +
+        '). El pago NO se guardó: revisa tu internet y vuelve a intentarlo.');
+    }
 
     // Actualiza último pago / próximo pago del empleado
     const proximoPago = sumarPeriodoSalario(fecha, emp.tipo_salario, 1);
@@ -1061,8 +1085,29 @@ async function confirmarPagoSal() {
     console.error('confirmarPagoSal:', e);
     errEl.textContent = 'Error al registrar el pago: ' + (e.message||'');
   } finally {
+    STATE._pagandoSal = false;
     setBtnLoading('btn-confirmar-pago-sal', false);
   }
+}
+
+// Deshace un pago de salario que no pudo llegar a Caja: devuelve los adelantos y la
+// liquidación de clínica a como estaban y borra el pago (si no se puede borrar, lo anula).
+async function deshacerPagoSalSinCaja(pagoId, descontoAdelantos) {
+  try {
+    if (descontoAdelantos) {
+      await sbClient.from('empleados_adelantos').update({ estado: 'pendiente', pago_id: null })
+        .eq('pago_id', pagoId).eq('auth_user_id', STATE.userId).eq('estado', 'descontado');
+    }
+    await sbClient.from('clinica_honorarios').update({ estado: 'enviada', empleado_pago_id: null })
+      .eq('empleado_pago_id', pagoId).eq('auth_user_id', STATE.userId).eq('estado', 'pagada');
+    const { error: eDel } = await sbClient.from('empleados_pagos').delete()
+      .eq('id', pagoId).eq('auth_user_id', STATE.userId);
+    if (eDel) {
+      await sbClient.from('empleados_pagos').update({
+        estado: 'anulado', observaciones: '[Anulado automáticamente: no se pudo registrar en Caja]',
+      }).eq('id', pagoId).eq('auth_user_id', STATE.userId);
+    }
+  } catch (e) { console.error('deshacerPagoSalSinCaja:', e); }
 }
 
 /* =====================================================
