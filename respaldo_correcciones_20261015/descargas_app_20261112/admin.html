@@ -1,0 +1,1962 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="movil-sin-zoom.css?v=20261021c" />
+  <script src="movil-recargar.js?v=20261021b" defer></script>
+  <title>Panel de Administración — Negocio360</title>
+
+  <!-- Fuente Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Supabase SDK -->
+  <script src="ver-como.js?v=20261023b"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261111a"></script>
+  <script src="auditoria-guard.js"></script>
+
+  <!-- jsPDF (para generar el comprobante de pago en PDF) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- Estilos -->
+  <link rel="stylesheet" href="admin.css" />
+  <link rel="stylesheet" href="admin-freelancers.css?v=20261021b" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     LOADER INICIAL
+══════════════════════════════════════════ -->
+<div id="page-loader">
+  <div class="loader-logo">Negocio<span>360</span></div>
+  <div class="loader-spinner"></div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TOAST CONTAINER
+══════════════════════════════════════════ -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- ══════════════════════════════════════════
+     OVERLAY SIDEBAR MOBILE
+══════════════════════════════════════════ -->
+<div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+<!-- ══════════════════════════════════════════
+     APP WRAPPER
+══════════════════════════════════════════ -->
+<div class="app-wrapper">
+
+  <!-- ══════════════════════════════════════
+       SIDEBAR
+  ══════════════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">Negocio<span>360</span></div>
+      <div class="logo-badge">Administración</div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-section="dashboard">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Dashboard Admin
+      </button>
+
+      <button class="nav-item" data-section="users">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        Usuarios
+      </button>
+
+      <button class="nav-item" data-section="soporte">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        Atención al Cliente
+        <span class="nav-badge-count" id="soporte-nav-badge" style="display:none">0</span>
+      </button>
+
+      <button class="nav-item" data-section="codes">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+        Códigos de Acceso
+      </button>
+
+      <button class="nav-item" data-section="freelancers">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <polyline points="16 11 18 13 22 9"/>
+        </svg>
+        Freelancers
+      </button>
+
+      <button class="nav-item" data-section="codes-catalogo360">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>
+          <path d="M9 21V12h6v9"/>
+        </svg>
+        Códigos Catálogo360
+      </button>
+
+      <button class="nav-item" data-section="clientes-catalogo360">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        Clientes Catálogo360
+      </button>
+
+      <button class="nav-item" data-section="pruebas">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 3h6M10 3v6.5L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9.5V3"/>
+        </svg>
+        Pruebas
+      </button>
+
+      <button class="nav-item" data-section="clientes-periodo">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2"/>
+          <path d="M16 2v4M8 2v4M3 10h18"/>
+        </svg>
+        Clientes por Período
+      </button>
+
+      <button class="nav-item" data-section="tutoriales">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+        </svg>
+        Tutoriales
+      </button>
+
+      <button class="nav-item" data-section="anuncios">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        Anuncios
+      </button>
+
+      <button class="nav-item" data-section="encuestas">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        Encuestas
+      </button>
+
+      <button class="nav-item" data-section="notificaciones">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Notificaciones
+      </button>
+
+      <button class="nav-item" data-section="chats-grupales">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          <path d="M17 8h.01"/>
+        </svg>
+        Chats Grupales
+      </button>
+
+      <button class="nav-item" data-section="auditoria-global">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+        Auditoría Global
+      </button>
+
+      <div class="nav-divider"></div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="nav-item logout" id="btn-logout">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Cerrar Sesión
+      </button>
+    </div>
+  </aside>
+
+  <!-- ══════════════════════════════════════
+       MAIN CONTENT
+  ══════════════════════════════════════ -->
+  <div class="main-content">
+
+    <!-- ─── HEADER ─── -->
+    <header class="header">
+      <div class="header-left">
+        <button class="menu-toggle" id="menu-toggle" aria-label="Menú">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <div>
+          <div class="header-title">Panel de Administración</div>
+          <div class="header-subtitle">Negocio360 Platform</div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <span class="header-date" id="header-date"></span>
+
+        <button class="theme-toggle" id="btn-theme" aria-label="Cambiar tema">
+          <span id="theme-icon"></span>
+        </button>
+
+        <div class="admin-info">
+          <div class="admin-avatar" id="admin-avatar">A</div>
+          <div class="admin-details">
+            <span class="admin-name"  id="header-admin-name">Administrador</span>
+            <span class="admin-email" id="header-admin-email">—</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: DASHBOARD ADMIN
+    ══════════════════════════════════ -->
+    <section class="page-content active" id="page-dashboard">
+      <div class="page-header">
+        <h1>Dashboard Admin</h1>
+        <p>Resumen general de la plataforma Negocio360</p>
+      </div>
+
+      <!-- Stats grid -->
+      <div class="stats-grid">
+        <div class="stat-card total">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-total">—</div>
+          <div class="stat-label">Usuarios Totales</div>
+        </div>
+
+        <div class="stat-card active">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-activos">—</div>
+          <div class="stat-label">Usuarios Activos</div>
+        </div>
+
+        <div class="stat-card suspended">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="10" y1="15" x2="10" y2="9"/>
+              <line x1="14" y1="15" x2="14" y2="9"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-suspendidos">—</div>
+          <div class="stat-label">Usuarios Suspendidos</div>
+        </div>
+
+        <div class="stat-card cancelled">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-cancelados">—</div>
+          <div class="stat-label">Usuarios Cancelados</div>
+        </div>
+
+        <div class="stat-card trial">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-prueba">—</div>
+          <div class="stat-label">Usuarios Prueba</div>
+        </div>
+
+        <div class="stat-card premium">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-premium">—</div>
+          <div class="stat-label">Usuarios Premium</div>
+        </div>
+
+        <div class="stat-card cancelled">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="stat-en-riesgo">—</div>
+          <div class="stat-label">Clientes en Riesgo</div>
+        </div>
+      </div>
+
+      <!-- ═══ CRECIMIENTO DEL NEGOCIO (todos los clientes juntos) ═══ -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
+              Crecimiento del negocio
+            </div>
+            <div class="card-subtitle">Ingresos y clientes nuevos generados por todas las cuentas juntas — mes actual comparado con el anterior</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+            <div class="stat-card active">
+              <div class="stat-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </div>
+              <div class="stat-value" id="stat-ingresos-mes">—</div>
+              <div class="stat-label">Ingresos de todos los clientes (este mes)</div>
+              <div id="stat-ingresos-comparativo" style="font-size:12px;margin-top:4px;color:var(--text-secondary)">—</div>
+            </div>
+            <div class="stat-card total">
+              <div class="stat-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div class="stat-value" id="stat-clientes-nuevos-mes">—</div>
+              <div class="stat-label">Clientes nuevos (este mes)</div>
+              <div id="stat-clientes-comparativo" style="font-size:12px;margin-top:4px;color:var(--text-secondary)">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CONTROL DE PAGOS (Próximos / Pendientes / Atrasados) ═══ -->
+      <div class="payment-lists-grid">
+        <div class="card payment-card proximos">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                Próximos a Pagar
+              </div>
+              <div class="card-subtitle">Vencen en los próximos 3 días · solo informativo</div>
+            </div>
+          </div>
+          <div class="card-body no-pad">
+            <div class="payment-list" id="list-proximos">
+              <div class="payment-empty">Cargando...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card payment-card pendientes">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+                  <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                </svg>
+                Pendientes de Pago
+              </div>
+              <div class="card-subtitle">Su fecha de pago es hoy o fue ayer</div>
+            </div>
+          </div>
+          <div class="card-body no-pad">
+            <div class="payment-list" id="list-pendientes">
+              <div class="payment-empty">Cargando...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card payment-card atrasados">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Pago Atrasado
+              </div>
+              <div class="card-subtitle">2 o más días de atraso</div>
+            </div>
+          </div>
+          <div class="card-body no-pad">
+            <div class="payment-list" id="list-atrasados">
+              <div class="payment-empty">Cargando...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ CLIENTES EN RIESGO (sin entrar hace 3+ días) ═══ -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              Clientes en Riesgo
+            </div>
+            <div class="card-subtitle">Sin entrar al sistema hace 3 días o más — ordenados del más urgente al menos urgente</div>
+          </div>
+          <button class="btn-icon btn-primary btn-sm" id="btn-enviar-recordatorios" onclick="enviarRecordatoriosInactivos()" title="Manda un correo a cada uno (máximo 1 cada 7 días por persona)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Enviar recordatorios por correo
+          </button>
+        </div>
+        <div class="card-body no-pad">
+          <div class="payment-list" id="list-en-riesgo">
+            <div class="payment-empty">Cargando...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info rápida -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Acceso Rápido</div>
+            <div class="card-subtitle">Navega a las secciones de administración</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div style="display:flex; gap:12px; flex-wrap:wrap">
+            <button class="btn-icon btn-primary" data-section="users"
+              onclick="navigate('users')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+              </svg>
+              Gestionar Usuarios
+            </button>
+            <button class="btn-icon btn-ghost" onclick="navigate('soporte')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              Atención al Cliente
+            </button>
+            <button class="btn-icon btn-ghost" onclick="navigate('codes')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2"/>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+              </svg>
+              Códigos de Acceso
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: USUARIOS
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-users">
+      <div class="page-header">
+        <h1>Usuarios</h1>
+        <p>Administra los usuarios registrados en la plataforma</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Lista de Usuarios</div>
+            <div class="card-subtitle">Gestiona estados de cuenta de cada usuario</div>
+          </div>
+          <div class="table-toolbar">
+            <div class="search-box">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                id="user-search"
+                class="search-input"
+                placeholder="Buscar por nombre, email, negocio..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div style="padding: 14px 22px 0; border-bottom: 1px solid var(--border-color);">
+          <div class="filter-tabs">
+            <button class="filter-btn active" data-filter="all">Todos</button>
+            <button class="filter-btn" data-filter="activos">Activos</button>
+            <button class="filter-btn" data-filter="suspendidos">Suspendidos</button>
+            <button class="filter-btn" data-filter="cancelados">Cancelados</button>
+            <button class="filter-btn" data-filter="prueba">Prueba</button>
+            <button class="filter-btn" data-filter="premium">Premium</button>
+            <button class="filter-btn" data-filter="en_riesgo" style="color:#ef4444">🔴 En riesgo</button>
+          </div>
+        </div>
+
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Apellido</th>
+                  <th>Negocio</th>
+                  <th>Email</th>
+                  <th>Teléfono</th>
+                  <th>Plan</th>
+                  <th>Facturación</th>
+                  <th>Estado</th>
+                  <th>Conexión</th>
+                  <th>Fecha Registro</th>
+                  <th>Último Pago</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="users-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: ATENCIÓN AL CLIENTE
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-soporte">
+      <div class="page-header">
+        <h1>Atención al Cliente</h1>
+        <p>Chatea en tiempo real con tus clientes</p>
+      </div>
+
+      <div class="soporte-layout">
+        <div class="card soporte-list-card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Conversaciones</div>
+              <div class="card-subtitle">Selecciona una para responder</div>
+            </div>
+          </div>
+          <div class="filter-tabs" style="padding:0 16px 12px">
+            <button class="filter-btn active" data-chatfilter="activas">Activas</button>
+            <button class="filter-btn" data-chatfilter="finalizadas">Finalizadas</button>
+          </div>
+          <div class="soporte-conv-list" id="conv-list">
+            <div class="payment-empty">Cargando...</div>
+          </div>
+        </div>
+
+        <div class="card soporte-chat-card">
+          <div class="soporte-chat-empty" id="soporte-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <p>Selecciona una conversación para comenzar</p>
+          </div>
+
+          <div class="soporte-chat-active" id="soporte-active" style="display:none">
+            <div class="soporte-chat-header">
+              <div>
+                <div class="soporte-chat-name" id="chat-cliente-nombre">—</div>
+                <div class="soporte-chat-sub" id="chat-cliente-sub">—</div>
+              </div>
+              <button class="btn-icon btn-danger btn-sm" id="btn-finalizar-chat">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                Finalizar conversación
+              </button>
+            </div>
+
+            <div class="soporte-messages" id="soporte-messages"></div>
+
+            <div class="soporte-finalizada-banner" id="soporte-finalizada-banner" style="display:none">
+              Esta conversación fue finalizada. El cliente ya no puede enviar mensajes. Se eliminará automáticamente 72 horas después de finalizada.
+            </div>
+
+            <div class="soporte-input-bar" id="soporte-input-bar">
+              <input type="text" id="soporte-input" class="form-control" placeholder="Escribe un mensaje..." />
+              <button class="btn-icon btn-primary" id="btn-send-admin">Enviar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: CHATS GRUPALES
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-chats-grupales">
+      <div class="page-header">
+        <h1>Chats Grupales</h1>
+        <p>Crea chats grupales entre tus clientes y agrégalos cuando quieras. Los mensajes se eliminan automáticamente después de 72 horas.</p>
+      </div>
+
+      <div class="soporte-layout">
+        <div class="card soporte-list-card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Chats grupales</div>
+              <div class="card-subtitle">Selecciona uno para ver la conversación</div>
+            </div>
+            <button class="btn-icon btn-primary btn-sm" onclick="abrirNuevoChatGrupal()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nuevo
+            </button>
+          </div>
+          <div class="soporte-conv-list" id="gc-list">
+            <div class="payment-empty">Cargando...</div>
+          </div>
+        </div>
+
+        <div class="card soporte-chat-card">
+          <div class="soporte-chat-empty" id="gc-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <p>Selecciona un chat grupal o crea uno nuevo</p>
+          </div>
+
+          <div class="soporte-chat-active" id="gc-active" style="display:none">
+            <div class="soporte-chat-header">
+              <div>
+                <div class="soporte-chat-name" id="gc-nombre">—</div>
+                <div class="soporte-chat-sub" id="gc-sub">—</div>
+              </div>
+              <button class="btn-icon btn-ghost btn-sm" onclick="abrirAgregarMiembro()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                Agregar miembro
+              </button>
+            </div>
+
+            <div class="gc-members-bar" id="gc-members-bar"></div>
+
+            <div class="gc-notice">Los mensajes de este chat se eliminan automáticamente 72 horas después de enviarse.</div>
+
+            <div class="soporte-messages" id="gc-messages"></div>
+
+            <div class="soporte-input-bar" id="gc-input-bar">
+              <input type="text" id="gc-input" class="form-control" placeholder="Escribe un mensaje..." />
+              <button class="btn-icon btn-primary" id="btn-send-grupal">Enviar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page-content" id="page-auditoria-global">
+      <div class="page-header">
+        <h1>Auditoría Global</h1>
+        <p>Movimientos de todas las cuentas del sistema, con qué usuario los hizo y cuándo. Se eliminan automáticamente 24 horas después de registrarse, para ahorrar almacenamiento.</p>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card total">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="stat-value" id="ag-stat-total">—</div>
+          <div class="stat-label">Movimientos (últimas 24h)</div>
+        </div>
+        <div class="stat-card active">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div class="stat-value" id="ag-stat-cuentas">—</div>
+          <div class="stat-label">Cuentas con actividad</div>
+        </div>
+        <div class="stat-card suspended">
+          <div class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="stat-value" id="ag-stat-ultimo" style="font-size:14px">—</div>
+          <div class="stat-label">Último movimiento</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Movimientos</div>
+            <div class="card-subtitle">De todas las cuentas — solo las últimas 24 horas quedan guardadas</div>
+          </div>
+          <button class="btn-icon btn-ghost" onclick="loadAuditoriaGlobal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Actualizar
+          </button>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+            <select id="ag-filtro-cuenta" class="form-control" style="width:auto;min-width:180px" onchange="renderTablaAuditoriaGlobal()">
+              <option value="">Todas las cuentas</option>
+            </select>
+            <select id="ag-filtro-accion" class="form-control" style="width:auto;min-width:160px" onchange="renderTablaAuditoriaGlobal()">
+              <option value="">Todas las acciones</option>
+              <option value="INSERT">Creaciones</option>
+              <option value="UPDATE">Ediciones</option>
+              <option value="DELETE">Eliminaciones</option>
+            </select>
+            <input type="search" id="ag-search" class="form-control" style="flex:1;min-width:200px" placeholder="Buscar por negocio, módulo o resumen…" autocomplete="off" oninput="renderTablaAuditoriaGlobal()" />
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Negocio / Cuenta</th>
+                  <th>Usuario</th>
+                  <th>Módulo</th>
+                  <th>Acción</th>
+                  <th>Resumen</th>
+                </tr>
+              </thead>
+              <tbody id="auditoria-global-tbody">
+                <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page-content" id="page-codes">
+      <div class="page-header">
+        <h1>Códigos de Acceso</h1>
+        <p>Genera y administra los códigos para registro de nuevos usuarios</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Códigos Generados</div>
+            <div class="card-subtitle">Activa, desactiva o elimina códigos de acceso</div>
+          </div>
+          <button class="btn-icon btn-primary" id="btn-new-code">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Crear Código
+          </button>
+        </div>
+
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>Usos</th>
+                  <th>Fecha Creación</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="codes-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ FREELANCERS (vendedores de Negocio360) ══════════ -->
+    <section class="page-content" id="page-freelancers">
+      <div class="page-header fl-header">
+        <div>
+          <h1>Freelancers</h1>
+          <p>Vendedores externos: sus permisos, códigos, clientes captados, pagos confirmados, comisiones y todo lo que hacen.</p>
+        </div>
+        <button class="btn-icon btn-primary" id="fl-btn-nuevo" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nuevo freelancer
+        </button>
+      </div>
+
+      <div class="card section-gap">
+        <div class="card-header fl-periodo">
+          <div>
+            <div class="card-title">Rendimiento</div>
+            <div class="card-subtitle" id="fl-periodo-txt">Este mes</div>
+          </div>
+          <div class="fl-periodo-ctrl">
+            <div class="filter-tabs" id="fl-periodos">
+              <button class="filter-btn" data-fl-periodo="dia" type="button">Hoy</button>
+              <button class="filter-btn" data-fl-periodo="semana" type="button">7 días</button>
+              <button class="filter-btn active" data-fl-periodo="mes" type="button">Este mes</button>
+              <button class="filter-btn" data-fl-periodo="rango" type="button">Rango</button>
+            </div>
+            <div class="fl-rango" id="fl-rango" style="display:none">
+              <input type="date" class="form-control" id="fl-desde" aria-label="Desde" />
+              <input type="date" class="form-control" id="fl-hasta" aria-label="Hasta" />
+              <button class="btn-icon btn-ghost btn-sm" id="fl-rango-aplicar" type="button">Aplicar</button>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="stats-grid fl-kpis" id="fl-kpis"><div class="fl-cargando">Cargando…</div></div>
+          <div class="fl-nota">Los <b>pagos</b> son solo los ciclos que un administrador marcó como pagados en <b>Usuarios</b> (confirmados). Las cotizaciones o pruebas nunca cuentan como ingreso.</div>
+          <div class="table-responsive" id="fl-ranking"></div>
+        </div>
+      </div>
+
+      <div class="card section-gap">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Listado de freelancers</div>
+            <div class="card-subtitle">Busca, filtra y abre la ficha de cada uno</div>
+          </div>
+          <button class="btn-icon btn-ghost btn-sm" id="fl-btn-csv" type="button">Exportar CSV</button>
+        </div>
+        <div class="table-toolbar fl-toolbar">
+          <div class="search-box">
+            <input type="search" class="search-input" id="fl-buscar" placeholder="Nombre, correo, identificación…" aria-label="Buscar freelancer" />
+          </div>
+          <div class="filter-tabs" id="fl-estados">
+            <button class="filter-btn active" data-fl-estado="" type="button">Todos</button>
+            <button class="filter-btn" data-fl-estado="activo" type="button">Activos</button>
+            <button class="filter-btn" data-fl-estado="pendiente" type="button">Pendientes</button>
+            <button class="filter-btn" data-fl-estado="suspendido" type="button">Suspendidos</button>
+            <button class="filter-btn" data-fl-estado="desactivado" type="button">Desactivados</button>
+          </div>
+          <div class="fl-rango">
+            <label class="fl-mini">Incorporados desde</label>
+            <input type="date" class="form-control" id="fl-inc-desde" aria-label="Incorporados desde" />
+            <input type="date" class="form-control" id="fl-inc-hasta" aria-label="Incorporados hasta" />
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table fl-tabla">
+              <thead>
+                <tr>
+                  <th>Freelancer</th><th>Estado</th><th>Incorporación</th><th>Último acceso</th>
+                  <th>Códigos</th><th>Clientes</th><th>Pagos confirmados</th><th>Comisiones</th><th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="fl-tbody"><tr><td colspan="9" class="fl-cargando">Cargando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card section-gap">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Seguridad</div>
+            <div class="card-subtitle">Intentos rechazados y acciones no autorizadas (últimos 100)</div>
+          </div>
+          <button class="btn-icon btn-ghost btn-sm" id="fl-btn-seguridad" type="button">Actualizar</button>
+        </div>
+        <div class="card-body no-pad"><div class="table-responsive" id="fl-seguridad"></div></div>
+      </div>
+    </section>
+
+    <section class="page-content" id="page-codes-catalogo360">
+      <div class="page-header">
+        <h1>Códigos Catálogo360</h1>
+        <p>Genera los códigos que desbloquean Catálogo360 para clientes de Negocio360 -- una vez canjeado, el cliente entra las veces que quiera sin volver a pedirlo</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Códigos Generados</div>
+            <div class="card-subtitle">Activa, desactiva o elimina códigos de Catálogo360</div>
+          </div>
+          <button class="btn-icon btn-primary" id="btn-new-code-catalogo360">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Crear Código
+          </button>
+        </div>
+
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th>Plan / Tipo</th>
+                  <th>Estado</th>
+                  <th>Usos</th>
+                  <th>Expira</th>
+                  <th>Fecha Creación</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="codes-catalogo360-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page-content" id="page-pruebas">
+      <div class="page-header">
+        <h1>Pruebas</h1>
+        <p>Cuentas de prueba y de demostración. No cuentan como clientes: no aparecen en Usuarios ni en las estadísticas.</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px">
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="pruebas-total">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Cuentas de prueba</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800;color:var(--accent)" id="pruebas-demos">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Demos públicas</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="pruebas-internas">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Internas</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Cuentas de prueba</div>
+            <div class="card-subtitle">Demos del botón de acceso y cuentas internas del equipo</div>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th>Negocio</th>
+                  <th>Correo</th>
+                  <th>Tipo</th>
+                  <th>Rubro</th>
+                  <th>Plan</th>
+                  <th>Última conexión</th>
+                </tr>
+              </thead>
+              <tbody id="pruebas-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page-content" id="page-clientes-catalogo360">
+      <div class="page-header">
+        <h1>Clientes Catálogo360</h1>
+        <p>Todas las cuentas con Catálogo360 desbloqueado -- sean clientes existentes de Negocio360 o clientes independientes</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px">
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="cc360-total">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Clientes totales</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800;color:var(--accent)" id="cc360-independientes">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Independientes</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="cc360-existentes">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Clientes Negocio360</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800;color:var(--accent-2,#22c55e)" id="cc360-ingresos">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">Ingreso mensual estimado</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Clientes con Catálogo360 activo</div>
+            <div class="card-subtitle">Plan, tipo de cliente y catálogos creados</div>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Negocio</th>
+                  <th>Correo</th>
+                  <th>WhatsApp</th>
+                  <th>Plan</th>
+                  <th>Tipo de cliente</th>
+                  <th>Catálogos</th>
+                  <th>Código usado</th>
+                  <th>Desbloqueado</th>
+                </tr>
+              </thead>
+              <tbody id="clientes-catalogo360-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: CLIENTES POR PERÍODO (19-19)
+         ══════════════════════════════════ -->
+    <section class="page-content" id="page-clientes-periodo">
+      <div class="page-header">
+        <h1>Clientes por Período</h1>
+        <p>Cuentas activas agrupadas en períodos del 19 al 19 de cada mes, según su fecha de registro. Por defecto solo cuenta las activas; usa los interruptores para incluir también las suspendidas y las canceladas.</p>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--border);border-radius:99px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="cp-incl-suspendidas" onchange="cpCambiarFiltro()"> Incluir suspendidas
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--border);border-radius:99px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="cp-incl-canceladas" onchange="cpCambiarFiltro()"> Incluir canceladas
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px">
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800" id="cp-total-activos">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)" id="cp-total-label">Total activos (todos los períodos)</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:24px;font-weight:800;color:var(--accent)" id="cp-periodo-actual">—</div>
+          <div style="font-size:11.5px;color:var(--text-muted)" id="cp-periodo-actual-label">Período actual</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title" id="cp-tabla-titulo">Clientes activos por período</div>
+            <div class="card-subtitle">Cada período va del 19 de un mes al 19 del siguiente</div>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Período</th>
+                  <th id="cp-col-titulo">Clientes activos registrados</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="clientes-periodo-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;display:none" id="cp-detalle-card">
+        <div class="card-header">
+          <div>
+            <div class="card-title" id="cp-detalle-titulo">Detalle del período</div>
+            <div class="card-subtitle">Clientes activos registrados en este período</div>
+          </div>
+          <button class="btn-icon" onclick="document.getElementById('cp-detalle-card').style.display='none'" title="Cerrar">✕</button>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Negocio</th>
+                  <th>Correo</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>Fecha de registro</th>
+                </tr>
+              </thead>
+              <tbody id="cp-detalle-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: TUTORIALES (videos de YouTube por módulo)
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-tutoriales">
+      <div class="page-header">
+        <h1>Tutoriales</h1>
+        <p>Conecta videos de YouTube a cada módulo. Los ven todas las cuentas, solo en los módulos que tengan activos. Puedes poner los videos que quieras por módulo y ordenarlos.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Módulo</div>
+            <div class="card-subtitle">Elige a qué módulo pertenecen los videos que vas a ver o agregar</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <select id="tut-modulo" class="form-control" onchange="tutCambiarModulo()"></select>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title" id="tut-form-titulo">Agregar video</div>
+            <div class="card-subtitle">Pega el enlace de YouTube (watch, youtu.be, shorts o embed). La miniatura se toma sola.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Enlace de YouTube</label>
+            <input type="text" id="tut-url" class="form-control" placeholder="https://www.youtube.com/watch?v=..." oninput="tutPrevisualizar()" />
+            <div id="tut-prev" style="margin-top:8px;font-size:12.5px;color:var(--text-muted, #888)"></div>
+          </div>
+          <div class="form-group">
+            <label>Título</label>
+            <input type="text" id="tut-titulo" class="form-control" maxlength="120" placeholder="Ej: Cómo registrar tu primera venta" />
+          </div>
+          <div class="form-group">
+            <label>Descripción (opcional)</label>
+            <textarea id="tut-desc" class="form-control" rows="3" maxlength="500" placeholder="Qué aprenderá la persona en este video"></textarea>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="form-group" style="flex:1;min-width:150px">
+              <label>Nivel</label>
+              <select id="tut-nivel" class="form-control">
+                <option value="basico">Básico</option>
+                <option value="intermedio">Intermedio</option>
+                <option value="avanzado">Avanzado</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1;min-width:150px">
+              <label>Duración (opcional)</label>
+              <input type="text" id="tut-duracion" class="form-control" maxlength="12" placeholder="Ej: 4:30" />
+            </div>
+            <div class="form-group" style="flex:1;min-width:150px">
+              <label>Visible para los usuarios</label>
+              <select id="tut-visible" class="form-control">
+                <option value="true">Sí, visible</option>
+                <option value="false">No (borrador)</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:6px">
+            <button class="btn-icon btn-primary" id="tut-btn-guardar" onclick="tutGuardar()">Guardar video</button>
+            <button class="btn-icon btn-ghost" id="tut-btn-cancelar" onclick="tutLimpiarForm()" style="display:none">Cancelar edición</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title" id="tut-lista-titulo">Videos del módulo</div>
+            <div class="card-subtitle">Usa las flechas para cambiar el orden en que se muestran</div>
+          </div>
+        </div>
+        <div class="card-body" id="tut-lista"><p style="color:var(--text-muted, #888)">Cargando…</p></div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: ANUNCIOS DEL SISTEMA
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-anuncios">
+      <div class="page-header">
+        <h1>Anuncios del sistema</h1>
+        <p>Lanza un aviso de novedades a todos los usuarios. Cada usuario lo ve una sola vez; al lanzar uno nuevo, reemplaza al anterior.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Componer anuncio</div>
+            <div class="card-subtitle">Se mostrará como ventana emergente en el Dashboard de cada usuario</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Título</label>
+            <input type="text" id="anuncio-form-titulo" class="form-control" placeholder="Ej: Nueva actualización: Nuevo módulo de Crédito" />
+          </div>
+
+          <div class="form-group">
+            <label>Puntos del anuncio</label>
+            <div id="anuncio-form-items"></div>
+            <button type="button" class="btn-icon btn-ghost" onclick="agregarItemAnuncio()" style="margin-top:8px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Agregar punto
+            </button>
+          </div>
+
+          <button class="btn-icon btn-primary" onclick="lanzarAnuncio()" style="margin-top:18px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Lanzar a todos los usuarios
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Anuncio activo actual</div>
+            <div class="card-subtitle">Esto es lo que ven los usuarios que aún no lo han cerrado</div>
+          </div>
+          <button class="btn-icon btn-ghost" id="btn-ver-lectores-anuncio" onclick="abrirVerLectoresAnuncio()" style="display:none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Ver quién lo vio
+          </button>
+          <button class="btn-icon btn-danger" id="btn-desactivar-anuncio" onclick="desactivarAnuncioActivo()" style="display:none">🔕 Desactivar</button>
+        </div>
+        <div class="card-body" id="anuncio-activo-preview">
+          <p style="color:var(--text-muted, #888)">Cargando…</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: ENCUESTAS (satisfacción del usuario)
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-encuestas">
+      <div class="page-header">
+        <h1>Encuestas</h1>
+        <p>Pregúntale a tus usuarios qué tan satisfechos están. La verán una sola vez en su Dashboard: pueden calificar de 1 a 5 estrellas y dejar un comentario, o simplemente presionar "Aceptar".</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Nueva encuesta</div>
+            <div class="card-subtitle">Al publicar una nueva, reemplaza a la anterior (deja de mostrarse)</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Pregunta</label>
+            <input type="text" id="encuesta-form-pregunta" class="form-control" placeholder="Ej: ¿Qué tan satisfecho estás con Negocio360?" />
+          </div>
+          <button class="btn-icon btn-primary" onclick="publicarEncuesta()" style="margin-top:10px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Publicar a todos los usuarios
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Encuesta activa y resultados</div>
+            <div class="card-subtitle">Se actualiza en vivo conforme van respondiendo</div>
+          </div>
+          <button class="btn-icon btn-ghost" onclick="cargarResultadosEncuesta()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Actualizar
+          </button>
+          <button class="btn-icon btn-danger" id="btn-desactivar-encuesta" onclick="desactivarEncuestaActiva()" style="display:none">🔕 Desactivar</button>
+        </div>
+        <div class="card-body" id="encuesta-resultados">
+          <p style="color:var(--text-muted, #888)">Cargando…</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════
+         PÁGINA: NOTIFICACIONES (feed de actualizaciones)
+    ══════════════════════════════════ -->
+    <section class="page-content" id="page-notificaciones">
+      <div class="page-header">
+        <h1>Notificaciones</h1>
+        <p>Publica actualizaciones que se acumulan en el módulo "Notificaciones" del cliente. Se eliminan automáticamente pasados 30 días.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Publicar notificación</div>
+            <div class="card-subtitle">Todos los usuarios la verán acumulada junto a las anteriores, con badge de "no leída"</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Título</label>
+            <input type="text" id="notif-form-titulo" class="form-control" placeholder="Ej: Nuevo módulo de Estadísticas disponible" />
+          </div>
+          <div class="form-group">
+            <label>Mensaje</label>
+            <textarea id="notif-form-mensaje" class="form-control" rows="4" placeholder="Describe la actualización, aviso o mantenimiento..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Tipo</label>
+            <select id="notif-form-tipo" class="form-control">
+              <option value="actualizacion">Actualización</option>
+              <option value="nueva_funcion">Nueva función</option>
+              <option value="mantenimiento">Mantenimiento</option>
+              <option value="aviso">Aviso</option>
+              <option value="urgente">Urgente</option>
+            </select>
+          </div>
+          <button class="btn-icon btn-primary" onclick="publicarNotificacion()" style="margin-top:6px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            Publicar a todos los usuarios
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Historial publicado</div>
+            <div class="card-subtitle">Últimas notificaciones (se eliminan automáticamente a los 30 días)</div>
+          </div>
+        </div>
+        <div class="card-body no-pad">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Título</th>
+                  <th>Tipo</th>
+                  <th>Publicado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="notificaciones-tbody">
+                <!-- Renderizado por JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /main-content -->
+</div><!-- /app-wrapper -->
+
+
+<!-- ══════════════════════════════════════════
+     MODAL: VER QUIÉN VIO UN ANUNCIO / NOTIFICACIÓN
+     Reutilizado tanto para "Anuncios" (anuncios_vistos) como para
+     "Notificaciones" (notificaciones_leidas) — mismo formato: quién,
+     su negocio/correo, y a qué hora lo vio.
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-sucursales-cliente">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="sc-titulo">Bodegas y sucursales</span>
+      <button class="modal-close" aria-label="Cerrar" onclick="closeModal('modal-sucursales-cliente')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="card-subtitle" style="margin-bottom:14px">Se abren en otra pestaña, solo para mirar. No se puede modificar nada y queda registrado en la bitácora.</p>
+      <div id="sc-lista" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-sucursales-cliente')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-ver-lectores">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="lectores-modal-title">¿Quién lo vio?</span>
+      <button class="modal-close" aria-label="Cerrar" onclick="closeModal('modal-ver-lectores')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="card-subtitle" id="lectores-modal-resumen" style="margin-bottom:14px">—</p>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Negocio / Correo</th>
+              <th>Visto</th>
+            </tr>
+          </thead>
+          <tbody id="lectores-tbody">
+            <tr><td colspan="3" style="text-align:center;padding:24px;color:var(--text-muted)">Cargando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-ver-lectores')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: VER USUARIO
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-view-user">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Detalle de Usuario</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="detail-grid">
+        <div class="detail-item">
+          <label>Nombre</label>
+          <span id="detail-nombre">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Apellido</label>
+          <span id="detail-apellido">—</span>
+        </div>
+        <div class="detail-item full">
+          <label>Nombre del Negocio</label>
+          <span id="detail-negocio">—</span>
+        </div>
+        <div class="detail-item full">
+          <label>Email</label>
+          <span id="detail-email">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Teléfono</label>
+          <span id="detail-telefono">—</span>
+          <a id="detail-telefono-whatsapp" href="#" target="_blank" rel="noopener" class="btn-icon btn-sm" title="Abrir chat de WhatsApp con este número" style="display:none;margin-left:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.48 1.32 5L2 22l5.25-1.38c1.44.79 3.06 1.2 4.7 1.2h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.85 9.85 0 0 0 12.04 2m0 1.67c2.2 0 4.27.86 5.82 2.42a8.23 8.23 0 0 1 2.42 5.82c0 4.54-3.7 8.23-8.24 8.23a8.2 8.2 0 0 1-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.23 8.24-8.23m-4.87 4.72c-.14 0-.4.05-.6.29-.21.24-.8.78-.8 1.9 0 1.12.82 2.2.93 2.35.11.15 1.6 2.44 3.88 3.42 1.92.83 2.31.66 2.73.62.42-.04 1.35-.55 1.54-1.08.19-.53.19-.98.13-1.08-.06-.09-.21-.15-.44-.26-.23-.12-1.35-.67-1.56-.74-.21-.08-.36-.12-.51.12-.15.23-.59.74-.72.9-.13.15-.27.16-.5.05-.23-.12-.98-.36-1.86-1.15-.69-.61-1.15-1.37-1.29-1.6-.13-.23-.01-.36.1-.47.11-.11.23-.27.35-.4.11-.14.15-.23.22-.38.08-.16.04-.3-.02-.42-.06-.12-.51-1.29-.71-1.75-.19-.46-.38-.4-.51-.4h-.16Z"/></svg>
+            WhatsApp
+          </a>
+        </div>
+        <div class="detail-item">
+          <label>Plan</label>
+          <span id="detail-plan">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Estado</label>
+          <span id="detail-estado">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Fecha de Registro</label>
+          <span id="detail-registro">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Última Conexión</label>
+          <span id="detail-conexion">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Último Pago</label>
+          <span id="detail-ultimo-pago">—</span>
+        </div>
+        <div class="detail-item">
+          <label>Onboarding</label>
+          <span id="detail-onboarding">—</span>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="font-weight:600;font-size:13.5px;margin-bottom:8px">📝 Notas internas (solo visibles para administradores)</div>
+        <div id="notas-cliente-lista" style="max-height:160px;overflow-y:auto;margin-bottom:10px">
+          <div style="color:var(--text-muted);font-size:12.5px">Cargando…</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="nota-cliente-texto" placeholder="Ej: Llamó el 20 de agosto, prometió pagar el 25…" style="flex:1" onkeydown="if(event.key==='Enter')guardarNotaCliente()"/>
+          <button class="btn-icon btn-primary btn-sm" onclick="guardarNotaCliente()">Agregar</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-view-user')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: EDITAR FACTURACIÓN DE UN CLIENTE
+     (ciclo de pago y precio personalizado)
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-edit-billing">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Editar facturación — <span id="eb-nombre-cliente">—</span></span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Ciclo de facturación</label>
+        <select id="eb-ciclo" class="form-control" onchange="actualizarPreviewBilling()">
+          <option value="mensual">Mensual (se repite cada mes)</option>
+          <option value="anual">Anual (se repite una vez al año)</option>
+          <option value="unico">Pago único (de por vida, no se repite)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Precio de este cliente (USD)</label>
+        <input type="number" id="eb-precio" class="form-control" min="0" step="0.01"
+          placeholder="Precio por defecto del plan" />
+        <span style="font-size:11.5px;color:var(--text-muted)">Déjalo vacío para usar el precio por defecto del plan.</span>
+      </div>
+      <div class="form-group" style="background:var(--bg-hover);border-radius:8px;padding:10px 12px;margin-top:4px">
+        <label style="margin-bottom:2px">Próximo pago con estos cambios</label>
+        <span id="eb-preview" style="font-weight:600">—</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-edit-billing')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-guardar-billing" onclick="guardarEditBilling()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: LÍMITE DE USUARIOS (sistema multiusuario / perfiles)
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-limite-usuarios">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Límite de usuarios — <span id="lu-nombre-cliente">—</span></span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="background:var(--bg-hover);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--text-secondary)">
+        Cuántos perfiles con PIN puede crear esta cuenta dentro de su sistema multiusuario (Admin cuenta como uno). El valor por defecto de cualquier cuenta nueva es 5 — al superarlo, el cliente ve una oferta de $1/usuario adicional por WhatsApp.
+      </div>
+      <div class="form-group">
+        <label>Perfiles actuales de esta cuenta</label>
+        <span id="lu-actuales" style="font-weight:600">—</span>
+      </div>
+      <div class="form-group">
+        <label>Límite permitido</label>
+        <input type="number" id="lu-limite" class="form-control" min="1" step="1" placeholder="5"/>
+        <span style="font-size:11.5px;color:var(--text-muted)">Puedes poner cualquier número — 5, 6, 7, 8...</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-limite-usuarios')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-guardar-limite" onclick="guardarLimiteUsuarios()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-limite-negocios">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Límite de negocios — <span id="ln-nombre-cliente">—</span></span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="background:var(--bg-hover);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--text-secondary)">
+        Cuántos negocios puede crear esta cuenta bajo el MISMO correo y contraseña (cada negocio es completamente independiente -- su propio catálogo, ventas, todo). El valor por defecto de cualquier cuenta nueva es 1 -- al querer crear un segundo sin que tú lo hayas ampliado aquí, el cliente ve la tabla de precios ($10/mes, $100/año, $800 permanente) con un botón de WhatsApp.
+      </div>
+      <div class="form-group">
+        <label>Negocios actuales de esta cuenta</label>
+        <span id="ln-actuales" style="font-weight:600">—</span>
+      </div>
+      <div class="form-group">
+        <label>Límite permitido</label>
+        <input type="number" id="ln-limite" class="form-control" min="1" step="1" placeholder="1"/>
+        <span style="font-size:11.5px;color:var(--text-muted)">Puedes poner cualquier número — 1, 2, 3...</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-limite-negocios')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-guardar-limite-negocios" onclick="guardarLimiteNegocios()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: NUEVO CHAT GRUPAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-nuevo-chat-grupal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nuevo chat grupal</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nombre del chat</label>
+        <input type="text" id="ncg-nombre" class="form-control" placeholder="Ej: Clientes de Managua" />
+      </div>
+      <div class="form-group">
+        <label>Agregar clientes</label>
+        <div class="gc-picker" id="ncg-picker">
+          <div class="payment-empty">Cargando clientes...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-nuevo-chat-grupal')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-crear-chat-grupal" onclick="crearChatGrupal()">Crear chat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: AGREGAR MIEMBRO A UN CHAT GRUPAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-agregar-miembro">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Agregar miembro</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Clientes disponibles</label>
+        <div class="gc-picker" id="am-picker">
+          <div class="payment-empty">Cargando clientes...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-agregar-miembro')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-agregar-miembro" onclick="agregarMiembroSeleccionado()">Agregar seleccionados</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: CREAR CÓDIGO
+══════════════════════════════════════════ -->
+<!-- Freelancers: crear -->
+<div class="modal-overlay" id="fl-modal-nuevo">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nuevo freelancer</span>
+      <button class="modal-close" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" id="fl-nuevo-form">
+      <div class="form-group"><label for="fl-n-nombre">Nombre completo *</label><input class="form-control" id="fl-n-nombre" maxlength="80" /></div>
+      <div class="form-group"><label for="fl-n-email">Correo *</label><input class="form-control" id="fl-n-email" type="email" maxlength="120" placeholder="Con este correo creará o usará su cuenta" /></div>
+      <div class="form-row">
+        <div class="form-group"><label for="fl-n-tel">Teléfono</label><input class="form-control" id="fl-n-tel" maxlength="30" /></div>
+        <div class="form-group"><label for="fl-n-ident">Identificación</label><input class="form-control" id="fl-n-ident" maxlength="40" /></div>
+      </div>
+      <label class="fl-check"><input type="checkbox" id="fl-n-generar" /> Puede generar códigos de acceso</label>
+      <div class="fl-mini">Los demás permisos (planes, límites, comisión) se ajustan en su ficha. Por defecto: solo plan Prueba, 1 uso por código, 20 códigos al mes, vencen en 30 días.</div>
+    </div>
+    <div class="modal-body" id="fl-nuevo-ok" style="display:none"></div>
+    <div class="modal-footer" id="fl-nuevo-footer">
+      <button class="btn-icon btn-ghost" type="button" data-fl-cerrar="fl-modal-nuevo">Cancelar</button>
+      <button class="btn-icon btn-primary" type="button" id="fl-n-guardar">Crear e invitar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Freelancers: ficha -->
+<div class="modal-overlay" id="fl-modal-ficha">
+  <div class="modal fl-modal-ancho">
+    <div class="modal-header">
+      <span class="modal-title" id="fl-ficha-titulo">Freelancer</span>
+      <button class="modal-close" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="fl-tabs" id="fl-ficha-tabs" role="tablist">
+      <button type="button" class="fl-tab on" data-fl-tab="resumen">Resumen</button>
+      <button type="button" class="fl-tab" data-fl-tab="permisos">Permisos</button>
+      <button type="button" class="fl-tab" data-fl-tab="codigos">Códigos</button>
+      <button type="button" class="fl-tab" data-fl-tab="clientes">Clientes</button>
+      <button type="button" class="fl-tab" data-fl-tab="actividad">Actividad</button>
+      <button type="button" class="fl-tab" data-fl-tab="rendimiento">Rendimiento</button>
+      <button type="button" class="fl-tab" data-fl-tab="comisiones">Comisiones</button>
+    </div>
+    <div class="modal-body fl-ficha-body" id="fl-ficha-body"><div class="fl-cargando">Cargando…</div></div>
+  </div>
+</div>
+
+<!-- Freelancers: confirmar con motivo -->
+<div class="modal-overlay" id="fl-modal-motivo">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="fl-motivo-titulo">Confirmar</span>
+      <button class="modal-close" aria-label="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p class="fl-motivo-texto" id="fl-motivo-texto"></p>
+      <div class="form-group" id="fl-motivo-extra"></div>
+      <div class="form-group"><label for="fl-motivo-input" id="fl-motivo-label">Motivo</label><textarea class="form-control" id="fl-motivo-input" rows="3" maxlength="500"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" type="button" data-fl-cerrar="fl-modal-motivo">Cancelar</button>
+      <button class="btn-icon btn-danger" type="button" id="fl-motivo-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-create-code">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Crear Código de Acceso</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="form-create-code">
+        <div class="form-group">
+          <label>Plan</label>
+          <select id="new-plan" class="form-control">
+            <option value="prueba">Prueba</option>
+            <option value="premium">Premium</option>
+          </select>
+        </form>
+
+        <div class="form-group">
+          <label>Código</label>
+          <div style="display:flex; gap:10px; align-items:center">
+            <input
+              type="text"
+              id="new-codigo"
+              class="form-control"
+              placeholder="NEG360-ABCD1234"
+              style="flex:1; font-family:monospace; letter-spacing:.5px"
+            />
+            <button class="btn-icon btn-ghost" id="btn-generate-code" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              Generar
+            </button>
+          </div>
+          <div id="code-preview-text" class="code-preview" style="display:none"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Descripción (opcional)</label>
+          <input
+            type="text"
+            id="new-descripcion"
+            class="form-control"
+            placeholder="Ej: Código para campaña Julio 2025"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Usos máximos</label>
+          <input
+            type="number"
+            id="new-usos"
+            class="form-control"
+            value="1"
+            min="1"
+            max="9999"
+          />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-create-code')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-save-code">Guardar Código</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: CREAR CÓDIGO CATÁLOGO360
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-create-code-catalogo360">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Crear Código de Catálogo360</span>
+      <button class="modal-close" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <form id="form-create-code-catalogo360">
+        <div class="form-group">
+          <label>Código</label>
+          <div style="display:flex; gap:10px; align-items:center">
+            <input
+              type="text"
+              id="new-codigo-c360"
+              class="form-control"
+              placeholder="C360-ABCD1234"
+              style="flex:1; font-family:monospace; letter-spacing:.5px"
+            />
+            <button class="btn-icon btn-ghost" id="btn-generate-code-c360" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              Generar
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Descripción (opcional)</label>
+          <input
+            type="text"
+            id="new-descripcion-c360"
+            class="form-control"
+            placeholder="Ej: Cliente Óptica Central"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Plan que otorga este código</label>
+          <select id="new-plan-c360" class="form-control">
+            <option value="basico">Básico — $10/mes (1 catálogo, 100 productos, 3 fotos)</option>
+            <option value="profesional">Profesional — $20/mes (3 catálogos, 100 c/u, 6 fotos)</option>
+            <option value="premium">Premium — $35/mes (5 catálogos, 100 c/u, 10 fotos)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Tipo de cliente</label>
+          <select id="new-tipo-cliente-c360" class="form-control">
+            <option value="false">Cliente existente de Negocio360 (agrega Catálogo360 a su cuenta)</option>
+            <option value="true">Cliente independiente (solo quiere Catálogo360)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Usos máximos</label>
+          <input
+            type="number"
+            id="new-usos-c360"
+            class="form-control"
+            value="1"
+            min="1"
+            max="9999"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Fecha de expiración (opcional)</label>
+          <input
+            type="date"
+            id="new-expiracion-c360"
+            class="form-control"
+          />
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-ghost" onclick="closeModal('modal-create-code-catalogo360')">Cancelar</button>
+      <button class="btn-icon btn-primary" id="btn-save-code-c360">Guardar Código</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: CONFIRMACIÓN
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-body" style="padding:32px 28px 24px">
+      <div class="confirm-icon warn" id="confirm-icon">⚠</div>
+      <div class="confirm-text">
+        <h3 id="confirm-title">¿Estás seguro?</h3>
+        <p id="confirm-sub">Esta acción modificará el estado de la cuenta.</p>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:center; padding-bottom:24px">
+      <button class="btn-icon btn-ghost" id="btn-cancel-confirm">Cancelar</button>
+      <button class="btn-icon btn-warning" id="btn-confirm-action">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Script -->
+<script>
+  // Preview código — mostrar/ocultar dinámicamente
+  document.addEventListener('DOMContentLoaded', () => {
+    const codigoInput   = document.getElementById('new-codigo');
+    const previewEl     = document.getElementById('code-preview-text');
+
+    if (codigoInput && previewEl) {
+      codigoInput.addEventListener('input', () => {
+        const val = codigoInput.value.trim();
+        previewEl.textContent = val;
+        previewEl.style.display = val ? 'block' : 'none';
+      });
+    }
+  });
+</script>
+<script src="admin.js?v=20261106c"></script>
+<script src="admin-freelancers.js?v=20261021a"></script>
+
+<script src="bienvenida-negocio360.js?v=11"></script>
+</body>
+</html>

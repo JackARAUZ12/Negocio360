@@ -1,0 +1,2005 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="only light"> <!-- El modo oscuro lo maneja el sistema (botón 🌙/☀️); evita que el celular/navegador lo oscurezca a la fuerza -->
+  <link rel="stylesheet" href="movil-sin-zoom.css?v=20261021c" />
+  <script src="movil-recargar.js?v=20261021b" defer></script>
+  <title>Catálogo360 — Negocio360</title>
+
+  <!-- Supabase CDN -->
+  <script src="ver-como.js?v=20261023b"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="reloj-sesion.js?v=20261028b"></script>
+<script src="cr-modo.js?v=20261101d"></script>
+  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="modulos-registro.js?v=20261111a"></script>
+  <script src="auditoria-guard.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* =====================================================
+       CSS VARIABLES — LIGHT & DARK (idéntico a caja/dashboard)
+    ===================================================== */
+    :root {
+      --bg-base:        #f5f5f7;
+      --bg-surface:     #ffffff;
+      --bg-surface-2:   #fafafa;
+      --bg-sidebar:     #ffffff;
+      --bg-header:      rgba(255,255,255,0.85);
+      --bg-hover:       #f0f0f5;
+      --bg-active:      #eff0ff;
+
+      --text-primary:   #0d0d14;
+      --text-secondary: #60607a;
+      --text-muted:     #9999b3;
+      --text-accent:    #5a5af4;
+
+      --border:         #e8e8ef;
+      --border-focus:   #5a5af4;
+
+      --accent:         #5a5af4;
+      --accent-soft:    #eff0ff;
+      --accent-2:       #22c55e;
+      --accent-2-soft:  #f0fdf4;
+      --accent-3:       #f97316;
+      --accent-3-soft:  #fff7ed;
+      --accent-4:       #8b5cf6;
+      --accent-4-soft:  #f5f3ff;
+      --accent-5:       #06b6d4;
+      --accent-5-soft:  #ecfeff;
+
+      --danger:         #ef4444;
+      --danger-soft:    #fef2f2;
+      --warning:        #f59e0b;
+      --warning-soft:   #fffbeb;
+      --success:        #22c55e;
+      --success-soft:   #f0fdf4;
+
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md:      0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+      --shadow-lg:      0 12px 32px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.05);
+
+      --radius-sm:      8px;
+      --radius-md:      12px;
+      --radius-lg:      16px;
+      --radius-xl:      20px;
+
+      --sidebar-w:      240px;
+      --header-h:       64px;
+
+      --font-main:      'Plus Jakarta Sans', sans-serif;
+      --font-mono:      'JetBrains Mono', monospace;
+      --transition:     0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    [data-theme="dark"] {
+      --bg-base:        #0c0c14;
+      --bg-surface:     #13131f;
+      --bg-surface-2:   #1a1a2a;
+      --bg-sidebar:     #13131f;
+      --bg-header:      rgba(19,19,31,0.9);
+      --bg-hover:       #1e1e30;
+      --bg-active:      #1e1e40;
+
+      --text-primary:   #f0f0fa;
+      --text-secondary: #9090b0;
+      --text-muted:     #5a5a7a;
+      --text-accent:    #7b7bff;
+
+      --border:         #1e1e30;
+      --border-focus:   #7b7bff;
+
+      --accent:         #7b7bff;
+      --accent-soft:    #1e1e40;
+      --accent-2:       #22c55e;
+      --accent-2-soft:  #0f2a1a;
+      --accent-3:       #f97316;
+      --accent-3-soft:  #2a1a0a;
+      --accent-4:       #a78bfa;
+      --accent-4-soft:  #1e1530;
+      --accent-5:       #22d3ee;
+      --accent-5-soft:  #0a1e25;
+
+      --danger:         #f87171;
+      --danger-soft:    #2a0f0f;
+      --warning:        #fbbf24;
+      --warning-soft:   #2a200a;
+      --success:        #4ade80;
+      --success-soft:   #0f2a1a;
+
+      --shadow-sm:      0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md:      0 4px 12px rgba(0,0,0,0.4);
+      --shadow-lg:      0 12px 32px rgba(0,0,0,0.5);
+    }
+
+    /* =====================================================
+       RESET & BASE
+    ===================================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-main);
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      transition: background var(--transition), color var(--transition);
+      overflow-x: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+    button { cursor: pointer; border: none; background: none; font-family: inherit; }
+    ul, ol { list-style: none; }
+    input, select, textarea {
+      font-family: var(--font-main);
+      font-size: 13.5px;
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      width: 100%;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239999b3' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px; }
+    label { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 5px; }
+    textarea { resize: vertical; min-height: 72px; }
+
+    /* =====================================================
+       APP LAYOUT
+    ===================================================== */
+    #app { display: flex; min-height: 100vh; }
+
+    /* =====================================================
+       SIDEBAR (idéntico a caja/dashboard)
+    ===================================================== */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0;
+      z-index: 100;
+      transition: width var(--transition), transform var(--transition), background var(--transition);
+      overflow: hidden;
+    }
+    #sidebar.collapsed { width: 64px; }
+
+    .sidebar-logo {
+      display: flex; align-items: center; gap: 10px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+      min-height: var(--header-h);
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-icon svg { color: #fff; }
+    .logo-text { font-size: 16px; font-weight: 800; color: var(--text-primary); white-space: nowrap; transition: opacity var(--transition); }
+
+    #sidebar.collapsed .logo-text,
+    #sidebar.collapsed .nav-label,
+    #sidebar.collapsed .nav-section-title,
+    #sidebar.collapsed .nav-badge { opacity: 0; pointer-events: none; width: 0; overflow: hidden; }
+
+    .sidebar-nav { flex: 1; padding: 12px; overflow-y: auto; overflow-x: hidden; }
+
+    .nav-section-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--text-muted);
+      padding: 12px 8px 6px; white-space: nowrap;
+      transition: opacity var(--transition);
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 10px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      transition: all var(--transition);
+      cursor: pointer;
+      white-space: nowrap;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .nav-item svg { flex-shrink: 0; width: 18px; height: 18px; }
+    .nav-label { font-size: 13.5px; font-weight: 500; white-space: nowrap; }
+
+    /* =====================================================
+       MAIN
+    ===================================================== */
+    #main {
+      flex: 1;
+      margin-left: var(--sidebar-w);
+      transition: margin-left var(--transition);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    #main.sidebar-collapsed { margin-left: 64px; }
+
+    /* =====================================================
+       HEADER
+    ===================================================== */
+    #header {
+      height: var(--header-h);
+      background: var(--bg-header);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 12px;
+      position: sticky; top: 0; z-index: 50;
+      flex-wrap: wrap;
+    }
+    .header-toggle {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-secondary);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .header-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .header-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .header-spacer { flex: 1; }
+    .plan-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      background: var(--accent-soft); border: 1px solid var(--border);
+      border-radius: 100px; font-size: 12px; font-weight: 600; color: var(--accent);
+      white-space: nowrap;
+    }
+    .theme-btn {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; color: var(--text-secondary);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .theme-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .user-menu {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 10px 4px 4px;
+      border: 1px solid var(--border); border-radius: 100px;
+      transition: all var(--transition);
+    }
+    .user-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%; background: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .user-info { display: flex; flex-direction: column; min-width: 0; }
+    .user-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+    .user-biz  { font-size: 11px; color: var(--text-muted); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+
+    /* =====================================================
+       PAGE CONTENT
+    ===================================================== */
+    #content { flex: 1; padding: 28px 28px 60px; max-width: 1440px; width: 100%; margin: 0 auto; }
+
+    /* =====================================================
+       GREETING
+    ===================================================== */
+    .greeting-row {
+      display: flex; align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
+    }
+    .greeting-text h1 { font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 3px; }
+    .greeting-text p  { font-size: 13.5px; color: var(--text-secondary); }
+    .greeting-actions { display: flex; align-items: center; gap: 10px; }
+
+    /* =====================================================
+       TABS DE SECCIÓN
+    ===================================================== */
+    .section-tabs {
+      display: flex; gap: 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      width: fit-content;
+      max-width: 100%;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      overflow-x: auto;
+    }
+    .section-tab {
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap;
+    }
+    .section-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+    .section-tab.active { background: var(--accent); color: #fff; }
+    .section-tab svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    /* =====================================================
+       KPI CARDS
+    ===================================================== */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 18px;
+      display: flex; align-items: flex-start; gap: 12px;
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition);
+      min-width: 0;
+    }
+    .kpi-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .kpi-icon {
+      width: 40px; height: 40px;
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .kpi-body { flex: 1; min-width: 0; }
+    .kpi-label { font-size: 11.5px; color: var(--text-secondary); font-weight: 500; margin-bottom: 4px; }
+    .kpi-value { font-size: 18px; font-weight: 800; color: var(--text-primary); line-height: 1.1; margin-bottom: 4px; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+    .kpi-delta { font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 3px; }
+    .kpi-delta.positive { color: var(--success); }
+    .kpi-delta.negative { color: var(--danger); }
+    .kpi-delta.neutral  { color: var(--text-muted); }
+
+    /* =====================================================
+       PANEL CARD (contenedor de sección)
+    ===================================================== */
+    .panel-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; gap: 10px;
+    }
+    .panel-title {
+      font-size: 15px; font-weight: 700; color: var(--text-primary);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+    .panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* =====================================================
+       BOTONES
+    ===================================================== */
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px;
+      background: var(--accent); color: #fff;
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      transition: opacity var(--transition), transform var(--transition);
+      white-space: nowrap;
+    }
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-primary svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+      transition: all var(--transition);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+    .btn-ghost {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 10px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      font-size: 12.5px; font-weight: 600;
+      transition: all var(--transition);
+    }
+    .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .btn-icon {
+      width: 28px; height: 28px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .btn-icon.btn-primary, .btn-icon.btn-primary:hover { color: #fff; background: var(--accent); }   /* "Escribir por WhatsApp", "Activar": se leían gris sobre morado */
+    .btn-icon-danger:hover  { background: var(--danger-soft);  color: var(--danger); }
+    .btn-icon-success:hover { background: var(--success-soft); color: var(--success); }
+
+    /* =====================================================
+       FILTROS
+    ===================================================== */
+    .filtros-row {
+      display: flex; align-items: center;
+      gap: 8px; padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12.5px; font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--bg-surface-2);
+      transition: all var(--transition);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .search-wrap {
+      display: flex; align-items: center; gap: 0;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg-surface); overflow: hidden;
+      transition: border-color var(--transition);
+      flex: 1; max-width: 240px;
+      min-width: 160px;
+    }
+    .search-wrap:focus-within { border-color: var(--border-focus); }
+    .search-wrap svg { flex-shrink: 0; margin-left: 10px; color: var(--text-muted); width: 14px; height: 14px; }
+    .search-wrap input {
+      border: none; box-shadow: none; padding: 8px 10px;
+      background: transparent;
+      min-width: 0;
+    }
+    .search-wrap input:focus { box-shadow: none; border-color: transparent; }
+
+    .filtro-categoria-select { width: auto; min-width: 160px; padding: 6px 28px 6px 12px; font-size: 12.5px; }
+
+    /* =====================================================
+       TABLA
+    ===================================================== */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; min-width: 640px; }
+    thead th {
+      padding: 10px 14px;
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+      background: var(--bg-surface-2);
+    }
+    tbody td {
+      padding: 11px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      color: var(--text-primary);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr.mov-row:hover { background: var(--bg-hover); }
+    tbody tr.mov-anulado { opacity: 0.45; }
+
+    .td-fecha    { white-space: nowrap; color: var(--text-secondary); font-size: 12.5px; }
+    .td-concepto { max-width: 220px; }
+    .td-monto    { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; font-weight: 600; }
+    .td-salida   { color: var(--danger); }
+    .td-actions  { white-space: nowrap; }
+
+    .concepto-text { display: block; font-weight: 500; }
+    .concepto-obs  { display: block; font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+
+    .cat-badge {
+      display: inline-block; padding: 3px 9px; border-radius: 100px;
+      font-size: 11px; font-weight: 700;
+      background: var(--accent-4-soft); color: var(--accent-4);
+      white-space: nowrap;
+    }
+
+    .tipo-badge {
+      display: inline-flex; align-items: center;
+      padding: 3px 8px; border-radius: 5px;
+      font-size: 11px; font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge-inmediato  { background: var(--accent-3-soft); color: var(--accent-3); }
+    .badge-programado { background: var(--accent-5-soft); color: var(--accent-5); }
+
+    .status-badge {
+      display: inline-block; padding: 3px 8px; border-radius: 5px;
+      font-size: 11px; font-weight: 700;
+    }
+    .badge-active   { background: var(--success-soft); color: var(--success); }
+    .badge-inactive { background: var(--bg-hover);     color: var(--text-muted); }
+
+    .venc-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 9px; border-radius: 6px;
+      font-size: 11.5px; font-weight: 700; white-space: nowrap;
+    }
+    .venc-vencido { background: var(--danger-soft);  color: var(--danger); }
+    .venc-hoy     { background: var(--warning-soft); color: var(--warning); }
+    .venc-pronto  { background: var(--warning-soft); color: var(--warning); }
+    .venc-ok      { background: var(--bg-hover);      color: var(--text-secondary); font-weight: 600; }
+
+    .action-cell { display: flex; align-items: center; gap: 4px; }
+
+    /* =====================================================
+       PAGINACIÓN
+    ===================================================== */
+    .paginacion-row {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap; gap: 8px;
+    }
+    #paginacion-info { font-size: 12.5px; color: var(--text-muted); }
+    .pag-btns { display: flex; gap: 6px; }
+    .pag-btns button {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12.5px; font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--bg-surface);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .pag-btns button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pag-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* =====================================================
+       EMPTY STATES
+    ===================================================== */
+    .empty-cell { text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px; }
+    .empty-state-mini { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+    /* =====================================================
+       MODALES
+    ===================================================== */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px);
+      z-index: 500;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.modal-open { display: flex; }
+
+    .modal-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: modalIn 0.2s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    }
+    .modal-box.modal-sm { max-width: 400px; }
+    .modal-box.modal-lg { max-width: 580px; }
+
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.94) translateY(12px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .modal-close {
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 7px; color: var(--text-muted);
+      transition: all var(--transition);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .modal-body { padding: 20px 24px; }
+    .modal-body .form-group { margin-bottom: 14px; }
+    .modal-body .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .modal-footer {
+      display: flex; align-items: center;
+      justify-content: flex-end; gap: 8px;
+      padding: 14px 24px 20px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    /* =====================================================
+       CHECKBOX PERSONALIZADO
+    ===================================================== */
+    .checkbox-row {
+      display: flex; align-items: flex-start; gap: 8px;
+      margin-top: 4px;
+      padding: 10px 12px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .checkbox-row input[type="checkbox"] {
+      width: 16px; height: 16px; margin-top: 1px;
+      padding: 0; cursor: pointer; accent-color: var(--accent); flex-shrink: 0;
+    }
+    .checkbox-row label { margin: 0; cursor: pointer; font-weight: 600; color: var(--text-primary); }
+    .checkbox-row .checkbox-desc { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; font-weight: 400; }
+
+    /* =====================================================
+       RESUMEN DE PAGO PROGRAMADO (modal registrar pago)
+    ===================================================== */
+    .pago-resumen {
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    .pago-resumen-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 0;
+      gap: 8px;
+    }
+    .pago-resumen-row span:first-child { font-size: 12.5px; color: var(--text-secondary); }
+    .pago-resumen-row span:last-child, .pago-resumen-row strong { font-size: 13.5px; font-weight: 700; color: var(--text-primary); text-align: right; }
+
+    /* =====================================================
+       DETALLE DE GASTO
+    ===================================================== */
+    .detalle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      gap: 10px;
+    }
+    .detalle-row:last-child { border-bottom: none; }
+    .detalle-row span { color: var(--text-secondary); }
+    .detalle-row strong { color: var(--text-primary); font-weight: 700; text-align: right; }
+    .detalle-divider { height: 1px; background: var(--border); margin: 16px 0 12px; }
+
+    /* =====================================================
+       TOAST
+    ===================================================== */
+    .toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      padding: 12px 20px;
+      border-radius: var(--radius-md);
+      font-size: 13.5px; font-weight: 600;
+      box-shadow: var(--shadow-lg);
+      z-index: 999;
+      max-width: 340px;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    .toast.toast-show { opacity: 1; transform: translateY(0); }
+    .toast-success { background: var(--success); color: #fff; }
+    .toast-error   { background: var(--danger);  color: #fff; }
+
+    /* =====================================================
+       LOADER
+    ===================================================== */
+    #loader {
+      position: fixed; inset: 0;
+      background: var(--bg-base);
+      z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+      transition: opacity 0.4s;
+    }
+    #loader.hidden { opacity: 0; pointer-events: none; }
+    .loader-logo {
+      width: 48px; height: 48px;
+      background: var(--accent); border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .loader-spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* =====================================================
+       SCROLLBAR
+    ===================================================== */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* =====================================================
+       TOOLTIP
+    ===================================================== */
+    [data-tooltip] { position: relative; }
+    [data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute; left: 50%; bottom: calc(100% + 6px);
+      transform: translateX(-50%);
+      background: var(--text-primary); color: var(--bg-surface);
+      font-size: 11px; padding: 4px 8px; border-radius: 5px;
+      white-space: nowrap; pointer-events: none; opacity: 0;
+      transition: opacity var(--transition); z-index: 200;
+    }
+    [data-tooltip]:hover::after { opacity: 1; }
+
+    /* =====================================================
+       ANIMATE IN
+    ===================================================== */
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .stagger-1 { animation-delay: 0.05s; }
+    .stagger-2 { animation-delay: 0.10s; }
+    .stagger-3 { animation-delay: 0.15s; }
+    .stagger-4 { animation-delay: 0.20s; }
+    .stagger-5 { animation-delay: 0.25s; }
+    .stagger-6 { animation-delay: 0.30s; }
+
+    /* =====================================================
+       RESPONSIVE — TODOS LOS TAMAÑOS DE PANTALLA
+    ===================================================== */
+
+    /* Pantallas grandes / TV */
+    @media (min-width: 1600px) {
+      #content { max-width: 1680px; }
+      .kpi-grid { grid-template-columns: repeat(6, 1fr); gap: 18px; }
+    }
+
+    /* Laptops / escritorio mediano */
+    @media (max-width: 1200px) {
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    /* Tablets */
+    @media (max-width: 900px) {
+      :root { --sidebar-w: 210px; }
+      #content { padding: 20px 16px 48px; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      #header { padding: 0 16px; }
+      .user-name, .user-biz { max-width: 110px; }
+    }
+
+    /* Tablets pequeñas / móviles grandes en horizontal */
+    @media (max-width: 768px) {
+      #sidebar { transform: translateX(-100%); width: 240px; }
+      #sidebar.mobile-open { transform: translateX(0); box-shadow: var(--shadow-lg); }
+      #main { margin-left: 0 !important; width: 100%; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      #content { padding: 16px 14px 40px; }
+      .modal-body .form-row { grid-template-columns: 1fr; }
+      .filtros-row { gap: 6px; }
+      .header-title { display: none; }
+      .plan-badge span:not(:first-child) { display: inline; }
+    }
+
+    /* Móviles */
+    @media (max-width: 480px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .kpi-card { padding: 14px; gap: 8px; }
+      .kpi-icon { width: 34px; height: 34px; }
+      .kpi-value { font-size: 15px; }
+      .kpi-label { font-size: 10.5px; }
+      .section-tabs { width: 100%; }
+      .section-tab { flex: 1; justify-content: center; padding: 8px 10px; font-size: 12px; }
+      .greeting-text h1 { font-size: 18px; }
+      .greeting-row { flex-direction: column; align-items: stretch; }
+      .greeting-actions .btn-primary { width: 100%; justify-content: center; }
+      #header { gap: 8px; padding: 0 12px; }
+      .plan-badge { display: none; }
+      #header-fecha { display: none; }
+      .user-info { display: none; }
+      .modal-box { max-width: 100%; margin: 0; border-radius: var(--radius-lg); }
+      .panel-header { padding: 14px 14px 12px; }
+      .filtros-row { padding: 12px 14px; }
+      .table-wrap { margin: 0; }
+      .paginacion-row { padding: 10px 14px; flex-direction: column; align-items: stretch; text-align: center; }
+      .pag-btns { justify-content: center; }
+      .search-wrap { max-width: 100%; width: 100%; flex-basis: 100%; }
+      .filtro-categoria-select { flex: 1; min-width: 0; }
+    }
+
+    /* Móviles muy pequeños */
+    @media (max-width: 360px) {
+      .kpi-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Orientación horizontal en móviles (poca altura) */
+    @media (max-height: 480px) and (orientation: landscape) {
+      #header { height: 52px; }
+      :root { --header-h: 52px; }
+      .modal-box { max-height: 96vh; }
+    }
+
+    /* Overlay para cerrar sidebar en móvil */
+    .sidebar-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 99;
+    }
+    .sidebar-overlay.show, .sidebar-overlay.active { display: block; }
+    @media (min-width: 769px) { .sidebar-overlay { display: none !important; } }
+
+    /* SELECTOR DE ESCALA DE PRECIOS (idéntico a Ventas) */
+    .esc-precio-opcion{display:flex;align-items:center;gap:10px;padding:12px 14px;
+      border:1.5px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;
+      cursor:pointer;transition:border-color .15s ease,background .15s ease}
+    .esc-precio-opcion:hover{border-color:var(--accent)}
+    .esc-precio-opcion input[type="radio"]{accent-color:var(--accent);width:16px;height:16px}
+    .esc-precio-opcion:has(input:checked){border-color:var(--accent);background:var(--accent-soft, rgba(90,90,244,.06))}
+    .esc-precio-nombre{flex:1;font-size:13.5px;font-weight:600}
+    .esc-precio-valor{font-family:var(--font-mono);font-weight:700;color:var(--accent)}
+
+    .stat-readonly {
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      font-size: 13.5px;
+    }
+    .badge-credito { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:100px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+    .badge-en_proceso   { background:var(--accent-5-soft); color:var(--accent-5); }
+    .badge-activo       { background:var(--accent-soft);   color:var(--accent); }
+    .badge-al_dia       { background:var(--success-soft);  color:var(--success); }
+    .badge-con_atraso   { background:var(--warning-soft);  color:var(--warning); }
+    .badge-cancelado    { background:var(--bg-hover);      color:var(--text-muted); }
+    .badge-refinanciado { background:var(--accent-4-soft); color:var(--accent-4); }
+    .badge-tipo-venta      { background:var(--accent-2-soft); color:var(--accent-2); }
+    .badge-tipo-financiero { background:var(--accent-4-soft); color:var(--accent-4); }
+    .timeline { list-style:none; padding:0; margin:0; }
+    .timeline li { display:flex; gap:10px; padding:8px 0; border-bottom:1px dashed var(--border); font-size:13px; }
+    .timeline li:last-child { border-bottom:none; }
+    .timeline .t-dot { width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:5px;flex-shrink:0; }
+    .ticket-print { font-family: var(--font-mono); font-size:12.5px; line-height:1.6; }
+    .ticket-print .tp-row { display:flex; justify-content:space-between; gap:10px; }
+    .ticket-print hr { border:none; border-top:1px dashed var(--border); margin:8px 0; }
+
+    /* =====================================================
+       EXTRA (tomado de compras.html): carrito de productos,
+       resumen de totales, IVA, buscador — mismos componentes
+       visuales que usa Compras, para que el formulario de
+       Cuentas por Pagar luzca idéntico.
+    ===================================================== */
+    thead th.th-right { text-align: right; }
+    .td-right { text-align: right; }
+    .td-money { font-family: var(--font-mono); font-weight: 600; }
+    .table-hint {
+      display: none; text-align: center; font-size: 11px; color: var(--text-muted);
+      padding: 7px 0 3px; border-bottom: 1px solid var(--border); background: var(--bg-surface-2);
+    }
+    .modal-box.modal-xl { max-width: 900px; }
+    .search-result-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; cursor: pointer; transition: background var(--transition);
+      border-bottom: 1px solid var(--border); gap: 10px;
+    }
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:hover { background: var(--bg-hover); }
+    .sri-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .sri-nombre { font-size: 13px; font-weight: 600; }
+    .sri-meta { font-size: 11.5px; color: var(--text-muted); }
+    .sri-costo { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--accent); flex-shrink:0; }
+    .search-no-results { padding: 14px; text-align: center; color: var(--text-muted); font-size: 13px; }
+    .carrito-input {
+      padding: 5px 8px; font-size: 13px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--bg-surface); color: var(--text-primary); width: 100%;
+    }
+    .carrito-input:focus { border-color: var(--border-focus); outline: none; }
+    .iva-row {
+      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+      background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
+      margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .iva-row input[type="checkbox"] { width: 16px; height: 16px; padding: 0; cursor: pointer; accent-color: var(--accent); }
+    .iva-row label { margin: 0; cursor: pointer; font-size: 13.5px; }
+    #np-iva-porcentaje-wrap { display: none; align-items: center; gap: 8px; margin-top: 10px; }
+    #np-iva-porcentaje-wrap input { width: 90px; }
+    .resumen-card { background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
+    .resumen-fila { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border); gap: 8px; }
+    .resumen-fila:last-child { border-bottom: none; }
+    .resumen-fila.resumen-total { font-size: 16px; font-weight: 800; padding-top: 12px; border-top: 2px solid var(--border); }
+    .resumen-fila.resumen-total .resumen-val { color: var(--accent); }
+    .resumen-label { color: var(--text-secondary); }
+    .resumen-val { font-family: var(--font-mono); font-weight: 600; }
+    .tipo-pago-opt {
+      display:flex; align-items:center; gap:10px; padding:14px 16px; border:1.5px solid var(--border);
+      border-radius: var(--radius-md); cursor:pointer; transition:all .15s; flex:1;
+    }
+    .tipo-pago-opt.activo { border-color: var(--accent); background: var(--accent-soft); }
+    .tipo-pago-opt input[type="radio"] { width:16px;height:16px;accent-color:var(--accent); }
+    .cxp-row-vencida td { background: rgba(239,68,68,0.04); }
+    .badge-pendiente { background: var(--warning-soft); color: var(--warning); }
+    .badge-vencido   { background: var(--danger-soft);  color: var(--danger); }
+    .badge-pagado    { background: var(--success-soft); color: var(--success); }
+    .badge-parcial   { background: var(--accent-3-soft); color: var(--accent-3); }
+    .badge-fecha_fija { background: var(--accent-5-soft); color: var(--accent-5); }
+    .badge-cuotas     { background: var(--accent-4-soft); color: var(--accent-4); }
+    .nc-paso-title {
+      font-size: 14px; font-weight: 700; color: var(--text-primary);
+      margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    }
+    .nc-paso-title svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+    .filtro-estado-btn.active, .tipo-repartidor-btn.active, .modo-venta-btn.active, .tipo-pago-btn.active,
+    .filtro-estado-activo-btn.active, .motivo-baja-btn.active, .filtro-agenda-btn.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+    .metodos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    @media(max-width:560px){.metodos-grid{grid-template-columns:repeat(2,1fr)}}
+
+    /* =====================================================
+       CALENDARIO — vista mes/semana/día
+    ===================================================== */
+    .cal-vista-btn { padding:8px 16px; font-size:13px; font-weight:600; border-radius:7px; color:var(--text-muted); cursor:pointer; }
+    .cal-vista-btn.active { background:#1d4ed8; color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+    .cal-nav-btn { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; color:var(--text-secondary); font-size:17px; font-weight:700; background:var(--bg-base); }
+    .cal-nav-btn:hover { background:var(--border); }
+    .cal-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+
+    .cal-grid-header { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:2px; }
+    .cal-dow { text-align:center; font-size:11.5px; font-weight:700; color:var(--text-muted); padding:10px 4px; text-transform:uppercase; letter-spacing:.03em; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); border-top:1px solid var(--border); border-left:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; background:var(--bg-surface); }
+    .cal-cell { border-right:1px solid var(--border); border-bottom:1px solid var(--border); min-height:140px; padding:6px 6px 4px; cursor:pointer; transition:background .12s; position:relative; display:flex; flex-direction:column; }
+    .cal-cell:hover { background:var(--bg-base); }
+    .cal-cell.cal-otro-mes { background:var(--bg-base); opacity:.45; }
+    .cal-cell.cal-hoy { background:var(--accent-soft); }
+    .cal-cell-num { font-size:12.5px; font-weight:700; color:var(--text-muted); margin-bottom:4px; display:inline-block; flex-shrink:0; }
+    .cal-cell.cal-hoy .cal-cell-num { background:#1d4ed8; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+
+    .cal-eventos-wrap { flex:1; display:flex; flex-direction:column; gap:3px; min-height:0; }
+    .cal-evento-pill { font-size:12.5px; font-weight:700; padding:8px 9px; border-radius:8px; line-height:1.3; color:#fff; box-shadow:0 2px 4px rgba(0,0,0,.10); flex:1; display:flex; flex-direction:column; justify-content:center; }
+    .cal-evento-pill .cal-evento-titulo { white-space:normal; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+    .cal-evento-pill .cal-evento-hora { font-size:11px; font-weight:600; opacity:.92; margin-top:2px; }
+    .cal-evento-mas { font-size:11px; color:var(--text-muted); font-weight:700; padding:2px 8px; }
+
+
+    .cal-semana-cell { min-height:340px; }
+    .cal-dia-lista .panel-card { margin:0 0 8px }
+
+    .cal-cat-btn { padding:8px 6px; border:1.5px solid var(--border); border-radius:8px; cursor:pointer; text-align:center; font-size:11px; font-weight:600; }
+    .cal-cat-btn.active { border-color:currentColor; }
+
+    .metodo-card{padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);
+      cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px}
+    .metodo-card:hover{border-color:var(--accent);background:var(--accent-soft)}
+    .metodo-card .mc-icon{font-size:16px}
+    .metodo-card .mc-name{font-size:12px;font-weight:600;color:var(--text-primary)}
+    .c360-tab { background:none; border:none; padding:10px 16px; font-size:13.5px; font-weight:600; color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap; flex-shrink:0; }
+    .c360-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+    .c360-tab-panel { display:block; }
+    .c360-tabs-bar::-webkit-scrollbar { display:none; }
+    .c360-check-fila { display:flex; align-items:center; gap:10px; font-size:12.5px; }
+    .c360-check-circulo { width:20px; height:20px; border-radius:50%; border:2px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; transition:all .2s ease; }
+    .c360-check-fila.hecho .c360-check-circulo { background:var(--success,#22c55e); border-color:var(--success,#22c55e); }
+    .c360-check-fila.hecho span.c360-check-texto { color:var(--text-muted); text-decoration:line-through; }
+    .c360-check-fila:not(.hecho) span.c360-check-texto { font-weight:600; }
+    .c360-card-catalogo { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; cursor:pointer; transition:border-color .15s; }
+    .c360-card-catalogo:hover { border-color:var(--accent); }
+    .c360-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; }
+    .c360-badge.publicado { background:var(--success-soft,rgba(34,197,94,.15)); color:var(--success); }
+    .c360-badge.borrador { background:var(--bg-base); color:var(--text-muted); }
+    .c360-badge.pausado { background:var(--danger-soft); color:var(--danger); }
+    .c360-card-producto { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
+    .c360-card-producto img { width:100%; height:130px; object-fit:cover; background:var(--bg-base); display:block; }
+    .c360-foto-mini { width:56px; height:56px; border-radius:8px; object-fit:cover; background:var(--bg-base); position:relative; }
+    .c360-kpi-card { background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px 16px; }
+    .c360-kpi-icono { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:16px; margin-bottom:8px; }
+    .c360-kpi-valor { font-size:20px; font-weight:800; }
+    .c360-kpi-label { font-size:11.5px; color:var(--text-muted); font-weight:600; }
+    .c360-kpi-sub { font-size:10.5px; color:var(--text-muted); margin-top:2px; }
+    .c360-accion-rapida { display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 8px; border-radius:var(--radius-md); background:var(--bg-base); cursor:pointer; text-align:center; font-size:11.5px; font-weight:600; color:var(--text-secondary); transition:background .15s; }
+    .c360-accion-rapida:hover { background:var(--accent-soft); color:var(--accent); }
+    .c360-accion-icono { width:34px; height:34px; border-radius:9px; background:var(--accent-soft); color:var(--accent); display:flex; align-items:center; justify-content:center; font-size:15px; }
+    .c360-barra-uso-track { height:6px; background:var(--bg-base); border-radius:999px; overflow:hidden; margin-top:5px; }
+    .c360-barra-uso-fill { height:100%; background:var(--accent); border-radius:999px; }
+    .c360-mini-card-catalogo { position:relative; border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--border); cursor:pointer; }
+    .c360-mini-card-catalogo img { width:100%; height:90px; object-fit:cover; background:var(--bg-base); }
+    .c360-paleta-btn { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:var(--radius-md); border:2px solid var(--border); background:var(--bg-base); cursor:pointer; font-size:12px; font-weight:600; color:var(--text-secondary); transition:border-color .15s; }
+    .c360-paleta-btn.active { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); }
+    .c360-plantilla-card { border:2px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; cursor:pointer; transition:border-color .15s; background:var(--bg-base); }
+    .c360-plantilla-card.activa { border-color:var(--accent); }
+    .c360-plantilla-card.deshabilitada { cursor:not-allowed; opacity:.55; }
+    .c360-plantilla-preview { height:110px; display:flex; align-items:center; justify-content:center; font-size:28px; }
+    .c360-plantilla-info { padding:10px 12px; }
+    .c360-plantilla-nombre { font-weight:700; font-size:13px; display:flex; align-items:center; gap:6px; }
+    .c360-plantilla-badge { font-size:10px; font-weight:700; padding:2px 7px; border-radius:999px; background:var(--accent); color:#fff; }
+    .c360-plantilla-badge.proximamente { background:var(--border); color:var(--text-muted); }
+    .c360-plantilla-desc { font-size:11px; color:var(--text-muted); margin-top:2px; }
+    .c360-paleta-swatch { width:18px; height:18px; border-radius:50%; flex-shrink:0; }
+    @media (max-width: 980px) {
+      #c360-layout-principal { grid-template-columns: 1fr !important; }
+    }
+  </style>
+
+  <link rel="stylesheet" href="perfiles-guard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="loader-logo">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+      <line x1="12" y1="1" x2="12" y2="23"/>
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  </div>
+  <div class="loader-spinner"></div>
+  <p style="font-size:13px;color:var(--text-muted)">Cargando tu catálogo…</p>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast toast-success"></div>
+
+<!-- ══════════════════════════════════════════
+     PANTALLA DE BLOQUEO — se muestra si la cuenta
+     todavia no ha canjeado un codigo de Catalogo360.
+══════════════════════════════════════════ -->
+<div id="c360-paywall" style="display:none;min-height:100vh;background:var(--bg-base);padding:40px 20px 60px">
+  <div style="max-width:920px;margin:0 auto">
+    <div style="display:flex;justify-content:flex-end;margin:-20px 0 12px">
+      <button type="button" id="c360-paywall-salir" onclick="cerrarSesionCatalogo()" style="display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-secondary);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Cerrar sesión</button>
+    </div>
+    <div style="text-align:center;margin-bottom:40px">
+      <div style="width:56px;height:56px;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;box-shadow:0 8px 20px -6px rgba(90,90,244,.5)">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21V12h6v9"/></svg>
+      </div>
+      <h1 style="font-size:26px;font-weight:800;color:var(--text-primary);margin:0 0 8px">Catálogo360 es un módulo exclusivo</h1>
+      <p style="font-size:14.5px;color:var(--text-secondary);max-width:480px;margin:0 auto">Crea catálogos digitales para compartir por WhatsApp, con tus productos, precios y plantillas de temporada. Elige un plan o escribe a un asesor para activarlo.</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-bottom:36px">
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Básico</div>
+        <div style="font-size:13px;color:var(--text-muted);text-decoration:line-through">$10 / mes</div>
+        <div style="font-size:32px;font-weight:800;color:var(--text-primary);margin:2px 0 4px">$8 <span style="font-size:13px;font-weight:600;color:var(--text-muted)">/ mes</span></div>
+        <div style="font-size:11.5px;color:var(--accent-2);font-weight:700;margin-bottom:18px">Precio cliente Negocio360</div>
+        <a class="btn-icon btn-primary" style="width:100%;height:auto;padding:11px 14px;justify-content:center;gap:8px;font-weight:600;font-size:13px" target="_blank"
+           href="https://wa.me/50581294177?text=Hola%2C%20quiero%20activar%20el%20plan%20B%C3%A1sico%20de%20Cat%C3%A1logo360">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.79.47 3.47 1.29 4.93L2 22l5.31-1.39a9.9 9.9 0 0 0 4.73 1.2h.01c5.46 0 9.9-4.45 9.9-9.9C21.96 6.45 17.5 2 12.04 2m0 0"/></svg>
+          Escribir por WhatsApp
+        </a>
+      </div>
+
+      <div style="background:var(--bg-surface);border:2px solid var(--accent);border-radius:16px;padding:24px;text-align:center;position:relative">
+        <div style="position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:10.5px;font-weight:700;padding:3px 12px;border-radius:999px">Más elegido</div>
+        <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Profesional</div>
+        <div style="font-size:13px;color:var(--text-muted);text-decoration:line-through">$20 / mes</div>
+        <div style="font-size:32px;font-weight:800;color:var(--text-primary);margin:2px 0 4px">$16 <span style="font-size:13px;font-weight:600;color:var(--text-muted)">/ mes</span></div>
+        <div style="font-size:11.5px;color:var(--accent-2);font-weight:700;margin-bottom:18px">Precio cliente Negocio360</div>
+        <a class="btn-icon btn-primary" style="width:100%;height:auto;padding:11px 14px;justify-content:center;gap:8px;font-weight:600;font-size:13px" target="_blank"
+           href="https://wa.me/50581294177?text=Hola%2C%20quiero%20activar%20el%20plan%20Profesional%20de%20Cat%C3%A1logo360">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.79.47 3.47 1.29 4.93L2 22l5.31-1.39a9.9 9.9 0 0 0 4.73 1.2h.01c5.46 0 9.9-4.45 9.9-9.9C21.96 6.45 17.5 2 12.04 2m0 0"/></svg>
+          Escribir por WhatsApp
+        </a>
+      </div>
+
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Premium</div>
+        <div style="font-size:13px;color:var(--text-muted);text-decoration:line-through">$35 / mes</div>
+        <div style="font-size:32px;font-weight:800;color:var(--text-primary);margin:2px 0 4px">$28 <span style="font-size:13px;font-weight:600;color:var(--text-muted)">/ mes</span></div>
+        <div style="font-size:11.5px;color:var(--accent-2);font-weight:700;margin-bottom:18px">Precio cliente Negocio360</div>
+        <a class="btn-icon btn-primary" style="width:100%;height:auto;padding:11px 14px;justify-content:center;gap:8px;font-weight:600;font-size:13px" target="_blank"
+           href="https://wa.me/50581294177?text=Hola%2C%20quiero%20activar%20el%20plan%20Premium%20de%20Cat%C3%A1logo360">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.79.47 3.47 1.29 4.93L2 22l5.31-1.39a9.9 9.9 0 0 0 4.73 1.2h.01c5.46 0 9.9-4.45 9.9-9.9C21.96 6.45 17.5 2 12.04 2m0 0"/></svg>
+          Escribir por WhatsApp
+        </a>
+      </div>
+    </div>
+
+    <div style="max-width:420px;margin:0 auto;background:var(--bg-surface);border:1px solid var(--border);border-radius:16px;padding:24px">
+      <div style="font-size:13.5px;font-weight:700;color:var(--text-primary);margin-bottom:4px">¿Ya tienes un código de acceso?</div>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Tu asesor te lo entrega después de activar tu plan. Una vez lo ingreses, Catálogo360 queda disponible en tu cuenta para siempre.</p>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="c360-input-codigo" placeholder="C360-XXXXXXXX" class="form-control" style="flex:1;font-family:monospace;letter-spacing:.5px;text-transform:uppercase" />
+        <button class="btn-icon btn-primary" id="c360-btn-canjear" style="width:auto;height:auto;padding:10px 18px;white-space:nowrap;font-weight:600;font-size:13px">Activar</button>
+      </div>
+      <div id="c360-codigo-mensaje" style="font-size:12px;margin-top:10px;display:none"></div>
+    </div>
+
+    <div style="text-align:center;margin-top:28px">
+      <a href="dashboard.html" style="font-size:12.5px;color:var(--text-muted);text-decoration:underline">← Volver al Dashboard</a>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
+  <!-- SIDEBAR (idéntico al resto del sistema; sin item propio en el
+       menú porque, por ahora, este módulo solo se abre desde el
+       Dashboard — ver acceso rápido "Cuentas por Pagar" allá) -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <span class="logo-text" id="sidebar-logo-text">Negocio360</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">PRINCIPAL</div>
+
+      <div class="nav-item" onclick="navigate('dashboard.html')" data-tooltip="Dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('ventas.html')" data-tooltip="Ventas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        <span class="nav-label">Ventas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('clientes.html')" data-tooltip="Clientes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-label">Clientes</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('productos.html')" data-tooltip="Productos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <span class="nav-label">Productos / Servicios</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('compras.html')" data-tooltip="Compras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span class="nav-label">Compras</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('gastos.html')" data-tooltip="Gastos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="nav-label">Gastos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('caja.html')" data-tooltip="Caja / Pagos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span class="nav-label">Caja / Pagos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('cuentas-por-pagar.html')" data-tooltip="Cuentas por Pagar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+        <span class="nav-label">Cuentas por Pagar</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('salarios.html')" data-tooltip="Salarios">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+        <span class="nav-label">Salarios</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('auditoria.html')" data-tooltip="Auditoría">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-label">Auditoría</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('codigos-barras.html')" data-tooltip="Códigos de Barras">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="2" height="12"/><rect x="6" y="6" width="1" height="12"/><rect x="9" y="6" width="3" height="12"/><rect x="14" y="6" width="1" height="12"/><rect x="17" y="6" width="2" height="12"/><rect x="21" y="6" width="1" height="12"/></svg>
+        <span class="nav-label">Códigos de Barras</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('sucursales.html')" data-tooltip="Sucursales">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="12" x2="9" y2="12.01"/><line x1="9" y1="15" x2="9" y2="15.01"/></svg>
+        <span class="nav-label">Sucursales</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('contabilidad.html')" data-tooltip="Contabilidad">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span class="nav-label">Contabilidad</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('rutas.html')" data-tooltip="Rutas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5 2L9 4l6 16 5.5-2"/><circle cx="9" cy="4" r="1"/></svg>
+        <span class="nav-label">Rutas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('delivery.html')" data-tooltip="Delivery">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/><path d="M2 17.5h1.5l1.5-8h9l3.5 4h4.5v4H21"/><path d="M5 9.5h5"/></svg>
+        <span class="nav-label">Delivery</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('activos.html')" data-tooltip="Activos Fijos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="2" y1="13" x2="22" y2="13"/></svg>
+        <span class="nav-label">Activos Fijos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('agenda.html')" data-tooltip="Agenda">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="nav-label">Agenda</span>
+      </div>
+
+      <div class="nav-item active" onclick="navigate('catalogo360.html')" data-tooltip="Catálogo360">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+        <span class="nav-label">Catálogo360</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('produccion.html')" data-tooltip="Producción">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 18a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2"/><rect x="3" y="8" width="18" height="10" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
+        <span class="nav-label">Producción</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('servicio.html')" data-tooltip="Servicio Postventa">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span class="nav-label">Servicio Postventa</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('consulta-inventario.html')" data-tooltip="Consulta/Inventario">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <span class="nav-label">Consulta/Inventario</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('proformas.html')" data-tooltip="Proformas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+        <span class="nav-label">Proformas</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('creditos.html')" data-tooltip="Créditos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
+        <span class="nav-label">Créditos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('impuestos.html')" data-tooltip="Impuestos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M9 8h1"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="nav-label">Impuestos</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('reportes.html')" data-tooltip="Reportes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span class="nav-label">Reportes</span>
+      </div>
+      <div class="nav-item" onclick="navigate('estadisticas.html')" data-tooltip="Estadísticas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span class="nav-label">Estadísticas</span>
+      </div>
+      <div class="nav-item" onclick="navigate('notificaciones.html')" data-tooltip="Notificaciones">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="nav-label">Notificaciones</span>
+      </div>
+
+      <div class="nav-item" onclick="navigate('chat.html')" data-tooltip="Chat con Negocio360">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="nav-label">Chat con Negocio360</span>
+      </div>
+
+      <div class="nav-section-title" style="margin-top:8px">ACCESOS RÁPIDOS</div>
+
+
+
+      <div class="nav-item" id="nav-admin" onclick="navigate('admin.html')" data-tooltip="Panel Admin" style="display:none;border-top:1px solid var(--border);margin-top:10px;padding-top:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="nav-label">⚙️ Admin</span>
+      </div>
+      <div class="nav-item" onclick="cerrarSesionCatalogo()" data-tooltip="Cerrar sesión" style="margin-top:12px;color:var(--danger,#dc2626)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <span class="nav-label">Cerrar sesión</span>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- MAIN -->
+  <div id="main">
+    <header id="header">
+      <button class="header-toggle" onclick="toggleSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="header-title">Catálogo360</span>
+      <button class="header-toggle" onclick="reabrirTutorial()" title="Ver el tutorial de nuevo" style="margin-left:8px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
+      <div class="header-spacer"></div>
+      <span style="font-size:12.5px;color:var(--text-muted)" id="header-fecha">—</span>
+      <div class="plan-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span id="plan-text">Plan</span>
+      </div>
+      <button class="theme-btn" onclick="abrirModalMonedaVis()" data-tooltip="Cambiar moneda de visualización" style="font-size:11px;font-weight:700;width:auto;padding:0 8px">
+        <span id="btn-moneda-vis-texto">NIO</span>
+      </button>
+      <button class="theme-btn" onclick="toggleTheme()" data-tooltip="Cambiar tema">
+        <svg id="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div class="user-menu">
+        <div class="user-avatar" id="header-avatar">--</div>
+        <div class="user-info">
+          <span class="user-name" id="header-name">Cargando…</span>
+          <span class="user-biz"  id="header-biz">—</span>
+        </div>
+      </div>
+      <button class="theme-btn" id="c360-btn-salir" onclick="cerrarSesionCatalogo()" data-tooltip="Cerrar sesión" aria-label="Cerrar sesión" title="Cerrar sesión" style="margin-left:4px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </header>
+
+    <div id="content">
+
+      <!-- ============ PANTALLA: LISTA DE CATALOGOS ============ -->
+      <div id="c360-vista-lista">
+        <div class="greeting-row fade-in">
+          <div>
+            <h1 id="c360-saludo">¡Bienvenido! 👋</h1>
+            <p>Resumen general de tu actividad en Catálogo360.</p>
+          </div>
+          <div class="greeting-actions">
+            <button class="btn-primary" id="c360-btn-crear" onclick="abrirModalCrearCatalogo()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Crear nuevo catálogo
+            </button>
+          </div>
+        </div>
+
+        <!-- 5 TARJETAS KPI -->
+        <div id="c360-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:18px"></div>
+
+        <!-- LAYOUT 2 COLUMNAS -->
+        <div style="display:grid;grid-template-columns:2.2fr 1fr;gap:18px;margin-top:20px;align-items:start" id="c360-layout-principal">
+
+          <!-- COLUMNA IZQUIERDA -->
+          <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
+
+            <div class="panel-card" style="padding:18px 20px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                <span class="section-title" style="margin:0">Mis catálogos</span>
+              </div>
+              <div id="c360-onboarding" style="display:none;text-align:center;padding:50px 20px">
+                <div style="font-size:44px;margin-bottom:10px">📇</div>
+                <h3 style="margin:0 0 6px">Tu catálogo profesional comienza aquí</h3>
+                <p style="color:var(--text-secondary);max-width:400px;margin:0 auto 16px;font-size:13px">Agrega tus productos, elige una plantilla, y comparte un enlace profesional en WhatsApp, Instagram o Facebook.</p>
+                <button class="btn-primary" onclick="abrirModalCrearCatalogo()">Crear mi primer catálogo</button>
+              </div>
+              <div id="c360-grid-catalogos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px"></div>
+            </div>
+
+            <div class="panel-card" style="padding:18px 20px">
+              <span class="section-title" style="margin:0 0 14px;display:block">Productos recientes</span>
+              <div id="c360-productos-recientes" style="display:flex;flex-direction:column;gap:2px"></div>
+            </div>
+
+          </div>
+
+          <!-- COLUMNA DERECHA -->
+          <div style="display:flex;flex-direction:column;gap:18px;min-width:0">
+
+            <div class="panel-card" style="padding:18px 20px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="color:#a855f7">👑</span>
+                <span style="font-size:12px;color:var(--text-muted);font-weight:700">TU PLAN ACTUAL</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+                <div id="c360-plan-nombre" style="font-size:19px;font-weight:800">—</div>
+                <div id="c360-plan-precio" style="font-weight:800;color:var(--accent)"></div>
+              </div>
+              <div id="c360-plan-features" style="display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--text-secondary);margin-bottom:16px"></div>
+
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:10px">Uso actual</div>
+              <div id="c360-barras-uso" style="display:flex;flex-direction:column;gap:12px"></div>
+            </div>
+
+            <div class="panel-card" style="padding:18px 20px">
+              <span class="section-title" style="margin:0 0 12px;display:block">Acciones rápidas</span>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+                <div class="c360-accion-rapida" onclick="accionRapida('producto')">
+                  <div class="c360-accion-icono">➕</div><span>Agregar producto</span>
+                </div>
+                <div class="c360-accion-rapida" onclick="accionRapida('fotos')">
+                  <div class="c360-accion-icono">🖼</div><span>Gestionar fotos</span>
+                </div>
+                <div class="c360-accion-rapida" onclick="accionRapida('ver')">
+                  <div class="c360-accion-icono">👁</div><span>Ver mi catálogo</span>
+                </div>
+                <div class="c360-accion-rapida" onclick="accionRapida('compartir')">
+                  <div class="c360-accion-icono">🔗</div><span>Compartir catálogo</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel-card" style="padding:18px 20px">
+              <span class="section-title" style="margin:0 0 12px;display:block">Actividad reciente</span>
+              <div id="c360-actividad-reciente" style="display:flex;flex-direction:column;gap:12px"></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ PANTALLA: EDITAR UN CATALOGO ============ -->
+      <div id="c360-vista-editor" style="display:none">
+        <div class="greeting-row fade-in">
+          <div>
+            <button class="btn-ghost btn-sm" onclick="volverAListaCatalogos()" style="margin-bottom:8px">← Mis catálogos</button>
+            <h1 id="c360-editor-titulo">—</h1>
+            <p id="c360-editor-estado-texto">—</p>
+          </div>
+          <div class="greeting-actions">
+            <button class="btn-secondary" id="c360-btn-preview" onclick="abrirVistaPrevia()">👁 Vista previa</button>
+            <button class="btn-secondary" id="c360-btn-pausar" style="display:none" onclick="togglePausarCatalogo()">⏸ Desactivar</button>
+            <button class="btn-primary" id="c360-btn-publicar" onclick="publicarCatalogoActual()">🚀 Publicar</button>
+            <button class="btn-icon btn-icon-danger" onclick="abrirEliminarCatalogo()" title="Eliminar catálogo">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="c360-panel-publicado" style="display:none;margin-top:14px" class="panel-card">
+          <div style="padding:16px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+            <div>
+              <div style="font-size:12px;color:var(--success);font-weight:700">✅ PUBLICADO</div>
+              <div id="c360-url-publica" style="font-family:var(--font-mono);font-size:13px;color:var(--text-secondary);margin-top:4px"></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn-primary btn-sm" onclick="verCatalogoPublicado()">🌐 Ver catálogo</button>
+              <button class="btn-secondary btn-sm" onclick="copiarEnlaceCatalogo()">🔗 Copiar enlace</button>
+              <button class="btn-secondary btn-sm" onclick="mostrarQR()">▦ QR</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="c360-checklist" class="panel-card" style="display:none;margin-top:14px;padding:16px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div>
+              <div style="font-size:13px;font-weight:700">🚀 Primeros pasos</div>
+              <div id="c360-checklist-sub" style="font-size:11.5px;color:var(--text-muted);margin-top:2px"></div>
+            </div>
+            <button onclick="ocultarChecklistCatalogo()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:18px;line-height:1;padding:2px 6px" title="Ocultar">&times;</button>
+          </div>
+          <div id="c360-checklist-items" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
+        <div class="c360-tabs-bar" style="display:flex;gap:6px;margin-top:18px;border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none">
+          <button class="c360-tab active" data-tab="info" onclick="cambiarTabEditor('info')">Información</button>
+          <button class="c360-tab" data-tab="categorias" onclick="cambiarTabEditor('categorias')">Categorías</button>
+          <button class="c360-tab" data-tab="productos" onclick="cambiarTabEditor('productos')">Productos</button>
+          <button class="c360-tab" data-tab="apariencia" onclick="cambiarTabEditor('apariencia')">Apariencia</button>
+          <button class="c360-tab" data-tab="estadisticas" onclick="cambiarTabEditor('estadisticas')">Estadísticas</button>
+          <button class="c360-tab" data-tab="catalogos-pdf" onclick="cambiarTabEditor('catalogos-pdf')">Catálogos PDF</button>
+        </div>
+
+        <!-- TAB: INFORMACION -->
+        <div id="c360-tab-info" class="c360-tab-panel">
+          <div class="panel-card" style="padding:20px;margin-top:16px;max-width:560px">
+            <div class="form-group"><label>Nombre comercial</label><input type="text" id="c360-i-nombre-comercial"/></div>
+            <div class="form-group"><label>Descripción breve</label><textarea id="c360-i-descripcion" rows="2"></textarea></div>
+            <div class="form-row">
+              <div class="form-group"><label>WhatsApp</label><input type="text" id="c360-i-whatsapp" placeholder="505XXXXXXXX"/></div>
+              <div class="form-group"><label>Teléfono</label><input type="text" id="c360-i-telefono"/></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Correo</label><input type="text" id="c360-i-email" placeholder="hola@tunegocio.com"/></div>
+              <div class="form-group"><label>Ubicación</label><input type="text" id="c360-i-ubicacion" placeholder="Managua, Nicaragua"/></div>
+            </div>
+            <div class="form-group">
+              <label>Logo</label>
+              <input type="file" id="c360-i-logo-input" accept="image/*" onchange="subirLogoCatalogo(this.files[0])" style="display:none"/>
+              <div style="display:flex;align-items:center;gap:12px">
+                <img id="c360-i-logo-preview" src="" style="width:56px;height:56px;border-radius:10px;object-fit:cover;background:var(--bg-base);display:none"/>
+                <button class="btn-secondary btn-sm" onclick="document.getElementById('c360-i-logo-input').click()">Subir logo</button>
+              </div>
+            </div>
+            <button class="btn-primary" onclick="guardarInfoCatalogo()">Guardar información</button>
+          </div>
+        </div>
+
+        <!-- TAB: PRODUCTOS -->
+        <!-- TAB: CATEGORIAS -->
+        <div id="c360-tab-categorias" class="c360-tab-panel" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px">
+            <p style="font-size:12.5px;color:var(--text-secondary);margin:0">Agrupa tus productos por categoría — si no creas ninguna, tus productos se muestran directo.</p>
+            <button class="btn-primary btn-sm" id="c360-btn-nueva-categoria" onclick="abrirModalCategoria()">+ Nueva categoría</button>
+          </div>
+          <div id="c360-lista-categorias" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px"></div>
+        </div>
+
+        <div id="c360-tab-productos" class="c360-tab-panel" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px;flex-wrap:wrap;gap:8px">
+            <div id="c360-productos-contador" style="font-size:13px;color:var(--text-secondary);font-weight:600"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn-secondary btn-sm" onclick="abrirImportarDeNegocio360()">📦 Agregar desde mi inventario</button>
+              <button class="btn-primary btn-sm" id="c360-btn-nuevo-producto" onclick="abrirModalProductoCatalogo()">+ Producto nuevo</button>
+            </div>
+          </div>
+          <div id="c360-lista-productos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px"></div>
+        </div>
+
+        <!-- TAB: APARIENCIA -->
+        <div id="c360-tab-apariencia" class="c360-tab-panel" style="display:none">
+          <div class="panel-card" style="padding:20px;margin-top:16px;max-width:720px">
+            <div class="form-group">
+              <label>Plantilla de tu catálogo</label>
+              <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 12px">Elige el diseño con el que tus clientes verán tu catálogo público. Con un clic, tus productos se acomodan solos en la plantilla elegida.</p>
+              <div id="c360-a-plantillas" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px"></div>
+            </div>
+          </div>
+          <div class="panel-card" style="padding:20px;margin-top:16px;max-width:480px">
+            <div class="form-group">
+              <label>Color de tu catálogo</label>
+              <div id="c360-a-paletas" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:6px"></div>
+              <input type="hidden" id="c360-a-color" value="#6366f1"/>
+            </div>
+            <div class="form-group">
+              <label>Tema por defecto de tu catálogo público</label>
+              <div style="display:flex;gap:10px">
+                <button class="btn-secondary" id="c360-a-tema-claro" onclick="elegirTemaCatalogo('claro')">☀ Claro</button>
+                <button class="btn-secondary" id="c360-a-tema-oscuro" onclick="elegirTemaCatalogo('oscuro')">🌙 Oscuro</button>
+              </div>
+              <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px">El visitante siempre podrá cambiarlo — esto solo define con cuál abre por defecto.</p>
+            </div>
+            <button class="btn-primary" onclick="guardarApariencia()">Guardar apariencia</button>
+          </div>
+        </div>
+
+        <div id="c360-tab-estadisticas" class="c360-tab-panel" style="display:none">
+          <div class="panel-card" style="padding:20px;margin-top:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px">
+              <div>
+                <label style="display:block">Rendimiento de tu catálogo</label>
+                <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 0">Cuántas personas visitan tu catálogo, cuántas escriben por WhatsApp, y qué productos ven más.</p>
+              </div>
+              <select id="c360-e-rango" class="form-control" style="width:auto" onchange="cargarEstadisticasCatalogo()">
+                <option value="7">Últimos 7 días</option>
+                <option value="30" selected>Últimos 30 días</option>
+                <option value="90">Últimos 90 días</option>
+                <option value="0">Todo el historial</option>
+              </select>
+            </div>
+
+            <div id="c360-e-vacio" style="display:none;text-align:center;padding:40px 20px;color:var(--text-muted)">
+              <p>Todavía no hay visitas registradas en este período.</p>
+              <p style="font-size:11.5px">Comparte el enlace de tu catálogo para empezar a ver datos aquí.</p>
+            </div>
+
+            <div id="c360-e-contenido">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px">
+                <div class="panel-card" style="padding:16px;text-align:center;background:var(--bg-base)">
+                  <div style="font-size:26px;font-weight:800;color:var(--text)" id="c360-e-visitas">—</div>
+                  <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Visitas</div>
+                </div>
+                <div class="panel-card" style="padding:16px;text-align:center;background:var(--bg-base)">
+                  <div style="font-size:26px;font-weight:800;color:#22c55e" id="c360-e-whatsapp">—</div>
+                  <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Clics a WhatsApp</div>
+                </div>
+                <div class="panel-card" style="padding:16px;text-align:center;background:var(--bg-base)">
+                  <div style="font-size:26px;font-weight:800;color:var(--accent)" id="c360-e-vistas-producto">—</div>
+                  <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Productos vistos</div>
+                </div>
+                <div class="panel-card" style="padding:16px;text-align:center;background:var(--bg-base)">
+                  <div style="font-size:26px;font-weight:800;color:var(--text)" id="c360-e-conversion">—</div>
+                  <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">De visita a WhatsApp</div>
+                </div>
+              </div>
+
+              <div class="panel-card" style="padding:16px;margin-bottom:18px">
+                <label style="font-size:12.5px">Visitas por día</label>
+                <div style="height:220px;margin-top:10px">
+                  <canvas id="c360-e-grafico"></canvas>
+                </div>
+              </div>
+
+              <div class="panel-card" style="padding:16px">
+                <label style="font-size:12.5px">Productos más vistos</label>
+                <div id="c360-e-top-productos" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="c360-tab-catalogos-pdf" class="c360-tab-panel" style="display:none">
+          <div class="panel-card" style="padding:20px;margin-top:16px;max-width:720px">
+            <div class="form-group">
+              <label>Plantilla de tu Catálogo PDF</label>
+              <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 12px">Un catálogo aparte, pensado para descargar e imprimir -- texto real, no una imagen. Tus productos se acomodan solos, sin importar cuál plantilla elijas.</p>
+              <div id="c360-pdf-plantillas" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      </div><!-- /content -->
+  </div><!-- /main -->
+
+  <!-- MODAL: CREAR CATALOGO -->
+  <div class="modal-overlay" id="modal-crear-catalogo" onclick="if(event.target===this)closeModal('modal-crear-catalogo')">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">Crear catálogo</span>
+        <button class="modal-close" onclick="closeModal('modal-crear-catalogo')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Nombre del catálogo *</label>
+          <input type="text" id="cc-nombre" placeholder="Ej: Catálogo 2026"/>
+        </div>
+        <p id="cc-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-crear-catalogo')">Cancelar</button>
+        <button class="btn-primary" id="cc-btn-guardar" onclick="crearCatalogo()">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CATÁLOGO PDF -->
+  <div class="modal-overlay" id="modal-catalogo-pdf" onclick="if(event.target===this)closeModal('modal-catalogo-pdf')">
+    <div class="modal-box modal-lg" style="max-width:640px">
+      <div class="modal-header">
+        <span class="modal-title">📄 Generar catálogo en PDF</span>
+        <button class="modal-close" onclick="closeModal('modal-catalogo-pdf')">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height:65vh;overflow-y:auto">
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)">📝 Textos</div>
+        <div class="form-group">
+          <label>Título del catálogo</label>
+          <input type="text" id="cpdf-titulo" placeholder="Ej: Catálogo de Productos"/>
+        </div>
+        <div class="form-group">
+          <label>Subtítulo / mensaje de bienvenida</label>
+          <input type="text" id="cpdf-subtitulo" placeholder="Ej: Descubre nuestra colección 2026"/>
+        </div>
+        <div class="form-group">
+          <label>Nota final (pie del catálogo)</label>
+          <input type="text" id="cpdf-nota" placeholder="Ej: Precios sujetos a cambio sin previo aviso"/>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:18px 0"/>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)">🎨 Color del catálogo</div>
+        <div id="cpdf-paletas" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:4px"></div>
+        <input type="hidden" id="cpdf-color-elegido" value="indigo"/>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:18px 0"/>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)">📦 Qué incluir</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <input type="checkbox" id="cpdf-agrupar-categorias" checked style="width:16px;height:16px" onchange="alternarListaCategoriasPDF()"/>
+          <label for="cpdf-agrupar-categorias" style="margin:0;font-size:13px;cursor:pointer">Agrupar por categorías (cada una con su propia sección)</label>
+        </div>
+        <div id="cpdf-categorias-wrap" style="margin-left:24px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:11.5px;color:var(--text-muted)">Categorías a incluir</span>
+            <button type="button" class="btn-ghost btn-sm" onclick="alternarTodasCategoriasPDF()" style="font-size:11px">Marcar/desmarcar todas</button>
+          </div>
+          <div id="cpdf-lista-categorias" style="display:flex;flex-direction:column;gap:6px;max-height:140px;overflow-y:auto"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <input type="checkbox" id="cpdf-mostrar-descripcion" style="width:16px;height:16px"/>
+          <label for="cpdf-mostrar-descripcion" style="margin:0;font-size:13px;cursor:pointer">Mostrar la descripción de cada producto (si la tiene)</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="cpdf-solo-destacados" style="width:16px;height:16px"/>
+          <label for="cpdf-solo-destacados" style="margin:0;font-size:13px;cursor:pointer">Incluir solo productos destacados</label>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:18px 0"/>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text-primary)">📐 Diseño de la cuadrícula</div>
+        <div class="form-group" style="max-width:200px">
+          <label>Productos por fila</label>
+          <select id="cpdf-columnas">
+            <option value="2">2 columnas (más grande)</option>
+            <option value="3" selected>3 columnas</option>
+            <option value="4">4 columnas (más compacto)</option>
+          </select>
+        </div>
+
+        <p id="cpdf-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-catalogo-pdf')">Cancelar</button>
+        <button class="btn-primary" id="cpdf-btn-generar" onclick="generarCatalogoPDFDiseño()">Generar PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CATEGORIA -->
+  <div class="modal-overlay" id="modal-categoria" onclick="if(event.target===this)closeModal('modal-categoria')">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title" id="cat-titulo">Nueva categoría</span>
+        <button class="modal-close" onclick="closeModal('modal-categoria')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cat-id"/>
+        <div class="form-group"><label>Nombre *</label><input type="text" id="cat-nombre" placeholder="Ej: Salas, Comedores, Dormitorios"/></div>
+        <div class="form-group"><label>Descripción breve</label><input type="text" id="cat-descripcion" placeholder="Ej: Confort y estilo para compartir momentos"/></div>
+        <div class="form-group">
+          <label>Imagen de portada</label>
+          <input type="file" id="cat-imagen-input" accept="image/*" onchange="subirImagenCategoria(this.files[0])" style="display:none"/>
+          <img id="cat-imagen-preview" src="" style="width:100%;max-height:120px;object-fit:cover;border-radius:10px;background:var(--bg-base);display:none;margin-bottom:8px"/>
+          <button class="btn-secondary btn-sm" onclick="document.getElementById('cat-imagen-input').click()">Subir imagen</button>
+        </div>
+        <p id="cat-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-categoria')">Cancelar</button>
+        <button class="btn-primary" onclick="guardarCategoria()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PRODUCTO NUEVO EN EL CATALOGO -->
+  <div class="modal-overlay" id="modal-producto-catalogo" onclick="if(event.target===this)closeModal('modal-producto-catalogo')">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title" id="cp-titulo">Nuevo producto</span>
+        <button class="modal-close" onclick="closeModal('modal-producto-catalogo')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cp-id"/>
+        <div class="form-group"><label>Nombre *</label><input type="text" id="cp-nombre"/></div>
+        <div class="form-row">
+          <div class="form-group"><label>Precio *</label><input type="number" id="cp-precio" min="0" step="0.01"/></div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="cp-categoria-id"><option value="">Sin categoría (aparece directo)</option></select>
+          </div>
+        </div>
+        <div class="form-group"><label>Descripción</label><textarea id="cp-descripcion" rows="2"></textarea></div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Etiqueta</label>
+            <select id="cp-etiqueta" onchange="onCambiarEtiquetaProducto()">
+              <option value="">Ninguna</option>
+              <option value="nuevo">🆕 Nuevo</option>
+              <option value="oferta">🔥 Oferta</option>
+              <option value="agotado">⛔ Agotado</option>
+            </select>
+          </div>
+          <div class="form-group" id="cp-wrap-precio-oferta" style="display:none">
+            <label>Precio de oferta</label>
+            <input type="number" id="cp-precio-oferta" min="0" step="0.01" placeholder="Precio rebajado"/>
+          </div>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="cp-destacado" style="width:16px;height:16px"/>
+          <label for="cp-destacado" style="margin:0;cursor:pointer">⭐ Mostrar como producto destacado</label>
+        </div>
+
+        <div class="form-group">
+          <label>Fotos <span id="cp-fotos-contador" style="font-weight:400;color:var(--text-muted)"></span></label>
+          <input type="file" id="cp-fotos-input" accept="image/*" multiple onchange="subirFotosProducto(this.files)" style="display:none"/>
+          <div id="cp-fotos-lista" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
+          <button class="btn-secondary btn-sm" id="cp-btn-agregar-foto" onclick="document.getElementById('cp-fotos-input').click()">+ Agregar foto</button>
+        </div>
+        <p id="cp-error" style="color:var(--danger);font-size:12.5px;margin-top:6px"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-producto-catalogo')">Cerrar</button>
+        <button class="btn-primary" id="cp-btn-guardar" onclick="guardarProductoCatalogo()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: IMPORTAR DESDE NEGOCIO360 -->
+  <div class="modal-overlay" id="modal-importar-productos" onclick="if(event.target===this)closeModal('modal-importar-productos')">
+    <div class="modal-box modal-lg">
+      <div class="modal-header">
+        <span class="modal-title">Agregar productos desde tu inventario</span>
+        <button class="modal-close" onclick="closeModal('modal-importar-productos')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="ip-mensaje" style="font-size:13px;color:var(--text-secondary);margin-bottom:12px"></p>
+        <div id="ip-lista" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:2px"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-importar-productos')">Ahora no</button>
+        <button class="btn-primary" id="ip-btn-agregar" onclick="confirmarImportarProductos()">Agregar seleccionados</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ELIMINAR CATALOGO -->
+  <div class="modal-overlay" id="modal-eliminar-catalogo" onclick="if(event.target===this)closeModal('modal-eliminar-catalogo')">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <span class="modal-title">Eliminar catálogo</span>
+        <button class="modal-close" onclick="closeModal('modal-eliminar-catalogo')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary);font-size:13.5px;line-height:1.6">
+          ¿Confirmas que deseas eliminar <b id="ec-nombre-catalogo" style="color:var(--text-primary)"></b> definitivamente?
+        </p>
+        <p id="ec-aviso-publicado" style="display:none;font-size:12.5px;color:var(--danger);background:var(--danger-soft);padding:10px 12px;border-radius:var(--radius-md);margin-top:10px">
+          ⚠️ Este catálogo está <b>publicado</b> — su enlace y QR dejarán de funcionar de inmediato para cualquiera que los tenga.
+        </p>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:10px" id="ec-conteo-productos"></p>
+        <p style="font-size:11.5px;color:var(--text-muted);margin-top:4px">Esto elimina el catálogo, sus productos y fotos — no afecta tu inventario de Negocio360.</p>
+        <p id="ec-error" style="color:var(--danger);font-size:12.5px;margin-top:10px"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeModal('modal-eliminar-catalogo')">Cancelar</button>
+        <button class="btn-primary" id="btn-confirmar-eliminar-catalogo" onclick="confirmarEliminarCatalogo()" style="background:var(--danger)">Sí, eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: QR -->
+  <div class="modal-overlay" id="modal-qr-catalogo" onclick="if(event.target===this)closeModal('modal-qr-catalogo')">
+    <div class="modal-box modal-sm" style="text-align:center">
+      <div class="modal-header">
+        <span class="modal-title">Código QR</span>
+        <button class="modal-close" onclick="closeModal('modal-qr-catalogo')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="qr-catalogo-canvas" style="display:flex;justify-content:center;padding:10px"></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">Este QR siempre lleva al mismo enlace, aunque cambies tus productos.</p>
+      </div>
+      <div class="modal-footer" style="justify-content:center">
+        <button class="btn-primary" onclick="descargarQR()">Descargar QR</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script src="qrcode-lib.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="catalogo360.js?v=20261106b"></script>
+<script src="moneda-visualizacion.js?v=1"></script>
+<script src="perfiles-guard.js?v=20261106e"></script>
+<script src="modulos-guard.js?v=20261111a"></script>
+<script src="contraste-acento.js?v=20261029a"></script>
+<script src="menu-garantias-proveedor.js?v=20261029a"></script>
+<div id="modal-moneda-vis" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--bg-surface,#fff);border-radius:14px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border,#e5e7eb)">
+      <span style="font-weight:700;font-size:15px">💱 Moneda de visualización</span>
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-secondary,#666)">✕</button>
+    </div>
+    <div style="padding:16px 18px">
+      <p style="font-size:12.5px;color:var(--text-secondary,#666);margin-bottom:14px">
+        Tus datos siempre se guardan en tu moneda oficial (<b id="mv-moneda-oficial">—</b>). Esto solo cambia cómo se <b>muestran</b> los números en este dispositivo — nada se modifica de verdad.
+      </p>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Ver todo en</label>
+        <select id="mv-select-moneda" onchange="onCambiarSelectMonedaVis()" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-surface-2,#fafafa);color:var(--text-primary,#111);font-size:13.5px">
+          <option value="" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Mi moneda oficial (sin conversión)</option>
+          <option value="NIO" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Córdobas (NIO)</option>
+          <option value="USD" style="background:var(--bg-surface,#fff);color:var(--text-primary,#111)">Dólares (USD)</option>
+        </select>
+      </div>
+      <div id="mv-wrap-tasa" style="display:none;margin-bottom:12px">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">Tu tasa de cambio (córdobas por 1 dólar)</label>
+        <input type="number" id="mv-tasa" min="0.01" step="0.01" placeholder="Ej: 36.60" style="width:100%;padding:8px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--bg-surface-2,#fafafa);color:var(--text-primary,#111);font-size:13.5px"/>
+      </div>
+      <p id="mv-error" style="color:#ef4444;font-size:12.5px"></p>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border,#e5e7eb)">
+      <button onclick="document.getElementById('modal-moneda-vis').style.display='none'" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border,#e5e7eb);background:transparent;color:var(--text-primary,#111);cursor:pointer;font-size:13px">Cancelar</button>
+      <button onclick="guardarMonedaVis()" style="padding:8px 14px;border-radius:8px;border:none;background:var(--accent,#6C63FF);color:#fff;cursor:pointer;font-size:13px;font-weight:600">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TUTORIAL DE BIENVENIDA -->
+<div class="modal-overlay" id="modal-tutorial" style="z-index:600">
+  <div class="modal-box" style="max-width:460px;overflow:hidden">
+    <div id="tutorial-pasos">
+      <div class="tutorial-paso" data-paso="1">
+        <div style="height:150px;background:linear-gradient(135deg,var(--accent,#6366f1),#8b8bf9);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21V12h6v9"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">¡Bienvenido a Catálogo360!</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">En menos de 5 minutos vas a tener tu catálogo digital listo para compartir por WhatsApp. Te mostramos lo esencial.</p>
+        </div>
+      </div>
+      <div class="tutorial-paso" data-paso="2" style="display:none">
+        <div style="height:150px;background:var(--bg-base);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#6366f1)" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">Primero, la información</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">En la pestaña <strong>Información</strong> pones el nombre de tu negocio, tu WhatsApp y tu logo -- esto es lo primero que ve tu cliente.</p>
+        </div>
+      </div>
+      <div class="tutorial-paso" data-paso="3" style="display:none">
+        <div style="height:150px;background:var(--bg-base);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#6366f1)" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">Agrega tus productos</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">En <strong>Productos</strong> subes fotos, precios y descripciones. Puedes marcar uno como "Destacado" para que sea protagonista del catálogo.</p>
+        </div>
+      </div>
+      <div class="tutorial-paso" data-paso="4" style="display:none">
+        <div style="height:150px;background:var(--bg-base);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#6366f1)" stroke-width="1.6"><path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">Elige tu plantilla</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">En <strong>Apariencia</strong> eliges el diseño con el que tus clientes verán el catálogo -- tenemos varias, incluidas ediciones de temporada. Tus productos se acomodan solos.</p>
+        </div>
+      </div>
+      <div class="tutorial-paso" data-paso="5" style="display:none">
+        <div style="height:150px;background:var(--bg-base);display:flex;align-items:center;justify-content:center">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#25D366" stroke-width="1.6"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.3 0-2.5-.3-3.6-.8L3 21l1.8-5.4A8.4 8.4 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"/></svg>
+        </div>
+        <div style="padding:24px">
+          <h2 style="margin:0 0 8px;font-size:19px">Comparte tu catálogo</h2>
+          <p style="margin:0;font-size:13.5px;color:var(--text-secondary)">Con el botón "Compartir" copias el enlace listo para pegar en tu estado de WhatsApp o enviarlo directo a tus clientes. ¡Eso es todo!</p>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px 20px">
+      <div id="tutorial-puntos" style="display:flex;gap:6px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary btn-sm" onclick="cerrarTutorial()">Saltar</button>
+        <button class="btn-primary btn-sm" id="btn-tutorial-siguiente" onclick="avanzarTutorial()">Siguiente</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOOLTIP CONTEXTUAL -- apunta a un boton real la primera vez que se visita cada pestaña -->
+<div id="c360-coach" style="display:none;position:absolute;z-index:700;max-width:230px;background:#1a1a2e;color:#fff;padding:12px 14px;border-radius:10px;font-size:12.5px;line-height:1.5;box-shadow:0 10px 30px rgba(0,0,0,.3)">
+  <div id="c360-coach-flecha" style="position:absolute;top:-6px;left:24px;width:12px;height:12px;background:#1a1a2e;transform:rotate(45deg)"></div>
+  <div id="c360-coach-texto" style="position:relative"></div>
+  <div style="text-align:right;margin-top:8px;position:relative">
+    <button onclick="cerrarCoachMark()" style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer">Entendido</button>
+  </div>
+</div>
+
+<script src="bienvenida-catalogo360.js?v=20261106b"></script>
+</body>
+</html>
