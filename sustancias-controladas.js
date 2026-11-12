@@ -145,6 +145,13 @@ async function cargarRegistros() {
       .select('*').eq('auth_user_id', STATE.userId).order('fecha', { ascending: false }).order('created_at', { ascending: false });
     if (error) throw error;
     STATE.registros = data || [];
+    // Estado de la venta ligada (para marcar las anuladas)
+    STATE._estadoVentaRSC = {};
+    const ids = [...new Set(STATE.registros.map(r => r.venta_id).filter(Boolean))];
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data: vs } = await sb.from('ventas').select('id,numero_venta,estado').in('id', ids.slice(i, i + 200));
+      (vs || []).forEach(v => { STATE._estadoVentaRSC[v.id] = v; });
+    }
     STATE.filtrados = STATE.registros;
     renderRegistros();
   } catch (e) {
@@ -181,7 +188,11 @@ function renderRegistros() {
       <td>${fmtCantidad(r.cantidad)}</td>
       <td>${esc(r.comprador_nombre)}</td>
       <td>${r.comprador_documento ? esc(r.comprador_documento) : '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td><button class="btn-accion-tabla btn-ghost" onclick="eliminarRegistroRSC('${r.id}')">🗑️ Eliminar</button></td>
+      <td>${r.venta_id
+        ? (STATE._estadoVentaRSC?.[r.venta_id]?.estado === 'anulada'
+            ? `<span style="color:var(--danger,#dc2626);font-weight:700;font-size:12.5px">Venta ${esc(STATE._estadoVentaRSC[r.venta_id].numero_venta || '')} anulada</span>`
+            : `<span style="color:var(--text-muted);font-size:12.5px" title="Ligado a una venta: no se puede borrar. Si fue un error, anula la venta en Ventas.">🔒 ${esc(STATE._estadoVentaRSC?.[r.venta_id]?.numero_venta || 'Venta')}${r.lote_numero ? ' · Lote ' + esc(r.lote_numero) : ''}</span>`)
+        : `<button class="btn-accion-tabla btn-ghost" onclick="eliminarRegistroRSC('${r.id}')">🗑️ Eliminar</button>`}</td>
     </tr>`).join('');
 }
 
@@ -214,6 +225,7 @@ async function eliminarRegistroRSC(id) {
 
 /* ---- Modal Nuevo Registro ---- */
 function abrirModalNuevoRegistro() {
+  STATE._claveVentaRSC = null;   // venta nueva = clave nueva
   document.getElementById('rsc-error').textContent = '';
   document.getElementById('rsc-buscar-producto').value = '';
   document.getElementById('rsc-producto-id').value = '';
@@ -433,77 +445,44 @@ async function guardarNuevoRegistro() {
   if (cantidad > Number(prod.stock_actual || 0)) { errEl.textContent = `Solo hay ${prod.stock_actual} en stock.`; return; }
 
   const btn = document.getElementById('rsc-btn-guardar');
+  if (btn.disabled) return;
   btn.disabled = true;
   try {
-    const precio = precioUnitario;
-    const costo = Number(prod.costo || 0);
-    const subtotal = round2(precio * cantidad);
-    const costoTotal = round2(costo * cantidad);
-    const ganancia = round2(subtotal - costoTotal);
-
-    // 1) La venta real -- este producto NUNCA se vende desde Ventas
-    // (se bloquea ahi), asi que el UNICO punto de venta real para
-    // sustancias controladas es este modulo. Se crea igual que
-    // cualquier venta normal, para que aparezca en el historial de
-    // Ventas y Contabilidad la levante igual que cualquier otra.
-    const { data: ventaNueva, error: errVenta } = await sb.from('ventas').insert({
-      auth_user_id: STATE.userId, fecha, subtotal, descuento: 0, impuesto: 0,
-      total: subtotal, costo_total: costoTotal,
-      metodo_pago: metodoNombre, metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre,
-      estado_pago: 'pagado', estado: 'completada', categoria: 'Sustancia controlada',
-      cliente_nombre: compradorNombre,
-      observaciones: `Venta controlada — Farmacia${recetaNumero ? ` — Receta ${recetaNumero}` : ''}`,
-    }).select('id').single();
-    if (errVenta) throw errVenta;
-    const ventaId = ventaNueva.id;
-
-    // 2) El detalle -- una sola linea, el producto controlado
-    await sb.from('venta_detalles').insert({
-      venta_id: ventaId, auth_user_id: STATE.userId, producto_id: productoId,
-      producto_nombre: productoNombre, tipo_item: 'producto',
-      cantidad, precio, costo, descuento: 0, subtotal, ganancia,
-    });
-
-    // 3) Caja -- mismo mecanismo ya usado en el resto del sistema:
-    // se calcula el saldo real (ultimo movimiento + este ingreso).
-    const { data: ultMov } = await sb.from('movimientos_financieros')
-      .select('saldo_resultante').eq('auth_user_id', STATE.userId)
-      .order('created_at', { ascending: false }).limit(1).maybeSingle();
-    const saldoAnt = ultMov ? Number(ultMov.saldo_resultante) : 0;
-    const { data: movNuevo } = await sb.from('movimientos_financieros').insert({
-      auth_user_id: STATE.userId, tipo_flujo: 'INGRESO', tipo_movimiento: 'VENTA',
-      concepto: `Venta controlada — ${productoNombre}`, monto: subtotal,
-      saldo_anterior: saldoAnt, saldo_resultante: round2(saldoAnt + subtotal),
-      metodo_pago_id: metodoId, metodo_pago_nombre: metodoNombre, banco_id: bancoId,
-      referencia_tipo: 'venta', referencia_id: ventaId, fecha,
-    }).select('id').single();
-    if (movNuevo?.id) await sb.from('ventas').update({ referencia_caja: movNuevo.id }).eq('id', ventaId);
-
-    // Vincular la receta elegida (Farmacia fase 2) -- aislado: si
-    // algo fallara aqui, el registro YA se confirmo, no se revierte nada.
-    try {
-      const recetaId = document.getElementById('rsc-sel-receta-vincular')?.value;
-      if (recetaId) {
-        await sb.from('farmacia_recetas').update({ venta_id: ventaId }).eq('id', recetaId).eq('auth_user_id', STATE.userId);
-      }
-    } catch (eReceta) { console.warn('Vincular receta (RSC):', eReceta); }
-
-    // 4) Descontar stock real del producto
-    //    (en el servidor, restando sobre la existencia REAL del momento)
-    { const { error: errStock } = await sb.rpc('ajustar_stock_relativo', { p_items: [{ producto_id: productoId, delta: -cantidad }] });
-      if (errStock) console.warn('Sustancia controlada: no se pudo descontar inventario:', errStock); }
-
-    // 5) El registro de cumplimiento (quien compro que), ligado a la
-    // venta real recien creada.
-    const { error } = await sb.from('registro_sustancias_controladas').insert({
-      auth_user_id: STATE.userId, producto_id: productoId, producto_nombre: productoNombre,
-      cantidad, fecha, comprador_nombre: compradorNombre,
-      comprador_documento: compradorDocumento || null, receta_numero: recetaNumero || null,
-      venta_id: ventaId,
-    });
-    if (error) throw error;
-
-    showToast('Venta registrada correctamente.', 'success');
+    // UNA sola operación del servidor: venta + detalle + inventario + lote (el que vence primero,
+    // nunca uno vencido) + Caja + registro + receta. Si algo falla, no se guarda nada.
+    // Con la misma ventana abierta, repetir "Guardar" no vende dos veces (clave por clic).
+    if (!STATE._claveVentaRSC) STATE._claveVentaRSC = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
+    const recetaId = document.getElementById('rsc-sel-receta-vincular')?.value || null;
+    let res = null, fallo = null;
+    for (let intento = 0; intento < 3; intento++) {
+      if (intento) await new Promise(r => setTimeout(r, intento === 1 ? 800 : 1800));
+      try {
+        const { data, error } = await sb.rpc('farmacia_venta_controlada', {
+          p_clave: STATE._claveVentaRSC, p_producto_id: productoId, p_cantidad: cantidad, p_precio: precioUnitario, p_fecha: fecha,
+          p_comprador: { nombre: compradorNombre, documento: compradorDocumento, receta: recetaNumero },
+          p_pago: { metodo_pago_id: metodoId || null, metodo_pago_nombre: metodoNombre, banco_id: bancoId || null },
+          p_receta_id: recetaId || null,
+        });
+        if (!error) { res = data; fallo = null; break; }
+        fallo = error;
+        if (error.code && !/^(08|57|53|40)/.test(error.code)) break;
+      } catch (eRed) { fallo = eRed; }
+    }
+    if (fallo) {
+      errEl.textContent = fallo.code === 'P0001' && fallo.message ? fallo.message
+        : 'No se pudo guardar (sin conexión). Si vuelves a tocar Guardar con esta ventana abierta, no se duplica.';
+      return;
+    }
+    if (!res?.ok) {
+      const M = { sin_stock: `Solo hay ${res?.hay ?? 0} en stock.`, lote_vencido: `Solo hay ${res?.disponible ?? 0} sin vencer; lo vencido no se puede vender.`,
+        fecha_futura: 'La fecha no puede ser futura.', comprador: 'El nombre del comprador es obligatorio.', metodo: 'Elige el método de pago.',
+        cantidad: 'Revisa cantidad y precio.', producto: 'El producto ya no está disponible. Vuelve a elegirlo.', no_controlado: 'Ese producto no está marcado como sustancia controlada.',
+        sesion: 'Tu sesión terminó. Vuelve a entrar.' };
+      errEl.textContent = M[res?.motivo] || 'No se pudo guardar el registro.';
+      return;
+    }
+    STATE._claveVentaRSC = null;
+    showToast(res.ya_existia ? 'Esa venta ya estaba guardada (no se repitió).' : `Venta ${res.numero_venta} registrada correctamente.`, 'success');
     cerrarModalNuevoRegistro();
     await cargarRegistros();
   } catch (e) {
