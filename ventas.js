@@ -5791,6 +5791,18 @@ async function _enriquecerItemsConComboBase(items) {
 // pestaña con el PDF (antes se abría igual para imprimir). El ticket impreso
 // sigue saliendo por su propia vía, como siempre. El botón "Descargar recibo"
 // del detalle (opciones.manual) siempre descarga, porque lo pide la persona.
+/* APP DE ANDROID (12-nov-2026): dentro de la app no existe la ventana de impresión del
+   navegador (se quedaba en blanco en "Generando tu ticket…"). Ahí el ticket se entrega
+   como PDF (mismo ancho y datos), que descargas-app.js abre en Chrome para imprimir o
+   compartir. Fuera de la app no cambia nada. */
+function enAppAndroid() { return !!(window.N360DescargasApp && window.N360DescargasApp.activo); }
+function ticketComoPDFenApp(venta, items) {
+  const ult = S._reciboAppEntregado;
+  // Si el recibo de esta misma venta ya se entregó hace un momento (descarga automática), no se repite.
+  if (ult && ult.numero === venta.numero_venta && Date.now() - ult.t < 20000) return;
+  const its = (items || []).map(i => ({ ...i, combo_id: i.combo_id || (i.esCombo ? i.id : null) }));
+  descargarReciboDeVenta(venta, its, { manual: true });
+}
 async function descargarReciboDeVenta(venta, items, opciones = {}) {
   // En el cobro de la Clínica el recibo no se descarga solo: la Clínica ofrece ticket, PDF y WhatsApp.
   if (opciones.manual !== true && S._motorClinica === true) return;
@@ -5798,6 +5810,7 @@ async function descargarReciboDeVenta(venta, items, opciones = {}) {
     await cargarConfigVentaRapida();
     const cfg = VR.config || {};
     if (opciones.manual !== true && cfg.descargar_pdf_automatico === false) return;
+    if (enAppAndroid()) S._reciboAppEntregado = { numero: venta.numero_venta, t: Date.now() };
     items = await enriquecerItemsConCombo(items);
     const descargarAutomatico = true;
     if (cfg.ancho_ticket === 'carta') {
@@ -5859,7 +5872,7 @@ async function reimprimirTicketVenta() {
       return btListo || usbListo || nativaLista || (c || {}).ancho_ticket === 'carta' || !!(window.rawbtActivo && window.rawbtActivo(c || {}));
     };
     S._ventanaTicketPreabierta = null;
-    if (!viaDirectaLista(VR.config)) {
+    if (!enAppAndroid() && !viaDirectaLista(VR.config)) {
       try {
         S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
         if (S._ventanaTicketPreabierta) S._ventanaTicketPreabierta.document.write('<p style="font-family:sans-serif;color:#888;padding:20px">Generando tu ticket…</p>');
@@ -6421,7 +6434,7 @@ async function _confirmarVentaInterno(conImpresion) {
   // la impresion nativa de la app de escritorio ya esta disponible.
   const usaraImpresionNativaNV = window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa');
   S._ventanaTicketPreabierta = null;
-  if (!usaraImpresionNativaNV && conImpresion && (VR.config?.ancho_ticket || '80mm') !== 'carta' && !(window.rawbtActivo && window.rawbtActivo(VR.config))) {
+  if (!enAppAndroid() && !usaraImpresionNativaNV && conImpresion && (VR.config?.ancho_ticket || '80mm') !== 'carta' && !(window.rawbtActivo && window.rawbtActivo(VR.config))) {
     try {
       S._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
       if (S._ventanaTicketPreabierta) {
@@ -8009,7 +8022,7 @@ async function _confirmarVentaRapidaInterno() {
   // por completo si la impresion nativa esta lista para usarse.
   const usaraImpresionNativaVR = window.negocio360Print?.disponible && localStorage.getItem('n360_impresora_nativa');
   VR._ventanaTicketPreabierta = null;
-  if (!usaraImpresionNativaVR && VR.config?.imprimir_automatico !== false && (VR.config?.ancho_ticket || '80mm') !== 'carta' && !(window.rawbtActivo && window.rawbtActivo(VR.config))) {
+  if (!enAppAndroid() && !usaraImpresionNativaVR && VR.config?.imprimir_automatico !== false && (VR.config?.ancho_ticket || '80mm') !== 'carta' && !(window.rawbtActivo && window.rawbtActivo(VR.config))) {
     try {
       VR._ventanaTicketPreabierta = window.open('', '_blank', 'width=380,height=600');
       if (VR._ventanaTicketPreabierta) {
@@ -8375,6 +8388,7 @@ function imprimirTicketVentaRapida(venta, items, resumen) {
 }
 
 async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
+  if (enAppAndroid()) { ticketComoPDFenApp(venta, items); return; }
   const cfg   = VR.config || {};
 
   // El detalle del combo se calcula UNA vez aqui -- se reutiliza tanto
@@ -8606,6 +8620,7 @@ function imprimirTicketNuevaVenta(venta, items, resumen) {
 }
 
 async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
+  if (enAppAndroid()) { ticketComoPDFenApp(venta, items); return; }
   const cfg   = VR.config || {};
 
   // Mismo criterio que en Venta Rápida: se calcula una vez aquí y se
