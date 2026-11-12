@@ -194,6 +194,7 @@ function navigate(section) {
   if (section === 'chats-grupales') loadChatsGrupales();
   if (section === 'auditoria-global') loadAuditoriaGlobal();
   if (section === 'freelancers') window.AdminFL?.cargar();
+  if (section === 'estadisticas-clientes') window.AdminEst?.cargar();
 }
 
 // ── AUTENTICACIÓN & VERIFICACIÓN ADMIN ────────────────────
