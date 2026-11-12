@@ -22,6 +22,7 @@ const AG = {
   userId: null, empresaConfig: {}, nombre: 'Usuario', tab: 'inicio', ocupado: false,
   clientes: [], productores: {}, fiados: [], productos: [], lotes: [], metodos: [], bancos: [],
   venta: { lineas: [], clave: null }, mesBitacora: null, filtroProd: '', verTodos: false,
+  presentaciones: [], reco: null, recos: [],
 };
 
 /* ---------- utilidades ---------- */
@@ -116,7 +117,7 @@ async function cargarBase() {
     leerTodo(() => sb.from('clientes').select('id,nombre,apellido,telefono,whatsapp,ruc,direccion,limite_credito,activo').eq('auth_user_id', u).order('nombre')),
     leerTodo(() => sb.from('agro_productores').select('*').eq('auth_user_id', u)),
     leerTodo(() => sb.from('fiados').select('id,cliente_id,cliente_nombre,descripcion,monto_total,monto_pagado,saldo,fecha,estado').eq('auth_user_id', u).eq('estado', 'pendiente').order('fecha')),
-    leerTodo(() => sb.from('productos').select('id,nombre,sku,precio,costo,stock_actual,stock_minimo,es_sustancia_controlada,activo,tipo,ubicacion_fisica').eq('auth_user_id', u).eq('tipo', 'producto').order('nombre')),
+    leerTodo(() => sb.from('productos').select('id,nombre,sku,precio,costo,stock_actual,stock_minimo,es_sustancia_controlada,activo,tipo,ubicacion_fisica,unidad_codigo,agro_area,agro_refrigerado').eq('auth_user_id', u).eq('tipo', 'producto').order('nombre')),
     leerTodo(() => sb.from('producto_lotes').select('id,producto_id,numero_lote,fecha_vencimiento,cantidad_actual,activo').eq('auth_user_id', u).eq('activo', true).gt('cantidad_actual', 0).order('fecha_vencimiento')),
   ]);
   AG.clientes = clientes.filter(c => c.activo !== false);
@@ -145,6 +146,7 @@ async function agTab(t) {
     else if (t === 'productores') agProductores();
     else if (t === 'cobros') agCobros();
     else if (t === 'restringidos') await agRestringidos();
+    else if (t === 'recomendacion') await agRecomendacion();
     else if (t === 'vencimientos') agVencimientos();
   } catch (e) {
     console.error('agTab', e);
@@ -438,6 +440,7 @@ async function agRestringidos() {
           <div class="ag-campo" id="vr-met-wrap"><label>Método</label><select class="ag-sel" id="vr-met" onchange="agVrForma()">${AG.metodos.length ? AG.metodos.map(m => `<option value="${m.id}" data-n="${esc(m.nombre)}">${esc(m.nombre)}</option>`).join('') : '<option value="" data-n="Efectivo">Efectivo</option>'}</select></div>
           <div class="ag-campo" id="vr-banco-wrap" style="display:none"><label>¿A qué banco entra? *</label><select class="ag-sel" id="vr-banco"><option value="">— Elige —</option>${AG.bancos.map(b => `<option value="${b.id}">${esc(b.nombre)}</option>`).join('')}</select></div>
         </div>
+        <label class="ag-chk"><input type="checkbox" id="vr-iva" ${AG.venta.iva ? 'checked' : ''} onchange="AG.venta.iva=this.checked;agVrTotal()"/> Cobrar IVA (${ivaPct()}%). Déjalo sin marcar si el producto está exento (la mayoría de insumos agropecuarios; confírmalo con tu contador).</label>
       </div>
       <div id="vr-err"></div>
       <div class="ag-acciones"><button class="btn-primary" id="vr-btn" onclick="agVrConfirmar()">✅ Confirmar venta</button><button class="btn-secondary" onclick="agVrLimpiar()">Limpiar</button></div>`}
@@ -497,11 +500,15 @@ function agVrProd(i, id) {
 }
 function agVrAgregar() { AG.venta.lineas.push({ producto_id: '', cantidad: 1, precio: 0 }); agVrRender(); }
 function agVrQuitar(i) { AG.venta.lineas.splice(i, 1); if (!AG.venta.lineas.length) AG.venta.lineas.push({ producto_id: '', cantidad: 1, precio: 0 }); agVrRender(); }
+function ivaPct() { const v = Number(AG.empresaConfig?.iva_porcentaje_default); return v > 0 && v <= 100 ? v : 15; }
 function agVrTotal() {
   const t = n2(AG.venta.lineas.reduce((s, l) => s + n2((Number(l.cantidad) || 0) * (Number(l.precio) || 0)), 0));
-  const el = document.getElementById('vr-total'); if (el) el.textContent = 'Total: ' + fmt(t);
-  return t;
+  const iva = AG.venta.iva ? n2(t * ivaPct() / 100) : 0;
+  const el = document.getElementById('vr-total');
+  if (el) el.textContent = iva ? `Subtotal ${fmt(t)} + IVA ${fmt(iva)} = Total ${fmt(n2(t + iva))}` : 'Total: ' + fmt(t);
+  return n2(t + iva);
 }
+function costoDeProducto(id) { return Number(AG.productos.find(p => p.id === id)?.costo || 0); }
 function agVrForma() {
   const forma = document.getElementById('vr-forma')?.value;
   const mw = document.getElementById('vr-met-wrap'), bw = document.getElementById('vr-banco-wrap');
@@ -533,6 +540,10 @@ async function agVrConfirmar() {
   const lineas = AG.venta.lineas.filter(l => l.producto_id);
   if (!lineas.length) return aviso('Agrega al menos un producto.');
   if (lineas.some(l => !(l.cantidad > 0) || !(l.precio > 0))) return aviso('Revisa las cantidades y precios: deben ser mayores que cero.');
+  if (AG.empresaConfig?.agro_permitir_bajo_costo !== true) {
+    const bajo = lineas.find(l => costoDeProducto(l.producto_id) > 0 && l.precio < costoDeProducto(l.producto_id) - 0.004);
+    if (bajo) return aviso(`${nombreProducto(bajo.producto_id)} cuesta ${fmt(costoDeProducto(bajo.producto_id))}: no se puede vender más barato.`);
+  }
   for (const l of lineas) {
     const sd = stockDisponible(l.producto_id);
     if (l.cantidad > sd.vendible + 0.0005) return aviso(`De ${nombreProducto(l.producto_id)} solo hay ${num(sd.vendible)} para vender.`);
@@ -548,7 +559,7 @@ async function agVrConfirmar() {
   const comprador = { nombre: v('vr-nom'), cedula: v('vr-ced'), direccion: v('vr-dir'), uso: v('vr-uso'), receta_numero: v('vr-rec'), receta_profesional: v('vr-prof'),
     mayor_edad: document.getElementById('vr-mayor')?.checked === true };
   const pago = { forma, metodo_pago_id: forma === 'fiado' ? null : (sel?.value || null), metodo_pago_nombre: forma === 'fiado' ? null : metNombre,
-    banco_id: (forma !== 'fiado' && bancoVisible) ? v('vr-banco') : null, usuario: AG.nombre };
+    banco_id: (forma !== 'fiado' && bancoVisible) ? v('vr-banco') : null, usuario: AG.nombre, iva: AG.venta.iva === true };
   const items = lineas.map(l => ({ producto_id: l.producto_id, cantidad: n2(l.cantidad * 1000) / 1000, precio: n2(l.precio) }));
   AG.ocupado = true; const b = document.getElementById('vr-btn'); if (b) { b.disabled = true; b.textContent = 'Guardando…'; }
   try {
@@ -568,7 +579,7 @@ async function agVrConfirmar() {
     }
     if (!res?.ok) return aviso(mensajeVr(res || {}));
     showToast(res.ya_existia ? 'Esa venta ya estaba guardada (no se repitió).' : `Venta ${res.numero_venta} guardada: ${fmt(res.total)}.`);
-    AG.venta = { lineas: [{ producto_id: '', cantidad: 1, precio: 0 }], clave: uuid() };
+    AG.venta = { lineas: [{ producto_id: '', cantidad: 1, precio: 0 }], clave: uuid(), iva: false };
     AG.ocupado = false;
     await agTab('restringidos');
   } finally { AG.ocupado = false; if (b) { b.disabled = false; b.textContent = '✅ Confirmar venta'; } }
@@ -658,7 +669,201 @@ function agVencimientos() {
     ${!lotes.length ? '<div class="ag-card ag-vacio"><div class="ico">✅</div><p>Ningún lote vence en los próximos 90 días.</p></div>' : ''}
     ${grupo('🔴 Vencidos con existencia', venc, 'mal', 'No se pueden vender. Sepáralos para devolución al proveedor o destrucción según la norma, y registra la baja en Productos.')}
     ${grupo('🟠 Vencen en 30 días o menos', m30, 'ambar', 'Ofrécelos primero.')}
-    ${grupo('🟡 Vencen en 31 a 90 días', m90, '', '')}`;
+    ${grupo('🟡 Vencen en 31 a 90 días', m90, '', '')}
+    ${htmlBodega()}`;
+}
+
+/* =========================== RECOMENDACIÓN TÉCNICA =========================== */
+// Calcula cuánto lleva el productor: manzanas × dosis por manzana, y lo sugiere en las
+// presentaciones que vendes (saco, galón…). Se guarda en su historial, se imprime y se
+// manda a Ventas (o a Restringidos si el producto es de uso controlado). No mueve dinero.
+const MOTIVOS_RECO = { cultivo: 'Escribe el cultivo.', manzanas: 'Escribe cuántas manzanas (mayor que cero).', sin_productos: 'Agrega al menos un producto con su dosis.',
+  dosis: 'Revisa las dosis: deben ser mayores que cero.', producto: 'Un producto ya no existe. Recarga la pantalla.', cliente: 'Ese productor ya no existe. Recarga la pantalla.',
+  desactivado: 'El Agroservicio está apagado. Actívalo en Configuración.', sesion: 'Tu sesión terminó. Vuelve a entrar.' };
+function nuevaReco() { return { cliente_id: '', cultivo: '', manzanas: '', objetivo: '', tecnico: '', notas: '', lineas: [{ producto_id: '', dosis: '' }] }; }
+function unidadDe(id) { return AG.productos.find(p => p.id === id)?.unidad_codigo || 'unidad'; }
+function presentacionesDe(id) { return AG.presentaciones.filter(p => p.producto_id === id && p.activo !== false && Number(p.factor) > 1).sort((a, b) => Number(b.factor) - Number(a.factor)); }
+// Sugerencia: la presentación más grande que quepa + lo que sobre en unidad base. Para la venta:
+// si cuadra exacto en una sola presentación se manda así; si no, en unidad base.
+function sugerencia(prodId, total) {
+  const u = unidadDe(prodId); const pres = presentacionesDe(prodId);
+  total = Math.round(total * 1000) / 1000;
+  const exacta = pres.find(p => { const n = total / Number(p.factor); return n >= 1 && Math.abs(n - Math.round(n)) < 0.0005; });
+  let texto = `${num(total)} ${u}`;
+  if (pres.length) {
+    let resto = total; const partes = [];
+    pres.forEach(p => { const n = Math.floor((resto + 0.0005) / Number(p.factor)); if (n > 0) { partes.push(`${n} × ${p.nombre}`); resto = Math.round((resto - n * Number(p.factor)) * 1000) / 1000; } });
+    if (partes.length) texto = partes.join(' + ') + (resto > 0.0005 ? ` + ${num(resto)} ${u}` : '');
+  }
+  return { texto, venta: exacta ? { presentacion_id: exacta.id, cantidad: Math.round(total / Number(exacta.factor)) } : { presentacion_id: null, cantidad: total } };
+}
+async function agRecomendacion() {
+  try {
+    const [pres, recos] = await Promise.all([
+      leerTodo(() => sb.from('producto_presentaciones').select('id,producto_id,nombre,factor,precio,activo').eq('auth_user_id', AG.userId)),
+      sb.from('agro_recomendaciones').select('*').eq('auth_user_id', AG.userId).order('created_at', { ascending: false }).limit(20),
+    ]);
+    AG.presentaciones = pres; AG.recos = recos.data || [];
+  } catch (e) { console.warn('recomendación', e); }
+  if (!AG.reco) AG.reco = nuevaReco();
+  const r = AG.reco;
+  const productores = AG.clientes.filter(c => AG.productores[c.id]);
+  const cultivosSug = [...new Set(Object.values(AG.productores).flatMap(p => (p.cultivos || []).map(c => c.cultivo)).filter(Boolean))];
+  document.getElementById('ag-vista').innerHTML = `
+    <div class="ag-card ag-no-print"><h3>🧮 Recomendación técnica</h3>
+      <p class="ag-ayuda">Calcula lo que el productor necesita: <b>manzanas × dosis por manzana</b>. El sistema te dice cuántos sacos, galones o unidades llevar, cuánto le cuesta y si hay en existencia.
+        Luego la guardas en su historial, la imprimes o la mandas directo a la venta.</p>
+      <div class="ag-grid2">
+        <div class="ag-campo"><label>Productor (opcional)</label><select class="ag-sel" id="rc-cli" onchange="agRcCliente(this.value)"><option value="">— Sin productor —</option>
+          ${productores.map(c => `<option value="${c.id}" ${c.id === r.cliente_id ? 'selected' : ''}>${esc(nombreCliente(c))}</option>`).join('')}</select></div>
+        <div class="ag-campo"><label>Cultivo o animal *</label><input class="ag-inp" id="rc-cultivo" list="rc-cultivos" maxlength="100" value="${esc(r.cultivo)}" oninput="AG.reco.cultivo=this.value;agRcPrefMz()"/>
+          <datalist id="rc-cultivos">${cultivosSug.map(c => `<option value="${esc(c)}">`).join('')}</datalist></div>
+        <div class="ag-campo"><label>Manzanas *</label><input class="ag-inp" id="rc-mz" type="number" min="0.01" step="0.25" value="${esc(r.manzanas)}" oninput="AG.reco.manzanas=this.value;agRcCalcular()"/></div>
+        <div class="ag-campo"><label>Para qué (plaga, maleza, fertilización…)</label><input class="ag-inp" id="rc-obj" maxlength="200" value="${esc(r.objetivo)}" oninput="AG.reco.objetivo=this.value"/></div>
+        <div class="ag-campo"><label>Técnico que recomienda</label><input class="ag-inp" id="rc-tec" maxlength="150" value="${esc(r.tecnico)}" oninput="AG.reco.tecnico=this.value" placeholder="Ing. agrónomo / veterinario"/></div>
+        <div class="ag-campo"><label>Notas (forma de aplicar, intervalo…)</label><input class="ag-inp" id="rc-notas" maxlength="1000" value="${esc(r.notas)}" oninput="AG.reco.notas=this.value"/></div>
+      </div>
+      <div class="tl-sec"><b>Productos y dosis por manzana</b><div id="rc-lineas"></div>
+        <button type="button" class="btn-ghost" style="align-self:flex-start" onclick="AG.reco.lineas.push({producto_id:'',dosis:''});agRcRender()">➕ Agregar producto</button></div>
+      <div id="rc-resultado"></div>
+      <div id="rc-err"></div>
+      <div class="ag-acciones">
+        <button class="btn-primary" id="rc-guardar" onclick="agRcGuardar()">💾 Guardar en su historial</button>
+        <button class="btn-secondary" onclick="agRcImprimir()">🖨️ Imprimir</button>
+        <button class="btn-secondary" onclick="agRcAVentas()">🛒 Llevar a Ventas</button>
+        <button class="btn-ghost" onclick="AG.reco=nuevaReco();agRecomendacion()">Limpiar</button>
+      </div>
+    </div>
+    <div class="ag-card ag-no-print"><h3>📚 Últimas recomendaciones</h3>
+      ${AG.recos.length ? `<div class="ag-tw"><table class="ag-tabla"><thead><tr><th>Fecha</th><th>Productor</th><th>Cultivo</th><th class="num">Manzanas</th><th>Productos</th><th></th></tr></thead><tbody>
+        ${AG.recos.map(x => `<tr><td>${fechaCorta(x.created_at)}</td><td>${esc(x.cliente_nombre || '—')}</td><td>${esc(x.cultivo)}${x.objetivo ? `<div class="tln-sub">${esc(x.objetivo)}</div>` : ''}</td><td class="num">${num(x.manzanas)}</td>
+          <td>${(x.items || []).map(i => `${esc(i.nombre)}: ${esc(i.sugerido || (num(i.total) + ' ' + i.unidad))}`).join('<br>')}</td>
+          <td><button class="btn-ghost" onclick="agRcUsar('${x.id}')">Usar de nuevo</button></td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="tln-sub">Todavía no hay recomendaciones guardadas.</p>'}
+    </div>
+    <div id="rc-print"></div>`;
+  agRcRender();
+}
+function agRcCliente(id) {
+  AG.reco.cliente_id = id;
+  const cul = (AG.productores[id]?.cultivos || [])[0];
+  if (cul && !AG.reco.cultivo) { AG.reco.cultivo = cul.cultivo || ''; const c = document.getElementById('rc-cultivo'); if (c) c.value = AG.reco.cultivo; }
+  agRcPrefMz();
+}
+function agRcPrefMz() {
+  const p = AG.productores[AG.reco.cliente_id]; if (!p) return;
+  const c = (p.cultivos || []).find(x => String(x.cultivo || '').toLowerCase() === String(AG.reco.cultivo || '').trim().toLowerCase());
+  if (c && c.manzanas && !Number(AG.reco.manzanas)) { AG.reco.manzanas = String(c.manzanas); const m = document.getElementById('rc-mz'); if (m) m.value = c.manzanas; agRcCalcular(); }
+}
+function agRcRender() {
+  const cont = document.getElementById('rc-lineas'); if (!cont) return;
+  cont.innerHTML = AG.reco.lineas.map((l, i) => `<div class="ag-linea" style="grid-template-columns:1fr 130px 34px">
+    <select class="ag-sel" onchange="AG.reco.lineas[${i}].producto_id=this.value;agRcRender()"><option value="">— Elige el producto —</option>
+      ${AG.productos.map(p => `<option value="${p.id}" ${p.id === l.producto_id ? 'selected' : ''}>${esc(p.nombre)}${p.es_sustancia_controlada ? ' 🔒' : ''}</option>`).join('')}</select>
+    <input class="ag-inp" type="number" min="0" step="any" value="${esc(l.dosis)}" placeholder="Dosis/mz" aria-label="Dosis por manzana" oninput="AG.reco.lineas[${i}].dosis=this.value;agRcCalcular()"/>
+    <button type="button" class="tl-x" onclick="AG.reco.lineas.splice(${i},1);if(!AG.reco.lineas.length)AG.reco.lineas.push({producto_id:'',dosis:''});agRcRender()" aria-label="Quitar">✕</button>
+    ${l.producto_id ? `<div class="tln-sub" style="grid-column:1/-1;margin-top:-4px">Dosis en <b>${esc(unidadDe(l.producto_id))}</b> por manzana</div>` : ''}</div>`).join('');
+  agRcCalcular();
+}
+function calculoReco() {
+  const mz = Number(AG.reco.manzanas) || 0;
+  return AG.reco.lineas.filter(l => l.producto_id && Number(l.dosis) > 0).map(l => {
+    const p = AG.productos.find(x => x.id === l.producto_id) || {};
+    const total = Math.round(Number(l.dosis) * mz * 1000) / 1000;
+    const sg = sugerencia(l.producto_id, total);
+    const sd = stockDisponible(l.producto_id);
+    let precio = n2(total * Number(p.precio || 0));
+    if (sg.venta.presentacion_id) { const pr = AG.presentaciones.find(x => x.id === sg.venta.presentacion_id); if (pr && Number(pr.precio) > 0) precio = n2(sg.venta.cantidad * Number(pr.precio)); }
+    return { producto_id: l.producto_id, nombre: p.nombre || 'Producto', unidad: unidadDe(l.producto_id), dosis: Number(l.dosis), total, sugerido: sg.texto, venta: sg.venta,
+      precio, alcanza: sd.vendible + 0.0005 >= total, vendible: sd.vendible, restringido: p.es_sustancia_controlada === true, precioUnit: Number(p.precio || 0) };
+  });
+}
+function agRcCalcular() {
+  const el = document.getElementById('rc-resultado'); if (!el) return;
+  const mz = Number(AG.reco.manzanas) || 0; const c = calculoReco();
+  if (!mz || !c.length) { el.innerHTML = '<p class="tln-sub">Escribe las manzanas y al menos un producto con su dosis para ver el cálculo.</p>'; return; }
+  const tot = n2(c.reduce((s, x) => s + x.precio, 0));
+  el.innerHTML = `<div class="ag-tw"><table class="ag-tabla"><thead><tr><th>Producto</th><th class="num">Dosis/mz</th><th class="num">Total</th><th>Llevar</th><th class="num">Precio aprox.</th><th>Existencia</th></tr></thead><tbody>
+    ${c.map(x => `<tr><td>${esc(x.nombre)}${x.restringido ? ' <span class="ag-pill ambar">🔒 Restringido</span>' : ''}</td><td class="num">${num(x.dosis)} ${esc(x.unidad)}</td><td class="num">${num(x.total)} ${esc(x.unidad)}</td>
+      <td><b>${esc(x.sugerido)}</b></td><td class="num">${fmt(x.precio)}</td><td>${x.alcanza ? '<span class="ag-pill ok">Alcanza</span>' : `<span class="ag-pill mal">Solo hay ${num(x.vendible)}</span>`}</td></tr>`).join('')}
+    </tbody></table></div><div class="ag-total">Total aproximado: ${fmt(tot)}</div>`;
+}
+async function agRcGuardar() {
+  if (AG.ocupado) return;
+  const err = document.getElementById('rc-err'); err.innerHTML = '';
+  const c = calculoReco();
+  if (!String(AG.reco.cultivo || '').trim()) { err.innerHTML = '<div class="tl-aviso">Escribe el cultivo.</div>'; return; }
+  if (!(Number(AG.reco.manzanas) > 0)) { err.innerHTML = '<div class="tl-aviso">Escribe cuántas manzanas (mayor que cero).</div>'; return; }
+  if (!c.length) { err.innerHTML = '<div class="tl-aviso">Agrega al menos un producto con su dosis.</div>'; return; }
+  const cli = AG.clientes.find(x => x.id === AG.reco.cliente_id);
+  AG.ocupado = true; const b = document.getElementById('rc-guardar'); if (b) b.disabled = true;
+  try {
+    const { data, error } = await sb.rpc('agro_recomendacion_guardar', { p_datos: {
+      cliente_id: AG.reco.cliente_id || null, cliente_nombre: cli ? nombreCliente(cli) : null, cultivo: AG.reco.cultivo, manzanas: Number(AG.reco.manzanas),
+      objetivo: AG.reco.objetivo, tecnico: AG.reco.tecnico, notas: AG.reco.notas, usuario: AG.nombre,
+      items: c.map(x => ({ producto_id: x.producto_id, dosis_mz: x.dosis, sugerido: x.sugerido })) } });
+    if (error || !data?.ok) { err.innerHTML = `<div class="tl-aviso">${esc(error ? 'No se pudo guardar. Revisa tu conexión.' : (MOTIVOS_RECO[data.motivo] || 'No se pudo guardar.'))}</div>`; return; }
+    showToast('Recomendación guardada en el historial.');
+    AG.ocupado = false; await agTab('recomendacion');
+  } finally { AG.ocupado = false; if (b) b.disabled = false; }
+}
+function agRcUsar(id) {
+  const x = AG.recos.find(r => r.id === id); if (!x) return;
+  AG.reco = { cliente_id: x.cliente_id || '', cultivo: x.cultivo || '', manzanas: String(x.manzanas || ''), objetivo: x.objetivo || '', tecnico: x.tecnico || '', notas: x.notas || '',
+    lineas: (x.items || []).filter(i => AG.productos.some(p => p.id === i.producto_id)).map(i => ({ producto_id: i.producto_id, dosis: String(i.dosis_mz) })) };
+  if (!AG.reco.lineas.length) AG.reco.lineas = [{ producto_id: '', dosis: '' }];
+  agRecomendacion(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function agRcImprimir() {
+  const c = calculoReco();
+  if (!c.length || !(Number(AG.reco.manzanas) > 0)) { showToast('Completa la recomendación antes de imprimir.', 'error'); return; }
+  const cli = AG.clientes.find(x => x.id === AG.reco.cliente_id);
+  const el = document.getElementById('rc-print');
+  el.innerHTML = `<div class="ag-card"><h3>${esc(AG.empresaConfig?.nombre_comercial || '')} — Recomendación técnica</h3>
+    <p class="ag-ayuda" style="color:inherit">Fecha: ${fechaCorta(hoyISO())}${cli ? ` · Productor: <b>${esc(nombreCliente(cli))}</b>` : ''}<br>Cultivo: <b>${esc(AG.reco.cultivo)}</b> · Manzanas: <b>${num(AG.reco.manzanas)}</b>${AG.reco.objetivo ? ` · Para: ${esc(AG.reco.objetivo)}` : ''}</p>
+    <table class="ag-tabla"><thead><tr><th>Producto</th><th class="num">Dosis por manzana</th><th>Llevar</th></tr></thead><tbody>
+    ${c.map(x => `<tr><td>${esc(x.nombre)}</td><td class="num">${num(x.dosis)} ${esc(x.unidad)}</td><td>${esc(x.sugerido)}</td></tr>`).join('')}</tbody></table>
+    ${AG.reco.notas ? `<p style="margin-top:8px">Notas: ${esc(AG.reco.notas)}</p>` : ''}
+    <p style="margin-top:24px">_____________________________<br>${esc(AG.reco.tecnico || 'Técnico')}</p>
+    <p class="tln-sub" style="margin-top:8px">Lea y siga las indicaciones de la etiqueta. Use equipo de protección.</p></div>`;
+  document.body.classList.add('ag-imprimiendo-reco');
+  setTimeout(() => { window.print(); document.body.classList.remove('ag-imprimiendo-reco'); }, 50);
+}
+function agRcAVentas() {
+  const c = calculoReco();
+  if (!c.length || !(Number(AG.reco.manzanas) > 0)) { showToast('Completa la recomendación primero.', 'error'); return; }
+  const normales = c.filter(x => !x.restringido), restr = c.filter(x => x.restringido);
+  if (restr.length) {
+    // Los restringidos se venden con cédula y receta en su pestaña
+    AG.venta = { lineas: restr.map(x => ({ producto_id: x.producto_id, cantidad: x.total, precio: x.precioUnit })), clave: uuid(), iva: false };
+  }
+  if (normales.length) {
+    sessionStorage.setItem('n360_agro_recomendacion', JSON.stringify({ clienteId: AG.reco.cliente_id || null,
+      items: normales.map(x => ({ producto_id: x.producto_id, presentacion_id: x.venta.presentacion_id, cantidad: x.venta.cantidad })) }));
+    if (restr.length) showToast('Los productos restringidos quedaron listos en "Restringidos e IPSA" para venderlos con cédula y receta.', 'warning');
+    setTimeout(() => navigate('ventas.html'), restr.length ? 1500 : 0);
+  } else {
+    agTab('restringidos');
+  }
+}
+
+/* =========================== BODEGA =========================== */
+function htmlBodega() {
+  const A = window.N360AgroBodega?.AREAS || [];
+  const prods = AG.productos;
+  const sinArea = prods.filter(p => !p.agro_area);
+  const frios = prods.filter(p => p.agro_refrigerado);
+  const tarjetas = A.map(a => {
+    const lista = prods.filter(p => p.agro_area === a.id); if (!lista.length) return '';
+    return `<div class="ag-alerta" style="display:block"><b>${a.icono} ${esc(a.nombre)}</b> <span class="ag-pill">${lista.length}</span>
+      <div class="tln-sub" style="margin-top:4px">${lista.slice(0, 12).map(p => esc(p.nombre) + (p.agro_refrigerado ? ' ❄️' : '')).join(' · ')}${lista.length > 12 ? ' …' : ''}</div></div>`;
+  }).join('');
+  return `<div class="ag-card"><h3>🏬 Bodega</h3>
+    <p class="ag-ayuda">IPSA pide guardar los medicamentos <b>separados</b> de los agroquímicos y del alimento. Asigna el área de cada producto en <b>Productos</b>; al recibir una compra, el sistema te dice dónde va cada cosa.</p>
+    ${tarjetas || '<p class="tln-sub">Aún no hay productos con área asignada.</p>'}
+    ${frios.length ? `<div class="ag-alerta" style="display:block;background:#e0f2fe"><b>❄️ Refrigerados (${frios.length})</b><div class="tln-sub" style="margin-top:4px">${frios.map(p => esc(p.nombre)).join(' · ')}</div></div>` : ''}
+    ${sinArea.length ? `<div class="ag-alerta ambar"><span>❔ <b>${sinArea.length}</b> producto(s) sin área asignada.</span><button class="btn-secondary" style="flex:none" onclick="navigate('productos.html')">Asignar en Productos</button></div>` : ''}
+  </div>`;
 }
 
 /* ---------- arranque ---------- */
@@ -689,7 +894,7 @@ async function agInit() {
       return;
     }
     const inicial = (location.hash || '').replace('#', '');
-    await agTab(['inicio', 'productores', 'cobros', 'restringidos', 'vencimientos'].includes(inicial) ? inicial : 'inicio');
+    await agTab(['inicio', 'productores', 'cobros', 'recomendacion', 'restringidos', 'vencimientos'].includes(inicial) ? inicial : 'inicio');
   } catch (e) {
     console.error('agInit:', e);
     document.getElementById('loader').classList.add('hidden');

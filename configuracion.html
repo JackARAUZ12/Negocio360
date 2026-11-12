@@ -1767,6 +1767,16 @@
               <span class="cfg-switch-track" onclick="onToggleAgroCostoClick(event)"></span>
             </label>
           </div>
+          <div class="cfg-row" id="agro-mora-row" style="display:none">
+            <div>
+              <div class="cfg-row-label">Interés por mora del fiado a cosecha (% mensual)</div>
+              <div class="cfg-row-sub">0 = sin interés. Si pones un %, en Cobros aparece el botón 💸 para cargarlo a quien ya pasó su fecha de pago (nunca se carga solo). Máximo 10%.</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex:none">
+              <input type="number" id="agro-mora-input" min="0" max="10" step="0.1" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);color:var(--text-primary)" disabled />
+              <button type="button" class="btn-secondary" id="agro-mora-btn" onclick="guardarAgroMora()" disabled>Guardar</button>
+            </div>
+          </div>
           <div class="cfg-status" id="agro-status"></div>
         </div>
 
@@ -3745,7 +3755,7 @@ async function cargarModuloAgro() {
   if (!toggle || !sub) return;
   try {
     const { data, error } = await sbClient.from('configuracion_empresa')
-      .select('usa_modulo_agro, agro_receta_obligatoria, agro_permitir_bajo_costo').eq('auth_user_id', currentAuthUserId).maybeSingle();
+      .select('usa_modulo_agro, agro_receta_obligatoria, agro_permitir_bajo_costo, agro_mora_pct_mensual').eq('auth_user_id', currentAuthUserId).maybeSingle();
     if (error) throw error;
     const activo = data?.usa_modulo_agro === true;
     toggle.checked = activo;
@@ -3757,6 +3767,10 @@ async function cargarModuloAgro() {
     const cr = document.getElementById('agro-costo-row'), ct = document.getElementById('agro-costo-toggle');
     if (cr) cr.style.display = activo ? '' : 'none';
     if (ct) { ct.checked = data?.agro_permitir_bajo_costo === true; ct.disabled = false; }
+    const mr = document.getElementById('agro-mora-row'), mi = document.getElementById('agro-mora-input'), mb = document.getElementById('agro-mora-btn');
+    if (mr) mr.style.display = activo ? '' : 'none';
+    if (mi) { mi.value = Number(data?.agro_mora_pct_mensual || 0); mi.disabled = false; }
+    if (mb) mb.disabled = false;
   } catch (e) { console.error('cargarModuloAgro:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
 }
 function onToggleAgroClick(evt) {
@@ -3778,12 +3792,26 @@ async function guardarModuloAgro(activo) {
     sub.textContent = activo ? 'Activado — el panel de Agroservicio, Lotes y Vencimientos aparecen en el menú.' : 'Desactivado — el módulo de Agroservicio no aparece en ningún lado.';
     const rr = document.getElementById('agro-receta-row'); if (rr) rr.style.display = activo ? '' : 'none';
     const cr2 = document.getElementById('agro-costo-row'); if (cr2) cr2.style.display = activo ? '' : 'none';
+    const mr2 = document.getElementById('agro-mora-row'); if (mr2) mr2.style.display = activo ? '' : 'none';
     setStatus(statusEl, activo ? 'Módulo de Agroservicio activado. Recarga la página para ver el menú.' : 'Módulo de Agroservicio desactivado (tus datos se conservan).', true);
   } catch (e) {
     console.error('guardarModuloAgro:', e);
     toggle.checked = !activo;
     setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
   } finally { toggle.disabled = false; }
+}
+async function guardarAgroMora() {
+  const mi = document.getElementById('agro-mora-input'), mb = document.getElementById('agro-mora-btn');
+  const statusEl = document.getElementById('agro-status');
+  const v = Math.round(Number(mi.value) * 100) / 100;
+  if (!(v >= 0 && v <= 10)) { setStatus(statusEl, 'El interés debe estar entre 0 y 10% mensual.', false); return; }
+  mb.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ agro_mora_pct_mensual: v }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    setStatus(statusEl, v > 0 ? `Interés por mora: ${v}% mensual. Se carga con el botón 💸 en Cobros de cosecha.` : 'Interés por mora apagado.', true);
+  } catch (e) { console.error('guardarAgroMora:', e); setStatus(statusEl, 'No se pudo guardar. Intenta de nuevo.', false); }
+  finally { mb.disabled = false; }
 }
 function onToggleAgroCostoClick(evt) {
   const t = document.getElementById('agro-costo-toggle');

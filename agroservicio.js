@@ -131,6 +131,13 @@ function deudaPorCliente() {
   AG.fiados.forEach(f => { if (!f.cliente_id) return; m[f.cliente_id] = n2((m[f.cliente_id] || 0) + Number(f.saldo || 0)); });
   return m;
 }
+// Fecha en que el productor debe terminar de pagar: la 2ª fecha si paga en 2 partes, si no la de cosecha.
+function vencFinal(p) { return p ? (p.fecha_cosecha_2 || p.fecha_cosecha || null) : null; }
+function textoFechas(p) {
+  if (!p?.fecha_cosecha) return '';
+  if (p.fecha_cosecha_2) return `1ª parte (${num(p.pago1_pct || 50)}%) ${fechaCorta(p.fecha_cosecha)} · resto ${fechaCorta(p.fecha_cosecha_2)}`;
+  return fechaCorta(p.fecha_cosecha);
+}
 function nombreProducto(id) { return AG.productos.find(p => p.id === id)?.nombre || 'Producto'; }
 
 /* ---------- pestañas ---------- */
@@ -147,6 +154,9 @@ async function agTab(t) {
     else if (t === 'cobros') agCobros();
     else if (t === 'restringidos') await agRestringidos();
     else if (t === 'recomendacion') await agRecomendacion();
+    else if (t === 'recordatorios') await agRecordatorios();
+    else if (t === 'temporadas') await agTemporadas();
+    else if (t === 'reportes') await agReportes();
     else if (t === 'vencimientos') agVencimientos();
   } catch (e) {
     console.error('agTab', e);
@@ -174,7 +184,7 @@ async function agInicio() {
   const en30 = sumarDias(hoy, 30);
   let cos30 = 0, cos30n = 0, venc = 0, vencN = 0;
   Object.entries(deuda).forEach(([cid, d]) => {
-    const fc = AG.productores[cid]?.fecha_cosecha;
+    const fc = vencFinal(AG.productores[cid]);
     if (!fc || d <= 0) return;
     if (fc < hoy) { venc = n2(venc + d); vencN++; }
     else if (fc <= en30) { cos30 = n2(cos30 + d); cos30n++; }
@@ -190,6 +200,10 @@ async function agInicio() {
   if (cos30n) alertas.push({ c: 'ambar', t: `🟠 <b>${cos30n}</b> productor(es) cosechan en los próximos 30 días: <b>${fmt(cos30)}</b> por cobrar.`, b: 'Ver cobros', a: "agTab('cobros')" });
   if (lotesPronto.length) alertas.push({ c: 'ambar', t: `🟡 <b>${lotesPronto.length}</b> lote(s) vencen en menos de 60 días. Véndelos primero (el sistema ya los ofrece primero).`, b: 'Ver', a: "agTab('vencimientos')" });
   if (stockBajo.length) alertas.push({ c: 'ambar', t: `📉 <b>${stockBajo.length}</b> producto(s) en o bajo su mínimo: ${stockBajo.slice(0, 4).map(p => esc(p.nombre)).join(', ')}${stockBajo.length > 4 ? '…' : ''}.`, b: 'Comprar', a: "navigate('compras.html')" });
+  try {
+    const recs = (await listaRecordatorios()).filter(x => !x.enviado);
+    if (recs.length) alertas.unshift({ c: 'ambar', t: `📲 <b>${recs.length}</b> recordatorio(s) por WhatsApp para enviar hoy (cobros y próximas aplicaciones).`, b: 'Ver', a: "agTab('recordatorios')" });
+  } catch (e) { console.warn('recordatorios', e); }
   const restringidos = AG.productos.filter(p => p.es_sustancia_controlada === true);
   if (!restringidos.length) alertas.push({ c: '', t: '🔒 Aún no tienes productos marcados como <b>restringidos</b>. En Productos, marca la casilla 🔒 en los agroquímicos o medicamentos de uso controlado para venderlos con cédula y receta.', b: 'Ir a Productos', a: "navigate('productos.html')" });
 
@@ -234,14 +248,14 @@ function agProductores() {
     const p = AG.productores[c.id]; const d = deuda[c.id] || 0; const lim = Number(c.limite_credito || 0);
     const cult = (p?.cultivos || []).map(x => `${esc(x.cultivo)}${x.manzanas ? ' ' + num(x.manzanas) + ' mz' : ''}`).join(', ');
     let estado = '<span class="ag-pill ok">Al día</span>';
-    if (d > 0 && p?.fecha_cosecha && p.fecha_cosecha < hoy) estado = '<span class="ag-pill mal">Cosecha vencida</span>';
+    if (d > 0 && vencFinal(p) && vencFinal(p) < hoy) estado = '<span class="ag-pill mal">Cosecha vencida</span>';
     else if (lim > 0 && d >= lim - 0.004) estado = '<span class="ag-pill mal">Límite lleno</span>';
     else if (d > 0) estado = '<span class="ag-pill ambar">Con saldo</span>';
     if (!p) estado += ' <span class="ag-pill">Sin ficha</span>';
     return `<tr>
       <td><b>${esc(nombreCliente(c))}</b><div class="tln-sub">${esc([p?.finca, p?.comunidad, p?.municipio].filter(Boolean).join(' · ') || (c.telefono || ''))}</div></td>
       <td>${cult || '<span class="tln-sub">—</span>'}</td>
-      <td>${p?.fecha_cosecha ? fechaCorta(p.fecha_cosecha) : '<span class="tln-sub">—</span>'}</td>
+      <td>${p?.fecha_cosecha ? textoFechas(p) : '<span class="tln-sub">—</span>'}</td>
       <td class="num">${lim > 0 ? fmt(lim) : '<span class="tln-sub">Sin límite</span>'}</td>
       <td class="num ${d > 0 ? 'ag-rojo' : ''}">${fmt(d)}</td>
       <td>${estado}</td>
@@ -290,7 +304,9 @@ function agFicha(clienteId) {
         <div class="ag-campo"><label>Finca</label><input class="ag-inp" id="fp-finca" value="${esc(p.finca || '')}" maxlength="150"/></div>
         <div class="ag-campo"><label>Comunidad / comarca</label><input class="ag-inp" id="fp-com" value="${esc(p.comunidad || '')}" maxlength="150"/></div>
         <div class="ag-campo"><label>Municipio</label><input class="ag-inp" id="fp-mun" value="${esc(p.municipio || '')}" maxlength="150"/></div>
-        <div class="ag-campo"><label>📅 Fecha de su próxima cosecha</label><input class="ag-inp" id="fp-cosecha" type="date" value="${esc(p.fecha_cosecha || '')}"/></div>
+        <div class="ag-campo"><label>📅 Fecha de su próxima cosecha (pago)</label><input class="ag-inp" id="fp-cosecha" type="date" value="${esc(p.fecha_cosecha || '')}"/></div>
+        <div class="ag-campo"><label>📅 2ª fecha de pago (opcional, si paga en 2 partes)</label><input class="ag-inp" id="fp-cosecha2" type="date" value="${esc(p.fecha_cosecha_2 || '')}" oninput="document.getElementById('fp-pct-wrap').style.display=this.value?'':'none'"/></div>
+        <div class="ag-campo" id="fp-pct-wrap" style="${p.fecha_cosecha_2 ? '' : 'display:none'}"><label>% que paga en la 1ª fecha</label><input class="ag-inp" id="fp-pct1" type="number" min="1" max="99" step="1" value="${Number(p.pago1_pct || 50)}"/></div>
       </div>
       <div class="tl-sec"><b>🌱 Cultivos</b><div id="fp-cultivos">${(p.cultivos || []).map(filaCultivo).join('')}</div>
         <button type="button" class="btn-ghost" style="align-self:flex-start" onclick="document.getElementById('fp-cultivos').insertAdjacentHTML('beforeend', filaCultivo())">➕ Agregar cultivo</button></div>
@@ -305,7 +321,7 @@ function agFicha(clienteId) {
     </div>
     <div class="tl-modal-pie"><button class="btn-secondary" onclick="agCerrarModal()">Cancelar</button><button class="btn-primary" id="fp-btn" onclick="agGuardarFicha(${clienteId ? `'${clienteId}'` : 'null'})">Guardar ficha</button></div>`);
 }
-const MOTIVOS_FICHA = { nombre: 'Escribe el nombre del productor.', limite: 'El límite de crédito no es válido.', fecha: 'La fecha de cosecha no es válida.', cliente: 'Ese cliente ya no existe. Recarga la pantalla.', desactivado: 'El Agroservicio está apagado. Actívalo en Configuración.', datos: 'Revisa los datos.', sesion: 'Tu sesión terminó. Vuelve a entrar.' };
+const MOTIVOS_FICHA = { fecha2: 'La 2ª fecha de pago debe ser después de la fecha de cosecha.', partes: 'El % de la 1ª parte debe estar entre 1 y 99.', nombre: 'Escribe el nombre del productor.', limite: 'El límite de crédito no es válido.', fecha: 'La fecha de cosecha no es válida.', cliente: 'Ese cliente ya no existe. Recarga la pantalla.', desactivado: 'El Agroservicio está apagado. Actívalo en Configuración.', datos: 'Revisa los datos.', sesion: 'Tu sesión terminó. Vuelve a entrar.' };
 async function agGuardarFicha(clienteId) {
   if (AG.ocupado) return;
   const v = id => (document.getElementById(id)?.value || '').trim();
@@ -316,7 +332,8 @@ async function agGuardarFicha(clienteId) {
   if (!clienteId && !v('fp-nombre')) { err.innerHTML = '<div class="tl-aviso">Escribe el nombre del productor.</div>'; return; }
   if (!(lim >= 0)) { err.innerHTML = '<div class="tl-aviso">El límite de crédito no es válido.</div>'; return; }
   const datos = { nombre: v('fp-nombre'), cedula: v('fp-cedula'), telefono: v('fp-tel'), direccion: v('fp-dir'), finca: v('fp-finca'), comunidad: v('fp-com'),
-    municipio: v('fp-mun'), fecha_cosecha: v('fp-cosecha'), limite_credito: lim, notas: v('fp-notas'), cultivos, ganado };
+    municipio: v('fp-mun'), fecha_cosecha: v('fp-cosecha'), fecha_cosecha_2: v('fp-cosecha2'), pago1_pct: v('fp-cosecha2') ? (Number(v('fp-pct1')) || 50) : 50,
+    limite_credito: lim, notas: v('fp-notas'), cultivos, ganado };
   AG.ocupado = true; const b = document.getElementById('fp-btn'); if (b) b.disabled = true;
   try {
     const { data, error } = await sb.rpc('agro_productor_guardar', { p_cliente_id: clienteId, p_datos: datos });
@@ -331,7 +348,7 @@ function mensajeEstadoCuenta(c, fiados, total) {
   const negocio = AG.empresaConfig?.nombre_comercial || 'nuestro agroservicio';
   const lineas = fiados.map(f => `• ${fechaCorta(f.fecha)}: ${f.descripcion || 'Compra'} — debe ${fmt(f.saldo)}`).join('\n');
   return `Hola ${nombreCliente(c)}, le saluda ${negocio}.\nSu estado de cuenta:\n${lineas}\n\nTotal pendiente: ${fmt(total)}` +
-    (p?.fecha_cosecha ? `\nFecha acordada de pago (cosecha): ${fechaCorta(p.fecha_cosecha)}` : '') + '\n¡Gracias por su preferencia!';
+    (p?.fecha_cosecha_2 ? `\nPago acordado: ${num(p.pago1_pct || 50)}% el ${fechaCorta(p.fecha_cosecha)} y el resto el ${fechaCorta(p.fecha_cosecha_2)}` : (p?.fecha_cosecha ? `\nFecha acordada de pago (cosecha): ${fechaCorta(p.fecha_cosecha)}` : '')) + '\n¡Gracias por su preferencia!';
 }
 function agEstadoCuenta(clienteId) {
   const c = AG.clientes.find(x => x.id === clienteId); if (!c) return;
@@ -358,7 +375,7 @@ function agCobros() {
   Object.entries(deuda).forEach(([cid, d]) => {
     if (d <= 0.004) return;
     const c = AG.clientes.find(x => x.id === cid) || { id: cid, nombre: AG.fiados.find(f => f.cliente_id === cid)?.cliente_nombre || 'Cliente' };
-    const fc = AG.productores[cid]?.fecha_cosecha || null;
+    const fc = vencFinal(AG.productores[cid]);
     const item = { c, d, fc };
     if (!fc) grupos.sin.push(item); else if (fc < hoy) grupos.vencido.push(item); else if (fc <= en30) grupos.pronto.push(item); else grupos.luego.push(item);
   });
@@ -371,12 +388,18 @@ function agCobros() {
       <div class="ag-tw"><table class="ag-tabla"><thead><tr><th>Productor</th><th>Cosecha</th><th class="num">Debe</th><th></th></tr></thead><tbody>
       ${arr.map(x => {
         const dias = x.fc ? diasEntre(hoy, x.fc) : null;
-        const cuando = x.fc ? `${fechaCorta(x.fc)}<div class="tln-sub">${dias < 0 ? `hace ${-dias} día(s)` : dias === 0 ? 'hoy' : `en ${dias} día(s)`}</div>` : '<span class="tln-sub">Sin fecha</span>';
+        const pp = AG.productores[x.c.id];
+        let cuando = x.fc ? `${fechaCorta(x.fc)}<div class="tln-sub">${dias < 0 ? `hace ${-dias} día(s)` : dias === 0 ? 'hoy' : `en ${dias} día(s)`}</div>` : '<span class="tln-sub">Sin fecha</span>';
+        if (pp?.fecha_cosecha_2) {
+          const p1 = n2(x.d * Number(pp.pago1_pct || 50) / 100);
+          cuando += `<div class="tln-sub">2 partes: ${fmt(p1)} (${num(pp.pago1_pct || 50)}%) ${pp.fecha_cosecha < hoy ? 'debió pagarse' : 'vence'} ${fechaCorta(pp.fecha_cosecha)}; resto ${fechaCorta(pp.fecha_cosecha_2)}</div>`;
+        }
+        const moraBtn = (cls === 'mal' && Number(AG.empresaConfig?.agro_mora_pct_mensual) > 0 && AG.productores[x.c.id]) ? `<button class="btn-ghost" onclick="agMora('${x.c.id}')">💸 Interés</button>` : '';
         const wa = telWa(x.c.whatsapp || x.c.telefono);
         const fs = AG.fiados.filter(f => f.cliente_id === x.c.id);
         return `<tr><td><b>${esc(nombreCliente(x.c))}</b></td><td>${cuando}</td><td class="num ag-rojo">${fmt(x.d)}</td>
           <td style="white-space:nowrap">${wa ? `<a class="btn-ghost" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(mensajeEstadoCuenta(x.c, fs, x.d))}">📲 Recordar</a>` : ''}
-          <button class="btn-secondary" onclick="agEstadoCuenta('${x.c.id}')">Estado de cuenta</button>
+          <button class="btn-secondary" onclick="agEstadoCuenta('${x.c.id}')">Estado de cuenta</button>${moraBtn}
           ${AG.clientes.find(y => y.id === x.c.id) ? `<button class="btn-ghost" onclick="agFicha('${x.c.id}')">Ficha</button>` : ''}</td></tr>`;
       }).join('')}</tbody></table></div></div>`;
   };
@@ -386,7 +409,7 @@ function agCobros() {
       <p class="ag-ayuda">El productor compra fiado y paga cuando cosecha. Aquí ves quién debe y cuándo cosecha. Los abonos se cobran en <b>Fiados</b> (entran a Caja como siempre) y se reflejan aquí al instante.</p>
       <div class="ag-acciones" style="margin:0"><button class="btn-primary" onclick="navigate('fiados.html')">💰 Cobrar un abono</button><button class="btn-secondary" onclick="window.print()">🖨️ Imprimir lista</button></div></div>
     ${vacio ? '<div class="ag-card ag-vacio"><div class="ico">✅</div><p>Nadie te debe en este momento.</p></div>' : ''}
-    ${tabla('🔴 Cosecha ya pasada', 'Ya debieron pagar. El sistema no les deja fiar más hasta que abonen (o actualices su fecha de cosecha).', grupos.vencido, 'mal')}
+    ${tabla('🔴 Cosecha ya pasada', 'Ya debieron pagar. El sistema no les deja fiar más hasta que abonen (o actualices su fecha de cosecha).' + (Number(AG.empresaConfig?.agro_mora_pct_mensual) > 0 ? ` Interés por mora configurado: <b>${num(AG.empresaConfig.agro_mora_pct_mensual)}% mensual</b> (se carga con el botón 💸, nunca solo).` : ''), grupos.vencido, 'mal')}
     ${tabla('🟠 Cosechan en los próximos 30 días', 'Buen momento para recordarles su saldo.', grupos.pronto, 'ambar')}
     ${tabla('🟢 Cosechan más adelante', '', grupos.luego, 'ok')}
     ${tabla('⚪ Sin fecha de cosecha', 'Abre su ficha y ponle la fecha de cosecha para que el sistema te avise a tiempo.', grupos.sin, '')}
@@ -673,11 +696,233 @@ function agVencimientos() {
     ${htmlBodega()}`;
 }
 
+/* =========================== INTERÉS POR MORA =========================== */
+// Opcional (Configuración → Agroservicio). Se carga a mano: queda como una venta de servicio
+// "Interés por mora" fiada al productor, así cuenta como ingreso y se cobra por Fiados.
+async function agMora(clienteId) {
+  const c = AG.clientes.find(x => x.id === clienteId); if (!c) return;
+  const { data, error } = await sb.rpc('agro_mora_calcular', { p_cliente_id: clienteId });
+  if (error) { showToast('No se pudo calcular el interés. Revisa tu conexión.', 'error'); return; }
+  if (!data?.ok) {
+    const m = { mora_apagada: 'El interés por mora está apagado (Configuración → Agroservicio).', no_vencido: 'Su fecha de pago aún no ha pasado.', nada: 'No hay interés pendiente de cargar (ya se cargó hasta hoy o no debe).' };
+    showToast(m[data?.motivo] || 'No hay interés para cargar.', 'warning'); return;
+  }
+  AG._moraClave = uuid();
+  agModal(`<div class="tl-modal-cab"><h2>💸 Interés por mora — ${esc(nombreCliente(c))}</h2><button type="button" class="tl-x" onclick="agCerrarModal()" aria-label="Cerrar">✕</button></div>
+    <div class="tl-modal-cuerpo">
+      <table class="ag-tabla"><tbody>
+        <tr><td>Saldo vencido (sin intereses anteriores)</td><td class="num">${fmt(data.base)}</td></tr>
+        <tr><td>Tasa</td><td class="num">${num(data.pct)}% mensual</td></tr>
+        <tr><td>Días de mora (del ${fechaCorta(data.desde)} al ${fechaCorta(data.hasta)})</td><td class="num">${data.dias}</td></tr>
+        <tr><td><b>Interés a cargar</b></td><td class="num"><b>${fmt(data.monto)}</b></td></tr></tbody></table>
+      <p class="ag-ayuda" style="margin:0">Se suma a su cuenta como una venta de servicio "Interés por mora" (fiada). No toca Caja hasta que la pague en Fiados. No se cobra dos veces el mismo período.</p>
+      <div id="mora-err"></div></div>
+    <div class="tl-modal-pie"><button class="btn-secondary" onclick="agCerrarModal()">Cancelar</button><button class="btn-primary" id="mora-btn" onclick="agMoraConfirmar('${clienteId}', ${Number(data.monto)})">Cargar ${fmt(data.monto)}</button></div>`);
+}
+async function agMoraConfirmar(clienteId, monto) {
+  if (AG.ocupado) return;
+  AG.ocupado = true; const b = document.getElementById('mora-btn'); if (b) b.disabled = true;
+  try {
+    const { data, error } = await sb.rpc('agro_mora_cargar', { p_cliente_id: clienteId, p_clave: AG._moraClave, p_monto_visto: monto, p_usuario: AG.nombre });
+    const err = document.getElementById('mora-err');
+    if (error) { if (err) err.innerHTML = `<div class="tl-aviso">${esc(error.code === 'P0001' ? error.message : 'No se pudo cargar el interés. Revisa tu conexión.')}</div>`; return; }
+    if (!data?.ok) {
+      const m = data?.motivo === 'cambio' ? `El interés cambió a ${fmt(data.monto)} (pasó de día o hubo un abono). Ábrelo de nuevo.` : 'No hay interés para cargar.';
+      if (err) err.innerHTML = `<div class="tl-aviso">${esc(m)}</div>`; return;
+    }
+    AG.ocupado = false; agCerrarModal();
+    showToast(data.ya_existia ? 'Ese interés ya estaba cargado (no se repitió).' : `Interés cargado: ${fmt(data.monto)} (venta ${data.numero_venta}).`);
+    await agTab('cobros');
+  } finally { AG.ocupado = false; if (b) b.disabled = false; }
+}
+
+/* =========================== RECORDATORIOS =========================== */
+// El sistema arma solo la lista del día (quién cosecha pronto, quién ya se pasó, a quién le toca
+// la próxima aplicación). Tú tocas 📲 y se abre WhatsApp con el mensaje listo; queda marcado
+// como enviado para no repetirlo. (Enviar sin tocar requiere un servicio de WhatsApp de pago.)
+async function listaRecordatorios() {
+  const hoy = hoyISO(); const en7 = sumarDias(hoy, 7); const deuda = deudaPorCliente();
+  const negocio = AG.empresaConfig?.nombre_comercial || 'su agroservicio';
+  const [env, recos] = await Promise.all([
+    leerTodo(() => sb.from('agro_recordatorios').select('tipo,ref,enviado_at').eq('auth_user_id', AG.userId).gte('enviado_at', sumarDias(hoy, -120))),
+    leerTodo(() => sb.from('agro_recomendaciones').select('id,cliente_id,cliente_nombre,cultivo,objetivo,intervalo_dias,created_at,items').eq('auth_user_id', AG.userId).not('intervalo_dias', 'is', null).gte('created_at', sumarDias(hoy, -400))),
+  ]);
+  const enviados = new Set(env.map(e => e.tipo + '|' + e.ref));
+  const out = [];
+  Object.entries(deuda).forEach(([cid, d]) => {
+    if (d <= 0.004) return;
+    const c = AG.clientes.find(x => x.id === cid); const p = AG.productores[cid]; if (!c || !p?.fecha_cosecha) return;
+    const fin = vencFinal(p);
+    if (p.fecha_cosecha_2 && p.fecha_cosecha >= hoy && p.fecha_cosecha <= en7) {
+      const p1 = n2(d * Number(p.pago1_pct || 50) / 100);
+      out.push({ tipo: 'cobro', ref: `${cid}:${p.fecha_cosecha}:parte1`, c, cuando: p.fecha_cosecha, titulo: `1ª parte de pago (${num(p.pago1_pct || 50)}%)`, monto: p1,
+        msg: `Hola ${nombreCliente(c)}, le saluda ${negocio}. Le recordamos que el ${fechaCorta(p.fecha_cosecha)} corresponde su primer pago de ${fmt(p1)} (saldo total ${fmt(d)}). ¡Gracias!` });
+    }
+    if (fin >= hoy && fin <= en7) {
+      out.push({ tipo: 'cobro', ref: `${cid}:${fin}:proximo`, c, cuando: fin, titulo: 'Su cosecha / fecha de pago se acerca', monto: d,
+        msg: `Hola ${nombreCliente(c)}, le saluda ${negocio}. Le recordamos que el ${fechaCorta(fin)} vence su cuenta de ${fmt(d)}. ¡Gracias por su preferencia!` });
+    } else if (fin < hoy) {
+      out.push({ tipo: 'cobro', ref: `${cid}:${fin}:vencido`, c, cuando: fin, titulo: 'Fecha de pago ya pasó', monto: d,
+        msg: `Hola ${nombreCliente(c)}, le saluda ${negocio}. Su cuenta de ${fmt(d)} venció el ${fechaCorta(fin)}. Por favor pase a abonar. ¡Gracias!` });
+    }
+  });
+  recos.forEach(r => {
+    if (!r.cliente_id) return;
+    const fecha = sumarDias(String(r.created_at).slice(0, 10), Number(r.intervalo_dias));
+    if (fecha < sumarDias(hoy, -3) || fecha > sumarDias(hoy, 3)) return;
+    const c = AG.clientes.find(x => x.id === r.cliente_id); if (!c) return;
+    const prods = (r.items || []).map(i => i.nombre).join(', ');
+    out.push({ tipo: 'aplicacion', ref: `apl:${r.id}`, c, cuando: fecha, titulo: `Próxima aplicación en ${r.cultivo}`, monto: null,
+      msg: `Hola ${nombreCliente(c)}, le saluda ${negocio}. Le recordamos que el ${fechaCorta(fecha)} le toca la próxima aplicación en su ${r.cultivo}${r.objetivo ? ' (' + r.objetivo + ')' : ''}: ${prods}. ¡Lo esperamos!` });
+  });
+  out.forEach(x => { x.enviado = enviados.has(x.tipo + '|' + x.ref); });
+  out.sort((a, b) => (a.enviado - b.enviado) || String(a.cuando).localeCompare(String(b.cuando)));
+  return out;
+}
+async function agRecordatorios() {
+  const lista = await listaRecordatorios(); AG._recs = lista;
+  const pend = lista.filter(x => !x.enviado), env = lista.filter(x => x.enviado);
+  const fila = (x, i) => { const wa = telWa(x.c.whatsapp || x.c.telefono);
+    return `<tr${x.enviado ? ' style="opacity:.6"' : ''}><td><b>${esc(nombreCliente(x.c))}</b><div class="tln-sub">${esc(x.titulo)} · ${fechaCorta(x.cuando)}</div></td>
+      <td class="num">${x.monto != null ? fmt(x.monto) : '—'}</td><td style="font-size:12.5px;max-width:360px">${esc(x.msg)}</td>
+      <td style="white-space:nowrap">${x.enviado ? '<span class="ag-pill ok">Enviado</span>' : (wa ? `<a class="btn-primary" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(x.msg)}" onclick="agRecMarcar(${i})">📲 Enviar</a>` : '<span class="tln-sub">Sin teléfono</span>')}
+        ${x.enviado ? '' : `<button class="btn-ghost" onclick="agRecMarcar(${i}, true)">Ya lo envié</button>`}</td></tr>`; };
+  document.getElementById('ag-vista').innerHTML = `
+    <div class="ag-card"><h3>📲 Recordatorios de hoy</h3>
+      <p class="ag-ayuda">El sistema arma la lista solo: cobros que vencen en 7 días o ya vencieron, la 1ª parte de los que pagan en 2 partes, y la próxima aplicación de las recomendaciones con "repetir en N días".
+        Toca <b>📲 Enviar</b>: se abre WhatsApp con el mensaje listo y queda marcado para no repetirlo.</p>
+      ${pend.length ? `<div class="ag-tw"><table class="ag-tabla"><thead><tr><th>Productor</th><th class="num">Monto</th><th>Mensaje</th><th></th></tr></thead><tbody>${pend.map(x => fila(x, lista.indexOf(x))).join('')}</tbody></table></div>`
+        : '<div class="ag-vacio"><div class="ico">✅</div><p>No hay recordatorios pendientes hoy.</p></div>'}
+    </div>
+    ${env.length ? `<div class="ag-card"><h3>Ya enviados <span class="ag-pill">${env.length}</span></h3><div class="ag-tw"><table class="ag-tabla"><tbody>${env.map(x => fila(x, lista.indexOf(x))).join('')}</tbody></table></div></div>` : ''}`;
+}
+async function agRecMarcar(i, recargar) {
+  const x = (AG._recs || [])[i]; if (!x) return;
+  try {
+    const { data, error } = await sb.rpc('agro_recordatorio_marcar', { p_tipo: x.tipo, p_ref: x.ref, p_cliente_id: x.c.id, p_usuario: AG.nombre });
+    if (error || !data?.ok) { showToast('No se pudo marcar como enviado.', 'error'); return; }
+    x.enviado = true;
+    setTimeout(() => { if (AG.tab === 'recordatorios') agTab('recordatorios'); }, recargar ? 0 : 800);
+  } catch (_) { showToast('No se pudo marcar como enviado.', 'error'); }
+}
+
+/* =========================== TEMPORADAS =========================== */
+// Lo que se vendió en la misma temporada del año pasado vs. lo que hay hoy => qué pedir.
+const TEMPORADAS = { primera: { nombre: 'Primera', d: '05-15', h: '08-15' }, postrera: { nombre: 'Postrera', d: '08-16', h: '11-30' }, apante: { nombre: 'Apante', d: '12-01', h: '02-28' } };
+function rangoTemporada(clave) {
+  const t = TEMPORADAS[clave]; const hoy = hoyISO(); let y = Number(hoy.slice(0, 4));
+  let desde = `${y}-${t.d}`, hasta = clave === 'apante' ? `${y + 1}-${t.h}` : `${y}-${t.h}`;
+  if (hasta < hoy) { y++; desde = `${y}-${t.d}`; hasta = clave === 'apante' ? `${y + 1}-${t.h}` : `${y}-${t.h}`; }
+  const menos1 = s => `${Number(s.slice(0, 4)) - 1}${s.slice(4)}`;
+  return { desde, hasta, refDesde: menos1(desde), refHasta: menos1(hasta) };
+}
+function temporadaActualSugerida() {
+  const md = hoyISO().slice(5);
+  if (md >= '04-01' && md <= '07-31') return 'primera';
+  if (md >= '08-01' && md <= '10-31') return 'postrera';
+  return 'apante';
+}
+async function vendidoEnRango(desde, hasta) {
+  const ventas = await leerTodo(() => sb.from('ventas').select('id').eq('auth_user_id', AG.userId).eq('estado', 'completada')
+    .gte('fecha', desde + 'T00:00:00-06:00').lt('fecha', sumarDias(hasta, 1) + 'T00:00:00-06:00'));
+  const ids = ventas.map(v => v.id); const det = [];
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await sb.from('venta_detalles').select('venta_id,producto_id,cantidad,presentacion_factor,subtotal,costo,ganancia,producto_nombre').in('venta_id', ids.slice(i, i + 150));
+    if (error) throw error;
+    det.push(...(data || []));
+  }
+  return { ventas, det };
+}
+async function agTemporadas() {
+  const clave = AG._temp || temporadaActualSugerida(); AG._temp = clave;
+  const r = rangoTemporada(clave);
+  const { det } = await vendidoEnRango(r.refDesde, r.refHasta);
+  const m = {};
+  det.forEach(d => { if (!d.producto_id) return; m[d.producto_id] = (m[d.producto_id] || 0) + Number(d.cantidad || 0) * (Number(d.presentacion_factor) > 0 ? Number(d.presentacion_factor) : 1); });
+  const filas = Object.entries(m).map(([id, vend]) => {
+    const p = AG.productos.find(x => x.id === id); if (!p) return null;
+    const stock = Number(p.stock_actual || 0);
+    return { p, vend: Math.round(vend * 1000) / 1000, stock, pedir: Math.max(0, Math.round((vend - stock) * 1000) / 1000) };
+  }).filter(Boolean).sort((a, b) => b.pedir - a.pedir || b.vend - a.vend);
+  AG._tempFilas = filas;
+  const costoPedido = n2(filas.reduce((s, f) => s + f.pedir * Number(f.p.costo || 0), 0));
+  document.getElementById('ag-vista').innerHTML = `
+    <div class="ag-card"><h3>📅 Temporadas</h3>
+      <p class="ag-ayuda">Compara lo que vendiste en la <b>misma temporada del año pasado</b> con lo que tienes hoy, y te dice qué pedir. Es una guía: ajústala con lo que sabes del año.</p>
+      <div class="ag-buscar ag-no-print">${Object.entries(TEMPORADAS).map(([k, t]) => `<button class="ag-tab ${k === clave ? 'activa' : ''}" onclick="AG._temp='${k}';agTab('temporadas')">${t.nombre}</button>`).join('')}</div>
+      <p class="tln-sub">Temporada que viene: <b>${fechaCorta(r.desde)} – ${fechaCorta(r.hasta)}</b> · Se compara con: ${fechaCorta(r.refDesde)} – ${fechaCorta(r.refHasta)} (aprox.)</p>
+      ${filas.length ? `<div class="ag-tw"><table class="ag-tabla"><thead><tr><th>Producto</th><th class="num">Vendido el año pasado</th><th class="num">Tienes hoy</th><th class="num">Sugerido pedir</th><th class="num">Costo aprox.</th></tr></thead><tbody>
+        ${filas.map(f => `<tr><td>${esc(f.p.nombre)}</td><td class="num">${num(f.vend)} ${esc(f.p.unidad_codigo || '')}</td><td class="num">${num(f.stock)}</td>
+          <td class="num ${f.pedir > 0 ? 'ag-rojo' : ''}">${f.pedir > 0 ? num(f.pedir) : '—'}</td><td class="num">${f.pedir > 0 ? fmt(f.pedir * Number(f.p.costo || 0)) : '—'}</td></tr>`).join('')}
+        </tbody></table></div><div class="ag-total">Pedido sugerido aprox.: ${fmt(costoPedido)}</div>
+        <div class="ag-acciones ag-no-print"><button class="btn-secondary" onclick="agTempCsv()">⬇️ Excel (CSV)</button><button class="btn-secondary" onclick="window.print()">🖨️ Imprimir</button><button class="btn-primary" onclick="navigate('compras.html')">📦 Ir a Compras</button></div>`
+        : '<div class="ag-vacio"><div class="ico">📅</div><p>No hay ventas registradas en esa temporada del año pasado. Cuando tengas un año de historial, aquí verás el pedido sugerido.</p></div>'}
+    </div>`;
+}
+function agTempCsv() {
+  const q = x => `"${String(x == null ? '' : x).replace(/"/g, '""')}"`;
+  const filas = [['Producto', 'Unidad', 'Vendido año pasado', 'Tienes hoy', 'Sugerido pedir', 'Costo aprox.']].concat((AG._tempFilas || []).map(f => [f.p.nombre, f.p.unidad_codigo || '', f.vend, f.stock, f.pedir, n2(f.pedir * Number(f.p.costo || 0))]));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + filas.map(r => r.map(q).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  a.download = `pedido-temporada-${AG._temp}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* =========================== REPORTES DEL RUBRO =========================== */
+async function agReportes() {
+  const hoy = hoyISO();
+  if (!AG._repDesde) { AG._repDesde = hoy.slice(0, 8) + '01'; AG._repHasta = hoy; }
+  const desde = AG._repDesde, hasta = AG._repHasta;
+  const [{ ventas, det }, vcli] = await Promise.all([
+    vendidoEnRango(desde, hasta),
+    leerTodo(() => sb.from('ventas').select('id,cliente_id,total,categoria').eq('auth_user_id', AG.userId).eq('estado', 'completada')
+      .gte('fecha', desde + 'T00:00:00-06:00').lt('fecha', sumarDias(hasta, 1) + 'T00:00:00-06:00')),
+  ]);
+  const A = window.N360AgroBodega?.AREAS || [];
+  const porLinea = {};
+  det.forEach(d => {
+    const p = AG.productos.find(x => x.id === d.producto_id);
+    const k = p?.agro_area || (d.producto_id ? 'sin' : 'servicios');
+    const o = porLinea[k] = porLinea[k] || { venta: 0, ganancia: 0 };
+    o.venta += Number(d.subtotal || 0); o.ganancia += Number(d.ganancia || 0);
+  });
+  const nombreLinea = k => k === 'sin' ? '❔ Sin área asignada' : k === 'servicios' ? '🧾 Servicios e intereses' : (A.find(a => a.id === k) ? A.find(a => a.id === k).icono + ' ' + A.find(a => a.id === k).nombre : k);
+  const totV = n2(Object.values(porLinea).reduce((s, o) => s + o.venta, 0));
+  const porCom = {}, porCli = {};
+  vcli.forEach(v => {
+    const p = v.cliente_id ? AG.productores[v.cliente_id] : null;
+    const k = p?.comunidad || (v.cliente_id ? 'Clientes sin comunidad' : 'Mostrador (sin cliente)');
+    porCom[k] = n2((porCom[k] || 0) + Number(v.total || 0));
+    if (v.cliente_id) porCli[v.cliente_id] = n2((porCli[v.cliente_id] || 0) + Number(v.total || 0));
+  });
+  const intereses = n2(vcli.filter(v => v.categoria === 'Interés por mora').reduce((s, v) => s + Number(v.total || 0), 0));
+  const deuda = deudaPorCliente(); const mes = {};
+  Object.entries(deuda).forEach(([cid, d]) => { const f = vencFinal(AG.productores[cid]); const k = f ? f.slice(0, 7) : 'Sin fecha'; mes[k] = n2((mes[k] || 0) + d); });
+  const top = Object.entries(porCli).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const tabla = (cab, filas) => `<div class="ag-tw"><table class="ag-tabla"><thead><tr>${cab.map((c, i) => `<th${i ? ' class="num"' : ''}>${c}</th>`).join('')}</tr></thead><tbody>${filas.join('') || `<tr><td colspan="${cab.length}" class="tln-sub">Sin datos en el período.</td></tr>`}</tbody></table></div>`;
+  document.getElementById('ag-vista').innerHTML = `
+    <div class="ag-card ag-no-print"><h3>📊 Reportes del agroservicio</h3>
+      <p class="ag-ayuda">Ventas completadas (las anuladas no cuentan). Ventas, Caja y Reportes generales siguen siendo la fuente oficial; esto es la vista del rubro.</p>
+      <div class="ag-buscar"><input class="ag-inp" type="date" id="rp-d" value="${desde}" style="max-width:170px;flex:none"/><input class="ag-inp" type="date" id="rp-h" value="${hasta}" style="max-width:170px;flex:none"/>
+        <button class="btn-secondary" onclick="AG._repDesde=document.getElementById('rp-d').value||AG._repDesde;AG._repHasta=document.getElementById('rp-h').value||AG._repHasta;agTab('reportes')">Ver</button>
+        <button class="btn-secondary" onclick="window.print()">🖨️ Imprimir</button></div></div>
+    <div class="ag-kpis">
+      <div class="ag-kpi"><div class="ag-kpi-l">Vendido en el período</div><div class="ag-kpi-v">${fmt(n2(vcli.reduce((s, v) => s + Number(v.total || 0), 0)))}</div><div class="ag-kpi-s">${ventas.length} venta(s) · ${fechaCorta(desde)} – ${fechaCorta(hasta)}</div></div>
+      <div class="ag-kpi"><div class="ag-kpi-l">Ganancia por productos</div><div class="ag-kpi-v">${fmt(n2(Object.values(porLinea).reduce((s, o) => s + o.ganancia, 0)))}</div><div class="ag-kpi-s">antes de gastos</div></div>
+      <div class="ag-kpi"><div class="ag-kpi-l">Intereses por mora cargados</div><div class="ag-kpi-v">${fmt(intereses)}</div><div class="ag-kpi-s">en el período</div></div>
+    </div>
+    <div class="ag-card"><h3>Por línea de producto</h3>${tabla(['Línea', 'Vendido', '% del total', 'Ganancia'], Object.entries(porLinea).sort((a, b) => b[1].venta - a[1].venta).map(([k, o]) =>
+      `<tr><td>${esc(nombreLinea(k))}</td><td class="num">${fmt(o.venta)}</td><td class="num">${totV ? num(Math.round(o.venta / totV * 1000) / 10) : 0}%</td><td class="num">${fmt(o.ganancia)}</td></tr>`))}</div>
+    <div class="ag-card"><h3>Por comunidad</h3>${tabla(['Comunidad', 'Vendido'], Object.entries(porCom).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt(v)}</td></tr>`))}</div>
+    <div class="ag-card"><h3>Mejores productores</h3>${tabla(['Productor', 'Compró'], top.map(([cid, v]) => `<tr><td>${esc(nombreCliente(AG.clientes.find(c => c.id === cid) || {}))}</td><td class="num">${fmt(v)}</td></tr>`))}</div>
+    <div class="ag-card"><h3>Cartera por mes de pago (hoy)</h3>${tabla(['Mes en que deben pagar', 'Por cobrar'], Object.entries(mes).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) =>
+      `<tr><td>${k === 'Sin fecha' ? 'Sin fecha de cosecha' : new Date(k + '-15T12:00:00').toLocaleDateString('es-NI', { month: 'long', year: 'numeric' })}${k !== 'Sin fecha' && k < hoy.slice(0, 7) ? ' <span class="ag-pill mal">vencido</span>' : ''}</td><td class="num">${fmt(v)}</td></tr>`))}</div>`;
+}
+
 /* =========================== RECOMENDACIÓN TÉCNICA =========================== */
 // Calcula cuánto lleva el productor: manzanas × dosis por manzana, y lo sugiere en las
 // presentaciones que vendes (saco, galón…). Se guarda en su historial, se imprime y se
 // manda a Ventas (o a Restringidos si el producto es de uso controlado). No mueve dinero.
-const MOTIVOS_RECO = { cultivo: 'Escribe el cultivo.', manzanas: 'Escribe cuántas manzanas (mayor que cero).', sin_productos: 'Agrega al menos un producto con su dosis.',
+const MOTIVOS_RECO = { intervalo: 'Los días para repetir deben estar entre 1 y 365.', cultivo: 'Escribe el cultivo.', manzanas: 'Escribe cuántas manzanas (mayor que cero).', sin_productos: 'Agrega al menos un producto con su dosis.',
   dosis: 'Revisa las dosis: deben ser mayores que cero.', producto: 'Un producto ya no existe. Recarga la pantalla.', cliente: 'Ese productor ya no existe. Recarga la pantalla.',
   desactivado: 'El Agroservicio está apagado. Actívalo en Configuración.', sesion: 'Tu sesión terminó. Vuelve a entrar.' };
 function nuevaReco() { return { cliente_id: '', cultivo: '', manzanas: '', objetivo: '', tecnico: '', notas: '', lineas: [{ producto_id: '', dosis: '' }] }; }
@@ -721,7 +966,8 @@ async function agRecomendacion() {
         <div class="ag-campo"><label>Manzanas *</label><input class="ag-inp" id="rc-mz" type="number" min="0.01" step="0.25" value="${esc(r.manzanas)}" oninput="AG.reco.manzanas=this.value;agRcCalcular()"/></div>
         <div class="ag-campo"><label>Para qué (plaga, maleza, fertilización…)</label><input class="ag-inp" id="rc-obj" maxlength="200" value="${esc(r.objetivo)}" oninput="AG.reco.objetivo=this.value"/></div>
         <div class="ag-campo"><label>Técnico que recomienda</label><input class="ag-inp" id="rc-tec" maxlength="150" value="${esc(r.tecnico)}" oninput="AG.reco.tecnico=this.value" placeholder="Ing. agrónomo / veterinario"/></div>
-        <div class="ag-campo"><label>Notas (forma de aplicar, intervalo…)</label><input class="ag-inp" id="rc-notas" maxlength="1000" value="${esc(r.notas)}" oninput="AG.reco.notas=this.value"/></div>
+        <div class="ag-campo"><label>Notas (forma de aplicar…)</label><input class="ag-inp" id="rc-notas" maxlength="1000" value="${esc(r.notas)}" oninput="AG.reco.notas=this.value"/></div>
+        <div class="ag-campo"><label>Repetir la aplicación en (días, opcional)</label><input class="ag-inp" id="rc-int" type="number" min="1" max="365" step="1" value="${esc(r.intervalo || '')}" oninput="AG.reco.intervalo=this.value" placeholder="Ej.: 15 → te recuerda avisarle"/></div>
       </div>
       <div class="tl-sec"><b>Productos y dosis por manzana</b><div id="rc-lineas"></div>
         <button type="button" class="btn-ghost" style="align-self:flex-start" onclick="AG.reco.lineas.push({producto_id:'',dosis:''});agRcRender()">➕ Agregar producto</button></div>
@@ -800,7 +1046,7 @@ async function agRcGuardar() {
   try {
     const { data, error } = await sb.rpc('agro_recomendacion_guardar', { p_datos: {
       cliente_id: AG.reco.cliente_id || null, cliente_nombre: cli ? nombreCliente(cli) : null, cultivo: AG.reco.cultivo, manzanas: Number(AG.reco.manzanas),
-      objetivo: AG.reco.objetivo, tecnico: AG.reco.tecnico, notas: AG.reco.notas, usuario: AG.nombre,
+      objetivo: AG.reco.objetivo, tecnico: AG.reco.tecnico, notas: AG.reco.notas, usuario: AG.nombre, intervalo_dias: Number(AG.reco.intervalo) > 0 ? Math.round(Number(AG.reco.intervalo)) : null,
       items: c.map(x => ({ producto_id: x.producto_id, dosis_mz: x.dosis, sugerido: x.sugerido })) } });
     if (error || !data?.ok) { err.innerHTML = `<div class="tl-aviso">${esc(error ? 'No se pudo guardar. Revisa tu conexión.' : (MOTIVOS_RECO[data.motivo] || 'No se pudo guardar.'))}</div>`; return; }
     showToast('Recomendación guardada en el historial.');
@@ -809,7 +1055,7 @@ async function agRcGuardar() {
 }
 function agRcUsar(id) {
   const x = AG.recos.find(r => r.id === id); if (!x) return;
-  AG.reco = { cliente_id: x.cliente_id || '', cultivo: x.cultivo || '', manzanas: String(x.manzanas || ''), objetivo: x.objetivo || '', tecnico: x.tecnico || '', notas: x.notas || '',
+  AG.reco = { cliente_id: x.cliente_id || '', cultivo: x.cultivo || '', manzanas: String(x.manzanas || ''), objetivo: x.objetivo || '', tecnico: x.tecnico || '', notas: x.notas || '', intervalo: x.intervalo_dias || '',
     lineas: (x.items || []).filter(i => AG.productos.some(p => p.id === i.producto_id)).map(i => ({ producto_id: i.producto_id, dosis: String(i.dosis_mz) })) };
   if (!AG.reco.lineas.length) AG.reco.lineas = [{ producto_id: '', dosis: '' }];
   agRecomendacion(); window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -894,7 +1140,7 @@ async function agInit() {
       return;
     }
     const inicial = (location.hash || '').replace('#', '');
-    await agTab(['inicio', 'productores', 'cobros', 'recomendacion', 'restringidos', 'vencimientos'].includes(inicial) ? inicial : 'inicio');
+    await agTab(['inicio', 'productores', 'cobros', 'recordatorios', 'recomendacion', 'restringidos', 'temporadas', 'reportes', 'vencimientos'].includes(inicial) ? inicial : 'inicio');
   } catch (e) {
     console.error('agInit:', e);
     document.getElementById('loader').classList.add('hidden');
