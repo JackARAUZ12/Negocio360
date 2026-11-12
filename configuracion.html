@@ -1734,7 +1734,7 @@
             <div class="cfg-card-icon">🌾</div>
             <div>
               <div class="cfg-card-title">Módulo de Agroservicio</div>
-              <div class="cfg-card-desc">Para agroservicios y agroveterinarias: un solo panel con productores (finca, cultivos, ganado, fecha de cosecha y límite de crédito), cobros de cosecha, venta de productos restringidos con cédula y receta (bitácora para IPSA) y vencimientos. Activa también lotes y vencimientos y Fiados (para el crédito a cosecha).</div>
+              <div class="cfg-card-desc">Para agroservicios y agroveterinarias: un solo panel con productores (finca, cultivos, ganado, fecha de cosecha y límite de crédito), cobros de cosecha, venta de productos restringidos con cédula y receta (bitácora para IPSA) y vencimientos. Activa también lotes y vencimientos, Fiados (crédito a cosecha) y presentaciones (saco, libra, galón, litro).</div>
             </div>
           </div>
           <div class="cfg-row">
@@ -1755,6 +1755,16 @@
             <label class="cfg-switch">
               <input type="checkbox" id="agro-receta-toggle" disabled />
               <span class="cfg-switch-track" onclick="onToggleAgroRecetaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-row" id="agro-costo-row" style="display:none">
+            <div>
+              <div class="cfg-row-label">Permitir vender por debajo del costo</div>
+              <div class="cfg-row-sub">Apagado (recomendado): el sistema no deja guardar una venta con un producto, saco o litro cobrado por debajo de lo que cuesta. Enciéndelo solo para rematar.</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="agro-costo-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleAgroCostoClick(event)"></span>
             </label>
           </div>
           <div class="cfg-status" id="agro-status"></div>
@@ -3735,7 +3745,7 @@ async function cargarModuloAgro() {
   if (!toggle || !sub) return;
   try {
     const { data, error } = await sbClient.from('configuracion_empresa')
-      .select('usa_modulo_agro, agro_receta_obligatoria').eq('auth_user_id', currentAuthUserId).maybeSingle();
+      .select('usa_modulo_agro, agro_receta_obligatoria, agro_permitir_bajo_costo').eq('auth_user_id', currentAuthUserId).maybeSingle();
     if (error) throw error;
     const activo = data?.usa_modulo_agro === true;
     toggle.checked = activo;
@@ -3744,6 +3754,9 @@ async function cargarModuloAgro() {
     const rr = document.getElementById('agro-receta-row'), rt = document.getElementById('agro-receta-toggle');
     if (rr) rr.style.display = activo ? '' : 'none';
     if (rt) { rt.checked = data?.agro_receta_obligatoria !== false; rt.disabled = false; }
+    const cr = document.getElementById('agro-costo-row'), ct = document.getElementById('agro-costo-toggle');
+    if (cr) cr.style.display = activo ? '' : 'none';
+    if (ct) { ct.checked = data?.agro_permitir_bajo_costo === true; ct.disabled = false; }
   } catch (e) { console.error('cargarModuloAgro:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
 }
 function onToggleAgroClick(evt) {
@@ -3760,16 +3773,37 @@ async function guardarModuloAgro(activo) {
   try {
     // Al activarlo tambien se encienden lotes y vencimientos y Fiados (el credito a cosecha). Al apagarlo NO se apagan (pueden usarlos otros modulos).
     const { error } = await sbClient.from('configuracion_empresa')
-      .update({ usa_modulo_agro: activo, ...(activo ? { maneja_lotes_vencimiento: true, usa_modulo_fiados: true } : {}) }).eq('auth_user_id', currentAuthUserId);
+      .update({ usa_modulo_agro: activo, ...(activo ? { maneja_lotes_vencimiento: true, usa_modulo_fiados: true, maneja_presentaciones: true } : {}) }).eq('auth_user_id', currentAuthUserId);
     if (error) throw error;
     sub.textContent = activo ? 'Activado — el panel de Agroservicio, Lotes y Vencimientos aparecen en el menú.' : 'Desactivado — el módulo de Agroservicio no aparece en ningún lado.';
     const rr = document.getElementById('agro-receta-row'); if (rr) rr.style.display = activo ? '' : 'none';
+    const cr2 = document.getElementById('agro-costo-row'); if (cr2) cr2.style.display = activo ? '' : 'none';
     setStatus(statusEl, activo ? 'Módulo de Agroservicio activado. Recarga la página para ver el menú.' : 'Módulo de Agroservicio desactivado (tus datos se conservan).', true);
   } catch (e) {
     console.error('guardarModuloAgro:', e);
     toggle.checked = !activo;
     setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
   } finally { toggle.disabled = false; }
+}
+function onToggleAgroCostoClick(evt) {
+  const t = document.getElementById('agro-costo-toggle');
+  if (t.disabled) { evt.preventDefault(); return; }
+  t.checked = !t.checked;
+  guardarAgroCosto(t.checked);
+}
+async function guardarAgroCosto(permitir) {
+  const t = document.getElementById('agro-costo-toggle');
+  const statusEl = document.getElementById('agro-status');
+  t.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ agro_permitir_bajo_costo: permitir }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    setStatus(statusEl, permitir ? 'Ahora se permite vender por debajo del costo (para rematar). Recuerda apagarlo después.' : 'Listo: el sistema no deja vender por debajo del costo.', true);
+  } catch (e) {
+    console.error('guardarAgroCosto:', e);
+    t.checked = !permitir;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { t.disabled = false; }
 }
 function onToggleAgroRecetaClick(evt) {
   const t = document.getElementById('agro-receta-toggle');

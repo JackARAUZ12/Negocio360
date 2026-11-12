@@ -3138,6 +3138,31 @@ async function aplicarRecetaPendienteDeVender() {
   showToast('Medicamentos de la receta agregados al carrito.');
 }
 
+// Agroservicio: "Llevar a Ventas" desde la recomendación técnica del panel. Arma el carrito
+// con los productos y cantidades calculadas (y la presentación cuando cuadra exacta).
+async function aplicarRecomendacionAgro() {
+  if (S.empresaConfig?.usa_modulo_agro !== true) return;
+  const raw = sessionStorage.getItem('n360_agro_recomendacion');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_agro_recomendacion');   // una sola vez
+  let d;
+  try { d = JSON.parse(raw); } catch (e) { console.error('aplicarRecomendacionAgro, dato corrupto:', e); return; }
+  await abrirNuevaVenta();
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  let noAgregados = 0;
+  for (const it of (d.items || [])) {
+    const prod = (S.productosCache || []).find(p => p.id === it.producto_id);
+    if (!prod) { noAgregados++; continue; }
+    await agregarAlCarritoConPrecio(it.producto_id, prod.tipo || 'producto', null);
+    const linea = S.carrito.find(x => x.id === it.producto_id);
+    if (!linea) { noAgregados++; continue; }
+    if (it.presentacion_id && (linea.presentaciones || []).some(p => p.id === it.presentacion_id)) cambiarPresentacion(it.producto_id, it.presentacion_id);
+    if (Number(it.cantidad) > 0 && Number(it.cantidad) !== 1) cambiarCantidad(it.producto_id, Number(it.cantidad));
+  }
+  showToast('Recomendación cargada en la venta. Revisa cantidades y presentaciones antes de cobrar.');
+  if (noAgregados) showToast(`${noAgregados} producto(s) no se agregaron (sin stock, vencidos, inactivos o restringidos: esos se venden en el panel Agroservicio).`, 'warning');
+}
+
 // Cobro desde la consulta veterinaria (solo si el modulo esta activo): abre la venta con
 // el dueno y los articulos de la "cuenta de la visita" ya cargados. Al confirmar, la venta
 // queda ligada a la consulta (ver mas abajo) y esta se muestra como cobrada.
@@ -3890,6 +3915,7 @@ function cambiarPresentacion(productoId, presentacionId) {
     item.presentacionNombre = null;
     item.presentacionFactor = null;
     if (!item.esRegalia && !item.precioEditado) item.precio = Number(item.precioBase ?? item.precio) || 0;
+    if (item.costoBase != null) item.costo = Number(item.costoBase) || 0;
   } else {
     const p = (item.presentaciones || []).find(x => x.id === presentacionId);
     if (!p) return;
@@ -3898,6 +3924,10 @@ function cambiarPresentacion(productoId, presentacionId) {
     item.presentacionNombre = p.nombre;
     item.presentacionFactor = Number(p.factor) || 1;
     if (!item.esRegalia && !item.precioEditado) item.precio = Number(p.precio) || 0;
+    // BUG CORREGIDO: el costo es por unidad base (libra, litro…). Si se vende por saco o galón,
+    // el costo de la línea debe ser el de ESA presentación; si no, la ganancia salía inflada.
+    if (item.costoBase == null) item.costoBase = Number(item.costo) || 0;
+    item.costo = round2(Number(item.costoBase) * item.presentacionFactor);
   }
   recalcItem(item);
   renderCarrito(item.tipo);
@@ -6316,6 +6346,16 @@ async function _confirmarVentaInterno(conImpresion) {
   conImpresion = !!conImpresion;
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
+
+  // Agroservicio: candado de precio mínimo (el servidor también lo revisa). Aviso antes de gastar un número de venta.
+  if (S.empresaConfig?.usa_modulo_agro === true && S.empresaConfig?.agro_permitir_bajo_costo !== true) {
+    const bajo = S.carrito.find(i => !i.esRegalia && !i.esCombo && !i.esPromocion && Number(i.costo) > 0 && Number(i.cantidad) > 0
+      && round2(Number(i.cantidad) * Number(i.precio) - Number(i.descuento || 0)) < round2(Number(i.cantidad) * Number(i.costo)) - 0.01);
+    if (bajo) {
+      showToast(`"${bajo.nombre}" se está vendiendo por debajo del costo (${fmt(bajo.costo)} por ${bajo.presentacionNombre || 'unidad'}). Sube el precio o quita el descuento.`, 'error');
+      return;
+    }
+  }
 
   // Viaje de Transporte: candado para no facturar dos veces la misma orden
   // (otra pestaña o la misma orden abierta dos veces). Si no hay orden, no hace nada.
@@ -8899,6 +8939,7 @@ async function initVentas() {
     // armar el carrito con los medicamentos de esa receta.
     await aplicarRecetaPendienteDeVender();
     await aplicarCobroVeterinaria();
+    await aplicarRecomendacionAgro();
     await aplicarCobroTransporte();
     await aplicarCobroAgenda();
     await aplicarCobroClinica();

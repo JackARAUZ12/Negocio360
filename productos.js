@@ -311,7 +311,34 @@ async function checkAuth() {
 // Los campos de Farmacia (sustancia controlada, principio activo, concentracion, presentacion) solo se
 // muestran si el negocio usa Farmacia o Veterinaria, o si el producto que se edita YA trae esos datos
 // (para no esconderle informacion existente). En una pulperia, distribuidora, etc. no aparecen.
+// Agroservicio: área de bodega y "refrigerado" (solo cuentas con Agroservicio activo).
+function asegurarCamposAgro() {
+  if ((STATE.empresa || {}).usa_modulo_agro !== true) return false;
+  ['', 'Edit'].forEach(suf => {
+    if ($('wrapAgroBodega' + suf)) return;
+    const ancla = $('wrapSustanciaControlada' + suf); if (!ancla) return;
+    const areas = (window.N360AgroBodega?.AREAS || []).map(a => `<option value="${a.id}">${a.icono} ${a.nombre}</option>`).join('');
+    const div = document.createElement('div');
+    div.className = 'form-group full'; div.id = 'wrapAgroBodega' + suf; div.style.marginTop = '6px';
+    div.innerHTML = `<label class="form-label">🌾 Área de bodega (Agroservicio)</label>
+      <select class="form-input" id="inputAgroArea${suf}"><option value="">— Sin área —</option>${areas}</select>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px;margin-top:8px">
+        <input type="checkbox" id="inputAgroRefrigerado${suf}" style="width:16px;height:16px" /><span>❄️ Necesita refrigeración (vacunas, algunos biológicos)</span></label>
+      <span class="form-hint">Al recibir una compra, el sistema te dice en qué área guardar cada producto.</span>`;
+    ancla.insertAdjacentElement('afterend', div);
+  });
+  return true;
+}
+function leerCamposAgro() {
+  if ((STATE.empresa || {}).usa_modulo_agro !== true) return {};
+  const suf = STATE.modalMode === 'editar' ? 'Edit' : '';
+  const sel = $('inputAgroArea' + suf); const chk = $('inputAgroRefrigerado' + suf);
+  if (!sel && !chk) return {};
+  return { agro_area: sel?.value || null, agro_refrigerado: chk?.checked === true };
+}
+
 function aplicarVisibilidadFarmacia() {
+  asegurarCamposAgro();
   const e = STATE.empresa || {};
   const negocioFarma = e.usa_modulo_farmacia === true || e.usa_farmacia_fase2 === true || e.usa_modulo_veterinaria === true
     || e.usa_modulo_agro === true || String(e.tipo_negocio || '').toLowerCase().includes('farmacia');
@@ -3661,6 +3688,12 @@ function cargarFormulario(p) {
 
   // Sustancia controlada (Farmacia): mismo patron que materia prima
   const esSC = p.es_sustancia_controlada === true;
+  if (asegurarCamposAgro()) {
+    ['', 'Edit'].forEach(suf => {
+      if ($('inputAgroArea' + suf)) $('inputAgroArea' + suf).value = p.agro_area || '';
+      if ($('inputAgroRefrigerado' + suf)) $('inputAgroRefrigerado' + suf).checked = p.agro_refrigerado === true;
+    });
+  }
   if ($('inputEsSustanciaControlada')) $('inputEsSustanciaControlada').checked = esSC;
   if ($('inputEsSustanciaControladaEdit')) $('inputEsSustanciaControladaEdit').checked = esSC;
 
@@ -3907,6 +3940,7 @@ async function guardarProducto() {
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
         es_sustancia_controlada: esSustanciaControlada,
+        ...leerCamposAgro(),
         principio_activo: principioActivo, concentracion, presentacion, ubicacion_fisica: ubicacionFisica,
         activo,
       };
@@ -3982,6 +4016,7 @@ async function guardarProducto() {
         garantia_meses: garantiaMeses,
         es_materia_prima: esMateriaPrima,
         es_sustancia_controlada: esSustanciaControlada,
+        ...leerCamposAgro(),
         principio_activo: principioActivo, concentracion, presentacion, ubicacion_fisica: ubicacionFisica,
         activo,
       };

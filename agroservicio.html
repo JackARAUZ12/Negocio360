@@ -690,6 +690,7 @@
     .ag-chk input{width:18px;height:18px;margin-top:1px;flex:none}
     @media (max-width:640px){.ag-grid2{grid-template-columns:1fr}.ag-kpi-v{font-size:19px}.ag-linea{grid-template-columns:1fr 70px 90px 30px}}
     @media print{#sidebar,#header,.ag-tabs,.ag-hero,.ag-no-print{display:none!important}#main{margin:0!important}.ag-card{border:0}}
+    @media print{body.ag-imprimiendo-reco #ag-vista>*:not(#rc-print){display:none!important}}
   </style>
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -878,8 +879,9 @@
         <button type="button" class="ag-tab activa" data-tab="inicio" onclick="agTab('inicio')">🏠 Inicio</button>
         <button type="button" class="ag-tab" data-tab="productores" onclick="agTab('productores')">👨‍🌾 Productores</button>
         <button type="button" class="ag-tab" data-tab="cobros" onclick="agTab('cobros')">💰 Cobros de cosecha</button>
+        <button type="button" class="ag-tab" data-tab="recomendacion" onclick="agTab('recomendacion')">🧮 Recomendación</button>
         <button type="button" class="ag-tab" data-tab="restringidos" onclick="agTab('restringidos')">🔒 Restringidos e IPSA</button>
-        <button type="button" class="ag-tab" data-tab="vencimientos" onclick="agTab('vencimientos')">⏰ Vencimientos</button>
+        <button type="button" class="ag-tab" data-tab="vencimientos" onclick="agTab('vencimientos')">⏰ Vencimientos y bodega</button>
       </div>
       <div id="ag-vista"><p class="tln-sub">Cargando…</p></div>
     </div>
@@ -889,7 +891,8 @@
 <div class="tl-modal" id="ag-modal" role="dialog" aria-modal="true"><div class="tl-modal-box" id="ag-modal-box"></div></div>
 
 <script src="moneda-visualizacion.js?v=1"></script>
-<script src="agroservicio.js?v=20261111a"></script>
+<script src="agro-bodega.js?v=20261112a"></script>
+<script src="agroservicio.js?v=20261112a"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261106e"></script>
 <script src="modulos-guard.js?v=20261111a"></script>

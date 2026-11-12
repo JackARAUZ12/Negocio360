@@ -1495,7 +1495,7 @@ async function finalizarOnboarding() {
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'financiera') { modulosAuto.usa_modulo_microfinanciera = true; modulosSecundariosSeleccionados.add('creditos'); }
     if (moduloEspecialActivo && ['diseno_grafico','imprenta_publicidad','fotografia_video'].includes(tipoNegocioSeleccionado)) { modulosAuto.usa_modulo_diseno = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'insumos_medicos') { modulosAuto.usa_modulo_insumos = true; modulosAuto.maneja_lotes_vencimiento = true; }
-    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'agroservicio') { modulosAuto.usa_modulo_agro = true; modulosAuto.maneja_lotes_vencimiento = true; modulosAuto.usa_modulo_fiados = true; }
+    if (moduloEspecialActivo && tipoNegocioSeleccionado === 'agroservicio') { modulosAuto.usa_modulo_agro = true; modulosAuto.maneja_lotes_vencimiento = true; modulosAuto.usa_modulo_fiados = true; modulosAuto.maneja_presentaciones = true; }
     if (moduloEspecialActivo && tipoNegocioSeleccionado === 'farmacia') { modulosAuto.usa_modulo_farmacia = true; modulosAuto.usa_farmacia_fase2 = true; modulosAuto.maneja_lotes_vencimiento = true; }
     if (moduloEspecialActivo && ['clinica', 'fisioterapia'].includes(tipoNegocioSeleccionado)) {
       const esp = [...document.querySelectorAll('[data-onb-esp]:checked')].map(el => el.value);

@@ -2329,6 +2329,10 @@ async function _guardarCompraInterno() {
     // 6. Cerrar modal y recargar
     closeModal('modal-nueva-compra');
     showToast(STATE.ordenConvirtiendoId ? `Orden convertida — Compra ${numero} registrada` : `Compra ${numero} registrada correctamente`);
+    // Agroservicio: aviso de en qué área de bodega va cada producto (solo lectura).
+    if (STATE.empresaConfig?.usa_modulo_agro === true && window.N360AgroBodega) {
+      N360AgroBodega.avisarCompra(sbClient, STATE.userId, (STATE.carrito || []).map(l => l?.producto?.id || l?.producto_id || null));
+    }
     STATE.ordenConvirtiendoId = null;
 
     // Actualizar cache localStorage para que Dashboard lo lea desde Caja
