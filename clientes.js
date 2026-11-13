@@ -1637,7 +1637,7 @@ async function verDetalleVentaPerfil(ventaId) {
           <div class="detalle-label">TOTAL</div>
           <div class="detalle-value" style="font-size:20px;font-weight:800;color:var(--accent)">${fmt(v.total)}</div>
         </div>
-        <div class="detalle-item">
+        <div class="detalle-item n360-costo">
           <div class="detalle-label">Ganancia</div>
           <div class="detalle-value" style="color:var(--success);font-weight:700">${fmt(v.ganancia)}</div>
         </div>

@@ -225,6 +225,21 @@
         notas.push('El importe de las líneas es antes de descuento general e IVA de la venta, por eso puede diferir de la venta neta.');
       }
 
+      // 13-nov-2026: si el perfil activo NO puede ver costos y ganancias, se quitan
+      // del archivo (columnas, totales y tarjetas). Los demás números no cambian.
+      if (window.N360PuedeVerCostos && !window.N360PuedeVerCostos()) {
+        var OCULTAS = { costo: 1, ganancia: 1, margen: 1 };
+        var limpiar = function (t) {
+          if (!t || !t.columnas) return;
+          t.columnas = t.columnas.filter(function (c) { return !OCULTAS[c.k]; });
+          if (t.sumar) t.sumar = t.sumar.filter(function (k) { return !OCULTAS[k]; });
+        };
+        resumenTablas.forEach(limpiar);
+        hojas.forEach(function (h) { (h.tablas || []).forEach(limpiar); });
+        kpis = kpis.filter(function (k) { return !/ganancia|costo|margen/i.test(k.t); });
+        notas = notas.filter(function (n) { return !/ganancia|costo/i.test(n); });
+      }
+
       return {
         kpis: kpis, resumenTablas: resumenTablas, hojas: hojas, notas: notas,
         totalGeneral: [['Ventas netas (sin IVA)', E.dinero(T.neto)], ['IVA', E.dinero(T.imp)], ['TOTAL CON IVA', E.dinero(T.total)]],

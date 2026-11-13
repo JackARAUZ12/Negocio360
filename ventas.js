@@ -694,7 +694,7 @@ function renderTablaVentas() {
         <span style="color:var(--text-muted);font-size:12px">Cargando…</span>
       </td>
       <td class="td-total">${fmt(v.total)}</td>
-      <td class="td-ganancia">${fmt(v.ganancia)}</td>
+      <td class="td-ganancia n360-costo">${fmt(v.ganancia)}</td>
       <td>${etiquetaPagoVenta(v)}</td>
       <td class="td-actions">
         <button class="btn-icon-sm" title="Ver detalle" onclick="abrirDetalle('${v.id}')">
@@ -995,7 +995,7 @@ async function abrirDetalle(ventaId) {
           <table class="detalle-items-table">
             <thead>
               <tr>
-                <th>Ítem</th><th>Tipo</th><th>Qty</th><th>Precio</th><th>Desc.</th><th>Subtotal</th><th>Ganancia</th>
+                <th>Ítem</th><th>Tipo</th><th>Qty</th><th>Precio</th><th>Desc.</th><th>Subtotal</th><th class="n360-costo">Ganancia</th>
               </tr>
             </thead>
             <tbody>
@@ -1007,7 +1007,7 @@ async function abrirDetalle(ventaId) {
                 <td>${fmt(it.precio)}</td>
                 <td>${Number(it.descuento)>0 ? fmt(it.descuento) : '—'}</td>
                 <td style="font-weight:600">${fmt(it.subtotal)}</td>
-                <td style="color:var(--success);font-weight:600">${fmt(it.ganancia)}</td>
+                <td class="n360-costo" style="color:var(--success);font-weight:600">${fmt(it.ganancia)}</td>
               </tr>`).join('')}
             </tbody>
           </table>
@@ -1034,7 +1034,7 @@ async function abrirDetalle(ventaId) {
           <div class="detalle-label">TOTAL</div>
           <div class="detalle-value" style="font-size:20px;font-weight:800;color:var(--accent)">${fmt(venta.total)}</div>
         </div>
-        <div class="detalle-item">
+        <div class="detalle-item n360-costo">
           <div class="detalle-label">Ganancia</div>
           <div class="detalle-value" style="color:var(--success);font-weight:700">${fmt(venta.ganancia)}</div>
         </div>
@@ -5516,7 +5516,7 @@ function renderResumenFinal() {
       </div>
       ${(r.retencionIr||0)>0 && S.metodoPagoId!=='fiado' ? `<div style="display:flex;justify-content:space-between;margin-top:4px"><span>Retención IR (${r.retencionPct}%)</span><strong style="color:var(--warning)">-${fmt(r.retencionIr)}</strong></div>
       <div style="display:flex;justify-content:space-between;font-weight:700"><span>Cobrarás</span><strong>${fmt(r.cobrar)}</strong></div>` : ''}
-      <div style="display:flex;justify-content:space-between;margin-top:6px">
+      <div class="n360-costo" style="display:flex;justify-content:space-between;margin-top:6px">
         <span style="color:var(--success)">Ganancia estimada</span>
         <strong style="color:var(--success)">${fmt(r.ganancia||0)}</strong>
       </div>
@@ -6422,7 +6422,7 @@ async function _confirmarVentaInterno(conImpresion) {
     if (sospechosos.length) {
       const sinCosto = sospechosos.filter(it => !(Number(it.costo) > 0)).length;
       const bajoCosto = sospechosos.length - sinCosto;
-      showToast('⚠ ' + [sinCosto ? sinCosto + ' producto(s) sin costo' : '', bajoCosto ? bajoCosto + ' vendido(s) por debajo del costo' : ''].filter(Boolean).join(' y ') + '. La venta se guarda, pero la ganancia saldrá incorrecta: corrige el costo en Inventario.', 'warning');
+      if (!window.N360PuedeVerCostos || N360PuedeVerCostos()) showToast('⚠ ' + [sinCosto ? sinCosto + ' producto(s) sin costo' : '', bajoCosto ? bajoCosto + ' vendido(s) por debajo del costo' : ''].filter(Boolean).join(' y ') + '. La venta se guarda, pero la ganancia saldrá incorrecta: corrige el costo en Inventario.', 'warning');
     }
   } catch (eAv) { /* solo aviso */ }
 
@@ -7997,7 +7997,7 @@ async function _confirmarVentaRapidaInterno() {
   try {
     const sosp = VR.carrito.filter(it => it && !it.esRegalia && !it.esCombo && !it.esPromocion && (it.tipo || 'producto') === 'producto'
       && (!(Number(it.costo) > 0) || (Number(it.precio) < Number(it.costo))));
-    if (sosp.length) showToast('⚠ ' + sosp.length + ' producto(s) sin costo o vendidos por debajo del costo. La venta se guarda, pero la ganancia saldrá incorrecta: corrige el costo en Inventario.', 'warning');
+    if (sosp.length && (!window.N360PuedeVerCostos || N360PuedeVerCostos())) showToast('⚠ ' + sosp.length + ' producto(s) sin costo o vendidos por debajo del costo. La venta se guarda, pero la ganancia saldrá incorrecta: corrige el costo en Inventario.', 'warning');
   } catch (eAv) { /* solo aviso */ }
 
   // BUG REAL CORREGIDO: el navegador bloqueaba la ventana de impresion

@@ -18,6 +18,25 @@
 
 (function () {
 
+  /* ---- Permiso "Ver costos y ganancias" por perfil (13-nov-2026) ----
+     Si el perfil activo NO puede verlos, se marca <html class="n360-sin-costos">
+     y todo lo que tenga la clase .n360-costo (ganancia estimada, columnas de
+     costo/ganancia) se oculta. Solo cambia lo que se VE: las ventas se guardan
+     igual y los reportes del dueño no cambian. El Administrador siempre ve todo.
+     Se aplica de inmediato con el último valor conocido (sin parpadeo) y luego
+     se confirma con la base de datos. */
+  (function cssCostos() {
+    try {
+      const st = document.createElement('style'); st.id = 'pg-css-costos';
+      st.textContent = 'html.n360-sin-costos .n360-costo,html.n360-sin-costos .col-costo-venta,html.n360-sin-costos .cj-costo{display:none!important}';
+      (document.head || document.documentElement).appendChild(st);
+      const raw = sessionStorage.getItem('n360_perfil_activo');
+      const s0 = raw ? JSON.parse(raw) : null;
+      if (s0 && s0.tipo !== 'admin' && s0.ver_costos === false && !(window.N360VerComo && window.N360VerComo.activo)) document.documentElement.classList.add('n360-sin-costos');
+    } catch (_) {}
+  })();
+  window.N360PuedeVerCostos = () => !document.documentElement.classList.contains('n360-sin-costos');
+
   const PG_SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
   const PG_SUPABASE_KEY  = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
   const PG_SESSION_KEY   = 'n360_perfil_activo';
@@ -764,12 +783,31 @@
         <label>Módulos permitidos</label>
         <div class="pg-mods-grid">${checks}</div>
       </div>
+      <div class="pg-field">
+        <label class="pg-mod-check" id="pg-f-costos-lbl" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+          <input type="checkbox" id="pg-f-costos" style="margin-top:3px" />
+          <span><b>Puede ver costos y ganancias</b><br><span style="font-size:12px;opacity:.75;font-weight:400">Si está apagado, este usuario vende normal, pero no ve cuánto costó el producto ni cuánto se gana. Las ventas y los reportes del dueño no cambian.</span></span>
+        </label>
+      </div>
       <div class="pg-error" id="pg-f-error"></div>
       <div class="pg-btn-row">
         ${editando ? '<button class="pg-btn pg-btn-danger" id="pg-f-eliminar">Eliminar</button>' : '<button class="pg-btn pg-btn-ghost" id="pg-f-cancelar">Cancelar</button>'}
         <button class="pg-btn pg-btn-primary" id="pg-f-guardar">Guardar</button>
       </div>
     `;
+
+    // Permiso de costos: nuevo usuario = apagado; uno existente = su valor guardado.
+    const chkCostos = document.getElementById('pg-f-costos');
+    chkCostos.checked = false;
+    if (editando) {
+      chkCostos.disabled = true;
+      PG.client.rpc('listar_ver_costos_grupo').then(({ data, error }) => {
+        if (error) return;
+        const f = (data || []).find(x => x.id === perfilExistente.id);
+        chkCostos.checked = f ? f.ver_costos !== false : true;
+        chkCostos.disabled = false;
+      }).catch(() => {});
+    }
 
     document.getElementById('pg-back').addEventListener('click', () => renderGestionUsuarios());
     const cancelBtn = document.getElementById('pg-f-cancelar');
@@ -846,6 +884,11 @@
             p_id: nuevo.id, p_hash: hash,
           });
           if (errHash) throw errHash;
+          perfilExistente = nuevo;
+        }
+        if (!chkCostos.disabled) {
+          const { error: errCos } = await PG.client.rpc('perfil_set_ver_costos', { p_id: perfilExistente.id, p_valor: !!chkCostos.checked });
+          if (errCos) console.warn('perfil_set_ver_costos:', errCos);
         }
         PG.perfiles = await cargarPerfiles();
         renderGestionUsuarios(editando ? 'Usuario actualizado' : `Usuario "${nombre}" creado correctamente`);
@@ -929,7 +972,26 @@
     }
   }
 
+  async function aplicarPermisoCostos(perfil) {
+    const html = document.documentElement;
+    const poner = (ver) => {
+      const antes = !html.classList.contains('n360-sin-costos');
+      html.classList.toggle('n360-sin-costos', !ver);
+      try {
+        const raw = sessionStorage.getItem(PG_SESSION_KEY);
+        if (raw) { const s = JSON.parse(raw); if (s && s.id === perfil.id) { s.ver_costos = ver; sessionStorage.setItem(PG_SESSION_KEY, JSON.stringify(s)); } }
+      } catch (_) {}
+      if (antes !== ver) { try { document.dispatchEvent(new CustomEvent('n360:permiso-costos', { detail: { ver } })); } catch (_) {} }
+    };
+    if (!perfil || perfil.tipo === 'admin' || !perfil.id) { poner(true); return; }
+    try {
+      const { data, error } = await PG.client.rpc('perfil_puede_ver_costos', { p_id: perfil.id });
+      if (!error) poner(data !== false);
+    } catch (_) { /* sin conexión: se queda con el último valor conocido */ }
+  }
+
   function aplicarRestricciones(perfil) {
+    aplicarPermisoCostos(perfil);
     inyectarBotonCambiarUsuario(perfil);
     forzarNombrePerfilEnUI(perfil);
     if (perfil.tipo === 'admin') { vigilarRestricciones(perfil); return; }
