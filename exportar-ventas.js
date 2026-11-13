@@ -169,27 +169,56 @@
         'Venta neta = Total − IVA, igual que la pantalla de Ventas. Las devoluciones aparecen en negativo y ya están restadas.',
         'Cada importe se convierte a la moneda de visualización y se redondea a 2 decimales antes de sumar; la diferencia con la pantalla puede ser de centavos.',
       ];
+      // Líneas vendidas: se leen siempre (también sirven para "Por tipo").
+      var ids = filas.filter(function (r) { return !r.esDev; }).map(function (r) { return r.id; });
+      var idsOk = {}; filas.forEach(function (r) { idsOk[r.id] = r; });
+      var dets = ids.length ? await E.leerPorIds(ids, function (parte) {
+        return ctx.sb.from('venta_detalles').select('id,venta_id,producto_id,combo_id,promocion_id,tipo_item,producto_nombre,producto_sku,cabys,cantidad,precio,costo,descuento,subtotal,ganancia,es_regalia,presentacion_nombre')
+          .eq('auth_user_id', ctx.userId).in('venta_id', parte);
+      }, 'productos vendidos') : [];
+
+      // ---- 13-nov-2026: ventas POR TIPO (productos / servicios / combos / promociones).
+      // Cuadra exacto con los totales del reporte: lo que no se puede asignar a un
+      // artículo (devoluciones, ventas sin detalle, canjes, redondeo) va en "Ajustes".
+      var TIPOS = [['producto', 'Productos'], ['servicio', 'Servicios'], ['combo', 'Combos'], ['promocion', 'Promociones']];
+      var claseDe = function (x) { return x.combo_id ? 'combo' : x.promocion_id ? 'promocion' : x.tipo_item === 'servicio' ? 'servicio' : 'producto'; };
+      var nombreTipo = {}; TIPOS.forEach(function (t) { nombreTipo[t[0]] = t[1]; });
+      var acT = {};
+      TIPOS.forEach(function (t) { acT[t[0]] = { g: t[1], vs: {}, cantidad: 0, neto: 0, costo: 0, ganancia: 0, lineas: 0 }; });
+      dets.forEach(function (x) {
+        var o = acT[claseDe(x)], cant = E.num(x.cantidad);
+        var ing = E.r2(E.cv(x.subtotal)), cos = E.r2(E.cv(E.num(x.costo) * cant));
+        o.vs[x.venta_id] = 1; o.lineas++; o.cantidad = Math.round((o.cantidad + cant) * 1000) / 1000;
+        o.neto = E.r2(o.neto + ing); o.costo = E.r2(o.costo + cos); o.ganancia = E.r2(o.ganancia + ing - cos);
+      });
+      var filasTipo = TIPOS.filter(function (t) { return t[0] !== 'promocion' || acT.promocion.lineas; }).map(function (t) {
+        var o = acT[t[0]];
+        return { g: o.g, n: Object.keys(o.vs).length, cantidad: o.cantidad, neto: o.neto, costo: o.costo, ganancia: o.ganancia, margen: o.neto ? (Math.round(o.ganancia / o.neto * 1000) / 10).toFixed(1) + '%' : '—' };
+      });
+      var sT = function (k) { return E.r2(filasTipo.reduce(function (s, r) { return s + r[k]; }, 0)); };
+      var aj = { neto: E.r2(T.neto - sT('neto')), costo: E.r2(T.costo - sT('costo')), ganancia: E.r2(T.gan - sT('ganancia')) };
+      if (aj.neto || aj.costo || aj.ganancia) filasTipo.push({ g: 'Ajustes (devoluciones, ventas sin detalle, canjes y redondeo)', n: '', cantidad: '', neto: aj.neto, costo: aj.costo, ganancia: aj.ganancia, margen: '' });
+      resumenTablas.unshift({ subtitulo: 'Por tipo: productos, servicios y combos', filas: filasTipo, sumar: ['neto', 'costo', 'ganancia'],
+        columnas: [{ k: 'g', t: 'Tipo', w: 30 }, { k: 'n', t: '# ventas', w: 10, num: true }, { k: 'cantidad', t: 'Cantidad', w: 12, num: true, cant: true },
+          { k: 'neto', t: 'Venta neta', w: 16, num: true, din: true }, { k: 'costo', t: 'Costo', w: 16, num: true, din: true }, { k: 'ganancia', t: 'Ganancia', w: 16, num: true, din: true }, { k: 'margen', t: 'Margen', w: 10 }] });
+      notas.push('"Por tipo": la suma de Productos + Servicios + Combos + Ajustes es exactamente la venta neta, el costo y la ganancia del reporte. "# ventas" cuenta las ventas que incluyeron ese tipo (una venta puede tener varios).');
+
       if (op.lineas === 'si') {
-        var ids = filas.filter(function (r) { return !r.esDev; }).map(function (r) { return r.id; });
-        var idsOk = {}; filas.forEach(function (r) { idsOk[r.id] = r; });
-        var dets = ids.length ? await E.leerPorIds(ids, function (parte) {
-          return ctx.sb.from('venta_detalles').select('id,venta_id,producto_nombre,producto_sku,cabys,cantidad,precio,descuento,subtotal,ganancia,es_regalia,presentacion_nombre')
-            .eq('auth_user_id', ctx.userId).in('venta_id', parte);
-        }, 'productos vendidos') : [];
         var lineas = dets.map(function (x) {
           var vr = idsOk[x.venta_id] || {};
-          return { cliente: vr.cliente || '', fecha: vr.fecha || '', numero: vr.numero || '', producto: (x.producto_nombre || '—') + (x.presentacion_nombre ? ' (' + x.presentacion_nombre + ')' : ''), sku: x.producto_sku || '', cabys: x.cabys || '',
+          return { cliente: vr.cliente || '', fecha: vr.fecha || '', numero: vr.numero || '', tipo: nombreTipo[claseDe(x)], producto: (x.producto_nombre || '—') + (x.presentacion_nombre ? ' (' + x.presentacion_nombre + ')' : ''), sku: x.producto_sku || '', cabys: x.cabys || '',
             cantidad: E.num(x.cantidad), precio: E.r2(E.cv(x.precio)), descuento: E.r2(E.cv(x.descuento || 0)), subtotal: E.r2(E.cv(x.subtotal)), ganancia: E.r2(E.cv(x.ganancia || 0)), regalia: x.es_regalia ? 'Sí' : '' };
         }).sort(function (a, b) { return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : (a.numero < b.numero ? 1 : -1); });
         var mp = {};
-        lineas.forEach(function (l) { var o = mp[l.producto] || (mp[l.producto] = { producto: l.producto, sku: l.sku, cantidad: 0, subtotal: 0, ganancia: 0 }); o.cantidad = Math.round((o.cantidad + l.cantidad) * 1000) / 1000; o.subtotal = E.r2(o.subtotal + l.subtotal); o.ganancia = E.r2(o.ganancia + l.ganancia); });
-        var porProd = Object.keys(mp).map(function (k) { return mp[k]; }).sort(function (a, b) { return b.subtotal - a.subtotal; });
+        lineas.forEach(function (l) { var kk = l.tipo + '|' + l.producto; var o = mp[kk] || (mp[kk] = { tipo: l.tipo, producto: l.producto, sku: l.sku, cantidad: 0, subtotal: 0, ganancia: 0 }); o.cantidad = Math.round((o.cantidad + l.cantidad) * 1000) / 1000; o.subtotal = E.r2(o.subtotal + l.subtotal); o.ganancia = E.r2(o.ganancia + l.ganancia); });
+        var ordenT = { Productos: 0, Servicios: 1, Combos: 2, Promociones: 3 };
+        var porProd = Object.keys(mp).map(function (k) { return mp[k]; }).sort(function (a, b) { return (ordenT[a.tipo] - ordenT[b.tipo]) || (b.subtotal - a.subtotal); });
         hojas.push({ nombre: 'Por producto', titulo: 'Productos vendidos (acumulado)', tablas: [{
-          etiquetaTotal: 'TOTAL', sumar: ['cantidad', 'subtotal', 'ganancia'], filas: porProd,
-          columnas: [{ k: 'producto', t: 'Producto', w: 40 }, { k: 'sku', t: 'SKU', w: 16 }, { k: 'cantidad', t: 'Cantidad', w: 12, num: true, cant: true }, { k: 'subtotal', t: 'Importe', w: 16, num: true, din: true }, { k: 'ganancia', t: 'Ganancia', w: 16, num: true, din: true }] }] });
+          etiquetaTotal: 'TOTAL', agrupar: { k: 'tipo', etiqueta: 'Subtotal' }, sumar: ['cantidad', 'subtotal', 'ganancia'], filas: porProd,
+          columnas: [{ k: 'tipo', t: 'Tipo', w: 13 }, { k: 'producto', t: 'Producto / servicio / combo', w: 40 }, { k: 'sku', t: 'SKU', w: 16 }, { k: 'cantidad', t: 'Cantidad', w: 12, num: true, cant: true }, { k: 'subtotal', t: 'Importe', w: 16, num: true, din: true }, { k: 'ganancia', t: 'Ganancia', w: 16, num: true, din: true }] }] });
         hojas.push({ nombre: 'Líneas de productos', titulo: 'Líneas de productos vendidos', pdf: false, tablas: [{
           etiquetaTotal: 'TOTAL', sumar: ['cantidad', 'subtotal', 'ganancia'], filas: lineas,
-          columnas: [{ k: 'fecha', t: 'Fecha', w: 12, fecha: true }, { k: 'numero', t: 'No. venta', w: 18 }, { k: 'cliente', t: 'Cliente', w: 28 }, { k: 'producto', t: 'Producto', w: 38 }, { k: 'sku', t: 'SKU', w: 14 },
+          columnas: [{ k: 'fecha', t: 'Fecha', w: 12, fecha: true }, { k: 'numero', t: 'No. venta', w: 18 }, { k: 'cliente', t: 'Cliente', w: 28 }, { k: 'tipo', t: 'Tipo', w: 12 }, { k: 'producto', t: 'Producto', w: 38 }, { k: 'sku', t: 'SKU', w: 14 },
             ...((window.N360CR && window.N360CR.activo && window.N360CR.activo()) ? [{ k: 'cabys', t: 'CAByS', w: 16 }] : []),
             { k: 'cantidad', t: 'Cantidad', w: 11, num: true, cant: true }, { k: 'precio', t: 'Precio', w: 14, num: true, din: true }, { k: 'descuento', t: 'Descuento', w: 13, num: true, din: true },
             { k: 'subtotal', t: 'Importe', w: 15, num: true, din: true }, { k: 'ganancia', t: 'Ganancia', w: 15, num: true, din: true }, { k: 'regalia', t: 'Regalía', w: 9 }] }] });

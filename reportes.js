@@ -697,7 +697,7 @@ async function fetchVentasDetalles() {
   const ventaIds = R.cache.ventas.filter(v => !v.es_devolucion).map(v => v.id);
   if (!ventaIds.length) return [];
   return await leerPorIds(ventaIds, ch => sb.from('venta_detalles')
-    .select('venta_id,producto_id,producto_nombre,tipo_item,cantidad,precio,costo,subtotal,ganancia,es_regalia')
+    .select('venta_id,producto_id,combo_id,promocion_id,producto_nombre,tipo_item,cantidad,precio,costo,subtotal,ganancia,es_regalia')
     .eq('auth_user_id', R.userId)
     .in('venta_id', ch).order('id'), 'detalle de ventas');
 }
@@ -759,9 +759,14 @@ function detalleVentaPorVenta(detalles) {
   const map = {};
   (detalles || []).forEach(d => {
     const vid = d.venta_id;
-    if (!map[vid]) map[vid] = { productos: [], servicios: new Set(), proveedores: new Set() };
+    if (!map[vid]) map[vid] = { productos: [], servicios: new Set(), combos: [], proveedores: new Set() };
     const nombre = d.producto_nombre || (d.tipo_item==='servicio' ? 'Servicio' : 'Producto');
-    if (d.tipo_item === 'producto') {
+    // 13-nov-2026: los combos y promociones se guardan como tipo_item
+    // 'producto' pero SIN producto_id: van en su propia lista (antes se
+    // mezclaban con los productos y se contaban como unidades de producto).
+    if (d.combo_id || d.promocion_id) {
+      map[vid].combos.push({ nombre: nombre + (d.promocion_id ? ' (promo)' : ''), cantidad: Number(d.cantidad || 0) });
+    } else if (d.tipo_item === 'producto') {
       map[vid].productos.push({ nombre, cantidad: Number(d.cantidad || 0), codigoBarras: codigoBarraPorProducto[d.producto_id] || null });
       const prov = proveedorPorProducto[d.producto_id];
       if (prov) map[vid].proveedores.add(prov);
@@ -789,6 +794,12 @@ function fmtCodigosBarraVenta(info) {
   if (!info || !info.productos.length) return '—';
   const codigos = info.productos.filter(p => p.codigoBarras).map(p => p.codigoBarras);
   return codigos.length ? codigos.join(', ') : '—';
+}
+
+// Texto para la casilla "Combos / promociones" de una venta puntual.
+function fmtCombosVenta(info) {
+  if (!info || !info.combos || !info.combos.length) return '—';
+  return info.combos.map(c => `${c.nombre} x${fmtNum(c.cantidad)}`).join(', ');
 }
 
 // Texto para la casilla "Servicios" de una venta puntual. Solo nombres,
@@ -1505,7 +1516,9 @@ async function loadVentasTab() {
     const [ventas, detalles] = await Promise.all([fetchVentas(), fetchVentasDetalles()]);
     const vRes = calcVentasResumen(ventas);
 
-    const unidades = detalles.filter(d=>d.tipo_item==='producto').reduce((s,d)=>s+Number(d.cantidad),0);
+    const unidades = detalles.filter(d=>d.tipo_item==='producto' && !d.combo_id && !d.promocion_id).reduce((s,d)=>s+Number(d.cantidad),0);
+    R.cache.ventasDetalles = detalles;
+    try { window.N360VentasTipo && N360VentasTipo.renderPantalla(ventas, detalles); } catch (eTipo) { console.warn('Ventas por tipo:', eTipo); }
 
     setEl('v-monto',    fmt(vRes.total));
     setEl('v-count',    `${vRes.count} venta${vRes.count!==1?'s':''}`);
@@ -2768,6 +2781,7 @@ async function ensureCaches() {
     R.cache.ventasDetalles = await fetchVentasDetalles();
   }
   await cargarDescripcionesExport(R.cache.ventasDetalles);
+  if (window.N360VentasTipo) await N360VentasTipo.cargarContenidoCombos(R.cache.ventasDetalles);
   if (!R.cache.compras.length)   await fetchCompras();
   if (!R.cache.comprasDetalles || !R.cache.comprasDetalles.length) await cargarDetalleComprasExport();
   if (!R.cache.gastos.length)    await fetchGastos();
@@ -2916,6 +2930,7 @@ const COLUMNAS_REPORTES = {
     { key:'metodo',    label:'Método de pago',     tipo:'texto' },
     { key:'productos', label:'Productos vendidos', tipo:'texto' },
     { key:'servicios', label:'Servicios vendidos', tipo:'texto' },
+    { key:'combos',    label:'Combos / promociones', tipo:'texto' },
     { key:'proveedor', label:'Proveedor',           tipo:'texto' },
     { key:'producto',    label:'Producto',          tipo:'texto' },
     { key:'descripcion', label:'Descripción',       tipo:'texto' },
@@ -3021,6 +3036,7 @@ function filaVenta(v, detMap) {
     numero: v.numero_venta, fecha: fmtFecha(v.fecha), _iso: { fecha: v.fecha },
     cliente: v.cliente_nombre||'Consumidor Final', metodo: v.metodo_pago_nombre||'—',
     productos: fmtProductosVenta(info), servicios: fmtServiciosVenta(info),
+    combos: fmtCombosVenta(info),
     proveedor: fmtProveedorVenta(info),
     total: Number(v.total||0), ganancia: Number(v.ganancia||0),
   };
@@ -3052,11 +3068,13 @@ function filasVentaExport(cols, detMap) {
       const sub = total * parte;
       const p = prods[d.producto_id];
       const esServ = d.tipo_item === 'servicio';
+      const esCombo = !!(d.combo_id || d.promocion_id);
       const nombre = d.producto_nombre || (esServ ? 'Servicio' : 'Producto');
       out.push({ ...base,
         codigosBarras: p?.codigo_barras || '—',
-        productos: esServ ? 'No producto' : `${nombre} x${fmtNum(Number(d.cantidad||0))}`,
+        productos: (esServ || esCombo) ? 'No producto' : `${nombre} x${fmtNum(Number(d.cantidad||0))}`,
         servicios: esServ ? nombre : '—',
+        combos: esCombo ? `${nombre}${d.promocion_id ? ' (promo)' : ''} x${fmtNum(Number(d.cantidad||0))}` : '—',
         proveedor: p?.proveedor_nombre || '—',
         total: i === 0 ? base.total : '',
         ganancia: i === 0 ? base.ganancia : '',
@@ -3625,6 +3643,11 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
         margin:{left:10,right:10}, styles:{fontSize:8, overflow:'linebreak'} });
       startY = doc.lastAutoTable.finalY + 10;
     }
+    // Ventas por tipo (productos / servicios / combos), en su propia página
+    if (window.N360VentasTipo) {
+      doc.addPage(); pintarCabecera(); startY = 28;
+      startY = N360VentasTipo.pdf(doc, startY, { tituloSeccion, pintarCabecera });
+    }
   }
 
   // ---- COMPRAS ----
@@ -4027,6 +4050,7 @@ function hojaVentasXLSX(wb) {
   }
   appendSheetXLSX(wb, 'Ventas', headersXLSX(cols),
     rows.length?rows:[['Sin datos en este período', ...Array(cols.length-1).fill('')]], formatosXLSX(cols), optsTot);
+  if (window.N360VentasTipo) N360VentasTipo.hojasXLSX(wb);
 }
 
 function hojaComprasXLSX(wb) {
