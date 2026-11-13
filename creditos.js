@@ -1635,6 +1635,7 @@
     document.getElementById('btn-crear-credito').textContent = 'Guardar cambios';
     recalcularCredito();
     closeModal('modal-detalle-credito');
+    refrescarProductosCredito();
     openModal('modal-nuevo-credito');
   }
   window.abrirEditarProductosCredito = abrirEditarProductosCredito;
@@ -1780,6 +1781,7 @@
     setTipoFinanciamiento('sin_interes');
     toggleNCPrima();
     recalcularCredito();
+    refrescarProductosCredito();
     openModal('modal-nuevo-credito');
   }
   window.abrirNuevoCredito = abrirNuevoCredito;
@@ -4062,9 +4064,26 @@
   }
   window.setSection = setSection;
 
+  /* 13-nov-2026 (Joel Sevilla): la lista de productos de Créditos se leía una
+     sola vez al abrir la página. Después de un crédito el inventario SÍ bajaba
+     en el servidor, pero aquí se seguía viendo (y validando) la existencia
+     vieja hasta recargar. Ahora se vuelve a leer al guardar y al abrir el
+     formulario. Si la lectura falla, se conserva la lista anterior. */
+  async function refrescarProductosCredito() {
+    const antes = CS.productos, antesFin = CS.productosFinancieros;
+    try {
+      await loadProductosYServicios();
+      if ((!CS.productos || !CS.productos.length) && antes && antes.length) { CS.productos = antes; CS.productosFinancieros = antesFin; }
+      if (CS.stockCompartidoActivo) await cargarProductosGrupoCredito();
+    } catch (e) {
+      CS.productos = antes; CS.productosFinancieros = antesFin;
+      console.warn('No se pudo refrescar el inventario en Créditos:', e);
+    }
+  }
+
   async function refrescarTodo() {
     await marcarCuotasVencidas();
-    await Promise.all([loadKpis(), loadCreditos()]);
+    await Promise.all([loadKpis(), loadCreditos(), refrescarProductosCredito()]);
     if (CS.activeSection === 'pagos') await loadPagosRecientes();
   }
 
