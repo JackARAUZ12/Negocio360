@@ -2337,9 +2337,11 @@ function buscarProductosParaVenta(q, tipo) {
       ? (() => {
           const escalas = S.escalasPorProducto[p.id] || [];
           if (!escalas.length) return 'Sin precios';
-          const precios = escalas.map(e => Number(e.precio)||0);
-          const min = Math.min(...precios);
-          return `Desde ${fmt(min)}`;
+          // Precio base primero (como lo configuró el negocio); luego el otro extremo.
+          const base = Number(escalas[0].precio)||0;
+          const otros = escalas.slice(1).map(e => Number(e.precio)||0);
+          const otro = otros.length ? (Math.min(...otros) < base ? Math.min(...otros) : Math.max(...otros)) : base;
+          return otro === base ? fmt(base) : `${fmt(base)} – ${fmt(otro)}`;
         })()
       : fmt(p.precio) + (abrevUnidad(p.unidad_codigo) ? ` / ${abrevUnidad(p.unidad_codigo)}` : '');
     return `

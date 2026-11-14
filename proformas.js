@@ -439,9 +439,11 @@ function buscarProductoProf() {
       const escalas = STATE.escalasPorProducto[p.id] || [];
       if (!escalas.length) precioLabel = 'Sin precios';
       else {
-        const precios = escalas.map(e => Number(e.precio)||0);
-        const min = Math.min(...precios), max = Math.max(...precios);
-        precioLabel = min===max ? fmt(min) : `${fmt(min)} – ${fmt(max)}`;
+        // El precio base (primero de la escala) va primero; luego el otro extremo.
+        const base = Number(escalas[0].precio)||0;
+        const otros = escalas.slice(1).map(e => Number(e.precio)||0);
+        const otro = otros.length ? (Math.min(...otros) < base ? Math.min(...otros) : Math.max(...otros)) : base;
+        precioLabel = otro===base ? fmt(base) : `${fmt(base)} – ${fmt(otro)}`;
       }
     } else {
       precioLabel = fmt(p.precio);

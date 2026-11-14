@@ -1395,17 +1395,29 @@ async function eliminarComboConfirmado(id) {
 }
 
 function fmtRangoEscala(lista) {
+  // 14-nov-2026: el rango empieza SIEMPRE por el precio base (el primero de la
+  // escala, como lo configuró el negocio) y luego el otro extremo. Antes salía
+  // de menor a mayor ("3,600 – 3,800") aunque el base fuera 3,800.
   if (!lista || !lista.length) return 'Sin precios configurados';
-  const precios = lista.map(e => Number(e.precio) || 0);
-  const min = Math.min(...precios), max = Math.max(...precios);
-  return min === max ? fmtMoney(min) : `${fmtMoney(min)} – ${fmtMoney(max)}`;
+  const base = Number(lista[0].precio) || 0;
+  const otros = lista.slice(1).map(e => Number(e.precio) || 0);
+  if (!otros.length) return fmtMoney(base);
+  const menor = Math.min(...otros), mayor = Math.max(...otros);
+  const otro = menor < base ? menor : mayor;
+  return otro === base ? fmtMoney(base) : `${fmtMoney(base)} – ${fmtMoney(otro)}`;
 }
 
 function fmtRangoEscala(lista) {
+  // 14-nov-2026: el rango empieza SIEMPRE por el precio base (el primero de la
+  // escala, como lo configuró el negocio) y luego el otro extremo. Antes salía
+  // de menor a mayor ("3,600 – 3,800") aunque el base fuera 3,800.
   if (!lista || !lista.length) return 'Sin precios configurados';
-  const precios = lista.map(e => Number(e.precio) || 0);
-  const min = Math.min(...precios), max = Math.max(...precios);
-  return min === max ? fmtMoney(min) : `${fmtMoney(min)} – ${fmtMoney(max)}`;
+  const base = Number(lista[0].precio) || 0;
+  const otros = lista.slice(1).map(e => Number(e.precio) || 0);
+  if (!otros.length) return fmtMoney(base);
+  const menor = Math.min(...otros), mayor = Math.max(...otros);
+  const otro = menor < base ? menor : mayor;
+  return otro === base ? fmtMoney(base) : `${fmtMoney(base)} – ${fmtMoney(otro)}`;
 }
 
 /* ============================================================
