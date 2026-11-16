@@ -16,7 +16,7 @@
   <script src="descargas-app.js?v=20261112a"></script>
 <script src="cr-modo.js?v=20261101d"></script>
 <script src="pais-config.js?v=20261101a"></script>
-  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="demo-salir.js?v=20261116a"></script>
 <script src="clinica-comun.js?v=20261029b"></script>
 
 <style>
@@ -2050,7 +2050,7 @@ let toastTimer = null;
 
 /* Salida de emergencia: cerrar sesión desde el asistente (antes no había forma de salir). */
 async function salirDePersonalizacion() {
-  try { await db.auth.signOut(); } catch (e) { console.warn('signOut:', e); }
+  try { await db.auth.signOut({ scope: 'local' }); } catch (e) { console.warn('signOut:', e); }
   try { sessionStorage.removeItem('n360_perfil_activo'); sessionStorage.removeItem('n360_config'); } catch (_) {}
   window.location.href = 'login.html';
 }
@@ -2066,6 +2066,6 @@ function showToast(msg, type = 'success') {
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }
 </script>
-<script src="perfiles-guard.js?v=20261113a"></script>
+<script src="perfiles-guard.js?v=20261116a"></script>
 </body>
 </html>

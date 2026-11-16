@@ -21,7 +21,7 @@
 <script src="reloj-sesion.js?v=20261028b"></script>
   <script src="descargas-app.js?v=20261112a"></script>
 <script src="cr-modo.js?v=20261101d"></script>
-  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="demo-salir.js?v=20261116a"></script>
 <script src="modulos-registro.js?v=20261111a"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
@@ -2122,6 +2122,13 @@
             Cerrar sesión
           </button>
           <div class="cfg-status" id="logout-status"></div>
+
+          <!-- Cerrar en TODOS los equipos (solo el dueño, cuentas reales; oculto hasta comprobarlo) -->
+          <div id="cs-todos" style="display:none; margin-top:16px; padding-top:14px; border-top:1px solid var(--border-color, rgba(128,128,128,.25))">
+            <div class="cfg-card-desc" style="margin-bottom:10px">¿Perdiste un celular o alguien más conoce tu contraseña? Cierra tu cuenta en <b>todas</b> las computadoras, celulares y la app. En cada equipo habrá que volver a iniciar sesión (puede tardar hasta 1 hora en salir en los demás).</div>
+            <button class="cfg-btn-neutral" id="btn-cerrar-todos" type="button" onclick="confirmarCerrarTodos()">Cerrar sesión en todos los equipos</button>
+            <div class="cfg-status" id="logout-todos-status"></div>
+          </div>
         </div>
 
         <!-- CAMBIAR CONTRASEÑA (oculta hasta confirmar que es una cuenta real de cliente:
@@ -4281,7 +4288,8 @@ async function ejecutarCerrarSesion() {
     // para que la próxima vez se vuelva a pedir elegir usuario.
     try { sessionStorage.removeItem('n360_perfil_activo'); } catch (e) {}
 
-    const { error } = await sbClient.auth.signOut();
+    // Solo en ESTE equipo: los demás equipos y celulares siguen conectados.
+    const { error } = await sbClient.auth.signOut({ scope: 'local' });
     if (error) throw error;
     window.location.href = 'login.html';
   } catch (e) {
@@ -4290,6 +4298,39 @@ async function ejecutarCerrarSesion() {
     btn.disabled = false;
     btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> Cerrar sesión';
   }
+}
+
+/* Cerrar sesión en TODOS los equipos (seguridad): es lo único que cierra
+   la cuenta en las demás computadoras, celulares y la app. */
+function confirmarCerrarTodos() {
+  const ok = confirm('Se cerrará tu cuenta en TODAS las computadoras, celulares y la app, incluido este equipo.\n\nEn cada uno habrá que volver a iniciar sesión con tu correo y contraseña. ¿Continuar?');
+  if (!ok) return;
+  ejecutarCerrarTodos();
+}
+async function ejecutarCerrarTodos() {
+  const btn = document.getElementById('btn-cerrar-todos');
+  const statusEl = document.getElementById('logout-todos-status');
+  btn.disabled = true;
+  btn.textContent = 'Cerrando en todos los equipos…';
+  try {
+    try { sessionStorage.removeItem('n360_perfil_activo'); } catch (e) {}
+    const { error } = await sbClient.auth.signOut({ scope: 'global' });
+    if (error) throw error;
+    window.location.href = 'login.html';
+  } catch (e) {
+    console.error('ejecutarCerrarTodos:', e);
+    setStatus(statusEl, 'No se pudo cerrar en todos los equipos. Intenta de nuevo.', false);
+    btn.disabled = false;
+    btn.textContent = 'Cerrar sesión en todos los equipos';
+  }
+}
+function mostrarCerrarTodos() {
+  try {
+    if (window.N360VerComo && window.N360VerComo.activo) return;          // admin viendo la cuenta de un cliente
+    const p = JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null');
+    if (p && p.tipo && p.tipo !== 'admin') return;                        // perfil de empleado: no
+    const el = document.getElementById('cs-todos'); if (el) el.style.display = '';
+  } catch (_) {}
 }
 
 /* =====================================================
@@ -4303,7 +4344,7 @@ async function aplicarModoDemo() {
     const { data, error } = await sbClient.rpc('soy_cuenta_demo');
     if (!error) esDemo = data === true;
   } catch (_) {}
-  if (!esDemo) { if (card) card.style.display = ''; return; }
+  if (!esDemo) { if (card) card.style.display = ''; mostrarCerrarTodos(); return; }
   if (card) card.remove();
   const toggle = document.getElementById('mu-toggle');
   const sub = document.getElementById('mu-row-sub');
@@ -4599,7 +4640,7 @@ document.addEventListener('DOMContentLoaded', initConfiguracion);
 document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
-<script src="perfiles-guard.js?v=20261113a"></script>
+<script src="perfiles-guard.js?v=20261116a"></script>
 <script src="modulos-guard.js?v=20261111a"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>

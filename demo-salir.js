@@ -62,7 +62,7 @@
     var b = document.getElementById('n360-demo-salir');
     if (b) { b.disabled = true; b.textContent = 'Cerrando sesión…'; }
     try { sessionStorage.removeItem(CACHE); sessionStorage.removeItem('n360_perfil_activo'); } catch (e) {}
-    Promise.resolve(cliente ? cliente.auth.signOut() : null).catch(function () {}).then(function () { window.location.href = 'login.html'; });
+    Promise.resolve(cliente ? cliente.auth.signOut({ scope: 'local' }) : null).catch(function () {}).then(function () { window.location.href = 'login.html'; });
   }
 
   function revisar() {

@@ -284,7 +284,7 @@
   $('btn-salir').addEventListener('click', async () => {
     try { await rpc('freelancer_evento', { p_tipo: 'cierre_sesion' }); } catch (_) {}
     sessionStorage.removeItem('n360_fl_sesion');
-    await sb.auth.signOut();
+    await sb.auth.signOut({ scope: 'local' });
     ST.panel = null; ST.ultimoCodigo = null;
     iniciar();
   });

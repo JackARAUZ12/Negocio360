@@ -12,7 +12,7 @@
   <script src="reloj-sesion.js?v=20261028b"></script>
   <script src="descargas-app.js?v=20261112a"></script>
 <script src="cr-modo.js?v=20261101d"></script>
-  <script src="demo-salir.js?v=20261030a"></script>
+  <script src="demo-salir.js?v=20261116a"></script>
 
   <!-- Google Fonts: Sora (display) + DM Sans (body) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -812,7 +812,7 @@
         const { data: estadoFl } = await sb.rpc('freelancer_estado');
         if (estadoFl) { window.location.href = 'freelancer.html'; return; }
       } catch (_) { /* sin cambio: se sigue con el flujo normal */ }
-      await sb.auth.signOut();
+      await sb.auth.signOut({ scope: 'local' });
       hideOverlay();
       return;
     }

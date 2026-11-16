@@ -222,7 +222,7 @@
       window.location.href = esCancelada ? 'planes.html' : 'mailto:soporte@negocio360.app';
     });
     document.getElementById('pg-bloqueo-salir').addEventListener('click', async () => {
-      try { await PG.client.auth.signOut(); } catch (e) {}
+      try { await PG.client.auth.signOut({ scope: 'local' }); } catch (e) {}
       window.location.href = 'login.html';
     });
   }
@@ -1464,7 +1464,7 @@
     if (!raw) {
       alert('No se encontró el acceso guardado de tu cuenta principal (se pierde si cierras la pestaña o el navegador). Te llevaremos a iniciar sesión con tu correo y contraseña de la cuenta principal; desde ahí entras de nuevo a la bodega con Sucursales.');
       try { localStorage.removeItem('n360_central_session_backup_ls'); } catch (_) {}
-      await PG.client.auth.signOut();
+      await PG.client.auth.signOut({ scope: 'local' });
       window.location.href = 'login.html';
       return true; // ya se está navegando fuera, no hace falta mostrar error
     }
@@ -1520,7 +1520,7 @@
         sessionStorage.removeItem('n360_central_session_backup');
         try { localStorage.removeItem('n360_central_session_backup_ls'); } catch (_) {}
         alert('El acceso guardado de tu cuenta principal venció. Inicia sesión con tu correo y contraseña de la cuenta principal y entra de nuevo a la bodega desde Sucursales.');
-        try { await PG.client.auth.signOut(); } catch (_) {}
+        try { await PG.client.auth.signOut({ scope: 'local' }); } catch (_) {}
         window.location.href = 'login.html';
         return true;
       }
