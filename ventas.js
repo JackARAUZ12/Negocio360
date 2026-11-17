@@ -1931,6 +1931,7 @@ async function abrirNuevaVenta() {
   const mg = document.getElementById('metodos-grid'); if (mg) mg.style.display = '';
   S.observaciones = '';
   S.numeroVenta   = '';
+  if (window.N360Vuelto) N360Vuelto.reset('nv');
   S.ivaActivo     = false;
   S.ivaModo       = 'unica';
   S.otrosImpuestos = [];
@@ -5029,6 +5030,7 @@ function calcularResumen() {
   S._resumen = { subtotal, descuento, impuestos, ivaMonto, ivaLineas, ivaEfectivo, otros, total, retencionIr, retencionPct, cobrar, ganancia, costoTotal, descuentoPromociones, descuentoPuntos, descuentoGeneral, descuentoGeneralTopado, baseGeneral, promocionesAplicadas: resultadoPromos.detalle,
                  descuentoCert, certPago, certAplicado: round2(descuentoCert + certPago) };
   if (window.N360CertVenta) { try { N360CertVenta.pintar(); } catch (_) {} }
+  if (window.N360Vuelto) N360Vuelto.refrescar('nv');
 
   // Aviso visual de promociones aplicadas — se inserta junto al
   // resumen si el contenedor existe; si no existe en el HTML, esto
@@ -5249,6 +5251,7 @@ function renderMetodosPagoModal() {
       <span class="mc-icon">📒</span>
       <span class="mc-name">Fiado</span>
     </div>` : '');
+  if (window.N360Vuelto) N360Vuelto.refrescar('nv');   // "¿Con cuánto paga?" (solo Efectivo)
 }
 
 /* Fiados: la venta se registra, pero el dinero NO entra a Caja hasta que el cliente pague
@@ -6361,6 +6364,8 @@ async function _confirmarVentaInterno(conImpresion) {
   conImpresion = !!conImpresion;
   if (!validarPasoActual()) return;
   if (!S.carrito.length) { showToast('El carrito está vacío', 'error'); return; }
+  // "¿Con cuánto paga?": si se escribió un monto menor a lo que se cobra, no se confirma.
+  if (window.N360Vuelto) { const eVu = N360Vuelto.error('nv'); if (eVu) { showToast(eVu, 'error'); return; } }
 
   // Agroservicio: candado de precio mínimo (el servidor también lo revisa). Aviso antes de gastar un número de venta.
   if (S.empresaConfig?.usa_modulo_agro === true && S.empresaConfig?.agro_permitir_bajo_costo !== true) {
@@ -6558,6 +6563,7 @@ async function _confirmarVentaInterno(conImpresion) {
     const notaCert = (S.certificado && certAplicado > 0)
       ? `Certificado de regalo ${S.certificado.codigo}: ${fmt(certAplicado)}${S.certificado.modo === 'anticipo' ? ' (pagado)' : ' (descuento)'}` : '';
     const fechaVentaElegida = document.getElementById('nv-fecha-venta')?.value || todayISO();
+    if (window.N360Vuelto) N360Vuelto.recordar('nv', S.numeroVenta);   // Recibido / Vuelto para el ticket
 
     const ventaPayload = {
       auth_user_id:       S.userId,
@@ -6575,7 +6581,7 @@ async function _confirmarVentaInterno(conImpresion) {
       ...(esFiado ? { metodo_pago: 'fiado', estado_pago: 'credito', categoria: 'fiado' } : {}),
       creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
-      observaciones:      ((S.correccion ? `[Corrige a ${S.correccion.numero} — motivo: ${S.correccion.motivo}] ` : '') + [S.observaciones, notaCert].filter(Boolean).join(' · ')).trim() || null,
+      observaciones:      ((S.correccion ? `[Corrige a ${S.correccion.numero} — motivo: ${S.correccion.motivo}] ` : '') + [S.observaciones, notaCert, (window.N360Vuelto ? N360Vuelto.nota('nv') : '')].filter(Boolean).join(' · ')).trim() || null,
       // Certificado de regalo: la base valida el saldo y lo descuenta EN LA MISMA operación que guarda la venta.
       ...((S.certificado && certAplicado > 0) ? { certificados_aplicados: [{ certificado_id: S.certificado.id, monto: certAplicado }] } : {}),
       ...(S._certEmisionId ? { certificado_emision_id: S._certEmisionId } : {}),
@@ -7747,6 +7753,7 @@ function calcularResumenVR() {
 }
 
 function renderCarritoVentaRapida() {
+  if (window.N360Vuelto) setTimeout(() => { try { N360Vuelto.refrescar('vr'); } catch (_) {} }, 0);   // el total pudo cambiar
   const tbody = document.getElementById('vr-carrito-tbody');
   if (!tbody) return;
 
@@ -7823,6 +7830,7 @@ function renderMetodosPagoVR() {
       <span class="mc-icon">🔀</span>
       <span class="mc-name">Pago separado</span>
     </div>`;
+  if (window.N360Vuelto) N360Vuelto.refrescar('vr');   // "¿Con cuánto paga?" (solo Efectivo)
 }
 
 function seleccionarMetodoPagoVR(id, nombre) {
@@ -7994,6 +8002,7 @@ async function _confirmarVentaRapidaInterno() {
   if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
   if (!validarPagoSeparadoVR()) return;
   if (window.N360Vendedor && !N360Vendedor.validar('vr')) return;
+  if (window.N360Vuelto) { const eVu = N360Vuelto.error('vr'); if (eVu) { showToast(eVu, 'error'); return; } }
 
   // Aviso (no bloquea): costo 0 o venta por debajo del costo -> ganancia incorrecta.
   try {
@@ -8077,6 +8086,7 @@ async function _confirmarVentaRapidaInterno() {
       ? `Pago separado (${VR.pagoSeparadoLineas.filter(l=>l.monto>0).map(l=>l.metodoNombre).join(' + ')})`
       : VR.metodoPagoNombre;
     const fechaVentaElegidaVR = document.getElementById('vr-fecha-venta')?.value || todayISO();
+    if (window.N360Vuelto) N360Vuelto.recordar('vr', VR.numeroVenta);   // Recibido / Vuelto para el ticket
 
     const ventaPayload = {
       auth_user_id:       S.userId,
@@ -8093,7 +8103,7 @@ async function _confirmarVentaRapidaInterno() {
       metodo_pago_nombre: nombreMetodoParaGuardarVR,
       creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
-      observaciones:      'Venta rápida (escáner)',
+      observaciones:      ['Venta rápida (escáner)', (window.N360Vuelto ? N360Vuelto.nota('vr') : '')].filter(Boolean).join(' · '),
       categoria:          'venta_rapida',
       ...(window.N360Vendedor ? N360Vendedor.payload('vr') : {}),
     };
@@ -8224,6 +8234,7 @@ async function _confirmarVentaRapidaInterno() {
     // funciona una caja registradora real: se sigue escaneando)
     VR.carrito = [];
     VR.numeroVenta = '';
+    if (window.N360Vuelto) N360Vuelto.reset('vr');
     renderCarritoVentaRapida();
     const numEl = document.getElementById('vr-num');
     if (numEl) numEl.textContent = 'Generando número…';
@@ -8271,7 +8282,7 @@ function construirDatosReciboDesdeVenta(cfg, venta, items) {
       `No. Cliente: ${venta.cliente_id ? (venta._clienteNumero||'-') : venta.numero_venta}`,
     ],
     items: lineasItems,
-    totalTexto: `TOTAL: ${fmt(venta.total)}`,
+    totalTexto: `TOTAL: ${fmt(venta.total)}` + (window.N360Vuelto ? N360Vuelto.lineas(venta.numero_venta).map(l => `\n${l.izq}: ${l.der}`).join('') : ''),
     piePagina: '¡Gracias por su compra!',
     columnas: columnasImpresionDirecta(cfg.ancho_ticket),
   };
@@ -8319,6 +8330,7 @@ function elementosTicketVentaRawBT(cfg, venta, items, resumen) {
   }
   (r.otros || []).forEach(o => e.push({ t: 'fila', izq: `${o.nombre} (${o.porcentaje}%)`, der: fmt(o.monto) }));
   e.push({ t: 'fila', izq: 'TOTAL', der: fmt(r.total), negrita: true, grande: true });
+  if (window.N360Vuelto) N360Vuelto.lineas(venta.numero_venta).forEach(l => e.push({ t: 'fila', izq: l.izq, der: l.der, negrita: !!l.negrita }));
   e.push({ t: 'linea' }, { t: 'centro', texto: cfg.mensaje_pie_ticket || 'Gracias por su compra' });
   return e;
 }
@@ -8534,6 +8546,7 @@ async function imprimirTicketVentaRapidaCSS(venta, items, resumen) {
   ${resumen.ivaActivo ? `<div class="fila-dato"><span>IVA (${resumen.ivaPct}%)</span><span>${fmt(resumen.impuesto)}</span></div>` : ''}
   <div class="fila-dato negrita" style="font-size:${fsTotal}px;margin-top:4px"><span>TOTAL</span><span>${fmt(resumen.total)}</span></div>
   ${Number(resumen.retencionIr)>0 ? `<div class="fila-dato"><span>Retención IR${resumen.retencionPct?` (${resumen.retencionPct}%)`:''}</span><span>-${fmt(resumen.retencionIr)}</span></div><div class="fila-dato negrita"><span>Total a pagar</span><span>${fmt(resumen.total - resumen.retencionIr)}</span></div>` : ''}
+  ${window.N360Vuelto ? N360Vuelto.ticketHTML(venta.numero_venta) : ''}
   <div class="linea"></div>
   <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
 </body></html>`;
@@ -8751,6 +8764,7 @@ async function imprimirTicketNuevaVentaCSS(venta, items, resumen) {
   ${(resumen.ivaPct != null ? resumen.ivaPct > 0 : S.ivaActivo) ? `<div class="fila-dato"><span>IVA (${resumen.ivaPct != null ? resumen.ivaPct : S.ivaPorcentaje}%)</span><span>${fmt(resumen.ivaMonto != null ? resumen.ivaMonto : resumen.impuestos)}</span></div>` : ''}
   ${(resumen.otros||[]).map(o => `<div class="fila-dato"><span>${esc(o.nombre)} (${o.porcentaje}%)</span><span>${fmt(o.monto)}</span></div>`).join('')}
   <div class="fila-dato negrita" style="font-size:${fsTotal}px;margin-top:4px"><span>TOTAL</span><span>${fmt(resumen.total)}</span></div>
+  ${window.N360Vuelto ? N360Vuelto.ticketHTML(venta.numero_venta) : ''}
   <div class="linea"></div>
   <div class="centro">${esc(cfg.mensaje_pie_ticket || 'Gracias por su compra')}</div>
 </body></html>`;
