@@ -6500,6 +6500,7 @@ async function _confirmarVentaInterno(conImpresion) {
       throw new Error('Se cargaron las tarifas de IVA de tus productos y el total pudo cambiar. Revisa el resumen y confirma de nuevo.');
     }
     const r = S._resumen;
+    if (window.N360Vuelto) { const eVu2 = N360Vuelto.error('nv'); if (eVu2) throw new Error(eVu2); }   // con el total final
 
     // "Corregir venta": primero se anula la original (misma rutina de
     // siempre) y recien despues se registra esta. Con S.correccion
@@ -8072,6 +8073,7 @@ async function _confirmarVentaRapidaInterno() {
       throw new Error('Se cargaron las tarifas de IVA de tus productos y el total pudo cambiar. Revisa el total y cobra de nuevo.');
     }
     const r = calcularResumenVR();
+    if (window.N360Vuelto) { const eVu2 = N360Vuelto.error('vr'); if (eVu2) throw new Error(eVu2); }   // con el total final
 
     if (!VR.numeroVenta || VR.numeroVenta.startsWith('V-TMP')) {
       try {

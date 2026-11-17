@@ -18,7 +18,10 @@
   'use strict';
   if (window.N360Vuelto) return;
 
-  const BILLETES = { NIO: [10, 20, 50, 100, 200, 500, 1000], USD: [1, 5, 10, 20, 50, 100] };
+  // Billetes por moneda. Moneda local desconocida: sin botones de billetes (se escribe el monto).
+  const BILLETES_LOCAL = { NIO: [10, 20, 50, 100, 200, 500, 1000], CRC: [1000, 2000, 5000, 10000, 20000] };
+  const NOMBRE_LOCAL = { NIO: 'córdobas', CRC: 'colones' };
+  const BILLETES_USD = [1, 5, 10, 20, 50, 100];
   const c = n => Math.round((Number(n) || 0) * 100);            // a centavos
   const d = n => n / 100;                                         // de centavos
   const fmt = n => Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -35,10 +38,14 @@
     try { ec = (typeof S !== 'undefined' && S.empresaConfig) || {}; } catch (_) {}
     const base = ec.moneda === 'USD' ? 'USD' : 'NIO';
     const tasa = Number(ec.tasa_cambio_usd) || 0;
+    // Moneda local real (córdobas en casi todas las cuentas; colones en Costa Rica). Cuenta en dólares: la local es córdobas.
+    const codLocal = base === 'USD' ? 'NIO' : (ec.moneda === 'CRC' ? 'CRC' : (!ec.moneda || ec.moneda === 'NIO' || ec.moneda === 'C$' ? 'NIO' : String(ec.moneda)));
     let simLocal = 'C$';
     try { if (base !== 'USD' && typeof monedaParaMostrar === 'function') simLocal = monedaParaMostrar(ec.moneda) || 'C$'; } catch (_) {}
     if (!simLocal || simLocal === 'NIO') simLocal = 'C$';
-    return { base, tasa, simLocal };
+    const nombreLocal = NOMBRE_LOCAL[codLocal] || 'moneda local';
+    const billetesLocal = BILLETES_LOCAL[codLocal] || [];
+    return { base, tasa, simLocal, nombreLocal, billetesLocal };
   }
   function contexto(modo) {
     try {
@@ -86,8 +93,9 @@
     r.vueltoLocalC = vLocal;
     // Opción en dólares: dólares enteros + el resto en córdobas
     if (hayDolar && tasaC > 0) {
-      const dol = Math.floor(vLocal / tasaC);
-      if (dol >= 1) { r.opDolares = dol; r.opRestoLocalC = vLocal - dol * tasaC; }
+      const dol = Math.floor(vLocal / (k.tasa * 100) + 1e-9);
+      const resto = vLocal - Math.round(dol * k.tasa * 100);
+      if (dol >= 1 && resto >= 0) { r.opDolares = dol; r.opRestoLocalC = resto; }
     }
     if (r.estado === 'ok' && !r.opDolares) e.entrega = 'local';
     return r;
@@ -194,7 +202,7 @@
     else {
       const ops = (!r.soloBase && r.opDolares)
         ? `<div class="n360-vu-ops">
-             <button type="button" data-entrega="local" class="${e.entrega !== 'usd' ? 'on' : ''}">Todo en córdobas<small>${k.simLocal} ${fmt(d(r.vueltoLocalC))}</small></button>
+             <button type="button" data-entrega="local" class="${e.entrega !== 'usd' ? 'on' : ''}">Todo en ${esc(k.nombreLocal)}<small>${k.simLocal} ${fmt(d(r.vueltoLocalC))}</small></button>
              <button type="button" data-entrega="usd" class="${e.entrega === 'usd' ? 'on' : ''}">En dólares<small>$ ${fmt(r.opDolares)}${r.opRestoLocalC > 0 ? ` + ${k.simLocal} ${fmt(d(r.opRestoLocalC))}` : ''}</small></button>
            </div><div class="n360-vu-hint">Toca cómo le das el vuelto (queda en el ticket).</div>` : '';
       const equiv = (!r.soloBase && k.tasa > 0) ? `<div class="n360-vu-sub">equivale a $ ${fmt(d(r.vueltoLocalC) / k.tasa)}</div>` : '';
@@ -205,11 +213,11 @@
     p.innerHTML = `
       <div class="n360-vu-cab"><b>💵 ¿Con cuánto paga?</b><span>A cobrar: <strong>${totalTxt}</strong></span></div>
       ${k.tasa > 0 ? `<div class="n360-vu-mon" role="group" aria-label="Moneda con que paga">
-        <button type="button" data-mon="NIO" class="${mon === 'NIO' ? 'on' : ''}">Córdobas</button>
+        <button type="button" data-mon="NIO" class="${mon === 'NIO' ? 'on' : ''}">${k.nombreLocal.charAt(0).toUpperCase() + k.nombreLocal.slice(1)}</button>
         <button type="button" data-mon="USD" class="${mon === 'USD' ? 'on' : ''}">Dólares</button></div>` : ''}
       <div class="n360-vu-bil">
         ${exacto ? `<button type="button" class="ex" data-exacto="1">Exacto</button>` : ''}
-        ${BILLETES[mon].map(b => `<button type="button" data-bil="${b}">${s}${b}</button>`).join('')}
+        ${(mon === 'USD' ? BILLETES_USD : k.billetesLocal).map(b => `<button type="button" data-bil="${b}">${s}${b.toLocaleString('es-NI')}</button>`).join('')}
       </div>
       <div class="n360-vu-fila">
         <input type="text" inputmode="decimal" autocomplete="off" placeholder="o escribe cuánto te dio (${s})" aria-label="Monto recibido" value="${esc(enfocado ? valorEscrito : (e.centavos > 0 ? (e.centavos / 100).toString() : ''))}">
@@ -247,12 +255,31 @@
 
   let tEscribir = 0;
   function alEscribir(modo, inp) {
-    const limpio = String(inp.value || '').replace(/[^\d.,]/g, '').replace(/,/g, '.');
-    const partes = limpio.split('.');
-    const num = partes.length > 1 ? Number(partes[0] + '.' + partes.slice(1).join('').slice(0, 2)) : Number(limpio);
-    EST[modo].centavos = num > 0 && isFinite(num) ? Math.round(num * 100) : 0;
+    EST[modo].centavos = leerMonto(inp.value);
     clearTimeout(tEscribir);
     tEscribir = setTimeout(() => pintar(modo), 120);
+  }
+  // "1,000" y "1.000" con 3 cifras al final = mil; "12,50" o "12.5" = doce con cincuenta; "1,250.75" = mil doscientos cincuenta con 75.
+  function leerMonto(texto) {
+    let t = String(texto || '').replace(/[^\d.,]/g, '');
+    if (!t) return 0;
+    const ultP = t.lastIndexOf('.'), ultC = t.lastIndexOf(',');
+    let decSep = null;
+    if (ultP >= 0 && ultC >= 0) decSep = ultP > ultC ? '.' : ',';                       // los dos: el último es el decimal
+    else {
+      const sep = ultP >= 0 ? '.' : (ultC >= 0 ? ',' : null);
+      if (sep) {
+        const grupos = t.split(sep);
+        const finalEs3 = grupos[grupos.length - 1].length === 3;
+        decSep = (grupos.length > 2 || finalEs3) ? null : sep;                             // 1,000 / 1.000.000 = miles
+      }
+    }
+    let entero = t, dec = '';
+    if (decSep) { const i = t.lastIndexOf(decSep); entero = t.slice(0, i); dec = t.slice(i + 1); }
+    entero = entero.replace(/[.,]/g, '');
+    dec = dec.replace(/[.,]/g, '').slice(0, 2);
+    const num = Number((entero || '0') + (dec ? '.' + dec : ''));
+    return num > 0 && isFinite(num) ? Math.round(num * 100) : 0;
   }
 
   /* ---------- API usada por ventas.js ---------- */
@@ -308,5 +335,5 @@
     return [{ izq: 'Efectivo recibido', der: t.recibido.replace(/ \(tasa.*\)$/, '') }, { izq: 'Su vuelto', der: t.vuelto, negrita: true }];
   }
 
-  window.N360Vuelto = { refrescar, reset, error, nota, recordar, ticketHTML, lineas, _calcular: calcular, _estado: EST };
+  window.N360Vuelto = { refrescar, reset, error, nota, recordar, ticketHTML, lineas, _calcular: calcular, _estado: EST, _leerMonto: leerMonto };
 })();
