@@ -448,5 +448,36 @@
     return true;
   }
 
-  window.N360POS = { modo, refrescar, enfocar, activo: () => ST.activo, _st: ST };
+  // CANDADO al cobrar: la pantalla usa el inventario que se cargó al abrirla. Si otra caja vendió mientras
+  // tanto, aquí se revisa el stock REAL de lo que va en el ticket (una sola consulta) antes de guardar.
+  async function verificarStock() {
+    try {
+      if (typeof S === 'undefined' || S.venderSinStockActivo) return null;
+      const req = {}, nom = {};
+      (VR.carrito || []).forEach(it => {
+        if (!it || it.esCombo || it.esPromocion || it.tipo !== 'producto' || it.origenStockId || it.sinStock) return;
+        try { if (typeof esPreparadoAlVender === 'function' && esPreparadoAlVender(it.id)) return; } catch (_) {}
+        const u = typeof unidadesInventario === 'function' ? unidadesInventario(it) : (Number(it.cantidad) || 0);
+        req[it.id] = (req[it.id] || 0) + u; nom[it.id] = it.nombre;
+      });
+      const ids = Object.keys(req); if (!ids.length) return null;
+      const { data, error } = await sb.from('productos').select('id,nombre,stock_actual,activo').in('id', ids).eq('auth_user_id', S.userId);
+      if (error || !Array.isArray(data)) return null;   // sin señal: no se bloquea por esta revisión
+      let cambio = false, msg = null;
+      for (const id of ids) {
+        const r = data.find(x => String(x.id) === String(id));
+        if (!r) { msg = msg || `"${nom[id]}" ya no existe en tu inventario. Quítalo del ticket.`; continue; }
+        const cache = (S.productosCache || []).find(x => String(x.id) === String(id));
+        if (cache && Number(cache.stock_actual) !== Number(r.stock_actual)) { cache.stock_actual = r.stock_actual; cambio = true; }
+        if (r.activo === false) { msg = msg || `"${r.nombre}" está desactivado. Quítalo del ticket.`; continue; }
+        const hay = Number(r.stock_actual) || 0;
+        if (hay + 1e-9 < req[id]) msg = msg || (hay <= 0 ? `"${r.nombre}" se acaba de agotar (otra venta lo usó). Quítalo del ticket.`
+                                                          : `Solo quedan ${fmtQ(hay)} de "${r.nombre}" y en el ticket hay ${fmtQ(req[id])}. Ajusta la cantidad.`);
+      }
+      if (cambio) pintarGrid();
+      return msg;
+    } catch (e) { console.warn('POS verificar stock:', e); return null; }
+  }
+
+  window.N360POS = { modo, refrescar, enfocar, verificarStock, activo: () => ST.activo, _st: ST };
 })();

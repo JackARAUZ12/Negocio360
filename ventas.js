@@ -8073,6 +8073,8 @@ async function _confirmarVentaRapidaInterno() {
   if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
 
   try {
+    // Caja POS: revisa el stock real antes de guardar (otra caja pudo vender mientras la pantalla estaba abierta).
+    if (VR.modoPOS && window.N360POS) { const eSt = await N360POS.verificarStock(); if (eSt) throw Object.assign(new Error(eSt), { n360Aviso: true }); }
     // Candado (Costa Rica, IVA por producto): sin las tarifas cargadas NO se cobra con tarifas supuestas.
     if (VR.config?.iva_activo && vrIvaPorProducto() && !window.N360IvaLineas.listo()) {
       await window.N360IvaLineas.cargarTarifas(sb);
@@ -8254,7 +8256,7 @@ async function _confirmarVentaRapidaInterno() {
   } catch(e) {
     console.error('confirmarVentaRapida:', e);
     const _repVR = _ventaRepetidaMsg(e);
-    showToast(_repVR || ('Error al registrar la venta: ' + (e.message||'intenta de nuevo')), 'error');
+    showToast(_repVR || (e && e.n360Aviso ? e.message : ('Error al registrar la venta: ' + (e.message||'intenta de nuevo'))), 'error');
     if (_repVR) { try { loadVentas(); } catch (_) {} }
     // La venta no se completó -- nunca se llega a imprimir, así que la
     // ventana que se abrió de antemano se cierra sola, en vez de
@@ -8264,6 +8266,7 @@ async function _confirmarVentaRapidaInterno() {
   } finally {
     VR.procesando = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Cobrar y cerrar venta'; }
+    if (VR.modoPOS && window.N360POS) { try { N360POS.refrescar(); } catch (_) {} }   // botón "Cobrar C$ …" de la caja POS
   }
 }
 
