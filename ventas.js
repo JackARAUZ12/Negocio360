@@ -6980,8 +6980,11 @@ async function cargarConfigVentaRapida() {
   }
 }
 
-async function abrirVentaRapida() {
+// modo 'pos' = nueva "Venta rápida" (pantalla de caja con productos e imágenes, pos-venta.js).
+// Sin modo = "Venta con lector" (la de siempre). Las dos usan el MISMO carrito y el MISMO cobro.
+async function abrirVentaRapida(modo) {
   if (!S.userId) { showToast('Espera a que cargue tu sesión…', 'error'); return; }
+  VR.modoPOS = (modo === 'pos') && !!window.N360POS;
   await cargarConfigVentaRapida();
   if (!VR.config || !VR.config.configurado) {
     abrirConfigVentaRapida(false);
@@ -7018,7 +7021,7 @@ function abrirConfigVentaRapida(esAjusteManual, origen) {
     if (seccionIva)  seccionIva.style.display  = 'none';
     if (filaAutoImp) filaAutoImp.style.display = 'none';
   } else {
-    if (tituloEl)    tituloEl.textContent    = 'Configurar Venta rápida';
+    if (tituloEl)    tituloEl.textContent    = 'Configurar ventas rápidas (impresora y ticket)';
     if (subtituloEl) subtituloEl.textContent = 'Impuestos y formato de ticket para tu impresora térmica';
     if (seccionIva)  seccionIva.style.display  = '';
     if (filaAutoImp) filaAutoImp.style.display = '';
@@ -7401,6 +7404,7 @@ function abrirPantallaVentaRapida() {
   if (input) input.value = '';
 
   initScannerVR();
+  if (window.N360POS) { try { N360POS.modo(!!VR.modoPOS); } catch (ePos) { console.warn('POS:', ePos); VR.modoPOS = false; } }
   if (VR.config?.iva_activo && vrIvaPorProducto()) { window.N360IvaLineas.cargarTarifas(sb, true).then(() => { try { renderCarritoVentaRapida(); } catch (_) {} }); }
   openModal('modal-vr-pos');
   generarNumeroVentaRapida();
@@ -7420,6 +7424,7 @@ async function generarNumeroVentaRapida() {
 }
 
 function enfocarScannerVR() {
+  if (VR.modoPOS && window.N360POS && N360POS.activo()) { N360POS.enfocar(); return; }   // caja POS: su propio buscador
   const modal = document.getElementById('modal-vr-pos');
   const input = document.getElementById('vr-scan-input');
   if (input && modal?.classList.contains('modal-open')) input.focus();
@@ -7801,6 +7806,7 @@ function renderCarritoVentaRapida() {
   if (ivaRow) ivaRow.style.display = r.ivaActivo ? 'flex' : 'none';
   if (r.ivaActivo) setEl2('vr-res-iva', `${fmt(r.impuesto)} (${r.ivaPct}%${r.ivaLineas ? ' · por producto' : ''})`);
 
+  if (VR.modoPOS && window.N360POS) N360POS.refrescar();   // ticket, total y cantidades de la caja POS
   const avisoPromoVR = document.getElementById('vr-res-promociones-aviso');
   if (avisoPromoVR) {
     avisoPromoVR.innerHTML = (r.promocionesAplicadas || []).length
@@ -7979,7 +7985,7 @@ function validarPagoSeparadoVR() {
 
 function confirmarCerrarVentaRapida() {
   if (VR.carrito.length && !VR.procesando) {
-    if (!confirm('Hay productos escaneados sin cobrar. ¿Cerrar Venta rápida de todos modos?')) return;
+    if (!confirm('Hay productos en el ticket sin cobrar. ¿Cerrar de todos modos?')) return;
   }
   if (!VR.procesando && VR.numeroVenta) {            // número reservado que no se usó: se devuelve
     const _numVR = VR.numeroVenta;
@@ -8000,7 +8006,9 @@ async function confirmarVentaRapida() {
 
 async function _confirmarVentaRapidaInterno() {
   if (VR.procesando) return;
-  if (!VR.carrito.length) { showToast('Escanea al menos un producto', 'error'); return; }
+  if (!VR.carrito.length) { showToast('Agrega al menos un producto', 'error'); return; }
+  // Caja POS: la fecha no se muestra, así que siempre es HOY (aunque la pantalla quede abierta de un día para otro).
+  if (VR.modoPOS) { const fPos = document.getElementById('vr-fecha-venta'); if (fPos) fPos.value = todayISO(); }
   if (!validarPagoSeparadoVR()) return;
   if (window.N360Vendedor && !N360Vendedor.validar('vr')) return;
   if (window.N360Vuelto) { const eVu = N360Vuelto.error('vr'); if (eVu) { showToast(eVu, 'error'); return; } }
@@ -8105,7 +8113,7 @@ async function _confirmarVentaRapidaInterno() {
       metodo_pago_nombre: nombreMetodoParaGuardarVR,
       creado_por_nombre:  obtenerNombrePerfilActivo(),
       estado:             'completada',
-      observaciones:      ['Venta rápida (escáner)', (window.N360Vuelto ? N360Vuelto.nota('vr') : '')].filter(Boolean).join(' · '),
+      observaciones:      [VR.modoPOS ? 'Venta rápida' : 'Venta rápida (escáner)', (window.N360Vuelto ? N360Vuelto.nota('vr') : '')].filter(Boolean).join(' · '),
       categoria:          'venta_rapida',
       ...(window.N360Vendedor ? N360Vendedor.payload('vr') : {}),
     };

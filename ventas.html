@@ -869,12 +869,16 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Exportar
           </button>
-          <button class="btn-secondary" id="btn-venta-rapida" onclick="abrirVentaRapida()">
+          <button class="btn-secondary" id="btn-venta-rapida" onclick="abrirVentaRapida()" title="Vender escaneando con lector de código de barras">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 7V4a1 1 0 0 1 1-1h3"/><path d="M17 3h3a1 1 0 0 1 1 1v3"/>
               <path d="M21 17v3a1 1 0 0 1-1 1h-3"/><path d="M7 21H4a1 1 0 0 1-1-1v-3"/>
               <line x1="7" y1="12" x2="17" y2="12"/>
             </svg>
+            Venta con lector
+          </button>
+          <button class="btn-primary" id="btn-venta-pos" onclick="abrirVentaRapida('pos')" title="Caja rápida: toca los productos y cobra" style="background:var(--success);border-color:var(--success)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             Venta rápida
           </button>
           <button class="btn-primary" onclick="abrirNuevaVenta()">
@@ -1578,7 +1582,7 @@
   <div class="modal-box modal-md">
     <div class="modal-header">
       <div>
-        <div class="modal-title">Venta rápida</div>
+        <div class="modal-title">Venta con lector</div>
         <div class="modal-subtitle" id="vr-num">Generando número…</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
@@ -2102,7 +2106,8 @@
 <script src="cache-productos.js?v=20261106b"></script>
 <script src="iva-lineas.js?v=20261101a"></script>
 <script src="vuelto-efectivo.js?v=20261116b"></script>
-<script src="ventas.js?v=20261116b"></script>
+<script src="pos-venta.js?v=20261116a"></script>
+<script src="ventas.js?v=20261116c"></script>
 <script src="enviar-doc.js?v=20261102a"></script>
 <script src="vendedores-venta.js?v=20261102a"></script>
 <script src="exportar-modulo.js?v=20261029b"></script>
