@@ -368,7 +368,12 @@ async function crearSucursal() {
     const nuevoUserId = signUpData?.user?.id;
     if (!nuevoUserId) throw new Error(`No se pudo crear la cuenta interna de la ${esBodega?'bodega':'sucursal'}.`);
 
+    // Quién la crea: en la sucursal/bodega nueva solo aparecerán este administrador,
+    // el administrador principal y a quienes se les dé acceso (el servidor lo valida).
+    let creadorPerfilId = null;
+    try { const pa = JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null'); if (pa && pa.tipo === 'admin' && pa.id) creadorPerfilId = pa.id; } catch (_) {}
     const { error: errInsert } = await sbClient.from('sucursales').insert({
+      creado_por_perfil_id: creadorPerfilId,
       auth_user_id_central: STATE.userId, nombre,
       es_central: false, auth_user_id_sucursal: nuevoUserId, tipo,
       email_interno: emailInterno, password_interno: passwordInterna, activa: true,
@@ -442,6 +447,10 @@ async function entrarASucursal(sucursalId) {
     const raw = sessionStorage.getItem('n360_perfil_activo');
     if (raw) {
       const perfilActivo = JSON.parse(raw);
+      if (perfilActivo && perfilActivo.tipo === 'admin' && perfilActivo.id) {
+        const { data: puede, error: ePuede } = await sbClient.rpc('perfil_puede_entrar_sucursal', { p_sucursal_id: s.id, p_perfil_id: perfilActivo.id });
+        if (!ePuede && puede === false) { showToast(`No tienes acceso a "${s.nombre}". El administrador principal te lo puede dar en Accesos.`, 'error'); return; }
+      }
       if (perfilActivo && perfilActivo.tipo !== 'admin') {
         const { data: permiso } = await sbClient.from('sucursal_permisos')
           .select('modulos_permitidos').eq('sucursal_id', s.id).eq('perfil_id', perfilActivo.id).maybeSingle();

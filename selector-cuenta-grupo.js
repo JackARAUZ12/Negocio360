@@ -230,6 +230,10 @@
       var raw = sessionStorage.getItem('n360_perfil_activo');
       if (raw) {
         var perfil = JSON.parse(raw);
+        if (perfil && perfil.tipo === 'admin' && perfil.id && !s.es_central) {
+          var pu = await sb.rpc('perfil_puede_entrar_sucursal', { p_sucursal_id: s.id, p_perfil_id: perfil.id });
+          if (!pu.error && pu.data === false) return { ok: false, msg: 'No tienes acceso a "' + s.nombre + '". El administrador principal te lo puede dar en Sucursales › Accesos.', fallback: false };
+        }
         if (perfil && perfil.tipo !== 'admin') {
           var p = await sb.from('sucursal_permisos').select('modulos_permitidos').eq('sucursal_id', s.id).eq('perfil_id', perfil.id).maybeSingle();
           if (!p || !p.data) return { ok: false, msg: 'Tu perfil no tiene acceso a "' + s.nombre + '".', fallback: false };

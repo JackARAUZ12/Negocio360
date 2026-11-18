@@ -1,0 +1,728 @@
+/* =====================================================
+   SUCURSALES.JS — NEGOCIO360
+   Cada sucursal es, por dentro, una cuenta 100% independiente (mismo
+   mecanismo de auth.users + RLS que ya usa TODO el sistema) — por
+   eso ningún otro módulo (Ventas, Productos, Caja, etc.) necesita
+   cambiar ni una línea: ya filtran "solo lo mío" por auth_user_id.
+
+   Las sucursales se crean con el signUp NORMAL de Supabase (nunca
+   insertando directo en auth.users) — el correo y contraseña internos
+   los genera y guarda el sistema, el cliente nunca los ve ni los usa
+   a mano; el botón "Entrar" inicia sesión por él.
+
+   IMPORTANTE: se usa un cliente Supabase AUXILIAR (con su propio
+   almacenamiento de sesión) solo para crear sucursales — así el
+   signUp() de la sucursal nueva NUNCA desconecta al dueño de su
+   propia sesión mientras sigue en esta página.
+===================================================== */
+
+'use strict';
+
+const SUPABASE_URL = 'https://zvlincmqmmoclqhykejv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RY59EmL8V2zRkOQg7RUJAw_dw6yr69t';
+const sbClient    = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Cliente aparte, sin guardar sesión, exclusivo para crear sucursales
+// (signUp) sin tocar la sesión activa del dueño en esta pestaña.
+const sbClientAux = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { storageKey: 'n360-sucursal-aux', persistSession: false, autoRefreshToken: false },
+});
+
+let STATE = {
+  userId: null, userEmail: null, empresaConfig: {}, currentUser: {},
+  sucursales: [], bodegas: [], perfiles: [],
+  sucursalActualParaAccesos: null,
+  esCentral: false, miPropiaSucursalId: null, tipoParaCrear: 'sucursal',
+};
+
+/* =====================================================
+   HELPERS
+===================================================== */
+function esc(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtFecha(iso) {
+  if (!iso) return '—';
+  // Mismo blindaje ya usado en el resto del sistema: si llega una
+  // fecha suelta "YYYY-MM-DD" (sin hora), se arma en hora LOCAL en
+  // vez de dejar que Date() la interprete como medianoche UTC (lo
+  // que la corre un dia hacia atras al mostrarla en Nicaragua).
+  const soloFecha = typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  const d = soloFecha
+    ? (() => { const [y,m,day] = iso.split('-').map(Number); return new Date(y, m-1, day); })()
+    : new Date(iso);
+  return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
+}
+function generarPasswordInterna() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return 'Sx_' + Array.from(bytes, b => b.toString(36).padStart(2,'0')).join('').slice(0, 32) + 'Aa1!';
+}
+
+/* =====================================================
+   THEME / SIDEBAR / NAV (idéntico al resto del sistema)
+===================================================== */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('n360_theme', theme);
+  const sun = document.getElementById('icon-sun'), moon = document.getElementById('icon-moon');
+  if (sun)  sun.style.display  = theme === 'dark'  ? 'block' : 'none';
+  if (moon) moon.style.display = theme === 'light' ? 'block' : 'none';
+}
+function toggleTheme() {
+  const curr = document.documentElement.getAttribute('data-theme');
+  applyTheme(curr === 'dark' ? 'light' : 'dark');
+}
+function isMobileViewport() { return window.innerWidth <= 860; }
+function toggleSidebar() {
+  if (isMobileViewport()) {
+    document.getElementById('sidebar').classList.toggle('mobile-open');
+    document.getElementById('sidebar-overlay').classList.toggle('active');
+  } else {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    document.getElementById('main').classList.toggle('sidebar-collapsed');
+  }
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('active');
+}
+function navigate(url) { closeMobileSidebar(); window.location.href = url; }
+
+/* =====================================================
+   CONFIG EMPRESA / PERFIL / ADMIN (idéntico al resto del sistema)
+===================================================== */
+async function loadEmpresaConfig(userId) {
+  try {
+    const { data } = await sbClient.from('configuracion_empresa').select('*').eq('auth_user_id', userId).maybeSingle();
+    STATE.empresaConfig = data || {};
+    if (data) {
+      const bizName = data.nombre_comercial || data.nombre_negocio || data.nombre || 'Mi negocio';
+      const lt = document.getElementById('sidebar-logo-text');
+      if (lt) lt.textContent = bizName;
+      if (data.color_principal || data.color_primario) {
+        const col = data.color_principal || data.color_primario;
+        document.documentElement.style.setProperty('--accent', col);
+        document.documentElement.style.setProperty('--accent-soft', col + '22');
+        document.documentElement.style.setProperty('--border-focus', col);
+      }
+      if (data.logo_principal_url || data.logo_url) {
+        const li = document.querySelector('.logo-icon');
+        if (li) li.innerHTML = `<img src="${data.logo_principal_url || data.logo_url}" style="width:28px;height:28px;object-fit:contain;border-radius:6px" alt="logo">`;
+      }
+    }
+  } catch (e) { console.warn('loadEmpresaConfig:', e); }
+}
+async function loadUserProfile(userId) {
+  try {
+    const { data } = await sbClient.from('usuarios').select('*').eq('auth_user_id', userId).maybeSingle();
+    STATE.currentUser = data || {};
+    return data;
+  } catch (e) { console.warn('loadUserProfile:', e); return null; }
+}
+function renderUserInfo(profile, email) {
+  const name = profile?.nombre || email?.split('@')[0] || 'Usuario';
+  const biz  = STATE.empresaConfig?.nombre_comercial || 'Mi negocio';
+  const hName = document.getElementById('header-name'); if (hName) hName.textContent = name;
+  const hBiz  = document.getElementById('header-biz');  if (hBiz)  hBiz.textContent  = biz;
+  const hAv   = document.getElementById('header-avatar'); if (hAv) hAv.textContent = (name || 'U')[0].toUpperCase();
+}
+async function checkAdminAccess(email) {
+  try {
+    const { data } = await sbClient.from('administradores').select('email, activo').eq('email', email).eq('activo', true).maybeSingle();
+    if (data) { const nav = document.getElementById('nav-admin'); if (nav) nav.style.display = 'flex'; }
+  } catch (e) { /* silencioso */ }
+}
+
+/* =====================================================
+   CARGA DE SUCURSALES (crea la Central automáticamente la
+   primera vez que la Central visita este módulo; funciona igual
+   si quien entra es una sucursal — ve la misma lista completa,
+   pero sin las acciones de administración)
+===================================================== */
+async function cargarSucursales() {
+  const tbody = document.getElementById('suc-tbody');
+  try {
+    // PRIORIDAD 1, siempre: ¿tengo una fila donde YO SOY la sucursal de
+    // otra Central? Si la tengo, soy una sucursal — punto final.
+    const { data: miFila } = await sbClient.from('sucursales')
+      .select('id').eq('auth_user_id_sucursal', STATE.userId).eq('es_central', false).maybeSingle();
+
+    if (miFila) {
+      STATE.esCentral = false;
+      STATE.miPropiaSucursalId = miFila.id;
+    } else {
+      // Si NO soy sucursal de nadie, entonces SOY la Central — sin
+      // importar si ya tengo sucursales/bodegas creadas o no. Antes
+      // esto se decidía revisando "¿ya tengo filas propias?", lo cual
+      // fallaba justo la primera vez que alguien entraba a este
+      // módulo (cuenta recién creada, todavía sin ninguna fila) — se
+      // concluía por error que no era Central, y le ocultaba sus
+      // propios botones de crear.
+      STATE.esCentral = true;
+      STATE.miPropiaSucursalId = null;
+
+      const { data: propia } = await sbClient.from('sucursales').select('id, es_central').eq('auth_user_id_central', STATE.userId);
+      if (!propia || !propia.some(s => s.es_central)) {
+        const nombreNegocio = STATE.empresaConfig?.nombre_comercial || 'Central';
+        await sbClient.from('sucursales').insert({
+          auth_user_id_central: STATE.userId, nombre: nombreNegocio,
+          es_central: true, auth_user_id_sucursal: STATE.userId, activa: true,
+        });
+      }
+    }
+
+    // Misma consulta (vía RPC) sea Central o sucursal — cada quien ve el
+    // grupo completo, solo cambian los botones que se muestran después.
+    const { data: lista, error } = await sbClient.rpc('listar_sucursales_grupo');
+    if (error) throw error;
+    const todas = (lista || []).slice().sort((a, b) => (b.es_central ? 1 : 0) - (a.es_central ? 1 : 0));
+    STATE.sucursales = todas.filter(s => s.tipo !== 'bodega');
+    STATE.bodegas    = todas.filter(s => s.tipo === 'bodega');
+    renderTablaSucursales();
+    renderTablaBodegas();
+    ajustarUISegunRol();
+  } catch (e) {
+    console.error('cargarSucursales:', e);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">No se pudieron cargar las sucursales</td></tr>`;
+    // Aunque algo haya fallado a mitad de camino, nunca se deja el
+    // botón "Nueva bodega"/"Nueva sucursal" en un estado indefinido —
+    // se aplica igual la regla ya conocida (solo Central los ve).
+    ajustarUISegunRol();
+  }
+}
+
+// Solo Central ve "+ Nueva sucursal"/"+ Nueva bodega" y las acciones de
+// administración — desde una sucursal solo se puede "Entrar" a otra.
+function ajustarUISegunRol() {
+  document.querySelectorAll('.greeting-actions').forEach(el => { el.style.display = STATE.esCentral ? '' : 'none'; });
+
+  const quienSoy = document.getElementById('suc-quien-soy');
+  if (quienSoy) {
+    quienSoy.textContent = STATE.esCentral
+      ? `👑 Estás viendo esto como la cuenta Central (${STATE.empresaConfig?.nombre_comercial || 'tu negocio'}) — puedes crear y administrar.`
+      : `🔒 Estás viendo esto desde una sucursal/bodega, no desde la Central — por eso no puedes crear ni administrar aquí.`;
+  }
+
+  const avisoPrevio = document.getElementById('suc-aviso-rol');
+  if (avisoPrevio) avisoPrevio.remove();
+  if (!STATE.esCentral) {
+    const panel = document.querySelector('.panel-card');
+    const aviso = document.createElement('div');
+    aviso.id = 'suc-aviso-rol';
+    aviso.className = 'panel-card fade-in';
+    aviso.style.cssText = 'background:var(--bg-app);border:1px dashed var(--border);margin-bottom:16px';
+    aviso.innerHTML = `<div class="panel-body" style="font-size:12.5px;color:var(--text-muted)">
+      🔒 Crear, configurar accesos y eliminar sucursales o bodegas solo se puede hacer desde la cuenta Central. Desde aquí solo puedes entrar a otra.
+    </div>`;
+    panel.parentNode.insertBefore(aviso, panel);
+  }
+}
+
+// ¿Esta fila de la lista es la cuenta con la que estoy conectado AHORA
+// mismo? (para no ofrecer "Entrar" a donde ya estoy)
+function estaAquiMismo(s) {
+  if (STATE.esCentral) return !!s.es_central;
+  return STATE.miPropiaSucursalId === s.id;
+}
+
+function renderTablaSucursales() {
+  const tbody = document.getElementById('suc-tbody');
+  if (!tbody) return;
+  if (!STATE.sucursales.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-cell">Cargando…</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = STATE.sucursales.map(s => `
+    <tr>
+      <td style="font-weight:600">${s.es_central ? '🏠 ' : '🏬 '}${esc(s.nombre)}</td>
+      <td>${s.es_central ? '<span class="status-badge badge-activo">Central</span>' : '<span class="status-badge">Sucursal</span>'}</td>
+      <td>${fmtFecha(s.created_at)}</td>
+      <td><span class="status-badge ${s.activa!==false ? 'badge-activo':'badge-inactivo'}">${s.activa!==false ? 'Activa':'Inactiva'}</span></td>
+      <td class="td-actions">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+          ${estaAquiMismo(s) ? `
+            <span style="font-size:11px;color:var(--text-muted);align-self:center;white-space:nowrap">Estás aquí</span>
+          ` : `
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Entrar a esta sucursal" onclick="entrarASucursal('${s.id}')">
+              🔑 Entrar
+            </button>
+          `}
+          ${(STATE.esCentral && !s.es_central) ? `
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Configurar accesos" onclick="abrirAccesosSucursal('${s.id}')">
+              👥 Accesos
+            </button>
+            <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarSucursal('${s.id}')">🗑️</button>
+          ` : ''}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function renderTablaBodegas() {
+  const tbody = document.getElementById('bod-tbody');
+  if (!tbody) return;
+  if (!STATE.bodegas.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-cell">Todavía no tienes ninguna bodega — "Nueva bodega" para crear la primera.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = STATE.bodegas.map(s => `
+    <tr>
+      <td style="font-weight:600">📦 ${esc(s.nombre)}</td>
+      <td>${fmtFecha(s.created_at)}</td>
+      <td><span class="status-badge ${s.activa!==false ? 'badge-activo':'badge-inactivo'}">${s.activa!==false ? 'Activa':'Inactiva'}</span></td>
+      <td class="td-actions">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+          ${estaAquiMismo(s) ? `
+            <span style="font-size:11px;color:var(--text-muted);align-self:center;white-space:nowrap">Estás aquí</span>
+          ` : `
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Entrar a esta bodega" onclick="entrarASucursal('${s.id}')">
+              🔑 Entrar
+            </button>
+          `}
+          ${STATE.esCentral ? `
+            <button class="btn-secondary" style="padding:6px 12px;font-size:12px;gap:5px" title="Configurar accesos" onclick="abrirAccesosSucursal('${s.id}')">
+              👥 Accesos
+            </button>
+            <button class="btn-icon btn-icon-danger" title="Eliminar" onclick="confirmarEliminarSucursal('${s.id}')">🗑️</button>
+          ` : ''}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+/* =====================================================
+   CREAR SUCURSAL / BODEGA
+===================================================== */
+// Igual que en Configuración: la primera vez en esta pestaña pide el
+// código de administrador; ya desbloqueado, no lo vuelve a pedir. Si
+// quien está usando el sistema no es el admin, aquí es donde se corta.
+function conCodigoAdmin(accion) {
+  if (window.PerfilesGuardConfig?.requerirCodigoAdmin) {
+    window.PerfilesGuardConfig.requerirCodigoAdmin(accion);
+  } else {
+    accion();
+  }
+}
+
+function abrirNuevaSucursal() {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear sucursales', 'error'); return; }
+  STATE.tipoParaCrear = 'sucursal';
+  conCodigoAdmin(() => {
+    document.getElementById('ns-modal-title').textContent = 'Nueva sucursal';
+    document.getElementById('ns-label').textContent = 'Nombre de la sucursal *';
+    document.getElementById('ns-nombre').placeholder = 'Ej: Sucursal Masaya';
+    document.getElementById('ns-desc').textContent = 'Se crea con su propio inventario, ventas y caja — totalmente en blanco, como un negocio nuevo.';
+    document.getElementById('btn-crear-sucursal').textContent = 'Crear sucursal';
+    document.getElementById('ns-nombre').value = '';
+    document.getElementById('ns-error').textContent = '';
+    openModal('modal-nueva-sucursal');
+  });
+}
+
+function abrirNuevaBodega() {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear bodegas', 'error'); return; }
+  STATE.tipoParaCrear = 'bodega';
+  conCodigoAdmin(() => {
+    document.getElementById('ns-modal-title').textContent = 'Nueva bodega';
+    document.getElementById('ns-label').textContent = 'Nombre de la bodega *';
+    document.getElementById('ns-nombre').placeholder = 'Ej: Bodega Central';
+    document.getElementById('ns-desc').textContent = 'Se crea con su propio inventario en blanco — desde Productos/Servicios, cualquier sucursal podrá enviarle o recibir stock de ella con "Mover productos".';
+    document.getElementById('btn-crear-sucursal').textContent = 'Crear bodega';
+    document.getElementById('ns-nombre').value = '';
+    document.getElementById('ns-error').textContent = '';
+    openModal('modal-nueva-sucursal');
+  });
+}
+
+async function crearSucursal() {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede crear sucursales', 'error'); return; }
+  const tipo = STATE.tipoParaCrear || 'sucursal';
+  const esBodega = tipo === 'bodega';
+  const errEl = document.getElementById('ns-error');
+  errEl.textContent = '';
+  const nombre = document.getElementById('ns-nombre').value.trim();
+  if (!nombre) { errEl.textContent = `Escribe un nombre para la ${esBodega?'bodega':'sucursal'}.`; return; }
+  const todasLasCuentas = [...STATE.sucursales, ...STATE.bodegas];
+  if (todasLasCuentas.some(s => s.nombre.toLowerCase() === nombre.toLowerCase())) {
+    errEl.textContent = 'Ya existe una sucursal, bodega (o la Central) con ese nombre.'; return;
+  }
+
+  setBtnLoading('btn-crear-sucursal', true);
+  try {
+    const idInterno = crypto.randomUUID().slice(0, 8);
+    const emailInterno = `${esBodega?'bodega':'sucursal'}-${idInterno}@negocio360.internal`;
+    const passwordInterna = generarPasswordInterna();
+
+    // El servidor solo deja crear cuentas con código de acceso; las cuentas
+    // internas necesitan antes una autorización de un solo uso del dueño.
+    const { data: aut, error: errAut } = await sbClient.rpc('autorizar_cuenta_interna', { p_email: emailInterno });
+    if (errAut || !aut?.ok) throw new Error(aut?.mensaje || errAut?.message || 'No se pudo autorizar la cuenta interna.');
+
+    // Se crea con el signUp NORMAL de Supabase (mismo mecanismo que
+    // usa register.html) — nunca insertando directo en auth.users.
+    // Se usa el cliente AUXILIAR para no afectar la sesión del dueño.
+    const { data: signUpData, error: errSignUp } = await sbClientAux.auth.signUp({
+      email: emailInterno, password: passwordInterna,
+    });
+    if (errSignUp) throw errSignUp;
+    const nuevoUserId = signUpData?.user?.id;
+    if (!nuevoUserId) throw new Error(`No se pudo crear la cuenta interna de la ${esBodega?'bodega':'sucursal'}.`);
+
+    const { error: errInsert } = await sbClient.from('sucursales').insert({
+      auth_user_id_central: STATE.userId, nombre,
+      es_central: false, auth_user_id_sucursal: nuevoUserId, tipo,
+      email_interno: emailInterno, password_interno: passwordInterna, activa: true,
+    });
+    if (errInsert) throw errInsert;
+
+    // Nombre comercial inicial, y se marca como "onboarding completado"
+    // en ambas tablas — una sucursal/bodega nace ya configurada por el
+    // admin de la Central, nunca debe pasar por el asistente de
+    // Personalización (que es solo para cuentas recién registradas
+    // a mano por su propio dueño).
+    await sbClient.from('configuracion_empresa').upsert({
+      auth_user_id: nuevoUserId, nombre_comercial: nombre, onboarding_completado: true, onboarding_step: 5,
+    }, { onConflict: 'auth_user_id' }).select();
+    await sbClient.from('usuarios').update({ onboarding_completado: true }).eq('auth_user_id', nuevoUserId);
+
+    showToast(`${esBodega?'Bodega':'Sucursal'} "${nombre}" creada`);
+    closeModal('modal-nueva-sucursal');
+    await cargarSucursales();
+  } catch (e) {
+    console.error('crearSucursal:', e);
+    errEl.textContent = 'Error al crear: ' + (e.message || '');
+  } finally {
+    setBtnLoading('btn-crear-sucursal', false);
+  }
+}
+
+/* =====================================================
+   ENTRAR A UNA SUCURSAL (cambia la sesión activa y recarga)
+===================================================== */
+// Busca por id tanto en sucursales como en bodegas (ahora son 2 arreglos
+// separados en pantalla, pero para "Entrar/Accesos/Eliminar" da igual
+// cuál sea — el mecanismo de fondo es el mismo).
+function buscarEnGrupo(id) {
+  return STATE.sucursales.find(x => x.id === id) || STATE.bodegas.find(x => x.id === id);
+}
+async function entrarASucursal(sucursalId) {
+  const s = buscarEnGrupo(sucursalId);
+  if (!s) return;
+
+  // Ir a la Central desde una sucursal: es el mismo flujo de "código de
+  // perfil" que ya usa el indicador fijo, nunca signInWithPassword (no
+  // existe una contraseña interna guardada para la cuenta real).
+  if (s.es_central) {
+    if (STATE.esCentral) { navigate('dashboard.html'); return; }
+    // Mismo cambio fácil que el selector de cuenta (sin código si el perfil es administrador).
+    if (window.N360SelectorCuenta?.irACentral && window.N360SelectorCuenta.listo()) {
+      try { if (await window.N360SelectorCuenta.irACentral(s.nombre)) return; } catch (_) {}
+    }
+    if (window.PerfilesGuardConfig?.volverACentral) {
+      window.PerfilesGuardConfig.volverACentral(s.nombre);
+    } else {
+      showToast('No se pudo abrir el acceso a Central', 'error');
+    }
+    return;
+  }
+
+  // Cambio fácil y seguro (pase de un solo uso, sin contraseñas, con permisos por perfil
+  // y bitácora). Si algo técnico falla, se cae al flujo de siempre más abajo.
+  if (window.N360SelectorCuenta?.entrar && window.N360SelectorCuenta.listo()) {
+    const r = await window.N360SelectorCuenta.entrar(s.id);
+    if (r.ok) return;
+    if (!r.fallback) { showToast(r.msg || 'No se pudo entrar a esa cuenta', 'error'); return; }
+  }
+
+  // Si quien está usando el sistema en este momento es un PERFIL con PIN
+  // (no el dueño directo), se valida su permiso para esta sucursal antes
+  // de dejarlo entrar, y se le pasan sus módulos permitidos ahí.
+  let modulosParaLlevar = null;
+  try {
+    const raw = sessionStorage.getItem('n360_perfil_activo');
+    if (raw) {
+      const perfilActivo = JSON.parse(raw);
+      if (perfilActivo && perfilActivo.tipo !== 'admin') {
+        const { data: permiso } = await sbClient.from('sucursal_permisos')
+          .select('modulos_permitidos').eq('sucursal_id', s.id).eq('perfil_id', perfilActivo.id).maybeSingle();
+        if (!permiso) {
+          showToast(`Tu perfil no tiene acceso a "${s.nombre}"`, 'error');
+          return;
+        }
+        modulosParaLlevar = permiso.modulos_permitidos || [];
+      }
+    }
+  } catch (e) { console.warn('No se pudo validar el permiso del perfil activo:', e); }
+
+  if (!confirm(`Vas a entrar a "${s.nombre}". ¿Continuar?`)) return;
+
+  try {
+    // Se piden las credenciales internas de esa sucursal por RPC — nunca
+    // se leen directo de la tabla, así funciona igual si quien pregunta
+    // es la Central o una sucursal hermana del mismo grupo.
+    const { data: cred, error: errCred } = await sbClient.rpc('obtener_credenciales_sucursal', { p_sucursal_id: s.id });
+    const credencial = Array.isArray(cred) ? cred[0] : cred;
+    if (errCred || !credencial?.email_interno) throw new Error('No autorizado para entrar a esa sucursal.');
+
+    // La sesión de Central solo se respalda si de verdad se sale DESDE
+    // Central — si ya estoy en otra sucursal, se conserva el respaldo
+    // que ya existía (siempre debe apuntar a la Central real).
+    if (STATE.esCentral) {
+      const { data: sesionActual } = await sbClient.auth.getSession();
+      if (sesionActual?.session) {
+        sessionStorage.setItem('n360_central_session_backup', JSON.stringify({
+          access_token: sesionActual.session.access_token,
+          refresh_token: sesionActual.session.refresh_token,
+          nombre_negocio: STATE.empresaConfig?.nombre_comercial || 'tu cuenta principal',
+        }));
+      }
+    }
+
+    const { data: datosLogin, error } = await sbClient.auth.signInWithPassword({
+      email: credencial.email_interno, password: credencial.password_interno,
+    });
+    if (error) throw error;
+    // Copia de respaldo del pase de Central que sobrevive si se cierra la
+    // pestaña o el navegador (sessionStorage se pierde). Solo se usa si en
+    // esta pestaña ya no existe el respaldo normal, y solo para ESTA sucursal.
+    try {
+      const rawBk = sessionStorage.getItem('n360_central_session_backup');
+      if (STATE.esCentral && rawBk && datosLogin?.user?.id) {
+        const bk = JSON.parse(rawBk);
+        localStorage.setItem('n360_central_session_backup_ls', JSON.stringify({
+          access_token: bk.access_token, refresh_token: bk.refresh_token,
+          nombre_negocio: bk.nombre_negocio, sucursal_auth_id: datosLogin.user.id, guardado: Date.now(),
+        }));
+      }
+    } catch (_) { /* si el navegador no deja guardar, queda el respaldo de la pestaña como siempre */ }
+    // Sobrevive a la navegación (a diferencia de n360_perfil_activo, que
+    // se invalida solo al cambiar de cuenta) — modulos-guard.js lo lee
+    // en la sucursal para restringir el menú a lo permitido.
+    if (modulosParaLlevar) sessionStorage.setItem('n360_sucursal_modulos', JSON.stringify(modulosParaLlevar));
+    else sessionStorage.removeItem('n360_sucursal_modulos');
+    // Una bodega no es "otro sistema completo" — solo administra su
+    // propio inventario, así que entra directo a su página dedicada,
+    // nunca al Dashboard con todos los demás módulos.
+    window.location.href = (s.tipo === 'bodega') ? 'bodega.html' : 'dashboard.html';
+  } catch (e) {
+    console.error('entrarASucursal:', e);
+    showToast('No se pudo entrar a la sucursal: ' + (e.message || ''), 'error');
+  }
+}
+
+/* =====================================================
+   CONFIGURAR ACCESOS (qué perfil entra a cuál sucursal, con
+   cuáles módulos)
+===================================================== */
+async function loadPerfilesCentral() {
+  try {
+    const { data } = await sbClient.from('perfiles_acceso').select('id,nombre,tipo,activo')
+      .eq('auth_user_id', STATE.userId).eq('activo', true).order('nombre');
+    STATE.perfiles = data || [];
+  } catch (e) { STATE.perfiles = []; }
+}
+
+function listaModulosParaAccesos(tipo) {
+  const registro = window.NEGOCIO360_MODULOS || {};
+  const todos = Object.values(registro).filter(m => !m.soloAdmin);
+  // Una bodega es solo inventario -- no tiene sentido operativo darle
+  // acceso a Ventas, Caja, Salarios, etc. Se limita a Productos/
+  // Servicios, el unico modulo realmente relevante ahi.
+  if (tipo === 'bodega') return todos.filter(m => m.key === 'productos');
+  return todos;
+}
+
+function abrirAccesosSucursal(sucursalId) {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede configurar accesos', 'error'); return; }
+  if (window.PerfilesGuardConfig?.requerirCodigoAdminSiempre) {
+    window.PerfilesGuardConfig.requerirCodigoAdminSiempre(() => abrirAccesosSucursalInterno(sucursalId));
+  } else {
+    conCodigoAdmin(() => abrirAccesosSucursalInterno(sucursalId));
+  }
+}
+
+async function abrirAccesosSucursalInterno(sucursalId) {
+  const s = buscarEnGrupo(sucursalId);
+  if (!s) return;
+  STATE.sucursalActualParaAccesos = s;
+  document.getElementById('acc-suc-title').textContent = `Accesos — ${s.nombre}`;
+
+  if (!STATE.perfiles.length) await loadPerfilesCentral();
+
+  const { data: permisosActuales } = await sbClient.from('sucursal_permisos')
+    .select('*').eq('sucursal_id', sucursalId);
+  const mapaPermisos = {};
+  (permisosActuales || []).forEach(p => { mapaPermisos[p.perfil_id] = p.modulos_permitidos || []; });
+
+  const modulos = listaModulosParaAccesos(s.tipo);
+  const cont = document.getElementById('acc-suc-lista');
+
+  if (!STATE.perfiles.length) {
+    cont.innerHTML = `<p style="color:var(--text-muted);font-size:12.5px">Todavía no tienes perfiles con PIN creados en Configuración → Sistema multiusuario. Crea al menos uno para poder darle acceso a esta sucursal.</p>`;
+  } else {
+    cont.innerHTML = STATE.perfiles.map(p => {
+      const seleccionados = mapaPermisos[p.id] || [];
+      const tieneAcceso = seleccionados.length > 0 || permisosActuales?.some(x => x.perfil_id === p.id);
+      return `
+      <div style="border:1px solid var(--border);border-radius:var(--radius-md);padding:12px 14px;margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin-bottom:${tieneAcceso?'10px':'0'};cursor:pointer">
+          <input type="checkbox" class="acc-perfil-toggle" data-perfil="${p.id}" ${tieneAcceso?'checked':''} onchange="toggleAccesoPerfil('${p.id}')" style="width:16px;height:16px"/>
+          ${esc(p.nombre)} <span style="font-size:11px;font-weight:400;color:var(--text-muted)">(${p.tipo})</span>
+        </label>
+        <div class="acc-mod-grid" id="acc-mod-grid-${p.id}" style="display:${tieneAcceso?'grid':'none'};grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;margin-left:24px">
+          ${modulos.map(m => `
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
+              <input type="checkbox" class="acc-mod-check" data-perfil="${p.id}" data-modulo="${m.key}" ${seleccionados.includes(m.key)?'checked':''}/>
+              ${m.icon} ${esc(m.label)}
+            </label>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  openModal('modal-accesos-sucursal');
+}
+
+function toggleAccesoPerfil(perfilId) {
+  const checked = document.querySelector(`.acc-perfil-toggle[data-perfil="${perfilId}"]`)?.checked;
+  const grid = document.getElementById(`acc-mod-grid-${perfilId}`);
+  if (grid) grid.style.display = checked ? 'grid' : 'none';
+}
+
+async function guardarAccesosSucursal() {
+  const s = STATE.sucursalActualParaAccesos;
+  if (!s) return;
+  try {
+    // Se reemplaza el set completo de permisos de esta sucursal (simple
+    // y seguro para listas pequeñas de perfiles).
+    await sbClient.from('sucursal_permisos').delete().eq('sucursal_id', s.id);
+
+    const filas = [];
+    document.querySelectorAll('.acc-perfil-toggle').forEach(chk => {
+      if (!chk.checked) return;
+      const perfilId = chk.dataset.perfil;
+      const modulos = [...document.querySelectorAll(`.acc-mod-check[data-perfil="${perfilId}"]:checked`)]
+        .map(m => m.dataset.modulo);
+      filas.push({
+        sucursal_id: s.id, auth_user_id_central: STATE.userId,
+        perfil_id: perfilId, modulos_permitidos: modulos,
+      });
+    });
+
+    if (filas.length) {
+      const { error } = await sbClient.from('sucursal_permisos').insert(filas);
+      if (error) throw error;
+    }
+
+    showToast('Accesos guardados');
+    closeModal('modal-accesos-sucursal');
+  } catch (e) {
+    console.error('guardarAccesosSucursal:', e);
+    showToast('Error al guardar accesos: ' + (e.message || ''), 'error');
+  }
+}
+
+/* =====================================================
+   ELIMINAR SUCURSAL
+===================================================== */
+function confirmarEliminarSucursal(sucursalId) {
+  if (!STATE.esCentral) { showToast('Solo la cuenta Central puede eliminar sucursales', 'error'); return; }
+  conCodigoAdmin(() => {
+    const s = buscarEnGrupo(sucursalId);
+    if (!s || s.es_central) return;
+    STATE.sucursalActualParaAccesos = s; // se reutiliza el campo para saber cuál eliminar
+    openModal('modal-confirmar-eliminar-suc');
+  });
+}
+async function eliminarSucursal() {
+  const s = STATE.sucursalActualParaAccesos;
+  if (!s) return;
+  setBtnLoading('btn-confirmar-eliminar-suc', true);
+  try {
+    // Al borrar la fila de "sucursales" se pierde el acceso desde aquí,
+    // pero la cuenta interna (con todos sus datos) queda inactiva y
+    // huérfana — no se puede eliminar auth.users desde el cliente por
+    // seguridad. Se marca inactiva para dejar claro que ya no se usa.
+    const { error } = await sbClient.from('sucursales').delete().eq('id', s.id).eq('auth_user_id_central', STATE.userId);
+    if (error) throw error;
+    showToast('Sucursal eliminada');
+    closeModal('modal-confirmar-eliminar-suc');
+    await cargarSucursales();
+  } catch (e) {
+    console.error('eliminarSucursal:', e);
+    showToast('Error al eliminar: ' + (e.message || ''), 'error');
+  } finally {
+    setBtnLoading('btn-confirmar-eliminar-suc', false);
+  }
+}
+
+/* =====================================================
+   MODAL / TOAST / UI HELPERS (idénticos al resto del sistema)
+===================================================== */
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.style.display='flex'; el.classList.add('modal-open'); document.body.style.overflow='hidden'; }
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) { el.style.display='none'; el.classList.remove('modal-open'); document.body.style.overflow=''; }
+}
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) { e.target.style.display='none'; document.body.style.overflow=''; }
+});
+function showToast(msg, type='success') {
+  const el = document.getElementById('toast'); if (!el) return;
+  el.textContent = msg; el.className = `toast toast-${type} toast-show`;
+  clearTimeout(el._timer); el._timer = setTimeout(()=>el.classList.remove('toast-show'), 3500);
+}
+function setBtnLoading(id, loading) {
+  const el = document.getElementById(id); if (!el) return;
+  el.disabled = loading; el.style.opacity = loading ? '0.6' : '1';
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+async function initSucursales() {
+  const savedTheme = localStorage.getItem('n360_theme') || 'light';
+  applyTheme(savedTheme);
+  const fechaEl = document.getElementById('header-fecha');
+  if (fechaEl) fechaEl.textContent = new Date().toLocaleDateString('es-NI', { day:'numeric', month:'long', year:'numeric' });
+
+  try {
+    const { data: { user }, error } = await sbClient.auth.getUser();
+    if (error || !user) { window.location.href = 'login.html'; return; }
+    STATE.userId = user.id; STATE.userEmail = user.email;
+    if (user.email) checkAdminAccess(user.email);
+
+    await loadEmpresaConfig(user.id);
+    const profile = await loadUserProfile(user.id);
+    if (profile) renderUserInfo(profile, user.email);
+
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+
+    await loadPerfilesCentral();
+    await cargarSucursales();
+
+    if (window.Negocio360Tutorial) {
+      const pasosSucursales = [
+        { icono: '🏬', titulo: 'Bienvenido a Sucursales', texto: 'Si tienes más de un local, aquí los administras todos desde una sola cuenta central.' },
+        { icono: '📦', titulo: 'Stock compartido', texto: 'Puedes activar Stock Compartido para que tus sucursales se presten inventario entre sí cuando haga falta.' },
+      ];
+      Negocio360Tutorial.verificarYMostrar('sucursales', pasosSucursales);
+      Negocio360Tutorial.agregarBotonAyuda('sucursales', pasosSucursales);
+    }
+  } catch (err) {
+    console.error('initSucursales:', err);
+    document.getElementById('loader').classList.add('hidden');
+    document.getElementById('app').style.display = 'flex';
+  }
+}
+
+sbClient.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') window.location.href = 'login.html'; });
+
+document.addEventListener('DOMContentLoaded', () => {
+  initSucursales();
+  if (window.lucide) lucide.createIcons();
+});

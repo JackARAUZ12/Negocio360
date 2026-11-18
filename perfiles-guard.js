@@ -119,8 +119,10 @@
     if (PG.soyUnaSucursal !== null) return PG.soyUnaSucursal;
     try {
       const { data } = await PG.client.from('sucursales')
-        .select('id').eq('auth_user_id_sucursal', PG.authUserId).eq('es_central', false).maybeSingle();
+        .select('id, acceso_restringido').eq('auth_user_id_sucursal', PG.authUserId).eq('es_central', false).maybeSingle();
       PG.soyUnaSucursal = !!data;
+      // Sucursal/bodega nueva: solo entran su creador, el admin principal y quienes tengan acceso.
+      PG.sucursalRestringida = !!(data && data.acceso_restringido);
     } catch (_) { PG.soyUnaSucursal = false; }
     return PG.soyUnaSucursal;
   }
@@ -298,6 +300,7 @@
   }
   function textoErrorCodigoAdmin(r) {
     if (!r) return 'No se pudo verificar el código. Intenta de nuevo.';
+    if (r.motivo === 'sin_acceso') return 'Ese administrador no tiene acceso a esta sucursal. Pídele al administrador principal que le dé acceso en Sucursales › Accesos.';
     if (r.motivo === 'bloqueado') { const m = Math.max(1, Math.ceil((r.bloqueado_seg || 60) / 60)); return `Demasiados intentos fallidos. Espera ${m} minuto${m === 1 ? '' : 's'} e intenta de nuevo.`; }
     if (r.motivo === 'incorrecto') return r.restantes > 0 && r.restantes <= 3 ? `Código incorrecto (te quedan ${r.restantes} intento${r.restantes === 1 ? '' : 's'})` : 'Código incorrecto';
     return 'Código incorrecto';
@@ -1837,7 +1840,13 @@
 
     PG.perfiles = await cargarPerfiles();
 
-    const sesionActiva = getSesion();
+    let sesionActiva = getSesion();
+    // En una sucursal/bodega nueva, un perfil que no tiene acceso (no aparece en la lista
+    // que manda el servidor) no puede seguir adentro: se le pide elegir usuario.
+    if (sesionActiva && (await esUnaSucursal()) && PG.sucursalRestringida && !PG.perfiles.some(p => p.id === sesionActiva.id)) {
+      limpiarSesion();
+      sesionActiva = null;
+    }
     if (sesionActiva) {
       const perfilVivo = PG.perfiles.find(p => p.id === sesionActiva.id) || sesionActiva;
       aplicarRestricciones(perfilVivo);
