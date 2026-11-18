@@ -73,6 +73,7 @@
       <div id="dv-resumen" style="background:var(--bg-surface-2,var(--bg-app));border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;line-height:1.7">
         Elige al menos un producto.
       </div>
+      <div id="dv-comision" style="display:none;font-size:12.5px;color:var(--text-secondary);margin-top:8px;line-height:1.5"></div>
       <div id="dv-error" style="color:var(--danger);font-size:13px;margin-top:8px"></div>
     </div>
     <div class="modal-footer">
@@ -110,6 +111,9 @@
     D.venta = venta; D.sim = null;
     $('dv-sub').textContent = `Venta ${venta.numero_venta} · ${venta.cliente_nombre || 'Consumidor final'} · ${fmt(venta.total)}`;
     $('dv-motivo').value = ''; $('dv-error').textContent = '';
+    const com = Number(venta.comision_monto) || 0;
+    $('dv-comision').style.display = com > 0 ? '' : 'none';
+    $('dv-comision').innerHTML = com > 0 ? `💳 La comisión del banco de esta venta (${fmt(com)}) no se devuelve: se queda como gasto.` : '';
     $('dv-tbody').innerHTML = '<tr><td colspan="4" style="padding:14px;color:var(--text-muted)">Cargando…</td></tr>';
     $('dv-btn').disabled = true;
     openModal('modal-devolucion');

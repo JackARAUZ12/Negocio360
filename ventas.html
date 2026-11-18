@@ -1843,6 +1843,13 @@
           Márcalo si el dinero se le devolvió al cliente. Si NO se devolvió dinero (ej. solo fue un error al registrarla), desmárcalo para que el saldo de Caja no se toque.
         </span>
       </label>
+      <div id="anular-comision-wrap" style="display:none;text-align:left;background:var(--warning-soft,#fef3c7);border:1px solid var(--warning,#d97706);border-radius:10px;padding:12px 14px;margin-top:10px">
+        <div style="font-size:12.5px;line-height:1.5;color:var(--text-primary)">💳 <strong>La comisión del banco (<span id="anular-comision-monto">—</span>) no se devuelve:</strong> queda registrada como gasto, porque el banco no la regresa al anular.</div>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-top:8px;cursor:pointer;font-size:12px;color:var(--text-secondary);line-height:1.45">
+          <input type="checkbox" id="chk-anular-comision-devuelta" style="margin-top:2px"/>
+          <span>El banco sí me devolvió la comisión (o el cobro con tarjeta nunca se hizo). <em>Márcalo solo si es así.</em></span>
+        </label>
+      </div>
       <div style="text-align:left;margin-top:12px">
         <label for="anular-motivo" style="font-size:12.5px;font-weight:600;display:block;margin-bottom:5px">¿Por qué se anula? <span style="color:var(--danger)">*</span></label>
         <textarea id="anular-motivo" maxlength="300" rows="2" placeholder="Ej.: el cliente se arrepintió, se registró dos veces, precio equivocado…" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:10px;padding:9px 11px;font:inherit;font-size:13px;background:var(--bg-card);color:var(--text-primary);resize:vertical"></textarea>
@@ -2211,7 +2218,7 @@
 <script src="iva-lineas.js?v=20261101a"></script>
 <script src="vuelto-efectivo.js?v=20261118c"></script>
 <script src="pos-venta.js?v=20261118c"></script>
-<script src="ventas.js?v=20261117e"></script>
+<script src="ventas.js?v=20261118a"></script>
 <script src="recurrentes-editar.js?v=20261117a"></script>
 <script src="vr-cliente.js?v=20261117a"></script>
 <script src="enviar-doc.js?v=20261102a"></script>
@@ -2223,7 +2230,7 @@
 <script src="series-proveedor.js?v=20261031a"></script>
 <script src="ventas-correcciones.js?v=20261016a"></script>
 <script src="devoluciones-venta.js?v=20261016a"></script>
-<script src="ventas-devoluciones.js?v=20261016a"></script>
+<script src="ventas-devoluciones.js?v=20261118a"></script>
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261117a"></script>
 <script src="modulos-guard.js?v=20261111a"></script>

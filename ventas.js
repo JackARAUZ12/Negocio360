@@ -1061,7 +1061,36 @@ async function abrirDetalle(ventaId) {
    ============================================================ */
 function abrirConfirmarAnular() {
   const m = document.getElementById('anular-motivo'); if (m) m.value = '';
+  const w = document.getElementById('anular-comision-wrap'), chk = document.getElementById('chk-anular-comision-devuelta');
+  if (w) w.style.display = 'none'; if (chk) chk.checked = false;
+  S._anularComision = 0;
   openModal('modal-anular');
+  // ¿Esta venta tiene comisión del banco vigente? (gasto activo ligado a la venta)
+  const id = S.ventaDetalleId;
+  if (id && w) comisionVigenteDeVenta(id).then(monto => {
+    if (S.ventaDetalleId !== id || !(monto > 0)) return;
+    S._anularComision = monto;
+    document.getElementById('anular-comision-monto').textContent = fmt(monto);
+    w.style.display = '';
+  }).catch(e => console.warn('comisión de la venta:', e));
+}
+// Suma de la comisión del banco que sigue vigente para la venta (gastos activos ligados a ella)
+async function comisionVigenteDeVenta(ventaId) {
+  const { data, error } = await sb.from('gastos').select('monto')
+    .eq('auth_user_id', S.userId).eq('venta_id', ventaId).eq('estado', 'activo');
+  if (error) throw error;
+  return round2((data || []).reduce((s, g) => s + (Number(g.monto) || 0), 0));
+}
+// La comisión se queda como gasto (no reembolsable): solo se deja la nota. No cambia montos.
+async function anotarComisionNoReembolsable(ventaId, numeroVenta) {
+  const { data } = await sb.from('gastos').select('id, observaciones')
+    .eq('auth_user_id', S.userId).eq('venta_id', ventaId).eq('estado', 'activo');
+  for (const g of (data || [])) {
+    const nota = `Venta ${numeroVenta || ''} anulada: comisión no reembolsable`.replace(/\s+/g, ' ');
+    if (String(g.observaciones || '').includes('comisión no reembolsable')) continue;
+    await sb.from('gastos').update({ observaciones: ((g.observaciones ? g.observaciones + ' · ' : '') + nota).slice(0, 500) })
+      .eq('id', g.id).eq('auth_user_id', S.userId);
+  }
 }
 
 async function anularVenta() {
@@ -1151,10 +1180,19 @@ async function anularVenta() {
 
     // La comisión del banco de esa venta (si se pagó con tarjeta) también se
     // anula cuando el dinero se devuelve en Caja: su gasto y su egreso.
-    let comisionPendiente = false;
-    if (descontarCaja) {
+    // La comisión del banco NO se devuelve al anular (el banco no la regresa):
+    // queda como gasto y solo se anota. Solo se anula si el usuario marca que
+    // el banco sí la devolvió (o que el cobro con tarjeta nunca se hizo).
+    let comisionPendiente = false, comisionQueda = 0;
+    const comisionDevuelta = document.getElementById('chk-anular-comision-devuelta')?.checked === true;
+    if (comisionDevuelta) {
       try { await anularComisionDeVenta(id); }
       catch (eCom) { console.warn('No se pudo anular la comisión bancaria:', eCom); comisionPendiente = true; }
+    } else {
+      try {
+        comisionQueda = await comisionVigenteDeVenta(id);
+        if (comisionQueda > 0) await anotarComisionNoReembolsable(id, (S.ventas || []).find(v => v.id === id)?.numero_venta);
+      } catch (eCom) { console.warn('Nota de la comisión no reembolsable:', eCom); }
     }
 
     closeModal('modal-anular');
@@ -1162,7 +1200,8 @@ async function anularVenta() {
     const mensajeBase = descontarCaja ? 'Venta anulada, stock devuelto y descontado de Caja' : 'Venta anulada y stock devuelto (sin tocar Caja)';
     const avisoCredito = creditoCancelado ? ' — el crédito asociado se canceló automáticamente' : '';
     showToast(mensajeBase + (proformaRevertida ? ' — la proforma volvió a su estado anterior' : '') + avisoCredito
-      + (comisionPendiente ? ' — revisa la comisión del banco en Gastos (no se pudo anular sola)' : ''), 'warning');
+      + (comisionPendiente ? ' — revisa la comisión del banco en Gastos (no se pudo anular sola)' : '')
+      + (comisionQueda > 0 ? ` — la comisión del banco (${fmt(comisionQueda)}) quedó como gasto` : ''), 'warning');
     await Promise.allSettled([loadVentas(), loadKPIs(), loadProductosCache()]);
   } catch(e) {
     showToast('Error al anular: '+e.message, 'error');
