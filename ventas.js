@@ -1506,11 +1506,39 @@ async function loadClientesRecurrentes() {
   }
 }
 
+// Buscador de la lista (solo filtra lo que se ve; no cambia ningún dato).
+// Sin tildes ni mayúsculas: "jose" encuentra "José".
+function _normBuscarRec(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+let _tBuscarRec = 0;
+function filtrarClientesRecurrentes(texto) {
+  S.recurrentesBusqueda = String(texto || '');
+  clearTimeout(_tBuscarRec);
+  _tBuscarRec = setTimeout(renderClientesRecurrentes, 120);
+}
+
 function renderClientesRecurrentes() {
   const tbody = document.getElementById('recurrentes-tbody');
   const label = document.getElementById('recurrentes-count-label');
-  if (label) label.textContent = `${S.clientesRecurrentes.length} cliente${S.clientesRecurrentes.length===1?'':'s'}`;
+  const todos = S.clientesRecurrentes || [];
+  const q = _normBuscarRec(S.recurrentesBusqueda);
+  const qTel = q.replace(/[^0-9]/g, '');
+  const lista = !q ? todos : todos.filter(c => {
+    const txt = _normBuscarRec([c.nombre, c.telefono, c.correo].join(' '));
+    if (q.split(/\s+/).every(p => txt.includes(p))) return true;          // todas las palabras, en cualquier orden
+    return qTel.length >= 3 && String(c.telefono || '').replace(/[^0-9]/g, '').includes(qTel);   // teléfono con o sin guiones
+  });
+  if (label) label.textContent = q
+    ? `${lista.length} de ${todos.length} cliente${todos.length===1?'':'s'}`
+    : `${todos.length} cliente${todos.length===1?'':'s'}`;
   if (!tbody) return;
+
+  if (todos.length && !lista.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">
+      <div class="empty-icon">🔎</div>
+      <p>Ningún cliente recurrente coincide con "${esc(S.recurrentesBusqueda.trim())}".</p>
+    </td></tr>`;
+    return;
+  }
 
   if (!S.clientesRecurrentes.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">
@@ -1520,7 +1548,7 @@ function renderClientesRecurrentes() {
     return;
   }
 
-  tbody.innerHTML = S.clientesRecurrentes.map(c => {
+  tbody.innerHTML = lista.map(c => {
     const est = calcularEstadoPagoCliente(c);
     const freqLabel = frecuenciaLabel(c);
     let estadoHtml;

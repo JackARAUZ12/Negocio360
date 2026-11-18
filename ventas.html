@@ -950,6 +950,10 @@
             Clientes con pago recurrente
           </div>
           <div class="panel-actions">
+            <div class="search-wrap" style="min-width:0;flex:1 1 220px;max-width:320px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="search" id="recurrentes-buscar" placeholder="Buscar cliente, teléfono o correo…" autocomplete="off" aria-label="Buscar cliente con pago recurrente" oninput="filtrarClientesRecurrentes(this.value)" style="width:100%;min-width:0"/>
+            </div>
             <span style="font-size:12.5px;color:var(--text-muted)" id="recurrentes-count-label">0 clientes</span>
             <button class="btn-secondary" onclick="loadClientesRecurrentes()">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -2107,7 +2111,7 @@
 <script src="iva-lineas.js?v=20261101a"></script>
 <script src="vuelto-efectivo.js?v=20261117b"></script>
 <script src="pos-venta.js?v=20261117a"></script>
-<script src="ventas.js?v=20261117b"></script>
+<script src="ventas.js?v=20261117c"></script>
 <script src="enviar-doc.js?v=20261102a"></script>
 <script src="vendedores-venta.js?v=20261102a"></script>
 <script src="exportar-modulo.js?v=20261029b"></script>
