@@ -386,7 +386,7 @@
       const neg = (TX.empresaConfig && (TX.empresaConfig.nombre_comercial || TX.empresaConfig.nombre_negocio)) || 'Negocio360';
       doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text(R.titulo, 40, 46);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(110); doc.text(`${neg} · generado ${new Date().toLocaleString('es-NI')}`, 40, 62); doc.setTextColor(0);
-      const pdfTxt = v => String(v == null ? '' : v).replace(/→/g, '-').replace(/[^\x00-\xFF]/g, '');   // la fuente del PDF no tiene flechas ni emojis
+      const pdfTxt = v => String(v == null ? '' : v).replace(/→/g, '-').replace(/[—–]/g, '-').replace(/[^\x00-\xFF]/g, '');   // la fuente del PDF no tiene flechas ni emojis
       R.cab = R.cab.map(r => r.map(pdfTxt)); R.filas = R.filas.map(r => r.map(pdfTxt)); R.res = R.res.map(r => r.map(pdfTxt));
       doc.autoTable({ startY: 76, body: R.cab, theme: 'plain', styles: { fontSize: 10, cellPadding: 3 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 120 } } });
       doc.autoTable({ startY: doc.lastAutoTable.finalY + 10, head: [['Fecha', 'Hora', 'Estatus', 'País', 'Nota']], body: R.filas.length ? R.filas : [['—', '', 'Sin movimientos', '', '']],
