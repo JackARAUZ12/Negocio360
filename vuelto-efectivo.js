@@ -30,7 +30,14 @@
 
   // Estado por pantalla: 'nv' (Nueva Venta) y 'vr' (Venta rápida)
   const EST = { nv: nuevo(), vr: nuevo() };
-  function nuevo() { return { moneda: null, centavos: 0, entrega: 'local' }; }
+  function nuevo() { return { moneda: null, centavos: 0, entrega: 'local', abierto: false }; }
+  // Venta rápida: el negocio elige si el panel sale abierto, cerrado (un toque para abrirlo) o apagado.
+  // Nueva Venta: siempre abierto, como antes.
+  function modoPanel(modo) {
+    if (modo !== 'vr') return 'abierto';
+    let m = null; try { m = (typeof VR !== 'undefined' && VR.config) ? VR.config.vuelto_modo : null; } catch (_) {}
+    return (m === 'abierto' || m === 'apagado') ? m : 'cerrado';
+  }
   const TICKET = {};   // número de venta -> datos para imprimir el ticket
 
   /* ---------- Lectura del contexto de ventas.js (solo lectura) ---------- */
@@ -174,6 +181,9 @@
 .n360-vu-ops button { border: 1.5px solid var(--border-color, rgba(127,127,127,.3)); background: transparent; color: var(--text-primary, inherit); font: inherit; font-size: 13px; font-weight: 700; padding: 9px 6px; border-radius: 10px; cursor: pointer; line-height: 1.3; min-height: 48px; }
 .n360-vu-ops button small { display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary, inherit); }
 .n360-vu-ops button.on { border-color: var(--success, #16a34a); background: color-mix(in srgb, var(--success, #16a34a) 10%, transparent); }
+.n360-vu.n360-vu-min { padding: 0; border: 0; background: transparent; }
+.n360-vu-abrir { width: 100%; min-height: 44px; border: 1.5px dashed var(--border-color, rgba(127,127,127,.4)); background: transparent; color: var(--text-secondary, inherit); font: inherit; font-size: 14px; font-weight: 700; border-radius: 10px; cursor: pointer; }
+.n360-vu-abrir:hover { border-color: var(--accent, #5a5af4); color: var(--accent, #5a5af4); }
 .n360-vu-hint { font-size: 11.5px; color: var(--text-muted, var(--text-secondary, inherit)); margin-top: 8px; text-align: center; }
 @media (max-width: 420px) { .n360-vu-big { font-size: 26px; } .n360-vu-bil button { font-size: 13px; } }
 `;
@@ -199,6 +209,14 @@
     const ctx = contexto(modo);
     if (!ctx.visible) { p.style.display = 'none'; return; }
     const e = EST[modo], k = cfg();
+    const mp = modoPanel(modo);
+    if (mp === 'apagado') { e.centavos = 0; p.innerHTML = ''; p.style.display = 'none'; return; }
+    if (mp === 'cerrado' && !e.abierto && !(e.centavos > 0)) {
+      p.innerHTML = `<button type="button" data-abrir="1" class="n360-vu-abrir">💵 Calcular vuelto</button>`;
+      p.classList.add('n360-vu-min'); p.style.display = '';
+      return;
+    }
+    p.classList.remove('n360-vu-min');
     if (!e.moneda) { e.moneda = k.base === 'USD' ? 'USD' : 'NIO'; if (k.base === 'USD') e.entrega = 'usd'; }   // cuenta en dólares: vuelto en dólares por defecto
     if (!(k.tasa > 0)) e.moneda = k.base === 'USD' ? 'USD' : 'NIO';
     const r = calcular(modo);
@@ -237,7 +255,7 @@
 
     const exacto = k.tasa > 0 || mon === (k.base === 'USD' ? 'USD' : 'NIO');
     p.innerHTML = `
-      <div class="n360-vu-cab"><b>💵 ¿Con cuánto paga?</b><span>A cobrar: <strong>${totalTxt}</strong></span></div>
+      <div class="n360-vu-cab"><b>💵 ¿Con cuánto paga?</b><span>A cobrar: <strong>${totalTxt}</strong>${mp === 'cerrado' ? ` <button type="button" data-cerrar="1" title="Cerrar" aria-label="Cerrar calculadora de vuelto" style="margin-left:6px;border:0;background:transparent;color:inherit;font:inherit;font-size:15px;cursor:pointer;padding:2px 6px">✕</button>` : ''}</span></div>
       ${k.tasa > 0 ? `<div class="n360-vu-mon" role="group" aria-label="Moneda con que paga">
         <button type="button" data-mon="NIO" class="${mon === 'NIO' ? 'on' : ''}">${k.nombreLocal.charAt(0).toUpperCase() + k.nombreLocal.slice(1)}</button>
         <button type="button" data-mon="USD" class="${mon === 'USD' ? 'on' : ''}">Dólares</button></div>` : ''}
@@ -269,6 +287,8 @@
     const e = EST[modo], k = cfg();
     const entregaInicial = k.base === 'USD' ? 'usd' : 'local';   // cuenta en dólares: vuelto en dólares por defecto
     if (b.dataset.irTasa) { irATasa(modo); return; }
+    if (b.dataset.abrir) { e.abierto = true; pintar(modo); return; }
+    if (b.dataset.cerrar) { e.abierto = false; e.centavos = 0; e.entrega = k.base === 'USD' ? 'usd' : 'local'; pintar(modo); volverAlEscaner(modo); return; }
     if (b.dataset.mon) { if (e.moneda !== b.dataset.mon) { e.moneda = b.dataset.mon; e.centavos = 0; e.entrega = entregaInicial; } }
     else if (b.dataset.bil) { e.centavos += Number(b.dataset.bil) * 100; }
     else if (b.dataset.exacto) {

@@ -1544,6 +1544,14 @@
             Mostrar el SKU (código) de cada producto en el ticket, debajo de su nombre — también en Créditos y Proformas
           </label>
         </div>
+        <div class="form-group full-col">
+          <label for="vrc-vuelto-modo">"¿Con cuánto paga?" (calcular el vuelto)</label>
+          <select id="vrc-vuelto-modo" class="form-input">
+            <option value="cerrado">Cerrado: un botón "Calcular vuelto" y se abre solo si lo necesitas (recomendado)</option>
+            <option value="abierto">Siempre abierto en cada venta en efectivo</option>
+            <option value="apagado">Apagado: no mostrarlo</option>
+          </select>
+        </div>
         <div class="form-group full-col" id="vrc-fila-autoimprimir" style="display:flex;align-items:center;gap:10px">
           <input type="checkbox" id="vrc-autoimprimir" style="width:16px;height:16px" checked/>
           <label for="vrc-autoimprimir" style="margin:0;font-size:13px;font-weight:500;cursor:pointer">
@@ -1654,6 +1662,13 @@
         <input type="date" id="vr-fecha-venta" class="form-input" style="max-width:200px"/>
       </div>
 
+      <div id="vr-cliente-fila" style="display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-surface-2)">
+        <span style="font-size:13px;color:var(--text-secondary);white-space:nowrap">👤 Cliente:</span>
+        <b id="vr-cliente-nombre" style="flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Consumidor final</b>
+        <button type="button" class="btn-secondary btn-sm" id="vr-cliente-btn" onclick="N360VRCliente.abrir()" style="white-space:nowrap">Elegir</button>
+        <button type="button" class="btn-icon" id="vr-cliente-quitar" title="Quitar cliente (Consumidor final)" aria-label="Quitar cliente" onclick="N360VRCliente.quitar()" style="display:none">✕</button>
+      </div>
+
       <div class="form-section-title" style="margin-top:16px">Método de pago</div>
       <div class="metodos-grid" id="vr-metodos-grid">
         <div style="color:var(--text-muted);font-size:13px;grid-column:1/-1;padding:10px;text-align:center">
@@ -1709,6 +1724,35 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         Cobrar y cerrar venta
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- 👤 Elegir cliente en Venta rápida (vr-cliente.js) -->
+<div class="modal-overlay" id="modal-vr-cliente" onclick="if(event.target===this)N360VRCliente.cerrar()" style="z-index:1200">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div><div class="modal-title">Elegir cliente</div><div class="modal-subtitle">La venta queda en su historial</div></div>
+      <button class="modal-close" onclick="N360VRCliente.cerrar()" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="vrcl-vista-buscar">
+        <input type="search" id="vrcl-buscar" class="form-input" placeholder="Buscar por nombre o teléfono…" autocomplete="off" oninput="N360VRCliente.filtrar()" style="width:100%"/>
+        <div id="vrcl-lista" style="margin-top:10px;max-height:46vh;overflow:auto"></div>
+        <button type="button" class="btn-secondary" style="width:100%;margin-top:10px" onclick="N360VRCliente.nuevo()">＋ Cliente nuevo</button>
+      </div>
+      <div id="vrcl-vista-nuevo" style="display:none">
+        <div class="form-group"><label for="vrcl-nombre">Nombre completo</label><input type="text" id="vrcl-nombre" class="form-input" autocomplete="off" maxlength="120"/></div>
+        <div class="form-group"><label for="vrcl-telefono">Teléfono (opcional)</label><input type="tel" id="vrcl-telefono" class="form-input" autocomplete="off" maxlength="30"/></div>
+        <div id="vrcl-error" style="color:var(--danger);font-size:12.5px;min-height:16px"></div>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button type="button" class="btn-ghost" onclick="N360VRCliente.volver()">← Volver</button>
+          <div style="flex:1"></div>
+          <button type="button" class="btn-primary" id="vrcl-guardar" onclick="N360VRCliente.guardarNuevo()">Guardar y usar</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2165,10 +2209,11 @@
 <script src="paginar-lectura.js?v=20261029d"></script>
 <script src="cache-productos.js?v=20261106b"></script>
 <script src="iva-lineas.js?v=20261101a"></script>
-<script src="vuelto-efectivo.js?v=20261117c"></script>
+<script src="vuelto-efectivo.js?v=20261117d"></script>
 <script src="pos-venta.js?v=20261117a"></script>
-<script src="ventas.js?v=20261117d"></script>
+<script src="ventas.js?v=20261117e"></script>
 <script src="recurrentes-editar.js?v=20261117a"></script>
+<script src="vr-cliente.js?v=20261117a"></script>
 <script src="enviar-doc.js?v=20261102a"></script>
 <script src="vendedores-venta.js?v=20261102a"></script>
 <script src="exportar-modulo.js?v=20261029b"></script>

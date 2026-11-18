@@ -7107,6 +7107,8 @@ function abrirConfigVentaRapida(esAjusteManual, origen) {
   if (mostrarCosto) mostrarCosto.checked = !!c.mostrar_costo_venta;
   const mostrarSku = document.getElementById('vrc-mostrar-sku');
   if (mostrarSku) mostrarSku.checked = !!c.mostrar_sku_ticket;
+  const vueltoModo = document.getElementById('vrc-vuelto-modo');
+  if (vueltoModo) vueltoModo.value = ['abierto', 'cerrado', 'apagado'].includes(c.vuelto_modo) ? c.vuelto_modo : 'cerrado';
 
   openModal('modal-vr-config');
 }
@@ -7376,6 +7378,7 @@ async function guardarConfigVentaRapida() {
     descargar_pdf_automatico: document.getElementById('vrc-descargar-pdf')?.checked ?? true,
     mostrar_costo_venta: document.getElementById('vrc-mostrar-costo')?.checked ?? false,
     mostrar_sku_ticket:  document.getElementById('vrc-mostrar-sku')?.checked ?? false,
+    ...(document.getElementById('vrc-vuelto-modo') ? { vuelto_modo: document.getElementById('vrc-vuelto-modo').value || 'cerrado' } : {}),
     updated_at:          new Date().toISOString(),
   };
 
@@ -7424,6 +7427,7 @@ function abrirPantallaVentaRapida() {
   VR.bancoElegidoId    = null; VR.bancoElegidoNombre = null;
   VR.pagoSeparadoLineas = [];
   VR.numeroVenta       = '';
+  if (window.N360VRCliente) N360VRCliente.quitar();   // cada venta empieza como Consumidor final
   const vbew = document.getElementById('vr-banco-elegir-wrap'); if (vbew) vbew.style.display = 'none';
   const vbdw = document.getElementById('vr-banco-elegido-wrap'); if (vbdw) vbdw.style.display = 'none';
   const vpsw = document.getElementById('vr-pago-separado-wrap'); if (vpsw) vpsw.style.display = 'none';
@@ -8151,8 +8155,8 @@ async function _confirmarVentaRapidaInterno() {
     const ventaPayload = {
       auth_user_id:       S.userId,
       numero_venta:       VR.numeroVenta,
-      cliente_id:         null,
-      cliente_nombre:     'Consumidor Final',
+      cliente_id:         VR.clienteId || null,
+      cliente_nombre:     (VR.clienteId && VR.clienteNombre) ? VR.clienteNombre : 'Consumidor Final',
       fecha:              fechaVentaElegidaVR,
       subtotal:           r.subtotal,
       descuento:          r.descuentoPromociones || 0,
@@ -8241,7 +8245,8 @@ async function _confirmarVentaRapidaInterno() {
     }
 
     // Venta, productos, inventario y Caja en UNA sola operación del servidor (todo o nada).
-    const reg = await registrarVentaAtomica(ventaPayloadConIva, detallesPayload, stockPayload, cajaPayload, null, null);
+    // Con cliente: el servidor suma la compra a su historial (y los puntos, si el negocio los usa), igual que en Nueva Venta.
+    const reg = await registrarVentaAtomica(ventaPayloadConIva, detallesPayload, stockPayload, cajaPayload, VR.clienteId ? r.total : null, null);
     if (reg.error) throw reg.error;
     const ventaId = reg.data.venta_id;
     detallesPayload.forEach(d => { d.venta_id = ventaId; });
@@ -8295,6 +8300,7 @@ async function _confirmarVentaRapidaInterno() {
     VR.carrito = [];
     VR.numeroVenta = '';
     if (window.N360Vuelto) N360Vuelto.reset('vr');
+    if (window.N360VRCliente) N360VRCliente.quitar();   // la siguiente venta vuelve a Consumidor final
     renderCarritoVentaRapida();
     const numEl = document.getElementById('vr-num');
     if (numEl) numEl.textContent = 'Generando número…';
