@@ -1574,6 +1574,7 @@ function renderClientesRecurrentes() {
         <button class="btn-primary" style="padding:6px 12px;font-size:12.5px" onclick="abrirModalPagoRecurrente('${c.id}')">
           Crear pago
         </button>
+        ${window.N360RecEditar ? `<button class="btn-secondary" style="padding:6px 10px;font-size:12.5px;margin-left:4px" title="Cambiar fecha, monto o frecuencia" onclick="N360RecEditar.abrir('${c.id}')">✏️ Editar</button>` : ''}
       </td>
     </tr>`;
   }).join('');

@@ -219,6 +219,26 @@ function toggleYaPagoActualVisibility() {
   const esRecurrente = tipoEl.value === 'recurrente';
   const cicloYaActivo = !!(CS.clienteActivo && CS.clienteActivo.tipo_cliente === 'recurrente' && CS.clienteActivo.fecha_proxima_pago);
   wrap.style.display = (esRecurrente && !cicloYaActivo) ? '' : 'none';
+  // Con el ciclo ya activo, la "fecha de inicio" no se usa: se oculta y se indica dónde cambiar la próxima fecha.
+  const wrapIni = document.getElementById('wrap-fecha-inicio-ciclo');
+  if (wrapIni) wrapIni.style.display = (esRecurrente && !cicloYaActivo) ? '' : 'none';
+  let aviso = document.getElementById('aviso-editar-ciclo');
+  if (!aviso && wrapIni) {
+    aviso = document.createElement('div');
+    aviso.id = 'aviso-editar-ciclo';
+    aviso.className = 'form-group full-col';
+    aviso.style.cssText = 'margin-top:6px;font-size:12px;color:var(--text-secondary);background:var(--bg-app);border:1px solid var(--border);border-radius:8px;padding:10px 12px';
+    aviso.innerHTML = '📅 Próxima fecha a pagar: <b id="aviso-editar-ciclo-fecha"></b>. Para cambiarla ve a <b>Ventas › Clientes con pago recurrente › ✏️ Editar</b> (ahí también puedes cambiar monto y frecuencia).';
+    wrapIni.insertAdjacentElement('beforebegin', aviso);
+  }
+  if (aviso) {
+    aviso.style.display = (esRecurrente && cicloYaActivo) ? '' : 'none';
+    const f = document.getElementById('aviso-editar-ciclo-fecha');
+    if (f && cicloYaActivo) {
+      const [y, m, d] = String(CS.clienteActivo.fecha_proxima_pago).split('-').map(Number);
+      f.textContent = new Date(y, m - 1, d).toLocaleDateString('es-NI', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+  }
 }
 
 function toggleYaPagoActualHint() {

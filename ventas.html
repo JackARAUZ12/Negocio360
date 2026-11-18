@@ -1941,6 +1941,62 @@
 <!-- =====================================================
      MODAL: REGISTRAR PAGO DE CLIENTE RECURRENTE
 ===================================================== -->
+<!-- ✏️ EDITAR PAGO RECURRENTE: fecha, monto y frecuencia. Solo cambia el ciclo del cliente;
+     no toca ventas, Caja ni el historial de pagos ya registrados. -->
+<div class="modal-overlay" id="modal-editar-recurrente" onclick="if(event.target===this)N360RecEditar.cerrar()">
+  <div class="modal-box modal-md">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Editar pago recurrente</div>
+        <div class="modal-subtitle" id="er-cliente-nombre">—</div>
+      </div>
+      <button class="modal-close" onclick="N360RecEditar.cerrar()" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label for="er-fecha">Próxima fecha a pagar</label>
+          <input type="date" id="er-fecha" oninput="N360RecEditar.vista()"/>
+        </div>
+        <div class="form-group">
+          <label for="er-monto">Monto de cada periodo</label>
+          <input type="number" id="er-monto" min="0" step="0.01" inputmode="decimal" oninput="N360RecEditar.vista()"/>
+        </div>
+        <div class="form-group">
+          <label for="er-frecuencia">Frecuencia</label>
+          <select id="er-frecuencia" onchange="N360RecEditar.vista()">
+            <option value="mensual">Mensual</option>
+            <option value="semanal">Semanal</option>
+            <option value="quincenal">Quincenal (cada 15 días)</option>
+            <option value="anual">Anual</option>
+            <option value="personalizado">Personalizado</option>
+          </select>
+        </div>
+        <div class="form-group" id="er-wrap-pers" style="display:none">
+          <label for="er-intervalo">Repetir cada</label>
+          <div style="display:flex;gap:6px">
+            <input type="number" id="er-intervalo" min="1" step="1" value="1" style="width:80px" oninput="N360RecEditar.vista()"/>
+            <select id="er-unidad" onchange="N360RecEditar.vista()" style="flex:1;min-width:0">
+              <option value="semana">semanas</option>
+              <option value="mes">meses</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div id="er-parcial" style="display:none;margin-top:4px;padding:10px 12px;border-radius:var(--radius-md);background:var(--warning-soft, rgba(245,158,11,.12));font-size:12.5px;color:var(--text-secondary)"></div>
+      <div id="er-resumen" style="margin-top:12px;padding:12px 14px;border-radius:var(--radius-md);background:var(--bg-surface-2);font-size:13px;line-height:1.55"></div>
+      <div style="margin-top:10px;font-size:11.5px;color:var(--text-muted)">
+        🔒 Solo cambia el calendario de cobro de este cliente. Las ventas, la Caja y los pagos ya registrados no se tocan.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="N360RecEditar.cerrar()">Cancelar</button>
+      <button class="btn-primary" id="er-guardar" onclick="N360RecEditar.guardar()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-pago-recurrente" onclick="if(event.target===this)cerrarModalPagoRecurrente()">
   <div class="modal-box modal-md">
     <div class="modal-header">
@@ -2111,7 +2167,8 @@
 <script src="iva-lineas.js?v=20261101a"></script>
 <script src="vuelto-efectivo.js?v=20261117b"></script>
 <script src="pos-venta.js?v=20261117a"></script>
-<script src="ventas.js?v=20261117c"></script>
+<script src="ventas.js?v=20261117d"></script>
+<script src="recurrentes-editar.js?v=20261117a"></script>
 <script src="enviar-doc.js?v=20261102a"></script>
 <script src="vendedores-venta.js?v=20261102a"></script>
 <script src="exportar-modulo.js?v=20261029b"></script>
