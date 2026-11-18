@@ -2492,6 +2492,7 @@ async function guardarAutoGenerar(activo) {
 async function autoGenerarAlEntrar() {
   try {
     if (STATE.empresaConfig?.contabilidad_auto_generar !== true || STATE.generandoAsientosAutomaticos) return;
+    if (STATE.empresaConfig?.contabilidad_servidor_auto === true) return; // el servidor ya genera los asientos solo
     const { data: mapeoData } = await sbClient.from('contabilidad_mapeo_cuentas').select('tipo_transaccion').eq('auth_user_id', STATE.userId);
     if (!mapeoData || !mapeoData.length) return;
     let { data: desde } = await sbClient.rpc('fecha_mas_antigua_pendiente_contabilizar');

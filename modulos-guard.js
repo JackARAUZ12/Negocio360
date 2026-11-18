@@ -658,8 +658,8 @@
         const c = JSON.parse(sessionStorage.getItem(kFlag) || 'null');
         if (c && Date.now() - c.t < 5 * 60 * 1000) return c.v === true;
       } catch (_) {}
-      const { data } = await client.from('configuracion_empresa').select('contabilidad_auto_generar').eq('auth_user_id', userId).maybeSingle();
-      const v = data?.contabilidad_auto_generar === true;
+      const { data } = await client.from('configuracion_empresa').select('contabilidad_auto_generar, contabilidad_servidor_auto').eq('auth_user_id', userId).maybeSingle();
+      const v = data?.contabilidad_auto_generar === true && data?.contabilidad_servidor_auto !== true;
       try { sessionStorage.setItem(kFlag, JSON.stringify({ t: Date.now(), v })); } catch (_) {}
       return v;
     }
