@@ -36,6 +36,7 @@
   function modoPanel(modo) {
     if (modo !== 'vr') return 'abierto';
     let m = null; try { m = (typeof VR !== 'undefined' && VR.config) ? VR.config.vuelto_modo : null; } catch (_) {}
+    if (m !== 'apagado' && window.N360POS && N360POS.enCobro && N360POS.enCobro()) return 'abierto';   // pantalla de cobro: hay espacio, va abierto
     return (m === 'abierto' || m === 'apagado') ? m : 'cerrado';
   }
   const TICKET = {};   // número de venta -> datos para imprimir el ticket
@@ -197,7 +198,9 @@
       estilos();
       p = document.createElement('div');
       p.id = 'n360-vu-' + modo; p.className = 'n360-vu'; p.style.display = 'none';
-      ctx.ancla.insertAdjacentElement('afterend', p);
+      const enCobro = document.getElementById('pos-cobro-der');
+      if (modo === 'vr' && enCobro) enCobro.insertBefore(p, enCobro.firstChild);   // caja POS: lado derecho de la pantalla de cobro
+      else ctx.ancla.insertAdjacentElement('afterend', p);
       p.addEventListener('click', ev => alClic(modo, ev));
       p.addEventListener('input', ev => { if (ev.target && ev.target.matches('input')) alEscribir(modo, ev.target); });
     }
