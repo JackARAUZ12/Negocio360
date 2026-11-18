@@ -1742,6 +1742,15 @@
         saldo_pendiente: nuevoSaldoPendiente, updated_at: new Date().toISOString(),
       }).eq('id', creditoId);
 
+      // Ficha del cliente ("total comprado"): la venta cambió de total, la ficha también.
+      if (venta?.cliente_id && venta.estado === 'completada' && Math.abs(deltaProductos) > 0.004) {
+        try {
+          const { data: cli } = await _sb.from('clientes').select('total_compras')
+            .eq('id', venta.cliente_id).eq('auth_user_id', CS.userId).maybeSingle();
+          if (cli) await _sb.from('clientes').update({ total_compras: Math.max(0, round2(Number(cli.total_compras || 0) + deltaProductos)) })
+            .eq('id', venta.cliente_id).eq('auth_user_id', CS.userId);
+        } catch (eCli) { console.warn('No se pudo actualizar la ficha del cliente:', eCli); }
+      }
       await registrarHistorial(creditoId, 'editado', `Productos editados — ${deltaProductos>=0?'aumentó':'bajó'} ${fmt(Math.abs(deltaProductos))} — nuevo saldo pendiente: ${fmt(nuevoSaldoPendiente)}`, { deltaProductos, nuevoSaldoPendiente });
 
       showToast('Productos actualizados — ahora define cómo quedan las cuotas');
