@@ -247,6 +247,8 @@
       else {
         S.ventaDetalleId = c.ventaId;
         const chk = $('chk-anular-descontar-caja'); if (chk) chk.checked = true;
+        // La anulación normal exige un motivo escrito; aquí se usa el de la corrección (si no, se cancelaba sin anular).
+        const mot = $('anular-motivo'); if (mot) mot.value = ('Corrección de venta: ' + (c.motivo || 'sin motivo')).slice(0, 300);
         await anularVenta();                       // misma rutina de siempre
         const { data: v2 } = await sb.from('ventas').select('estado').eq('id', c.ventaId).eq('auth_user_id', S.userId).maybeSingle();
         if (!v2 || v2.estado !== 'anulada') throw new Error('No se pudo anular la venta original. No se registró la nueva.');
