@@ -17,9 +17,9 @@ declare
   v_esc record; v_pr numeric; res jsonb; vends uuid[]; vnoms text[]; v_vend integer; v_cli_id uuid; v_cli_nom text; v_items jsonb; v_prof uuid; v_tot numeric; v_cos numeric;
   tablas_borrar text[] := array[
     'asientos_detalle','asientos_contables','creditos_historial','creditos_cuotas','creditos_pagos','creditos',
-    'venta_detalles','ventas_fecha_respaldo','ventas_resumen','ventas_numeros_reservados','movimientos_impuestos','ventas',
+    'venta_detalles','ventas_fecha_respaldo','ventas_numeros_reservados','movimientos_impuestos','ventas',
     'detalle_compras','compras','cuentas_por_pagar_pagos','cuentas_por_pagar_cuotas','cuentas_por_pagar',
-    'gastos','historial_gastos','gastos_programados','cierres_caja','caja_chica_sesiones','resumen_caja_mes','capital_negocio',
+    'gastos','historial_gastos','gastos_programados','cierres_caja','caja_chica_sesiones','capital_negocio',
     'movimientos_financieros','movimientos_inventario','dashboard_alertas','proforma_detalles','proformas','garantias_clientes',
     'producto_lotes','precios_escala','producto_presentaciones','codigos_barras','orden_produccion_consumos','ordenes_produccion',
     'receta_componentes','recetas_produccion','ruta_clientes','rutas','delivery_pedidos','encuestas_respuestas','agenda_eventos',
