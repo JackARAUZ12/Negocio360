@@ -1755,6 +1755,13 @@ async function initCaja() {
       Negocio360Tutorial.agregarBotonAyuda('caja', pasosCaja);
     }
 
+    // Desde Ventas › "¿Con cuánto paga?" › Poner mi tasa de cambio
+    if (new URLSearchParams(location.search).get('tasa') === '1') {
+      try { history.replaceState(null, '', 'caja.html'); } catch (_) {}
+      STATE.forzarTasa = true;
+      setSection('bancos');
+    }
+
     // Desde el aviso de "cierre de mes pendiente" › "Contar el dinero primero"
     if (new URLSearchParams(location.search).get('cierre') === '1') {
       try { history.replaceState(null, '', 'caja.html'); } catch (_) {}
@@ -2170,7 +2177,8 @@ function renderBancosGrid(lista) {
     grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:24px">
       Todavía no has creado ningún banco — cuando lo hagas, el dinero de tarjeta/transferencia empezará a separarse aquí.
     </div>`;
-    document.getElementById('tasa-cambio-wrap').style.display = 'none';
+    document.getElementById('tasa-cambio-wrap').style.display = STATE.forzarTasa ? '' : 'none';
+    if (STATE.forzarTasa) mostrarTasaPedida();
     return;
   }
 
@@ -2179,8 +2187,9 @@ function renderBancosGrid(lista) {
   // todo está en la misma moneda, nunca hace falta convertir nada.
   const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
   const hayMonedaDistinta = STATE.bancos.some(b => (b.moneda||'NIO') !== monedaBase);
-  document.getElementById('tasa-cambio-wrap').style.display = hayMonedaDistinta ? '' : 'none';
-  if (hayMonedaDistinta) {
+  document.getElementById('tasa-cambio-wrap').style.display = (hayMonedaDistinta || STATE.forzarTasa) ? '' : 'none';
+  if (STATE.forzarTasa) mostrarTasaPedida();
+  else if (hayMonedaDistinta) {
     const inputTasa = document.getElementById('input-tasa-cambio');
     if (document.activeElement !== inputTasa) inputTasa.value = STATE.empresaConfig?.tasa_cambio_usd || '';
   }
@@ -2213,13 +2222,28 @@ function renderBancosGrid(lista) {
   }).join('');
 }
 
+// Desde Ventas ("¿Con cuánto paga?" › Poner mi tasa): se llega con ?tasa=1 y se muestra el campo
+// aunque no haya bancos en dólares, listo para escribir.
+function mostrarTasaPedida() {
+  const wrap = document.getElementById('tasa-cambio-wrap'), inp = document.getElementById('input-tasa-cambio');
+  if (!wrap || !inp || wrap.dataset.pedida === '1') return;
+  wrap.dataset.pedida = '1';
+  if (document.activeElement !== inp) inp.value = STATE.empresaConfig?.tasa_cambio_usd || '';
+  wrap.style.outline = '3px solid var(--accent, #5a5af4)'; wrap.style.outlineOffset = '2px'; wrap.style.borderRadius = '12px';
+  setTimeout(() => { try { wrap.scrollIntoView({ behavior: 'smooth', block: 'center' }); inp.focus(); } catch (_) {} }, 150);
+  setTimeout(() => { wrap.style.outline = ''; }, 6000);
+}
+
 async function guardarTasaCambio() {
   const valor = parseFloat(document.getElementById('input-tasa-cambio').value);
   if (isNaN(valor) || valor <= 0) { showToast('Ingresa una tasa de cambio válida', 'error'); return; }
+  if (valor < 1 || valor > 100000) { showToast('Revisa la tasa: es cuántos córdobas vale 1 dólar (ej. 36.6243)', 'error'); return; }
   try {
-    await sbClient.from('configuracion_empresa').update({ tasa_cambio_usd: valor }).eq('auth_user_id', STATE.userId);
+    const { data, error } = await sbClient.from('configuracion_empresa').update({ tasa_cambio_usd: valor }).eq('auth_user_id', STATE.userId).select('auth_user_id');
+    if (error) throw error;
+    if (!data || !data.length) throw new Error('sin permiso');
     STATE.empresaConfig.tasa_cambio_usd = valor;
-    showToast('Tasa de cambio actualizada');
+    showToast(STATE.forzarTasa ? 'Tasa guardada ✓ Ya puedes volver a Ventas y cobrar en dólares' : 'Tasa de cambio actualizada', 'success');
   } catch (e) {
     showToast('No se pudo guardar la tasa de cambio', 'error');
   }

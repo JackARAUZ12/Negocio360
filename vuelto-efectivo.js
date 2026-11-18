@@ -249,7 +249,8 @@
         <input type="text" inputmode="decimal" autocomplete="off" placeholder="o escribe cuánto te dio (${s})" aria-label="Monto recibido" value="${esc(enfocado ? valorEscrito : (e.centavos > 0 ? (e.centavos / 100).toString() : ''))}">
         <button type="button" data-borrar="1">Borrar</button>
       </div>
-      ${k.tasa > 0 ? '' : `<div class="n360-vu-hint">Para cobrar en dólares, configura tu tasa de cambio en Caja › Bancos.</div>`}
+      ${k.tasa > 0 ? '' : `<div class="n360-vu-hint">¿Te pagan en dólares? Primero pon tu tasa de cambio.
+        <button type="button" data-ir-tasa="1" style="display:block;margin:6px auto 0;border:1px solid var(--accent,#5a5af4);background:transparent;color:var(--accent,#5a5af4);font:inherit;font-size:13px;font-weight:700;padding:8px 14px;border-radius:10px;cursor:pointer;min-height:40px">💱 Poner mi tasa de cambio ↗</button></div>`}
       ${res}`;
     p.style.display = '';
     if (enfocado) {
@@ -267,6 +268,7 @@
     ev.preventDefault();
     const e = EST[modo], k = cfg();
     const entregaInicial = k.base === 'USD' ? 'usd' : 'local';   // cuenta en dólares: vuelto en dólares por defecto
+    if (b.dataset.irTasa) { irATasa(modo); return; }
     if (b.dataset.mon) { if (e.moneda !== b.dataset.mon) { e.moneda = b.dataset.mon; e.centavos = 0; e.entrega = entregaInicial; } }
     else if (b.dataset.bil) { e.centavos += Number(b.dataset.bil) * 100; }
     else if (b.dataset.exacto) {
@@ -279,6 +281,31 @@
     pintar(modo);
     volverAlEscaner(modo);
   }
+
+  // Abre Caja › Bancos con el campo de tasa listo, en otra pestaña para no perder la venta en curso.
+  // Al volver a esta pestaña se lee la tasa nueva y aparece el botón "Dólares".
+  let esperandoTasa = false;
+  function irATasa(modo) {
+    esperandoTasa = true;
+    const w = window.open('caja.html?tasa=1', '_blank');
+    if (!w) location.href = 'caja.html?tasa=1';   // bloqueado: se va en la misma pestaña
+  }
+  async function releerTasa() {
+    if (!esperandoTasa || document.visibilityState !== 'visible') return;
+    try {
+      const uid = (typeof S !== 'undefined' && S.userId) || null;
+      if (!uid || typeof sb === 'undefined') return;
+      const { data } = await sb.from('configuracion_empresa').select('tasa_cambio_usd').eq('auth_user_id', uid).maybeSingle();
+      const t = Number(data && data.tasa_cambio_usd) || 0;
+      if (t > 0 && S.empresaConfig) {
+        S.empresaConfig.tasa_cambio_usd = t;
+        esperandoTasa = false;
+        ['nv', 'vr'].forEach(m => { try { pintar(m); } catch (_) {} });
+      }
+    } catch (_) {}
+  }
+  document.addEventListener('visibilitychange', releerTasa);
+  window.addEventListener('focus', releerTasa);
 
   let tEscribir = 0;
   function alEscribir(modo, inp) {
