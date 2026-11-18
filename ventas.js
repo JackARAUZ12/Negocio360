@@ -3585,6 +3585,16 @@ function comisionAlCerrar(estado, totalVenta) {
   return { pct, monto };
 }
 
+// Conversión córdobas <-> dólares con ENTEROS (centavos y tasa en diezmilésimas):
+// el mismo resultado que a mano, sin errores de punto flotante de 1 centavo.
+function convertirMonedaExacta(monto, monedaBase, tasa) {
+  if (window.N360MonedaAlterna && N360MonedaAlterna.convertir) {
+    const v = N360MonedaAlterna.convertir(monto, monedaBase === 'USD' ? 'NIO' : 'USD', tasa);
+    if (v != null) return v;
+  }
+  return round2(monedaBase === 'NIO' ? monto / tasa : monto * tasa);
+}
+
 // Comisión en la moneda del banco (bancos en dólares): misma conversión
 // que usa Caja para el resto de movimientos de ese banco.
 function comisionEnMonedaBanco(bancoId, monto) {
@@ -3593,7 +3603,7 @@ function comisionEnMonedaBanco(bancoId, monto) {
   const mb = banco?.moneda || 'NIO';
   const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
   if (!banco || mb === base || !tasa) return null;
-  return round2(base === 'NIO' ? monto / tasa : monto * tasa);
+  return convertirMonedaExacta(monto, base, tasa);
 }
 
 async function registrarComisionBancaria({ metodoPagoId, metodoNombre, totalVenta, numeroVenta, ventaId, fecha, bancoId, bancoNombre, comisionMonto, comisionPct }) {
@@ -5331,12 +5341,13 @@ function _psMontoBanco(linea) {
   if (mb === base) return null;
   if (linea.otra && linea.otra.moneda === mb && Math.abs(linea.otra.base - linea.monto) < 0.005) return linea.otra.monto;
   const tasa = Number(S.empresaConfig?.tasa_cambio_usd || 0);
-  return tasa ? round2(base === 'NIO' ? linea.monto / tasa : linea.monto * tasa) : null;
+  return tasa ? convertirMonedaExacta(linea.monto, base, tasa) : null;
 }
 function _psNota(linea) {
   const o = linea.otra; if (!o || !(Math.abs(o.base - linea.monto) < 0.005)) return '';
   const f = n => Number(n).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${linea.metodoNombre}: pagó ${o.moneda === 'USD' ? 'USD' : 'C$'} ${f(o.monto)} (tasa C$ ${f(o.tasa)})`;
+  const fT = n => Number(n).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 4 });   // la tasa completa (36.6243), no redondeada
+  return `${linea.metodoNombre}: pagó ${o.moneda === 'USD' ? 'USD' : 'C$'} ${f(o.monto)} (tasa C$ ${fT(o.tasa)})`;
 }
 function _psAdjuntarMoneda(prefijo, lineas, alCambiar) {
   if (!window.N360MonedaAlterna) return;
@@ -6066,7 +6077,7 @@ function elegirBancoVenta(bancoId, bancoNombre, monedaBanco) {
       document.getElementById('banco-elegido-nombre').innerHTML =
         `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
     } else {
-      const montoConvertido = monedaBase === 'NIO' ? round2(totalVenta / tasa) : round2(totalVenta * tasa);
+      const montoConvertido = convertirMonedaExacta(totalVenta, monedaBase, tasa);
       S._montoBancoConvertido = montoConvertido;
       document.getElementById('banco-elegido-nombre').innerHTML =
         `${esc(bancoNombre)} — se registrará como ${simboloMonedaVenta(monedaBanco)} ${montoConvertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
@@ -6203,7 +6214,7 @@ function elegirBancoVentaVR(bancoId, bancoNombre, monedaBanco) {
       document.getElementById('vr-banco-elegido-nombre').innerHTML =
         `${esc(bancoNombre)} <span style="color:var(--danger)">— falta configurar tu tasa de cambio en Caja › Bancos</span>`;
     } else {
-      const montoConvertido = monedaBase === 'NIO' ? round2(totalVenta / tasa) : round2(totalVenta * tasa);
+      const montoConvertido = convertirMonedaExacta(totalVenta, monedaBase, tasa);
       VR._montoBancoConvertido = montoConvertido;
       document.getElementById('vr-banco-elegido-nombre').innerHTML =
         `${esc(bancoNombre)} — se registrará como ${simboloMonedaVenta(monedaBanco)} ${montoConvertido.toLocaleString('es-NI',{minimumFractionDigits:2})}`;
@@ -8084,6 +8095,14 @@ async function _confirmarVentaRapidaInterno() {
     }
     const r = calcularResumenVR();
     if (window.N360Vuelto) { const eVu2 = N360Vuelto.error('vr'); if (eVu2) throw new Error(eVu2); }   // con el total final
+    // Banco en la otra moneda: el monto convertido se calcula AQUÍ con el total final
+    // (en la caja POS se pueden agregar productos después de elegir el banco).
+    if (bancoElegidoVR) {
+      const bInfo = (_bancosCache || []).find(b => b.id === bancoElegidoVR) || (await cargarBancosDisponibles()).find(b => b.id === bancoElegidoVR);
+      const mBase = S.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
+      const tasaV = Number(S.empresaConfig?.tasa_cambio_usd || 0);
+      VR._montoBancoConvertido = (bInfo && (bInfo.moneda || 'NIO') !== mBase && tasaV > 0) ? convertirMonedaExacta(r.total, mBase, tasaV) : null;
+    }
 
     if (!VR.numeroVenta || VR.numeroVenta.startsWith('V-TMP')) {
       try {

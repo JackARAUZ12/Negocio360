@@ -20,6 +20,7 @@
 
   const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
   const fmt = n => Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtTasa = n => Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   const SIMBOLO = { USD: 'USD', NIO: 'C$' };
   const estados = new WeakMap();
 
@@ -58,9 +59,13 @@
   }
 
   // Monto en la moneda de la cuenta a partir del monto en la otra moneda.
+  // Con ENTEROS (centavos y tasa en diezmilésimas), redondeo normal: .5 sube. Sin errores de punto flotante.
   function convertir(monto, base, tasa) {
     if (!(tasa > 0)) return null;
-    return r2(base === 'USD' ? monto / tasa : monto * tasa);
+    const cent = Math.round((Number(monto) || 0) * 100), t = Math.round(Number(tasa) * 10000);
+    if (!(t > 0)) return null;
+    const res = base === 'USD' ? Math.floor((cent * 10000 * 2 + t) / (2 * t)) : Math.floor((cent * t + 5000) / 10000);
+    return res / 100;
   }
 
   function pintar(input) {
@@ -75,11 +80,11 @@
       return;
     }
     if (!(monto > 0)) {
-      e.res.textContent = 'Tasa: C$ ' + fmt(tasa) + ' por dólar';
+      e.res.textContent = 'Tasa: C$ ' + fmtTasa(tasa) + ' por dólar';
       return;
     }
     const conv = convertir(monto, base, tasa);
-    e.res.innerHTML = 'Equivale a <b>' + SIMBOLO[base] + ' ' + fmt(conv) + '</b> · tasa C$ ' + fmt(tasa) + ' por dólar';
+    e.res.innerHTML = 'Equivale a <b>' + SIMBOLO[base] + ' ' + fmt(conv) + '</b> · tasa C$ ' + fmtTasa(tasa) + ' por dólar';
   }
 
   function aplicar(input) {

@@ -25,6 +25,7 @@
   const c = n => Math.round((Number(n) || 0) * 100);            // a centavos
   const d = n => n / 100;                                         // de centavos
   const fmt = n => Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtTasa = n => Number(n || 0).toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 4 });   // 36.6243 completa
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
   // Estado por pantalla: 'nv' (Nueva Venta) y 'vr' (Venta rápida)
@@ -71,7 +72,7 @@
     const tasaC = c(k.tasa);
     // Total a cobrar en la moneda base y en local
     const totalBaseC = c(ctx.totalBase);
-    const aLocal = (cent, mon) => mon === 'NIO' ? cent : Math.round(cent * k.tasa);   // USD -> C$ (centavos)
+    const aLocal = (cent, mon) => mon === 'NIO' ? cent : usdALocal(cent, k.tasa);   // USD -> C$ (centavos, exacto)
     const baseEsLocal = k.base !== 'USD';
     const r = { k, ctx, monedaPago, hayDolar, totalBaseC, recibidoC: e.centavos, estado: 'vacio' };
     if (!(e.centavos > 0)) return r;
@@ -81,7 +82,16 @@
       r.estado = v < 0 ? 'falta' : 'ok'; r.faltaC = Math.max(0, -v); r.vueltoBaseC = Math.max(0, v); r.soloBase = true;
       return r;
     }
-    const totalLocalC = baseEsLocal ? totalBaseC : Math.round(totalBaseC * k.tasa);
+    if (!baseEsLocal && r.monedaPago === 'USD') {
+      // Cuenta en dólares y paga en dólares: dólares menos dólares, sin pasar por córdobas (cero redondeos).
+      const v = e.centavos - totalBaseC;
+      r.usdDirecto = true;
+      if (v < 0) { r.estado = 'falta'; r.faltaC = -v; r.faltaLocalC = usdALocal(-v, k.tasa); return r; }
+      r.estado = v === 0 ? 'exacto' : 'ok';
+      r.vueltoBaseC = v; r.vueltoLocalC = usdALocal(v, k.tasa);
+      return r;
+    }
+    const totalLocalC = baseEsLocal ? totalBaseC : usdALocal(totalBaseC, k.tasa);
     const recibidoLocalC = aLocal(e.centavos, r.monedaPago);
     const vLocal = recibidoLocalC - totalLocalC;
     r.totalLocalC = totalLocalC; r.recibidoLocalC = recibidoLocalC;
@@ -93,12 +103,22 @@
     r.vueltoLocalC = vLocal;
     // Opción en dólares: dólares enteros + el resto en córdobas
     if (hayDolar && tasaC > 0) {
-      const dol = Math.floor(vLocal / (k.tasa * 100) + 1e-9);
-      const resto = vLocal - Math.round(dol * k.tasa * 100);
+      const dol = Math.floor(vLocal * 100 / tasaDiez(k.tasa));       // dólares enteros que caben (enteros exactos)
+      const resto = vLocal - usdALocal(dol * 100, k.tasa);
       if (dol >= 1 && resto >= 0) { r.opDolares = dol; r.opRestoLocalC = resto; }
     }
     if (r.estado === 'ok' && !r.opDolares) e.entrega = 'local';
     return r;
+  }
+  // Tasa en diezmilésimas (36.6243 -> 366243) y conversiones con ENTEROS: sin errores de punto flotante.
+  function tasaDiez(tasa) { return Math.round((Number(tasa) || 0) * 10000); }
+  function usdALocal(centUsd, tasa) {               // centavos de dólar -> centavos de córdoba, redondeo normal (.5 sube)
+    const t = tasaDiez(tasa); if (!(t > 0)) return 0;
+    return Math.floor((centUsd * t + 5000) / 10000);
+  }
+  function localAUsdArriba(centLocal, tasa) {       // centavos de córdoba -> centavos de dólar que alcanzan (hacia arriba)
+    const t = tasaDiez(tasa); if (!(t > 0)) return 0;
+    return Math.floor((centLocal * 10000 + t - 1) / t);
   }
 
   /* ---------- Textos ---------- */
@@ -106,6 +126,7 @@
   function textoVuelto(r, entrega) {
     const k = r.k;
     if (r.soloBase) return `$ ${fmt(d(r.vueltoBaseC))}`;
+    if (r.usdDirecto) return entrega === 'local' ? `${k.simLocal} ${fmt(d(r.vueltoLocalC))}` : `$ ${fmt(d(r.vueltoBaseC))}`;
     if (entrega === 'usd' && r.opDolares) return `$ ${fmt(r.opDolares)}${r.opRestoLocalC > 0 ? ` + ${k.simLocal} ${fmt(d(r.opRestoLocalC))}` : ''}`;
     return `${k.simLocal} ${fmt(d(r.vueltoLocalC))}`;
   }
@@ -116,8 +137,8 @@
     const baseMon = k.base === 'USD' ? 'USD' : 'NIO';
     let enOtra = '';
     if (r.monedaPago !== baseMon) enOtra = r.monedaPago === 'USD'
-      ? ` (tasa ${k.simLocal} ${fmt(k.tasa)} = ${k.simLocal} ${fmt(d(r.recibidoLocalC))})`
-      : ` (tasa ${k.simLocal} ${fmt(k.tasa)} = $ ${fmt(d(r.recibidoC) / k.tasa)})`;
+      ? ` (tasa ${k.simLocal} ${fmtTasa(k.tasa)} = ${k.simLocal} ${fmt(d(r.recibidoLocalC))})`
+      : ` (tasa ${k.simLocal} ${fmtTasa(k.tasa)} = $ ${fmt(d(r.recibidoC) / k.tasa)})`;
     return base + enOtra;
   }
 
@@ -186,7 +207,7 @@
     // Total a cobrar en la moneda en que paga
     let totalTxt = `${sim(k.base === 'USD' ? 'USD' : 'NIO', k)} ${fmt(d(r.totalBaseC))}`;
     if (k.tasa > 0 && mon !== (k.base === 'USD' ? 'USD' : 'NIO')) {
-      const enMon = mon === 'USD' ? Math.ceil(r.totalBaseC / k.tasa) : Math.round(r.totalBaseC * k.tasa);
+      const enMon = mon === 'USD' ? localAUsdArriba(r.totalBaseC, k.tasa) : usdALocal(r.totalBaseC, k.tasa);
       totalTxt += ` <span class="n360-vu-sub">(= ${s} ${fmt(d(enMon))})</span>`;
     }
     const inp = p.querySelector('input');
@@ -196,17 +217,22 @@
     let res = '';
     if (r.estado === 'vacio') res = `<div class="n360-vu-res">Opcional: toca los billetes que te dio el cliente y te digo el vuelto.</div>`;
     else if (r.estado === 'falta') {
-      const falt = r.soloBase ? `$ ${fmt(d(r.faltaC))}` : `${k.simLocal} ${fmt(d(r.faltaLocalC))}${k.tasa > 0 ? ` <span style="font-weight:600">(≈ $ ${fmt(d(r.faltaLocalC) / k.tasa)})</span>` : ''}`;
+      const falt = (r.soloBase || r.usdDirecto) ? `$ ${fmt(d(r.faltaC))}` : `${k.simLocal} ${fmt(d(r.faltaLocalC))}${k.tasa > 0 ? ` <span style="font-weight:600">(≈ $ ${fmt(d(r.faltaLocalC) / k.tasa)})</span>` : ''}`;
       res = `<div class="n360-vu-res falta">Faltan ${falt}<div class="n360-vu-sub" style="font-weight:600;margin-top:4px">Lo recibido no alcanza. Corrige el monto o bórralo.</div></div>`;
     } else if (r.estado === 'exacto') res = `<div class="n360-vu-res exacto">✓ Pago exacto, sin vuelto</div>`;
     else {
-      const ops = (!r.soloBase && r.opDolares)
+      const ops = r.usdDirecto
+        ? `<div class="n360-vu-ops">
+             <button type="button" data-entrega="usd" class="${e.entrega !== 'local' ? 'on' : ''}">En dólares<small>$ ${fmt(d(r.vueltoBaseC))}</small></button>
+             <button type="button" data-entrega="local" class="${e.entrega === 'local' ? 'on' : ''}">Todo en ${esc(k.nombreLocal)}<small>${k.simLocal} ${fmt(d(r.vueltoLocalC))}</small></button>
+           </div><div class="n360-vu-hint">Toca cómo le das el vuelto (queda en el ticket).</div>`
+        : (!r.soloBase && r.opDolares)
         ? `<div class="n360-vu-ops">
              <button type="button" data-entrega="local" class="${e.entrega !== 'usd' ? 'on' : ''}">Todo en ${esc(k.nombreLocal)}<small>${k.simLocal} ${fmt(d(r.vueltoLocalC))}</small></button>
              <button type="button" data-entrega="usd" class="${e.entrega === 'usd' ? 'on' : ''}">En dólares<small>$ ${fmt(r.opDolares)}${r.opRestoLocalC > 0 ? ` + ${k.simLocal} ${fmt(d(r.opRestoLocalC))}` : ''}</small></button>
            </div><div class="n360-vu-hint">Toca cómo le das el vuelto (queda en el ticket).</div>` : '';
-      const equiv = (!r.soloBase && k.tasa > 0) ? `<div class="n360-vu-sub">equivale a $ ${fmt(d(r.vueltoLocalC) / k.tasa)}</div>` : '';
-      res = `<div class="n360-vu-res ok"><div class="n360-vu-lbl">Vuelto</div><div class="n360-vu-big">${esc(textoVuelto(r, e.entrega))}</div>${e.entrega === 'usd' && r.opDolares ? '' : equiv}${ops}</div>`;
+      const equiv = (!r.soloBase && !r.usdDirecto && k.tasa > 0) ? `<div class="n360-vu-sub">equivale a $ ${fmt(d(r.vueltoLocalC) / k.tasa)}</div>` : '';
+      res = `<div class="n360-vu-res ok"><div class="n360-vu-lbl">Vuelto</div><div class="n360-vu-big">${esc(textoVuelto(r, e.entrega))}</div>${e.entrega === 'usd' && (r.opDolares || r.usdDirecto) ? '' : equiv}${ops}</div>`;
     }
 
     const exacto = k.tasa > 0 || mon === (k.base === 'USD' ? 'USD' : 'NIO');
@@ -240,14 +266,15 @@
     const b = ev.target.closest('button'); if (!b) return;
     ev.preventDefault();
     const e = EST[modo], k = cfg();
-    if (b.dataset.mon) { if (e.moneda !== b.dataset.mon) { e.moneda = b.dataset.mon; e.centavos = 0; e.entrega = 'local'; } }
+    const entregaInicial = k.base === 'USD' ? 'usd' : 'local';   // cuenta en dólares: vuelto en dólares por defecto
+    if (b.dataset.mon) { if (e.moneda !== b.dataset.mon) { e.moneda = b.dataset.mon; e.centavos = 0; e.entrega = entregaInicial; } }
     else if (b.dataset.bil) { e.centavos += Number(b.dataset.bil) * 100; }
     else if (b.dataset.exacto) {
       const ctx = contexto(modo), tb = c(ctx.totalBase), base = k.base === 'USD' ? 'USD' : 'NIO';
       const mon = e.moneda || base;
-      e.centavos = mon === base ? tb : (mon === 'USD' ? Math.ceil(tb / k.tasa) : Math.round(tb * k.tasa));
+      e.centavos = mon === base ? tb : (mon === 'USD' ? localAUsdArriba(tb, k.tasa) : usdALocal(tb, k.tasa));
     }
-    else if (b.dataset.borrar) { e.centavos = 0; e.entrega = 'local'; }
+    else if (b.dataset.borrar) { e.centavos = 0; e.entrega = entregaInicial; }
     else if (b.dataset.entrega) { e.entrega = b.dataset.entrega === 'usd' ? 'usd' : 'local'; }
     pintar(modo);
     volverAlEscaner(modo);
@@ -297,7 +324,7 @@
       if (!ctx.visible || !(EST[modo].centavos > 0)) return null;
       const r = calcular(modo);
       if (r.estado !== 'falta') return null;
-      const falt = r.soloBase ? `$ ${fmt(d(r.faltaC))}` : `${r.k.simLocal} ${fmt(d(r.faltaLocalC))}`;
+      const falt = (r.soloBase || r.usdDirecto) ? `$ ${fmt(d(r.faltaC))}` : `${r.k.simLocal} ${fmt(d(r.faltaLocalC))}`;
       return `El efectivo recibido no alcanza: faltan ${falt}. Corrige "¿Con cuánto paga?" o bórralo.`;
     } catch (_) { return null; }
   }
@@ -335,5 +362,5 @@
     return [{ izq: 'Efectivo recibido', der: t.recibido.replace(/ \(tasa.*\)$/, '') }, { izq: 'Su vuelto', der: t.vuelto, negrita: true }];
   }
 
-  window.N360Vuelto = { refrescar, reset, error, nota, recordar, ticketHTML, lineas, _calcular: calcular, _estado: EST, _leerMonto: leerMonto };
+  window.N360Vuelto = { refrescar, reset, error, nota, recordar, ticketHTML, lineas, _calcular: calcular, _estado: EST, _leerMonto: leerMonto, _conv: { usdALocal, localAUsdArriba } };
 })();
