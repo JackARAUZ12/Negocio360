@@ -138,90 +138,95 @@
   #pos-barra button:disabled { opacity: .45; }
 }
 
-/* ===== Pantalla de COBRO (fija, sin bajar) ===== */
-#pos-cobro { display: none; }
-#modal-vr-pos.vr-pos.pos-en-cobro #pos-izq, #modal-vr-pos.vr-pos.pos-en-cobro #pos-der { display: none !important; }
-#modal-vr-pos.vr-pos.pos-en-cobro #pos-cobro { display: flex; }
-#pos-cobro { grid-column: 1 / -1; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg-app, var(--bg-hover)); }
-#pos-cobro-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 14px 18px; width: 100%; max-width: 1180px; margin: 0 auto; overflow: hidden; }
-#pos-cobro-izq, #pos-cobro-der { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; }
-.pos-cobro-tarjeta { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; }
-#pos-cobro-total { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-#pos-cobro-total small { display: block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
-#pos-cobro-total b { display: block; font-size: clamp(30px, 4.6vh, 44px); font-weight: 900; color: var(--accent); line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-#pos-cobro-total span { font-size: 12.5px; color: var(--text-muted); text-align: right; }
-#pos-cobro #vr-cliente-fila { margin-top: 0 !important; }
-#pos-cobro .form-section-title { margin: 2px 0 -4px !important; }
-#pos-cobro #vr-metodos-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-#pos-cobro #vr-metodos-grid > * { min-height: 58px; }
-#pos-cobro #vr-banco-elegir-wrap, #pos-cobro #vr-banco-elegido-wrap, #pos-cobro #vr-banco-comision-configurar-wrap, #pos-cobro #vr-banco-comision-resultado-wrap, #pos-cobro #vr-pago-separado-wrap { margin-top: 0 !important; }
-#pos-cobro .n360-vu { margin-top: 0; background: var(--bg-surface); border-radius: 16px; padding: 14px 16px; }
-#pos-cobro .n360-vu-bil button { min-height: clamp(44px, 6.2vh, 58px); font-size: 15px; }
-#pos-cobro .n360-vu-big { font-size: clamp(30px, 5vh, 46px); }
-#pos-cobro-info { display: none; text-align: center; color: var(--text-muted); font-size: 14px; padding: 26px 16px; border: 1.5px dashed var(--border); border-radius: 16px; background: var(--bg-surface); }
-#pos-cobro-info b { display: block; font-size: 18px; color: var(--text-primary); margin-bottom: 4px; }
-#pos-cobro-pie { flex: none; display: flex; gap: 10px; align-items: center; padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--bg-surface); }
-#pos-cobro-pie > div { width: 100%; max-width: 1180px; margin: 0 auto; display: flex; gap: 10px; align-items: center; }
-#pos-cobro-volver { min-height: 56px; padding: 0 18px; border-radius: 14px; border: 1.5px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-#modal-vr-pos.vr-pos #pos-cobro-pie #btn-vr-cobrar { flex: 1; justify-content: center; min-height: 56px; font-size: 18px; font-weight: 800; border-radius: 14px; }
-#pos-ir-cobro { flex: 1; min-height: 56px; border: 0; border-radius: 14px; background: var(--success); color: #fff; font: inherit; font-size: 17px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-#pos-ir-cobro:disabled { opacity: .45; cursor: not-allowed; }
+/* ===== Cobro fijo dentro de la barra del ticket (una sola pantalla) ===== */
+#pos-der-scroll { min-height: 96px; }
+#pos-pago { flex: none; display: flex; flex-direction: column; gap: 7px; padding: 8px 14px 6px; border-top: 1px solid var(--border); background: var(--bg-surface); box-shadow: 0 -10px 18px -14px rgba(0,0,0,.35); max-height: 74%; overflow-y: auto; scrollbar-width: thin; }
+#pos-pago > .pos-totales { max-width: none !important; margin: 0 !important; }
+#pos-pago .resumen-row { padding: 1px 0; font-size: 12.5px; border-bottom: 0; }
+#pos-pago .resumen-row.total-row { border-top: 0; padding-top: 0; margin-top: 0; }
+#pos-pago .resumen-row.total-row .label { font-size: 13px !important; }
+#modal-vr-pos.vr-pos #pos-pago #vr-res-total { font-size: clamp(22px, 3.4vh, 28px); font-weight: 900; }
+#pos-pago #vr-res-promociones-aviso { margin-bottom: 2px !important; }
+#pos-pago #vr-res-promociones-aviso:empty { display: none; }
+#pos-pago #vr-cliente-fila { margin-top: 0 !important; padding: 5px 8px 5px 10px !important; }
+#pos-pago #vr-cliente-fila .btn-sm { padding: 5px 12px; }
+#pos-pago .form-section-title { display: none; }
+#pos-pago #vr-metodos-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; }
+#pos-pago #vr-metodos-grid > * { min-height: 46px; padding: 5px 4px !important; flex-direction: column; gap: 1px !important; text-align: center; justify-content: center; }
+#pos-pago #vr-metodos-grid .mc-icon { font-size: 16px; }
+#pos-pago #vr-metodos-grid .mc-name { font-size: 11.5px; line-height: 1.15; overflow-wrap: normal; word-break: normal; hyphens: auto; }
+#pos-pago #vr-banco-elegir-wrap, #pos-pago #vr-banco-elegido-wrap, #pos-pago #vr-banco-comision-configurar-wrap, #pos-pago #vr-banco-comision-resultado-wrap, #pos-pago #vr-pago-separado-wrap { margin-top: 0 !important; }
+#pos-pago #vr-banco-elegido-wrap { padding: 8px 12px !important; }
+#pos-pago #vr-banco-elegir-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+#pos-pago #vr-banco-elegir-grid > * { min-height: 42px; padding: 6px 10px !important; }
+/* "¿Con cuánto paga?" compacto */
+#pos-pago .n360-vu { position: relative; margin: 0; padding: 8px 10px; border-radius: 12px; }
+#pos-pago .n360-vu-cab { margin-bottom: 6px; min-height: 28px; align-items: center; padding-right: 150px; }
+#pos-pago .n360-vu-cab b { font-size: 13px; }
+#pos-pago .n360-vu-cab > span { display: none; }
+#pos-pago .n360-vu-cab > span:has(.n360-vu-sub) { display: block; width: 100%; font-size: 11.5px; }   /* pagando en la otra moneda: cuánto es en esa moneda */
+#pos-pago .n360-vu-mon { position: absolute; top: 6px; right: 8px; margin: 0; padding: 2px; }
+#pos-pago .n360-vu-mon button { min-height: 28px; padding: 2px 11px; font-size: 12.5px; }
+#pos-pago .n360-vu-bil { gap: 5px; margin-bottom: 5px; }
+#pos-pago .n360-vu-bil button { min-height: clamp(34px, 4.6vh, 42px); padding: 4px 2px; font-size: 13.5px; }
+#pos-pago .n360-vu-fila input, #pos-pago .n360-vu-fila button { min-height: 36px; }
+#pos-pago .n360-vu-fila input { font-size: 15px; }
+#pos-pago .n360-vu-fila input::placeholder { font-size: 12.5px; font-weight: 600; }
+#pos-pago .n360-vu-res { margin-top: 5px; padding: 6px 8px; font-size: 12px; }
+#pos-pago .n360-vu-res.ok { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; text-align: left; }
+#pos-pago .n360-vu-res.ok .n360-vu-lbl { grid-column: 1; }
+#pos-pago .n360-vu-res.ok .n360-vu-big { grid-column: 2; text-align: right; font-size: clamp(22px, 3.4vh, 28px); margin: 0; }
+#pos-pago .n360-vu-res.ok .n360-vu-sub { grid-column: 1 / -1; text-align: right; font-size: 11px; }
+#pos-pago .n360-vu-res.ok .n360-vu-ops { grid-column: 1 / -1; margin-top: 5px; gap: 5px; }
+#pos-pago .n360-vu-ops button { min-height: 36px; padding: 3px 4px; font-size: 12px; }
+#pos-pago .n360-vu-ops button small { font-size: 10.5px; }
+#pos-pago .n360-vu-res.falta, #pos-pago .n360-vu-res.exacto { font-size: 14px; }
+#pos-pago .n360-vu-hint:not(:has(button)) { display: none; }
+#pos-pago .n360-vu-hint { margin-top: 4px; }
+#modal-vr-pos.vr-pos #pos-der > .modal-footer { padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); }
+#modal-vr-pos.vr-pos #btn-vr-cobrar { min-height: 52px; }
+#pos-pago > .pos-totales.pos-sin-sub > .resumen-row:first-child { display: none; }   /* sin IVA ni descuentos, subtotal = total */
+@media (min-width: 900px) {
+  .pos-lin { padding: 6px 2px; gap: 2px 10px; }
+  .pos-step button { width: 30px; height: 28px; font-size: 16px; }
+  .pos-step input { width: 46px; height: 28px; font-size: 13.5px; }
+  .pos-lin .pl-pre { padding: 2px 4px; }
+  .pos-lin .pl-del { width: 30px; height: 28px; }
+  .pos-lin .pl-pre-in { height: 28px; }
+}
+@media (max-height: 820px) {
+  #modal-vr-pos.vr-pos .modal-header { padding: 6px 14px; }
+  #pos-pago .n360-vu-res.ok .n360-vu-sub { display: none; }
+  #pos-pago #vr-metodos-grid > * { min-height: 42px; }
+  #pos-pago .n360-vu-bil button { min-height: 34px; }
+}
+@media (max-height: 760px) {
+  #modal-vr-pos.vr-pos .modal-header { padding: 6px 14px; }
+  #pos-pago { gap: 5px; padding-top: 6px; }
+  #pos-pago .n360-vu-res.ok .n360-vu-sub { display: none; }
+  #modal-vr-pos.vr-pos #btn-vr-cobrar { min-height: 48px; }
+}
 @media (max-width: 899px) {
-  #pos-cobro-cuerpo { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 8px 10px; overflow-y: auto; display: flex; flex-direction: column; }
-  #pos-cobro-izq, #pos-cobro-der { overflow: visible; gap: 8px; flex: none; }
-  #pos-cobro .form-section-title { display: none; }
-  #pos-cobro-total { padding: 8px 12px; }
-  #pos-cobro-total small { font-size: 10.5px; }
-  #pos-cobro-total b { font-size: 28px; }
-  #pos-cobro #vr-cliente-fila { padding: 6px 10px !important; }
-  #pos-cobro #vr-cliente-fila .btn-sm { padding: 6px 10px; }
-  #pos-cobro #vr-metodos-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-  #pos-cobro #vr-metodos-grid > * { min-height: 54px; padding: 6px 4px !important; flex-direction: column; gap: 2px !important; font-size: 11.5px; line-height: 1.15; text-align: center; justify-content: center; }
-  #pos-cobro #vr-metodos-grid .mc-icon { font-size: 18px; }
-  #pos-cobro #vr-metodos-grid .mc-name { font-size: 11.5px; overflow-wrap: normal; word-break: normal; hyphens: auto; }
-  #pos-cobro .pos-cobro-tarjeta, #pos-cobro .n360-vu { padding: 8px 10px; border-radius: 14px; }
-  #pos-cobro .n360-vu-cab { margin-bottom: 6px; }
-  #pos-cobro .n360-vu-mon { margin-bottom: 6px; }
-  #pos-cobro .n360-vu-mon button { min-height: 32px; padding: 4px 12px; }
-  #pos-cobro .n360-vu-bil { gap: 5px; margin-bottom: 6px; }
-  #pos-cobro .n360-vu-bil button { min-height: 42px; padding: 6px 2px; font-size: 14px; }
-  #pos-cobro .n360-vu-fila input, #pos-cobro .n360-vu-fila button { min-height: 40px; }
-  #pos-cobro .n360-vu-res { margin-top: 6px; padding: 8px; }
-  #pos-cobro .n360-vu-big { font-size: 28px; }
-  #pos-cobro .n360-vu-ops { margin-top: 6px; }
-  #pos-cobro .n360-vu-ops button { min-height: 42px; padding: 5px; }
-  #pos-cobro .n360-vu-hint:not(:has(button)) { display: none; }
-  #pos-cobro .n360-vu-fila input::placeholder { font-size: 13px; font-weight: 600; }
-  #pos-cobro-pie { padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
-  #pos-cobro-volver { padding: 0 12px; min-height: 52px; }
-  #modal-vr-pos.vr-pos #pos-cobro-pie #btn-vr-cobrar { min-height: 52px; font-size: 16px; white-space: nowrap; }
+  #pos-pago { padding: 6px 10px 4px; max-height: 80%; }
 }
-@media (max-width: 400px) { #pos-cobro #vr-metodos-grid .mc-name { font-size: 10.5px; letter-spacing: -.01em; } }
-/* Celulares de pantalla baja (ej. 360×640, iPhone SE): todo más compacto para no tener que bajar */
+@media (max-width: 400px) { #pos-pago #vr-metodos-grid .mc-name { font-size: 10.5px; letter-spacing: -.01em; } }
 @media (max-width: 899px) and (max-height: 700px) {
-  #pos-cobro-total { padding: 5px 10px; }
-  #pos-cobro-total b { font-size: 22px; }
-  #pos-cobro #vr-cliente-fila { padding: 3px 8px !important; }
-  #pos-cobro #vr-cliente-fila .btn-sm { padding: 4px 10px; }
-  #pos-cobro #vr-metodos-grid > * { min-height: 44px; }
-  #pos-cobro #vr-metodos-grid .mc-icon { font-size: 15px; }
-  #pos-cobro .n360-vu-cab { margin-bottom: 4px; }
-  #pos-cobro .n360-vu-mon button { min-height: 28px; padding: 2px 10px; font-size: 12.5px; }
-  #pos-cobro .n360-vu-mon { margin-bottom: 4px; }
-  #pos-cobro .n360-vu-bil button { min-height: 36px; font-size: 13px; }
-  #pos-cobro .n360-vu-fila input, #pos-cobro .n360-vu-fila button { min-height: 36px; }
-  #pos-cobro .n360-vu-res { padding: 6px; }
-  #pos-cobro .n360-vu-res.ok .n360-vu-sub { display: none; }
-  #pos-cobro .n360-vu-big { font-size: 24px; }
-  #pos-cobro .n360-vu-ops button { min-height: 38px; }
-  #pos-cobro-pie { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
-  #modal-vr-pos.vr-pos #pos-cobro-pie #btn-vr-cobrar, #pos-cobro-volver { min-height: 48px; }
-  #modal-vr-pos.vr-pos.pos-en-cobro .modal-header { padding: 6px 12px; }
-}
-@media (max-height: 700px) and (min-width: 900px) {
-  #pos-cobro-cuerpo { padding: 10px 16px; gap: 12px; }
-  .pos-cobro-tarjeta, #pos-cobro .n360-vu { padding: 10px 14px; }
-  #pos-cobro .n360-vu-res { margin-top: 6px; padding: 8px; }
+  #pos-der-scroll { min-height: 54px; padding-top: 4px; padding-bottom: 4px; }
+  #modal-vr-pos.vr-pos .modal-header { padding: 4px 12px; }
+  #modal-vr-pos.vr-pos .modal-header .modal-subtitle { display: none; }
+  #pos-pago { gap: 5px; }
+  #pos-pago > .pos-totales > .resumen-row:first-child { display: none; }   /* subtotal: el total basta en pantallas bajas */
+  #pos-pago #vr-cliente-fila { padding: 3px 8px !important; }
+  #pos-pago .n360-vu { padding: 6px 8px; }
+  #pos-pago .n360-vu-fila input, #pos-pago .n360-vu-fila button { min-height: 32px; }
+  #pos-pago .n360-vu-ops button { min-height: 32px; }
+  #modal-vr-pos.vr-pos #pos-der > .modal-footer { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+  #modal-vr-pos.vr-pos #btn-vr-cobrar { min-height: 46px; }
+  #pos-pago .n360-vu-bil button { min-height: 32px; font-size: 13px; }
+  #pos-pago #vr-metodos-grid > * { min-height: 40px; }
+  #pos-pago #vr-metodos-grid .mc-icon { font-size: 14px; }
+  #modal-vr-pos.vr-pos #pos-der-cab { padding: 6px 10px; }
+  #modal-vr-pos.vr-pos #pos-der-cab button { padding: 7px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .pos-card { transition: none; } }
 `;
@@ -289,7 +294,7 @@
     ST.guardado.hijos.forEach(h => scroll.appendChild(h));
     der.appendChild(foot);
     body.appendChild(izq); body.appendChild(der);
-    armarCobro(body, foot);
+    armarPago(der, foot);
     // Lo que en la caja POS no hace falta (el buscador de la izquierda también lee el lector de barras)
     const scan = document.getElementById('vr-scan-input'); if (scan && scan.closest('.prod-search-wrap')) scan.closest('.prod-search-wrap').classList.add('pos-oculto');
     const tabla = document.querySelector('#modal-vr-pos .carrito-tabla'); if (tabla && tabla.parentElement) tabla.parentElement.classList.add('pos-oculto');
@@ -302,105 +307,35 @@
     const m = modal(); if (!m || !ST.guardado) return;
     const box = m.querySelector('.modal-box'), body = box.querySelector('.modal-body');
     const izq = document.getElementById('pos-izq'), der = document.getElementById('pos-der');
-    cerrarCobro(true);
+    const vu = document.getElementById('n360-vu-vr'); if (vu) vu.remove();     // se vuelve a crear en su lugar de siempre
+    const tot = document.querySelector('#pos-pago > .pos-totales'); if (tot) tot.classList.remove('pos-totales');
     ST.guardado.hijos.forEach(h => body.appendChild(h));          // mismo orden de siempre
     box.appendChild(ST.guardado.foot);
-    const b = document.getElementById('btn-vr-cobrar');
-    if (b) { ST.guardado.foot.insertBefore(b, ST.guardado.posCobrar || null); }        // el botón real vuelve a su lugar
-    if (ST.guardado.posCobrar) ST.guardado.posCobrar.remove();
-    if (b) { if (ST.guardado.cobrarHTML) b.innerHTML = ST.guardado.cobrarHTML; b.disabled = false; }
-    const vu = document.getElementById('n360-vu-vr'); if (vu) vu.remove();     // se vuelve a crear en su lugar de siempre
-    const cob = document.getElementById('pos-cobro'); if (cob) cob.remove();
+    const b = document.getElementById('btn-vr-cobrar'); if (b) { if (ST.guardado.cobrarHTML) b.innerHTML = ST.guardado.cobrarHTML; b.disabled = false; }
     if (izq) izq.remove(); if (der) der.remove();
     m.querySelectorAll('.pos-oculto').forEach(el => el.classList.remove('pos-oculto'));
     ST.guardado = null;
   }
 
-  /* ---------------- Pantalla de COBRO ----------------
-     Mueve (sin cambiar ids ni funciones) lo del pago a una pantalla fija:
-     cliente, método de pago, bancos, pago separado, "¿Con cuánto paga?" y el
-     botón REAL de cobro (btn-vr-cobrar → iniciarConfirmarVentaRapida). */
-  function armarCobro(body, foot) {
-    const cob = document.createElement('section');
-    cob.id = 'pos-cobro';
-    cob.setAttribute('aria-label', 'Cobrar');
-    cob.innerHTML = `
-      <div id="pos-cobro-cuerpo">
-        <div id="pos-cobro-izq">
-          <div class="pos-cobro-tarjeta" id="pos-cobro-total"><div><small>Total a cobrar</small><b id="pos-cobro-monto">${fmtM(0)}</b></div><span id="pos-cobro-cant"></span></div>
-        </div>
-        <div id="pos-cobro-der"><div id="pos-cobro-info"></div></div>
-      </div>
-      <div id="pos-cobro-pie"><div><button type="button" id="pos-cobro-volver">‹ Volver</button></div></div>`;
-    body.appendChild(cob);
-    const izqC = cob.querySelector('#pos-cobro-izq'), derC = cob.querySelector('#pos-cobro-der');
-    // Izquierda: cliente, método de pago y bancos. Derecha: pago separado (y el vuelto, que se ubica solo).
-    ['vr-cliente-fila'].forEach(id => { const el = document.getElementById(id); if (el) izqC.appendChild(el); });
+  /* ---------------- Cobro fijo en la barra del ticket ----------------
+     Una sola pantalla: arriba de la barra la lista del ticket (lo único que se
+     mueve si hay muchos productos); abajo, fijo, total, cliente, método de pago,
+     bancos, "¿Con cuánto paga?" y COBRAR. Solo se MUEVEN los elementos de
+     siempre (mismos ids y funciones) y se devuelven al salir. */
+  function armarPago(der, foot) {
+    const pago = document.createElement('div');
+    pago.id = 'pos-pago';
+    der.insertBefore(pago, foot);
+    const resTot = document.getElementById('vr-res-total');
+    const bloqueTot = resTot && resTot.closest('#pos-der-scroll > div');
+    if (bloqueTot) { bloqueTot.classList.add('pos-totales'); pago.appendChild(bloqueTot); }
+    const mover = id => { const el = document.getElementById(id); if (el) pago.appendChild(el); };
+    mover('vr-cliente-fila');
     const tit = Array.from(document.querySelectorAll('#pos-der-scroll .form-section-title')).find(t => /m[eé]todo de pago/i.test(t.textContent));
-    if (tit) izqC.appendChild(tit);
-    ['vr-metodos-grid', 'vr-banco-elegir-wrap', 'vr-banco-elegido-wrap', 'vr-banco-comision-configurar-wrap', 'vr-banco-comision-resultado-wrap']
-      .forEach(id => { const el = document.getElementById(id); if (el) izqC.appendChild(el); });
-    const sep = document.getElementById('vr-pago-separado-wrap'); if (sep) derC.appendChild(sep);
-    const vu = document.getElementById('n360-vu-vr'); if (vu) derC.insertBefore(vu, derC.firstChild);
-    // El botón REAL de cobro pasa al pie de esta pantalla; en el ticket queda "Cobrar ›" que solo la abre.
-    const real = document.getElementById('btn-vr-cobrar');
-    const ir = document.createElement('button');
-    ir.type = 'button'; ir.id = 'pos-ir-cobro'; ir.disabled = true;
-    ir.textContent = 'Cobrar ›';
-    if (real) { foot.insertBefore(ir, real); cob.querySelector('#pos-cobro-pie > div').appendChild(real); }
-    else foot.appendChild(ir);
-    ST.guardado.posCobrar = ir;
-    ir.addEventListener('click', () => abrirCobro());
-    cob.querySelector('#pos-cobro-volver').addEventListener('click', () => cerrarCobro());
-    // Al elegir método o banco, la pantalla se actualiza (algunos pasos terminan después, por eso dos veces)
-    cob.addEventListener('click', ev => {
-      setTimeout(() => { if (ST.cobro) pintarCobro(); }, 0); setTimeout(() => { if (ST.cobro) pintarCobro(); }, 400);
-      // Pantallas muy chicas: que el vuelto calculado quede a la vista sin buscarlo
-      if (ev.target.closest('#n360-vu-vr')) setTimeout(() => { const r = document.querySelector('#n360-vu-vr .n360-vu-res'); if (r && r.scrollIntoView) r.scrollIntoView({ block: 'nearest' }); }, 60);
-    });
-  }
-  function enCobro() { return !!ST.cobro; }
-  function abrirCobro() {
-    if (!ST.activo || !(VR.carrito || []).length) return;
-    const m = modal(); if (!m) return;
-    ST.editando = null;
-    ST.cobro = true;
-    m.classList.add('pos-en-cobro');
-    try { if (window.N360Vuelto) N360Vuelto.refrescar('vr'); } catch (_) {}
-    pintarCobro();
-    const c = document.getElementById('pos-cobro-cuerpo'); if (c) c.scrollTop = 0;
-    if (pantallaGrande()) { const b = document.getElementById('btn-vr-cobrar'); if (b) b.focus({ preventScroll: true }); }
-  }
-  function cerrarCobro(silencioso) {
-    if (!ST.cobro) return;
-    ST.cobro = false;
-    const m = modal(); if (m) m.classList.remove('pos-en-cobro');
-    try { if (window.N360Vuelto) N360Vuelto.refrescar('vr'); } catch (_) {}
-    if (!silencioso) enfocar();
-  }
-  // Lo que se ve en la pantalla de cobro según el método elegido
-  function pintarCobro() {
-    let total = 0, n = 0;
-    try { total = Number(calcularResumenVR().total) || 0; } catch (_) {}
-    (VR.carrito || []).forEach(i => { n += Number(i.cantidad) || 0; });
-    const mo = document.getElementById('pos-cobro-monto'); if (mo) mo.textContent = fmtM(total);
-    const ca = document.getElementById('pos-cobro-cant'); if (ca) ca.textContent = `${fmtQ(n)} producto${n === 1 ? '' : 's'}`;
-    // El vuelto vive a la derecha
-    const derC = document.getElementById('pos-cobro-der'), vu = document.getElementById('n360-vu-vr');
-    if (derC && vu && vu.parentElement !== derC) derC.insertBefore(vu, derC.firstChild);
-    const info = document.getElementById('pos-cobro-info');
-    if (info) {
-      const vuVisible = vu && vu.style.display !== 'none';
-      const sepVisible = (document.getElementById('vr-pago-separado-wrap') || {}).style?.display !== 'none';
-      const nom = String(VR.metodoPagoNombre || '');
-      if (vuVisible || sepVisible) info.style.display = 'none';
-      else {
-        info.style.display = 'block';
-        info.innerHTML = /efectivo/i.test(nom)
-          ? `<b>💵 Efectivo</b>Toca <b style="display:inline;font-size:inherit">Confirmar cobro</b> para registrar la venta.`
-          : `<b>${esc(nom || 'Método de pago')}</b>${VR.bancoElegidoNombre ? `Entra a: <b style="display:inline;font-size:inherit">${esc(VR.bancoElegidoNombre)}</b>. ` : ''}Revisa el método y toca <b style="display:inline;font-size:inherit">Confirmar cobro</b>.`;
-      }
-    }
+    if (tit) pago.appendChild(tit);
+    mover('vr-metodos-grid');
+    const vu = document.getElementById('n360-vu-vr'); if (vu) pago.appendChild(vu);   // el vuelto va justo después de los métodos
+    ['vr-banco-elegir-wrap', 'vr-banco-elegido-wrap', 'vr-banco-comision-configurar-wrap', 'vr-banco-comision-resultado-wrap', 'vr-pago-separado-wrap'].forEach(mover);
   }
 
   /* ---------------- Pintar ---------------- */
@@ -495,14 +430,12 @@
     try { total = Number(calcularResumenVR().total) || 0; } catch (_) {}
     items.forEach(i => { n += Number(i.cantidad) || 0; });
     const b = document.getElementById('btn-vr-cobrar');
-    if (b && !VR.procesando) {
-      b.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="20 6 9 17 4 12"/></svg> Confirmar cobro ${fmtM(total)}`;
+    if (b) {
+      b.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="20 6 9 17 4 12"/></svg> Cobrar ${fmtM(total)}`;
       b.disabled = !items.length;
     }
-    const ir = document.getElementById('pos-ir-cobro');
-    if (ir) { ir.textContent = `Cobrar ${fmtM(total)} ›`; ir.disabled = !items.length; }
-    if (!items.length && ST.cobro) cerrarCobro(true);      // venta registrada (o ticket vaciado): de vuelta a vender
-    if (ST.cobro) pintarCobro();
+    const tot = document.querySelector('#pos-pago > .pos-totales');
+    if (tot) { const sub = document.getElementById('vr-res-subtotal'), tt = document.getElementById('vr-res-total'); tot.classList.toggle('pos-sin-sub', !!(sub && tt && sub.textContent.trim() === tt.textContent.trim())); }
     const bt = document.getElementById('pos-barra-total'); if (bt) bt.textContent = fmtM(total);
     const bc = document.getElementById('pos-barra-cant'); if (bc) bc.textContent = items.length ? `${fmtQ(n)} producto${n === 1 ? '' : 's'} en el ticket` : 'Sin productos';
     const bb = document.getElementById('pos-barra-btn'); if (bb) bb.disabled = !items.length;
@@ -550,8 +483,7 @@
       const card = ev.target.closest('.pos-card'); if (card) { agregar(card.dataset.id); return; }
       const cat = ev.target.closest('[data-cat]'); if (cat) { ST.cat = cat.dataset.cat; pintarCats(); pintarGrid(); const g = document.getElementById('pos-grid'); if (g) g.scrollTop = 0; return; }
       const v = ev.target.closest('[data-vista]'); if (v) { ST.vista = v.dataset.vista; lsSet('n360_pos_vista', ST.vista); pintarGrid(); return; }
-      if (ev.target.closest('#pos-barra-btn')) { abrirCobro(); return; }
-      if (ev.target.closest('#pos-barra .pb-info')) { if ((VR.carrito || []).length) verTicket(true); return; }
+      if (ev.target.closest('#pos-barra-btn')) { verTicket(true); return; }
     });
     der.addEventListener('click', ev => {
       if (ev.target.closest('#pos-volver')) { verTicket(false); return; }
@@ -584,24 +516,8 @@
   document.addEventListener('keydown', ev => {
     if (!ST.activo) return;
     const m = modal(); if (!m || !m.classList.contains('modal-open')) return;
-    if (document.querySelector('.modal-overlay.modal-open:not(#modal-vr-pos)')) return;   // otra ventana encima (cliente, series…)
-    if (ev.key === 'F2') { ev.preventDefault(); cerrarCobro(true); verTicket(false); const i = document.getElementById('pos-buscar'); if (i) { i.focus(); i.select(); } return; }
-    if (ev.key === 'F12') {
-      ev.preventDefault();
-      if (!ST.cobro) { abrirCobro(); return; }
-      const b = document.getElementById('btn-vr-cobrar'); if (b && !b.disabled) b.click(); return;
-    }
-    if (!ST.cobro) return;
-    if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); cerrarCobro(); return; }
-    const t = ev.target, escribiendo = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-    if (ev.key === 'Enter' && !escribiendo && !(t && t.tagName === 'BUTTON')) {
-      ev.preventDefault(); const b = document.getElementById('btn-vr-cobrar'); if (b && !b.disabled) b.click(); return;
-    }
-    // Números con el teclado: van directo a "¿Con cuánto paga?"
-    if (!escribiendo && !ev.ctrlKey && !ev.metaKey && !ev.altKey && /^[0-9]$/.test(ev.key)) {
-      const inp = document.querySelector('#n360-vu-vr input');
-      if (inp) { ev.preventDefault(); inp.focus(); inp.value = (inp.value || '') + ev.key; inp.dispatchEvent(new Event('input', { bubbles: true })); }
-    }
+    if (ev.key === 'F2') { ev.preventDefault(); verTicket(false); const i = document.getElementById('pos-buscar'); if (i) { i.focus(); i.select(); } }
+    else if (ev.key === 'F12') { ev.preventDefault(); const b = document.getElementById('btn-vr-cobrar'); if (b && !b.disabled) b.click(); }
   });
 
   function inpPlaceholder(izq) { const i = izq.querySelector('#pos-buscar'); if (i) i.placeholder = 'Buscar o escanear…'; }
@@ -613,15 +529,15 @@
     const tit = m.querySelector('.modal-title');
     if (esPOS) {
       if (!armar()) return;
-      ST.activo = true; ST.editando = null; verTicket(false); cerrarCobro(true);
+      ST.activo = true; ST.editando = null; verTicket(false);
       m.classList.add('vr-pos');
       if (tit) tit.textContent = '⚡ Venta rápida';
       pintarCats(); pintarGrid(); pintarTicket();
+      try { if (window.N360Vuelto) N360Vuelto.refrescar('vr'); } catch (_) {}   // el vuelto pasa a su versión fija
       cargarExtra();
     } else {
-      cerrarCobro(true);
       ST.activo = false;
-      m.classList.remove('vr-pos', 'pos-ver-ticket', 'pos-en-cobro');
+      m.classList.remove('vr-pos', 'pos-ver-ticket');
       desarmar();
       if (tit) tit.textContent = 'Venta con lector';
     }
@@ -646,7 +562,6 @@
   // A dónde va el cursor (en computadora, al buscador; en celular no se abre el teclado solo)
   function enfocar() {
     if (!ST.activo) return false;
-    if (ST.cobro) return true;   // en la pantalla de cobro no se mueve el cursor al buscador
     if (pantallaGrande() && !ST.editando) { const i = document.getElementById('pos-buscar'); if (i && document.activeElement !== i) i.focus(); }
     return true;
   }
@@ -682,5 +597,7 @@
     } catch (e) { console.warn('POS verificar stock:', e); return null; }
   }
 
-  window.N360POS = { modo, refrescar, enfocar, verificarStock, activo: () => ST.activo, enCobro, abrirCobro, cerrarCobro, _st: ST };
+  // enCobro: con la caja POS el cobro siempre está a la vista (el vuelto va abierto, en versión compacta)
+  window.N360POS = { modo, refrescar, enfocar, verificarStock, activo: () => ST.activo, enCobro: () => ST.activo,
+    abrirCobro: () => { if (ST.activo && (VR.carrito || []).length && !pantallaGrande()) verTicket(true); }, cerrarCobro: () => verTicket(false), _st: ST };
 })();
