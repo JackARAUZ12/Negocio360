@@ -208,6 +208,16 @@ async function tpnCargarInicio() {
     ]);
     TPN.datos = { pend, asig, ruta, entregadasSinCobro, unidades, conductores, rutas, clientes };
   } catch (e) { console.warn('inicio transporte:', e); TPN.datos = {}; }
+  // Tracking: viajes en demora y viajes en ruta sin actualizar (solo lectura)
+  try {
+    if (window.TXTrack) {
+      const { data: os } = await sb.from('transporte_ordenes').select('id,numero,estado,dias_libres,salida_real').eq('auth_user_id', uid).in('estado', ['asignada', 'en_ruta']);
+      if ((os || []).length) {
+        const { data: fs } = await sb.from('transporte_tracking').select('orden_id,fecha_hora,hito').eq('auth_user_id', uid).in('orden_id', os.map(o => o.id));
+        TPN.datos.trk = TXTrack.alertas(os, fs || []);
+      }
+    }
+  } catch (e) { console.warn('tracking en el panel:', e); }
   tpnPintarCiclo(); tpnPintarPreparar(); tpnPintarPendientes();
 }
 function tpnContar() {
@@ -240,7 +250,9 @@ function tpnPintarPreparar() {
       <button type="button" class="${i.ok ? 'btn-secondary' : 'btn-primary'} tpn-btn-sm" onclick="${i.ir}">${esc(i.btn)}</button></div>`).join('');
 }
 function tpnPintarPendientes() {
-  const n = tpnContar(), items = [];
+  const n = tpnContar(), items = [], trk = (TPN.datos || {}).trk;
+  if (trk && trk.demoras.length && tpnSub('ordenes')) items.push({ t: `🔴 ${trk.demoras.length} viaje${trk.demoras.length === 1 ? '' : 's'} en demora (${trk.demoras[0].o.numero}: ${trk.demoras[0].texto})`, ir: "tpnIrSub('ordenes')" });
+  if (trk && trk.sinAct.length && tpnSub('ordenes')) items.push({ t: `🕑 ${trk.sinAct.length} viaje${trk.sinAct.length === 1 ? '' : 's'} en ruta sin actualizar el tracking hace más de 12 h`, ir: "tpnIrSub('ordenes')" });
   if (n[5] && tpnSub('cobros')) items.push({ t: `💳 ${n[5]} viaje${n[5] === 1 ? '' : 's'} entregado${n[5] === 1 ? '' : 's'} sin cobrar`, ir: 'tpnIrPaso(5)' });
   if (n[1] && tpnSub('ordenes')) items.push({ t: `📋 ${n[1]} orden${n[1] === 1 ? '' : 'es'} sin unidad ni conductor`, ir: 'tpnIrPaso(1)' });
   if (n[3] && tpnSub('entregas')) items.push({ t: `🚦 ${n[3]} viaje${n[3] === 1 ? '' : 's'} en ruta: registra la entrega al llegar`, ir: 'tpnIrPaso(4)' });

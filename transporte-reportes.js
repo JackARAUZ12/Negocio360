@@ -25,6 +25,7 @@ async function cargarTodo() {
   ]);
   Object.assign(RP, { ordenes, costos, rutas, unidades, conductores, mant, incs });
   try { RP.liqOrd = await q('transporte_liquidacion_ordenes'); } catch (_) { RP.liqOrd = []; }
+  try { RP.tracking = await q('transporte_tracking'); } catch (_) { RP.tracking = []; }
   try { RP.subOrd = await TX.paginar(() => sb.from('transporte_subcontrataciones').select('*').eq('auth_user_id', TX.userId).eq('estado', 'activa')); } catch (_) { RP.subOrd = []; }
 }
 
@@ -130,6 +131,40 @@ function vistaIncidencias(d) {
   return `<div class="tx-ayuda" style="margin-bottom:8px">${prom != null ? `Tiempo promedio para resolver: ${nfmt(prom, 1)} día(s).` : 'Aún no hay incidencias resueltas para medir el tiempo de resolución.'}</div>`
     + tabla('Incidencias por tipo', [{ k: 'n', n: 'Tipo' }, { k: 'c', n: 'Cantidad', t: 'num' }, { k: 'ab', n: 'Sin resolver', t: 'num' }, { k: 'cost', n: 'Costo estimado', t: 'money' }, { k: 'rec', n: 'Reclamado', t: 'money' }], filas, 'Sin incidencias en este periodo');
 }
+/* ---------------- Demoras (Tracking) ----------------
+   Viajes cuyo "Cargando" cae en el periodo. Días en bloques de 24 h de
+   "Cargando" a "Descarga completa" (en curso: hasta ahora). Mismo cálculo
+   que la pestaña Tracking de la orden (TXTrack.demora). Solo lee. */
+function vistaDemoras(d) {
+  if (!window.TXTrack) return '<div class="tx-vacio"><b>No se pudo cargar el tracking.</b><p>Recarga la página.</p></div>';
+  const porOrden = {}; (RP.tracking || []).forEach(f => { (porOrden[f.orden_id] = porOrden[f.orden_id] || []).push(f); });
+  const ahora = new Date(), h1 = n => Math.round(n * 10) / 10;
+  const viajes = RP.ordenes.filter(o => o.estado !== 'cancelada' && porOrden[o.id]).map(o => ({ o, dm: TXTrack.demora(o, ahora, porOrden[o.id]) }))
+    .filter(x => x.dm.ini && enRango(TX.ymd(x.dm.ini), d.r));
+  const unidad = o => { const u = RP.unidades.find(x => x.id === o.unidad_id); return u ? u.nombre + (u.placa ? ' · ' + u.placa : '') : (o.subcontratada ? 'Transportista externo' : 'Sin unidad'); };
+  const ff = x => x ? x.toLocaleDateString('es-NI', { day: '2-digit', month: 'short' }) + ' ' + x.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : '';
+  const filas = viajes.map(({ o, dm }) => ({
+    n: o.numero || '', cli: o.cliente_nombre || 'Sin cliente', uni: unidad(o), ini: ff(dm.ini), fin: dm.fin ? ff(dm.fin) : 'En curso',
+    lib: dm.libres == null ? '—' : dm.libres, uso: h1(dm.horas / 24),
+    dem: dm.libres == null ? '—' : (dm.excesoH > 0 ? TXTrack.durTxt(dm.excesoH) : 'Sin demora'),
+    dfr: dm.libres == null ? '—' : dm.demoraFraccion, _ex: dm.libres == null ? 0 : Math.max(0, dm.excesoH),
+  })).sort((a, b) => b._ex - a._ex);
+  const conLib = viajes.filter(x => x.dm.libres != null), conDem = conLib.filter(x => x.dm.excesoH > 0);
+  const totFr = conDem.reduce((s, x) => s + x.dm.demoraFraccion, 0), totH = conDem.reduce((s, x) => s + x.dm.excesoH, 0);
+  const grupo = (clave) => { const m = new Map(); viajes.forEach(({ o, dm }) => { const k = clave(o); const g = m.get(k) || { n: k, v: 0, dem: 0, dfr: 0, h: 0 }; g.v++; if (dm.libres != null && dm.excesoH > 0) { g.dem++; g.dfr += dm.demoraFraccion; g.h += dm.excesoH; } m.set(k, g); });
+    return [...m.values()].map(g => ({ ...g, hd: g.h > 0 ? TXTrack.durTxt(g.h) : '—' })).sort((a, b) => b.h - a.h); };
+  const colsG = n => [{ k: 'n', n }, { k: 'v', n: 'Viajes', t: 'num' }, { k: 'dem', n: 'Con demora', t: 'num' }, { k: 'hd', n: 'Demora total' }, { k: 'dfr', n: 'Días a cobrar (día o fracción)', t: 'num' }];
+  const kp = `<div class="tx-kpis" style="margin-bottom:10px">
+      <div class="tx-kpi"><span>Viajes con tracking</span><b>${viajes.length}</b><small>“Cargando” dentro del periodo</small></div>
+      <div class="tx-kpi ${conDem.length ? 'alerta' : ''}"><span>Viajes con demora</span><b>${conDem.length}</b><small>de ${conLib.length} con días libres</small></div>
+      <div class="tx-kpi"><span>Demora acumulada</span><b>${conDem.length ? esc(TXTrack.durTxt(totH)) : '—'}</b><small>${totFr} día(s) contando día o fracción</small></div></div>
+    <div class="tx-ayuda" style="margin-bottom:8px">Días en bloques de 24 h, de “Cargando” a “Descarga completa”; los viajes en curso se cuentan hasta ahora. ${viajes.length - conLib.length ? `${viajes.length - conLib.length} viaje(s) no tienen días libres y no suman demora.` : ''}</div>`;
+  if (!viajes.length) { RP.tabla = null; return kp + '<div class="tx-vacio"><div class="tx-vacio-i">⏱</div><b>Sin viajes con tracking en este periodo</b><p>Registra “Cargando” en la pestaña 📍 Tracking de cada orden.</p></div>'; }
+  const gCli = tabla('Demoras por cliente', colsG('Cliente'), grupo(o => o.cliente_nombre || 'Sin cliente'));
+  const gUni = tabla('Demoras por unidad', colsG('Unidad'), grupo(unidad));
+  const det = tabla('Demoras por viaje', [{ k: 'n', n: 'Orden' }, { k: 'cli', n: 'Cliente' }, { k: 'uni', n: 'Unidad' }, { k: 'ini', n: 'Inicio de carga' }, { k: 'fin', n: 'Fin de descarga' }, { k: 'lib', n: 'Días libres' }, { k: 'uso', n: 'Días usados', t: 'num', d: 1 }, { k: 'dem', n: 'Demora' }, { k: 'dfr', n: 'Días a cobrar (día o fracción)' }], filas);
+  return `${kp}<div class="tx-sec">Por cliente</div>${gCli}<div class="tx-sec">Por unidad</div>${gUni}<div class="tx-sec">Detalle por viaje <small style="font-weight:500;color:var(--text-muted)">(es la tabla que se exporta)</small></div>${det}`;
+}
 function render() {
   document.querySelectorAll('[data-rp-vista]').forEach(b => b.classList.toggle('on', b.dataset.rpVista === RP.vista));
   const d = datos(); renderKpis(d); const el = $('rp-vista');
@@ -141,12 +176,13 @@ function render() {
       .map(f => ({ ...f, inc: d.incs.filter(i => i.conductor_id === f.k).length }));
     el.innerHTML = tabla('Por conductor', [...COLS_BASE.map(c => c.k === 'n' ? { ...c, n: 'Conductor' } : c), { k: 'inc', n: 'Incidencias', t: 'num' }], filas);
   } else if (RP.vista === 'incidencias') el.innerHTML = vistaIncidencias(d);
+  else if (RP.vista === 'demoras') el.innerHTML = vistaDemoras(d);
   else el.innerHTML = vistaResumen(d);
 }
 
 /* ---------------- Exportar ---------------- */
 function csv() {
-  if (!RP.tabla) { TX.toast('Abre Clientes, Rutas, Unidades, Conductores o Incidencias para exportar su tabla.', 'error'); return; }
+  if (!RP.tabla) { TX.toast('Abre Clientes, Rutas, Unidades, Conductores, Incidencias o Demoras para exportar su tabla.', 'error'); return; }
   const { titulo, cols, filas } = RP.tabla, q = v => { const s = v == null ? '' : String(v); return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const l = [cols.map(c => q(c.n)).join(',')].concat(filas.map(f => cols.map(c => q(f[c.k])).join(',')));
   const blob = new Blob(['﻿' + l.join('\n')], { type: 'text/csv;charset=utf-8' });

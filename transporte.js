@@ -254,6 +254,17 @@ async function cargarKpis() {
     const l = data || [];
     return { pend: l.filter(x => x.estado === 'pendiente').length, asig: l.filter(x => x.estado === 'asignada').length, ruta: l.filter(x => x.estado === 'en_ruta').length };
   });
+  // Tracking: viajes en demora y viajes en ruta sin actualizar (solo avisos; solo lee)
+  const trk = window.TXTrack ? await intentar(async () => {
+    const { data: os, error: e1 } = await sb.from('transporte_ordenes').select('id,numero,estado,dias_libres,salida_real,cliente_nombre').eq('auth_user_id', TP.userId).in('estado', ['asignada', 'en_ruta']);
+    if (e1) throw e1;
+    if (!(os || []).length) return { demoras: [], sinAct: [] };
+    const { data: fs, error: e2 } = await sb.from('transporte_tracking').select('orden_id,fecha_hora,hito').eq('auth_user_id', TP.userId).in('orden_id', os.map(o => o.id));
+    if (e2) throw e2;
+    return TXTrack.alertas(os, fs || []);
+  }) : null;
+  if (trk && trk.sinAct.length) kpis.unshift(card('🕑', 'var(--warning-soft)', 'Sin actualizar', `${trk.sinAct.length} viaje${trk.sinAct.length === 1 ? '' : 's'}`, 'En ruta, más de 12 h sin tracking', 'transporte-ordenes.html'));
+  if (trk && trk.demoras.length) kpis.unshift(card('🔴', 'var(--danger-soft)', 'Viajes en demora', `${trk.demoras.length} viaje${trk.demoras.length === 1 ? '' : 's'}`, esc(`${trk.demoras[0].o.numero}: ${trk.demoras[0].texto} de demora`), 'transporte-ordenes.html'));
   kpis.unshift(card('📋', 'var(--success-soft)', 'Órdenes activas', ords == null ? nd : String(ords.pend + ords.asig + ords.ruta), ords == null ? 'Órdenes' : `${ords.ruta} en ruta · ${ords.pend} por asignar`, 'transporte-ordenes.html'));
   kpis.unshift(card('🧑‍✈️', 'var(--accent-soft)', 'Conductores', flota == null ? nd : String(flota.conductores), flota == null ? 'Conductores' : `${flota.conductoresDisp} disponibles`, 'conductores.html'));
   kpis.unshift(card('🚛', 'var(--accent-soft)', 'Flota', flota == null ? nd : String(flota.unidades), flota == null ? 'Flota' : `${flota.disponibles} disponibles`, 'flota.html'));

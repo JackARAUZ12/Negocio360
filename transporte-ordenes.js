@@ -138,6 +138,12 @@ function renderAvisos() {
   $('ot-avisos').innerHTML = tarde.length ? `<div class="tx-aviso-banda"><div style="font-size:22px">⏰</div><div><b>${tarde.length} orden(es) atrasada(s)</b>
     ${tarde.slice(0, 3).map(o => `<div><a href="#" data-ot-abrir="${esc(o.id)}" style="color:inherit;font-weight:700">${esc(o.numero)}</a> · ${esc(nombreCliente(o))} · programada ${esc(fmtFecha(o.fecha_programada))}</div>`).join('')}
     ${tarde.length > 3 ? `<div style="color:var(--text-secondary)">…y ${tarde.length - 3} más</div>` : ''}</div></div>` : '';
+  if (window.TXTrack) {
+    const al = TXTrack.alertas(OT.ordenes);
+    const lista = (arr, f) => arr.slice(0, 4).map(x => `<div><a href="#" data-ot-abrir="${esc(x.o.id)}" data-ot-abrir-tab="tracking" style="color:inherit;font-weight:700">${esc(x.o.numero)}</a> · ${esc(nombreCliente(x.o))} · ${f(x)}</div>`).join('') + (arr.length > 4 ? `<div style="color:var(--text-secondary)">…y ${arr.length - 4} más</div>` : '');
+    if (al.demoras.length) $('ot-avisos').innerHTML += `<div class="tx-aviso-banda" style="border-color:var(--danger);background:var(--danger-soft)"><div style="font-size:22px">🔴</div><div><b>${al.demoras.length} viaje(s) en demora</b>${lista(al.demoras, x => `demora ${esc(x.texto)} (${esc(x.d.libres)} día(s) libres)`)}</div></div>`;
+    if (al.sinAct.length) $('ot-avisos').innerHTML += `<div class="tx-aviso-banda"><div style="font-size:22px">🕑</div><div><b>${al.sinAct.length} viaje(s) en ruta sin actualizar hace más de 12 h</b>${lista(al.sinAct, x => `último movimiento ${esc(x.texto)}`)}</div></div>`;
+  }
 }
 function tarjeta(o) {
   const u = unidadDe(o.unidad_id), c = condDe(o.conductor_id), hoy = TX.hoyISO();
@@ -518,6 +524,20 @@ async function guardarEntrega() {
     }
     await marcarEntidades(o, 'disponible', `Entregó ${o.numero}`);
     TX.cerrar('ot-modal-entrega'); TX.toast('Entrega registrada'); renderTodo();
+    // Tracking: si la carga empezó y aún no hay "Descarga completa", ofrece cerrar el conteo a la hora de la entrega.
+    try {
+      if (window.TXTrack) {
+        const d = TXTrack.demora(o), cuando = new Date(f);
+        if (d.ini && !d.fin && cuando >= d.ini) {
+          const ok = await TX.confirmar('¿Marcar “Descarga completa”?', `La entrega quedó registrada el ${cuando.toLocaleString('es-NI')}. ¿También marcar “Descarga completa” a esa hora para cerrar el conteo de días libres? Si descargaron a otra hora, toca “Cancelar” y regístralo en el Tracking con su hora real.`, 'Sí, marcar');
+          if (ok) {
+            const u = TXTrack.ultimo(o.id);
+            await TXTrack.agregar(o.id, { fecha_hora: cuando.toISOString(), estatus: 'Descarga completa', hito: 'fin_descarga', pais: (u && u.pais) || null, nota: 'Marcado al registrar la entrega' });
+            TX.toast('Descarga completa marcada en el tracking'); renderTodo();
+          }
+        }
+      }
+    } catch (eT) { console.warn('Tracking al entregar:', eT); TX.toast('La entrega se guardó, pero no se pudo marcar el tracking. Hazlo en la pestaña Tracking.', 'error'); }
   } catch (e) { console.error(e); $('oe-error').textContent = 'No se pudo registrar la entrega.'; }
   finally { btn.disabled = false; }
 }
@@ -666,7 +686,7 @@ function enlazar() {
     const t = e.target.closest('[data-ot-abrir],[data-ot-nueva],[data-ot-editar],[data-ot-vista],[data-ot-tab],[data-ot-asignar],[data-ot-iniciar],[data-ot-entregar],[data-ot-cancelar],[data-ot-borrar],[data-ot-costo-nuevo],[data-ot-costo-editar],[data-ot-costo-borrar],[data-ot-rec-del],[data-ot-cobrar]');
     if (!t) return; const d = t.dataset;
     if (e.target.closest('[data-trk-nuevo]')) return;   // botón rápido de tracking dentro de la tarjeta
-    if (d.otAbrir) { e.preventDefault(); abrirDetalle(d.otAbrir); }
+    if (d.otAbrir) { e.preventDefault(); abrirDetalle(d.otAbrir, d.otAbrirTab); }
     else if ('otNueva' in d) { OT.detalleId = null; abrirForm(null); }
     else if (d.otEditar) abrirForm(d.otEditar);
     else if (d.otVista) { OT.vista = d.otVista; renderVista(); }

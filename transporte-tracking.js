@@ -76,8 +76,8 @@
   }
 
   /* ---------------- días libres y demora (bloques de 24 h) ---------------- */
-  function demora(o, ahora) {
-    const fs = filasDe(o.id);
+  function demora(o, ahora, filasOrden) {
+    const fs = filasOrden || filasDe(o.id);
     const ini = fs.filter(f => f.hito === 'inicio_carga').map(f => new Date(f.fecha_hora)).sort((a, b) => a - b)[0] || null;
     const fin = ini ? (fs.filter(f => f.hito === 'fin_descarga' && new Date(f.fecha_hora) >= ini).map(f => new Date(f.fecha_hora)).sort((a, b) => a - b)[0] || null) : null;
     const libres = o.dias_libres == null || o.dias_libres === '' ? null : Number(o.dias_libres);
@@ -421,6 +421,32 @@
     else if (d.trkConfig) abrirConfig();
   });
 
-  const api = { cargar, eventos, demora, demoraTexto, chip, tab, abrirNuevo, abrirConfig, pdf, excel, cuantos: o => filasDe(o.id).length, _st: ST, alCambiar: null };
+  /* ---------------- alertas (Panel de Transporte y Órdenes) ---------------- */
+  // Viajes activos en demora (contando ahora) y viajes en ruta sin actualizar hace más de 12 h.
+  function alertas(ordenes, filas, ahora) {
+    const ya = ahora || new Date(), porOrden = {};
+    (filas || ST.filas).forEach(f => { (porOrden[f.orden_id] = porOrden[f.orden_id] || []).push(f); });
+    const demoras = [], sinAct = [];
+    (ordenes || []).filter(o => ['asignada', 'en_ruta'].includes(o.estado)).forEach(o => {
+      const fs = porOrden[o.id] || [];
+      const d = demora(o, ya, fs);
+      if (d.estado === 'en_curso' && d.libres != null && d.excesoH > 0) demoras.push({ o, d, texto: durTxt(d.excesoH) });
+      if (o.estado === 'en_ruta') {
+        const tiempos = fs.map(f => new Date(f.fecha_hora).getTime()).concat(o.salida_real ? [new Date(o.salida_real).getTime()] : []).filter(isFinite);
+        const ult = tiempos.length ? Math.max(...tiempos) : null;
+        if (ult && ya - ult > 12 * H) sinAct.push({ o, horas: Math.floor((ya - ult) / H), texto: haceTxt(new Date(ult).toISOString()) });
+      }
+    });
+    demoras.sort((a, b) => b.d.excesoH - a.d.excesoH); sinAct.sort((a, b) => b.horas - a.horas);
+    return { demoras, sinAct };
+  }
+  // Agrega un movimiento desde otra pantalla (ej. al registrar la entrega). Devuelve la fila o lanza error.
+  async function agregar(ordenId, p) {
+    const { data, error } = await TX.sb.from('transporte_tracking').insert({ ...p, orden_id: ordenId, auth_user_id: TX.userId, creado_por_nombre: TX.nombrePerfilActivo ? TX.nombrePerfilActivo() : null }).select().single();
+    if (error) throw error;
+    ST.filas.push(data); ST.filas.sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora));
+    return data;
+  }
+  const api = { cargar, alertas, agregar, ultimo, durTxt, eventos, demora, demoraTexto, chip, tab, abrirNuevo, abrirConfig, pdf, excel, cuantos: o => filasDe(o.id).length, _st: ST, alCambiar: null };
   window.TXTrack = api;
 })();
