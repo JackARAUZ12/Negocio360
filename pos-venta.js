@@ -166,6 +166,11 @@
 #pos-pago .n360-vu-cab > span { display: none; }
 #pos-pago .n360-vu-cab > span:has(.n360-vu-sub) { display: block; width: 100%; font-size: 11.5px; }   /* pagando en la otra moneda: cuánto es en esa moneda */
 #pos-pago .n360-vu-mon { position: absolute; top: 6px; right: 8px; margin: 0; padding: 2px; }
+#pos-pago .n360-vu-x { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; }
+#pos-pago .n360-vu:has(.n360-vu-x) .n360-vu-mon { right: 42px; }
+#pos-pago .n360-vu:has(.n360-vu-x) .n360-vu-cab { padding-right: 186px; }
+#pos-pago .n360-vu:not(:has(.n360-vu-mon)) .n360-vu-cab { padding-right: 0; }
+#pos-pago .n360-vu:not(:has(.n360-vu-mon)):has(.n360-vu-x) .n360-vu-cab { padding-right: 36px; }
 #pos-pago .n360-vu-mon button { min-height: 28px; padding: 2px 11px; font-size: 12.5px; }
 #pos-pago .n360-vu-bil { gap: 5px; margin-bottom: 5px; }
 #pos-pago .n360-vu-bil button { min-height: clamp(34px, 4.6vh, 42px); padding: 4px 2px; font-size: 13.5px; }
@@ -212,6 +217,7 @@
 @media (max-width: 400px) { #pos-pago #vr-metodos-grid .mc-name { font-size: 10.5px; letter-spacing: -.01em; } }
 @media (max-width: 899px) and (max-height: 700px) {
   #pos-der-scroll { min-height: 54px; padding-top: 4px; padding-bottom: 4px; }
+  #pos-pago .n360-vu-cab > span:has(.n360-vu-sub) { display: none; }   /* pantallas bajas: el botón "Exacto" ya da el monto en dólares */
   #modal-vr-pos.vr-pos .modal-header { padding: 4px 12px; }
   #modal-vr-pos.vr-pos .modal-header .modal-subtitle { display: none; }
   #pos-pago { gap: 5px; }
