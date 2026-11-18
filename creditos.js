@@ -3435,7 +3435,7 @@
       // patron exacto ya probado en anularVenta() de ventas.js -- y
       // marcar esa venta como anulada tambien.
       if (creditoFresco.venta_id) {
-        const { data: ventaActual } = await _sb.from('ventas').select('estado')
+        const { data: ventaActual } = await _sb.from('ventas').select('estado, cliente_id, total')
           .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId).maybeSingle();
         if (ventaActual && ventaActual.estado !== 'anulada') {
           const { data: detalles } = await _sb.from('venta_detalles')
@@ -3450,8 +3450,20 @@
             else if (d.combo_id && (d.tipo_item === 'producto' || d.tipo_item === 'combo')) devolverStock.push({ combo_id: d.combo_id, delta: Number(d.cantidad || 0) });
           }
           await ajustarStockCredito(devolverStock);
-          await _sb.from('ventas').update({ estado: 'anulada', updated_at: new Date().toISOString() })
-            .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId);
+          const { data: ventaAnulada } = await _sb.from('ventas').update({ estado: 'anulada', updated_at: new Date().toISOString() })
+            .eq('id', creditoFresco.venta_id).eq('auth_user_id', CS.userId).neq('estado', 'anulada').select('id');
+          // Ficha del cliente: la venta anulada deja de contar como compra (igual que al
+          // anular desde Ventas). Solo si esta vez sí se anuló, para no restar dos veces.
+          if ((ventaAnulada || []).length && ventaActual.cliente_id) {
+            try {
+              const { data: cli } = await _sb.from('clientes').select('total_compras, num_compras')
+                .eq('id', ventaActual.cliente_id).eq('auth_user_id', CS.userId).maybeSingle();
+              if (cli) await _sb.from('clientes').update({
+                total_compras: Math.max(0, round2(Number(cli.total_compras || 0) - Number(ventaActual.total || 0))),
+                num_compras: Math.max(0, Number(cli.num_compras || 0) - 1),
+              }).eq('id', ventaActual.cliente_id).eq('auth_user_id', CS.userId);
+            } catch (eCli) { console.warn('No se pudo actualizar la ficha del cliente:', eCli); }
+          }
         }
       }
 
