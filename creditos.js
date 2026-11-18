@@ -637,8 +637,12 @@
       totalIntereses = round2(cuotas.reduce((s,c)=>s+c.interes,0));
     }
 
-    const totalFinanciado = round2(capitalFinanciado + totalIntereses);
-    const valorCuotaAprox = round2(cuotas.reduce((s,c)=>s+c.monto_total,0) / numCuotas);
+    // Total a pagar = suma EXACTA de las cuotas (capital + interés + impuestos).
+    // BUG REAL CORREGIDO: antes no incluía el IVA/impuestos de las cuotas, así el
+    // saldo del crédito quedaba por debajo de lo que el cliente debía pagar: el
+    // sistema no dejaba abonar el IVA y el crédito se cerraba con la cuota colgando.
+    const totalFinanciado = round2(cuotas.reduce((s,c)=>s+c.monto_total,0));
+    const valorCuotaAprox = round2(totalFinanciado / numCuotas);
     return { cuotas, totalIntereses, totalFinanciado, valorCuotaAprox };
   }
 
@@ -1728,9 +1732,10 @@
       // suma o resta tanto al capital financiado como al saldo
       // pendiente -- lo ya pagado queda intacto, sin importar el estado.
       const totalViejo = Number(venta?.total || 0);
-      const deltaProductos = round2(total - totalViejo);
-      const nuevoCapitalFinanciado = round2(Number(credito.capital_financiado||0) + deltaProductos);
-      const nuevoMontoOriginal = round2(Number(credito.monto_original||0) + deltaProductos);
+      const deltaProductos = round2(total - totalViejo);                         // con IVA → saldo
+      const deltaSinIva = round2(subtotal - Number(venta?.subtotal || 0));        // sin IVA → capital
+      const nuevoCapitalFinanciado = round2(Number(credito.capital_financiado||0) + deltaSinIva);
+      const nuevoMontoOriginal = round2(Number(credito.monto_original||0) + deltaSinIva);
       const nuevoSaldoPendiente = round2(Math.max(0, Number(credito.saldo_pendiente||0) + deltaProductos));
       await _sb.from('creditos').update({
         monto_original: nuevoMontoOriginal, capital_financiado: nuevoCapitalFinanciado,
@@ -3837,10 +3842,25 @@
       const impuestosLista = (pendientesAhora[0]?.impuestos_detalle || cuotasAhora?.[0]?.impuestos_detalle || []).map(d => ({ id: d.impuesto_id, nombre: d.nombre, tipo_valor: d.tipo_valor, valor: d.valor }));
       const baseImpuesto = credito.tipo === 'financiero' ? 'interes' : 'capital';
 
-      const { cuotas: cuotasNuevas, totalFinanciado: totalRestanteNuevo, valorCuotaAprox } = generarAmortizacion({
-        capitalFinanciado: nuevoSaldo, tipoFinanciamiento: credito.tipo_financiamiento, tasaInteres: tasa,
+      // Si las cuotas llevan impuesto porcentual sobre el capital (crédito por venta con IVA),
+      // el saldo que se escribe YA incluye el IVA: se saca el capital sin IVA para no cobrarlo dos veces.
+      const pctCapital = (baseImpuesto === 'capital' && impuestosLista.length && impuestosLista.every(t => t.tipo_valor === 'porcentaje'))
+        ? impuestosLista.reduce((s, t) => s + (Number(t.valor) || 0), 0) : 0;
+      const baseCapital = pctCapital > 0 ? round2(nuevoSaldo / (1 + pctCapital / 100)) : nuevoSaldo;
+      let { cuotas: cuotasNuevas, totalFinanciado: totalRestanteNuevo, valorCuotaAprox } = generarAmortizacion({
+        capitalFinanciado: baseCapital, tipoFinanciamiento: credito.tipo_financiamiento, tasaInteres: tasa,
         metodo: credito.metodo_amortizacion, frecuencia, numCuotas, fechaInicio, impuestosLista, baseImpuesto,
       });
+      if (pctCapital > 0 && credito.tipo_financiamiento === 'sin_interes' && cuotasNuevas.length) {
+        // Ajuste de centavos por redondeo: la última cuota hace que el total sea EXACTO el saldo escrito.
+        const dif = round2(nuevoSaldo - totalRestanteNuevo);
+        if (Math.abs(dif) > 0 && Math.abs(dif) < 1) {
+          const u = cuotasNuevas[cuotasNuevas.length - 1];
+          u.capital = round2(u.capital + dif); u.monto_total = round2(u.monto_total + dif);
+          totalRestanteNuevo = nuevoSaldo;
+          valorCuotaAprox = round2(totalRestanteNuevo / cuotasNuevas.length);
+        }
+      }
 
       // Se borran SOLO las cuotas que todavía no están pagadas — las
       // pagadas quedan intactas, con su historial real.

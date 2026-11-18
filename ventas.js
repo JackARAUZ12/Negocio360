@@ -1100,6 +1100,14 @@ async function anularVenta() {
   const motivoAnular = (document.getElementById('anular-motivo')?.value || '').trim();
   if (motivoAnular.length < 3) { showToast('Escribe por qué se anula la venta (queda en el reporte).', 'error'); document.getElementById('anular-motivo')?.focus(); return; }
 
+  // Candado: anular SIN descontar de Caja deja ese dinero sumando en Caja aunque la
+  // venta ya no exista. Solo es correcto si el dinero de verdad se quedó en el negocio.
+  if (document.getElementById('chk-anular-descontar-caja')?.checked === false) {
+    const vAn = (S.ventas || []).find(v => v.id === id);
+    const montoTxt = vAn ? fmt(vAn.total) : 'el dinero de esta venta';
+    if (!confirm(`Vas a anular la venta SIN descontarla de Caja.\n\n${montoTxt} seguirá sumando en Caja aunque la venta ya no aparezca en Ventas.\n\nHazlo solo si ese dinero de verdad se quedó en el negocio (no se devolvió). Si la venta fue un error y el dinero nunca entró, cancela y deja marcada la casilla.\n\n¿Anular sin descontar de Caja?`)) return;
+  }
+
   const btn = document.getElementById('btn-confirmar-anular');
   if (btn) btn.disabled = true;
 

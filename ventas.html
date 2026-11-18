@@ -1839,8 +1839,8 @@
       <label style="display:flex;align-items:flex-start;gap:8px;text-align:left;background:var(--bg-app);border-radius:10px;padding:12px 14px;margin-top:14px;cursor:pointer">
         <input type="checkbox" id="chk-anular-descontar-caja" checked style="margin-top:2px"/>
         <span style="font-size:12.5px;color:var(--text-secondary);line-height:1.5">
-          <strong>Descontar también el ingreso de esta venta en Caja</strong><br/>
-          Márcalo si el dinero se le devolvió al cliente. Si NO se devolvió dinero (ej. solo fue un error al registrarla), desmárcalo para que el saldo de Caja no se toque.
+          <strong>Descontar también el ingreso de esta venta en Caja</strong> (recomendado)<br/>
+          Déjalo marcado para que Caja no siga sumando una venta anulada (dinero devuelto, venta duplicada o registrada por error). Desmárcalo solo si el dinero de verdad se quedó en el negocio.
         </span>
       </label>
       <div id="anular-comision-wrap" style="display:none;text-align:left;background:var(--warning-soft,#fef3c7);border:1px solid var(--warning,#d97706);border-radius:10px;padding:12px 14px;margin-top:10px">
@@ -2218,7 +2218,7 @@
 <script src="iva-lineas.js?v=20261101a"></script>
 <script src="vuelto-efectivo.js?v=20261118c"></script>
 <script src="pos-venta.js?v=20261118c"></script>
-<script src="ventas.js?v=20261118a"></script>
+<script src="ventas.js?v=20261118b"></script>
 <script src="recurrentes-editar.js?v=20261117a"></script>
 <script src="vr-cliente.js?v=20261117a"></script>
 <script src="enviar-doc.js?v=20261102a"></script>
