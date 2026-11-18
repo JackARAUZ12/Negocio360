@@ -856,6 +856,11 @@
   <div id="of-recargos"></div>
   <button type="button" class="tx-btn tx-btn-sm" id="of-add-recargo">＋ Agregar recargo</button>
   <div class="tx-kpi" style="margin-top:14px"><span>Total a cobrar al cliente</span><b id="of-total">—</b></div>
+  <div class="tx-sec">Tracking</div>
+  <div class="tx-cols">
+    <div class="tx-campo"><label for="of-dias-libres">Días libres (opcional)</label><input class="tx-in" id="of-dias-libres" inputmode="decimal" placeholder="Ej: 4"/></div>
+    <div class="tx-campo" style="align-self:end"><div class="tx-ayuda" style="margin:0">Se cuentan en bloques de 24 h desde “Cargando” hasta “Descarga completa”. Si se pasa, el tracking muestra la demora.</div></div>
+  </div>
   <div class="tx-campo" style="margin-top:12px"><label for="of-notas">Notas</label><textarea class="tx-in" id="of-notas" maxlength="400"></textarea></div>
   <div class="tx-err" id="of-error"></div>
   <div class="tx-pie"><button type="button" class="tx-btn" onclick="TXcerrar('ot-modal-form')">Cancelar</button><button type="button" class="tx-btn tx-btn-primary" id="of-guardar">Guardar orden</button></div>
@@ -923,7 +928,8 @@
 <script src="transporte-comun.js?v=20261014a"></script>
 <script src="select-buscable.js?v=20261025e"></script>
 <script src="transporte-cobro.js?v=20261102a"></script>
-<script src="transporte-ordenes.js?v=20261029a"></script>
+<script src="transporte-tracking.js?v=20261118a"></script>
+<script src="transporte-ordenes.js?v=20261118a"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261117a"></script>
 <script src="modulos-guard.js?v=20261111a"></script>

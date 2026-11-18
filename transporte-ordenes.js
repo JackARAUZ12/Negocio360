@@ -63,6 +63,7 @@ async function cargarTodo() {
     TX.paginar(() => sb.from('transporte_unidades').select('*').eq('auth_user_id', TX.userId).order('nombre')),
     TX.paginar(() => sb.from('transporte_conductores').select('*').eq('auth_user_id', TX.userId).order('nombre')),
     TX.cargarDocs('unidad'), TX.cargarDocs('conductor'),
+    window.TXTrack ? TXTrack.cargar() : null,
   ]);
   OT.rutas = rutas; OT.tarifas = tarifas; OT.unidades = unidades; OT.conductores = conductores;
   OT.docsU = TX.agruparDocs(docsU); OT.docsC = TX.agruparDocs(docsC);
@@ -146,7 +147,7 @@ function tarjeta(o) {
     <b>${esc(nombreCliente(o))}</b>
     <small>📍 ${esc(o.origen || '—')} → ${esc(o.destino || '—')}</small>
     ${u || c ? `<small>${u ? '🚛 ' + esc(u.nombre) : ''}${u && c ? ' · ' : ''}${c ? '🧑‍✈️ ' + esc(c.nombre) : ''}</small>` : ''}
-    <div class="tx-fila-chips"><span class="tx-ot-monto">${esc(money(o.total))}</span>${tarde ? '<span class="tx-chip rojo">⏰ Atrasada</span>' : ''}</div></div>`;
+    <div class="tx-fila-chips"><span class="tx-ot-monto">${esc(money(o.total))}</span>${tarde ? '<span class="tx-chip rojo">⏰ Atrasada</span>' : ''}${window.TXTrack ? TXTrack.chip(o) : ''}</div></div>`;
 }
 function renderTablero() {
   const lista = filtradas();
@@ -249,7 +250,7 @@ function persona(id, tipo) {
 function renderDetalle() {
   const o = ord(OT.detalleId); if (!o) { TX.cerrar('ot-modal-detalle'); return; }
   const e = ESTADOS[o.estado] || ESTADOS.pendiente, cs = costosDe(o.id);
-  const tabs = [['resumen', 'Resumen'], ['despacho', 'Despacho'], ['costos', `Costos (${cs.length})`]];
+  const tabs = [['resumen', 'Resumen'], ['despacho', 'Despacho'], ...(window.TXTrack ? [['tracking', `📍 Tracking (${TXTrack.cuantos(o)})`]] : []), ['costos', `Costos (${cs.length})`]];
   $('ot-detalle-cuerpo').innerHTML = `
     <div class="tx-fila-chips" style="justify-content:space-between;align-items:flex-start">
       <div><h3 style="margin:0">📋 ${esc(o.numero)} <span class="tx-chip ${e.clase}">${e.ico} ${e.t}</span></h3><small style="color:var(--text-secondary)">${esc(nombreCliente(o))} · ${esc(o.origen || '—')} → ${esc(o.destino || '—')}</small></div>
@@ -257,7 +258,7 @@ function renderDetalle() {
     </div>
     ${pasos(o)}${acciones(o)}
     <div class="tx-tabs">${tabs.map(([k, l]) => `<button type="button" class="tx-tab ${OT.tab === k ? 'on' : ''}" data-ot-tab="${k}">${l}</button>`).join('')}</div>
-    <div class="tx-panel on">${OT.tab === 'resumen' ? tabResumen(o) : OT.tab === 'despacho' ? tabDespacho(o) : tabCostos(o)}</div>`;
+    <div class="tx-panel on">${OT.tab === 'resumen' ? tabResumen(o) : OT.tab === 'despacho' ? tabDespacho(o) : (OT.tab === 'tracking' && window.TXTrack) ? TXTrack.tab(o) : tabCostos(o)}</div>`;
 }
 function tabResumen(o) {
   const r = OT.rutas.find(x => x.id === o.ruta_id), cos = totalCostos(o.id), ut = utilidad(o), m = margen(Number(o.total), ut);
@@ -266,7 +267,7 @@ function tabResumen(o) {
   return `<div class="tx-datos">
     ${d('Cliente', nombreCliente(o))}${d('Ruta', r?.nombre)}${d('Fecha programada', o.fecha_programada ? fmtFecha(o.fecha_programada) : '')}
     ${d('Carga', o.carga_descripcion)}${d('Peso', o.peso_ton != null ? o.peso_ton + ' t' : '')}${d('Volumen', o.volumen_m3 != null ? o.volumen_m3 + ' m³' : '')}${d('Bultos', o.bultos != null ? String(o.bultos) : '')}
-    ${d('Salida real', o.salida_real ? fmtHora(o.salida_real) : '')}${d('Entrega real', o.entrega_real ? fmtHora(o.entrega_real) : '')}${d('Recibió', o.receptor)}
+    ${d('Días libres', o.dias_libres != null ? String(o.dias_libres) : '')}${d('Salida real', o.salida_real ? fmtHora(o.salida_real) : '')}${d('Entrega real', o.entrega_real ? fmtHora(o.entrega_real) : '')}${d('Recibió', o.receptor)}
   </div>
   ${o.nota_entrega ? `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">📝 Entrega: ${esc(o.nota_entrega)}</div>` : ''}
   ${o.motivo_cancelacion ? `<div style="font-size:13px;color:var(--danger);margin-bottom:8px">⛔ Motivo: ${esc(o.motivo_cancelacion)}</div>` : ''}
@@ -359,6 +360,7 @@ function abrirForm(id) {
   $('of-origen').dataset.auto = ''; $('of-destino').dataset.auto = '';
   v('of-carga', o?.carga_descripcion); v('of-ton', o?.peso_ton); v('of-m3', o?.volumen_m3); v('of-bultos', o?.bultos);
   $('of-tipo').value = o?.tarifa_tipo || 'viaje'; v('of-precio', o ? o.tarifa_precio : ''); v('of-cant', o ? o.cantidad_base : 1); v('of-notas', o?.notas);
+  if ($('of-dias-libres')) v('of-dias-libres', o?.dias_libres);
   $('of-cli-nombre-wrap').style.display = $('of-cliente').value ? 'none' : '';
   pintarRecargos(Array.isArray(o?.recargos) ? o.recargos : []);
   $('of-cant-u').textContent = COBRO[$('of-tipo').value]; $('of-tarifa-info').textContent = o ? '' : 'Elige una ruta para que el precio se llene solo.';
@@ -385,11 +387,14 @@ async function guardarOrden() {
   const recs = recargosDOM().filter(x => x.nombre || x.monto);
   if (recs.some(x => !x.nombre || x.monto <= 0)) return err('Cada recargo necesita concepto y un monto mayor a 0.');
   const { flete, total } = recalcular();
+  const dl = $('of-dias-libres') ? num($('of-dias-libres').value) : undefined;
+  if (dl != null && (dl < 0 || dl > 365)) return err('Los días libres deben estar entre 0 y 365.');
   const p = {
     cliente_id: cid, cliente_nombre: cnom, ruta_id: $('of-ruta').value || null, origen, destino,
     fecha_programada: $('of-fecha').value || null, carga_descripcion: $('of-carga').value.trim() || null,
     peso_ton: num($('of-ton').value), volumen_m3: num($('of-m3').value), bultos: num($('of-bultos').value),
     tarifa_tipo: $('of-tipo').value, tarifa_precio: precio, cantidad_base: cant, flete, recargos: recs, total, notas: $('of-notas').value.trim() || null,
+    ...(dl !== undefined ? { dias_libres: dl } : {}),
   };
   const btn = $('of-guardar'); btn.disabled = true;
   try {
@@ -625,7 +630,11 @@ function enlazar() {
   $('ot-buscar').addEventListener('input', e => { OT.filtro.q = e.target.value; renderVista(); });
   $('ot-f-estado').addEventListener('change', e => { OT.filtro.estado = e.target.value; renderVista(); });
   $('ot-f-periodo').addEventListener('change', e => { OT.filtro.periodo = e.target.value; renderKpis(); renderVista(); });
-  $('of-cliente').addEventListener('change', () => { $('of-cli-nombre-wrap').style.display = $('of-cliente').value ? 'none' : ''; aplicarTarifa(true); });
+  $('of-cliente').addEventListener('change', () => {
+    $('of-cli-nombre-wrap').style.display = $('of-cliente').value ? 'none' : ''; aplicarTarifa(true);
+    const dlIn = $('of-dias-libres'), cid = $('of-cliente').value;
+    if (dlIn && !dlIn.value && cid) { const prev = OT.ordenes.find(x => x.cliente_id === cid && x.dias_libres != null && x.id !== OT.editando?.id); if (prev) dlIn.value = prev.dias_libres; }
+  });
   $('of-ruta').addEventListener('change', () => { OT.cantManual = false; aplicarTarifa(true); });
   $('of-origen').addEventListener('input', e => { e.target.dataset.auto = ''; });
   $('of-destino').addEventListener('input', e => { e.target.dataset.auto = ''; });
@@ -677,6 +686,7 @@ window.OT = OT;
 document.addEventListener('DOMContentLoaded', () => {
   TX.init(async () => {
     llenarSelects(); enlazar();
+    if (window.TXTrack) TXTrack.alCambiar = () => renderTodo();
     await cargarTodo(); renderTodo();
     const p = new URLSearchParams(location.search).get('orden');
     if (p && ord(p)) abrirDetalle(p);
