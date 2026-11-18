@@ -147,7 +147,8 @@ function tarjeta(o) {
     <b>${esc(nombreCliente(o))}</b>
     <small>📍 ${esc(o.origen || '—')} → ${esc(o.destino || '—')}</small>
     ${u || c ? `<small>${u ? '🚛 ' + esc(u.nombre) : ''}${u && c ? ' · ' : ''}${c ? '🧑‍✈️ ' + esc(c.nombre) : ''}</small>` : ''}
-    <div class="tx-fila-chips"><span class="tx-ot-monto">${esc(money(o.total))}</span>${tarde ? '<span class="tx-chip rojo">⏰ Atrasada</span>' : ''}${window.TXTrack ? TXTrack.chip(o) : ''}</div></div>`;
+    <div class="tx-fila-chips"><span class="tx-ot-monto">${esc(money(o.total))}</span>${tarde ? '<span class="tx-chip rojo">⏰ Atrasada</span>' : ''}${window.TXTrack ? TXTrack.chip(o) : ''}</div>
+    ${window.TXTrack && ['asignada', 'en_ruta'].includes(o.estado) ? `<div style="margin-top:6px"><button type="button" class="tx-btn tx-btn-sm trk-rapido" data-trk-nuevo="${esc(o.id)}">📍 Actualizar tracking</button></div>` : ''}</div>`;
 }
 function renderTablero() {
   const lista = filtradas();
@@ -664,6 +665,7 @@ function enlazar() {
   document.addEventListener('click', e => {
     const t = e.target.closest('[data-ot-abrir],[data-ot-nueva],[data-ot-editar],[data-ot-vista],[data-ot-tab],[data-ot-asignar],[data-ot-iniciar],[data-ot-entregar],[data-ot-cancelar],[data-ot-borrar],[data-ot-costo-nuevo],[data-ot-costo-editar],[data-ot-costo-borrar],[data-ot-rec-del],[data-ot-cobrar]');
     if (!t) return; const d = t.dataset;
+    if (e.target.closest('[data-trk-nuevo]')) return;   // botón rápido de tracking dentro de la tarjeta
     if (d.otAbrir) { e.preventDefault(); abrirDetalle(d.otAbrir); }
     else if ('otNueva' in d) { OT.detalleId = null; abrirForm(null); }
     else if (d.otEditar) abrirForm(d.otEditar);

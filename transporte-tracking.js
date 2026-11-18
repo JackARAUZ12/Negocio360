@@ -95,6 +95,23 @@
     } else r.clase = (libres * 24 - r.horas) <= 24 ? 'naranja' : 'verde';
     return r;
   }
+  const haceTxt = iso => {
+    const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+    if (m < 1) return 'ahora mismo'; if (m < 60) return `hace ${m} min`;
+    const h = Math.floor(m / 60); if (h < 24) return `hace ${h} h`;
+    const d = Math.floor(h / 24); return `hace ${d} día${d === 1 ? '' : 's'}`;
+  };
+  // Orden natural del viaje: sugiere el siguiente estatus según el último anotado
+  const SECUENCIA = ['Cargando', 'Carga completa', 'En tránsito', 'En frontera', 'En aduana', 'En tránsito', 'Descargando', 'Descarga completa', 'Entregado'];
+  function sugerido(ordenId) {
+    const ult = [...filasDe(ordenId)].reverse()[0];
+    if (!ult) return 'Cargando';
+    const i = SECUENCIA.findIndex(n => n.toLowerCase() === String(ult.estatus).toLowerCase());
+    if (i < 0) return 'En tránsito';
+    if (ult.estatus === 'En aduana') return 'En tránsito';
+    return SECUENCIA[Math.min(i + 1, SECUENCIA.length - 1)];
+  }
+  const ultimo = ordenId => [...filasDe(ordenId)].reverse()[0] || null;
   const durTxt = h => { const d = Math.floor(h / 24), hr = Math.floor(h - d * 24); return `${d} día${d === 1 ? '' : 's'}${hr ? ` ${hr} h` : ''}`; };
   function demoraTexto(d) {
     if (d.estado === 'sin_inicio') return { titulo: 'Aún no inicia la carga', det: 'Los días se cuentan desde el estatus “Cargando” hasta “Descarga completa”.' };
@@ -108,6 +125,11 @@
   // Chip para las tarjetas del tablero
   function chip(o) {
     if (o.estado === 'cancelada') return '';
+    const u = ultimo(o.id), activa = ['pendiente', 'asignada', 'en_ruta'].includes(o.estado);
+    const ultChip = u && activa ? `<span class="tx-chip" title="Último estatus">${esc(infoEstatus(u.estatus).ico)} ${esc(u.estatus)} · ${esc(haceTxt(u.fecha_hora))}</span>` : '';
+    return ultChip + chipDemora(o);
+  }
+  function chipDemora(o) {
     const d = demora(o); if (d.estado === 'sin_inicio') return '';
     if (d.libres == null) return d.estado === 'en_curso' ? `<span class="tx-chip azul">⏱ ${esc(durTxt(d.horas))}</span>` : '';
     if (d.excesoH > 0) return `<span class="tx-chip rojo">⏱ Demora ${esc(durTxt(d.excesoH))}</span>`;
@@ -123,6 +145,11 @@
     return `
     <div class="trk-cab">
       <div class="trk-dem ${d.clase}"><b>⏱ ${esc(dt.titulo)}</b><small>${esc(dt.det)}</small>
+        ${d.ini && d.libres != null && d.libres > 0 ? (() => {
+          const tot = Math.max(d.libres * 24, d.horas), dentro = Math.min(d.horas, d.libres * 24), marca = d.libres * 24 / tot * 100;
+          return `<div class="trk-barra" title="Tiempo usado (la raya marca el fin de los días libres)"><i style="width:${(dentro / tot * 100).toFixed(1)}%"></i>${d.excesoH > 0 ? `<em style="width:${(d.excesoH / tot * 100).toFixed(1)}%"></em>` : ''}<s style="left:${marca.toFixed(1)}%"></s></div>
+          <div class="trk-barra-l"><span>Inicio de carga</span><span style="position:absolute;left:${Math.min(marca, 82).toFixed(1)}%;transform:translateX(-50%)">${esc(d.libres)} día${d.libres === 1 ? '' : 's'} libre${d.libres === 1 ? '' : 's'}</span><span>${d.excesoH > 0 ? 'Demora' : ''}</span></div>`;
+        })() : ''}
         ${d.ini ? `<small>Inicio de carga: ${esc(fh(d.ini).f)} ${esc(fh(d.ini).h)}${d.fin ? ` · Fin de descarga: ${esc(fh(d.fin).f)} ${esc(fh(d.fin).h)}` : ''}</small>` : ''}</div>
       <div class="trk-acc">
         ${puede ? `<button type="button" class="tx-btn tx-btn-primary" data-trk-nuevo="${esc(o.id)}">＋ Actualizar tracking</button>` : ''}
@@ -131,7 +158,7 @@
         <button type="button" class="tx-btn tx-btn-sm" data-trk-config="1" title="Agregar estatus o países propios">⚙️</button>
       </div>
     </div>
-    ${ult ? `<div class="trk-ultimo">Último estatus: <b>${esc(ult.ico)} ${esc(ult.estatus)}</b>${ult.pais ? ' · ' + esc(ult.pais) : ''} · ${esc(fh(ult.t).f)} ${esc(fh(ult.t).h)}</div>` : ''}
+    ${ult ? `<div class="trk-ultimo">Último estatus: <b>${esc(ult.ico)} ${esc(ult.estatus)}</b>${ult.pais ? ' · ' + esc(ult.pais) : ''} · ${esc(fh(ult.t).f)} ${esc(fh(ult.t).h)} <span class="tx-chip ${(Date.now() - new Date(ult.t)) > 12 * H && ['asignada', 'en_ruta'].includes(o.estado) ? 'naranja' : ''}">${esc(haceTxt(ult.t))}</span></div>` : ''}
     <div class="trk-lista">${ev.length ? ev.slice().reverse().map(e => `
       <div class="trk-ev ${e.manual ? '' : 'auto'} ${e.hito ? 'hito' : ''}">
         <div class="trk-ico">${esc(e.ico)}</div>
@@ -156,8 +183,21 @@
 .trk-dem.azul{border-color:var(--accent);background:var(--accent-soft)}.trk-dem.azul b{color:var(--accent)}
 .trk-acc{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .trk-ultimo{font-size:13px;color:var(--text-secondary);margin:2px 0 10px}
+.trk-barra{position:relative;display:flex;height:10px;border-radius:99px;background:var(--bg-hover);overflow:hidden;margin-top:8px}
+.trk-barra i{display:block;height:100%;background:currentColor;opacity:.75}.trk-barra em{display:block;height:100%;background:var(--danger)}
+.trk-dem.verde .trk-barra{color:var(--success)}.trk-dem.naranja .trk-barra{color:var(--warning)}.trk-dem.rojo .trk-barra{color:var(--danger)}
+.trk-barra-l{position:relative;display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:3px;min-height:14px}
+.trk-barra{overflow:visible}.trk-barra i{border-radius:99px 0 0 99px}.trk-barra em{border-radius:0 99px 99px 0}
+.trk-barra s{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--text-primary);opacity:.55;text-decoration:none}
 .trk-lista{position:relative;padding-left:4px}
-.trk-ev{display:flex;gap:12px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid var(--border)}
+.trk-lista::before{content:'';position:absolute;left:21px;top:18px;bottom:18px;width:2px;background:var(--border)}
+.trk-ev{position:relative;display:flex;gap:12px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid var(--border)}
+.trk-ev:first-child .trk-ico{background:var(--accent);color:#fff;box-shadow:0 0 0 4px var(--accent-soft)}
+.trk-aviso{margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--warning-soft);border:1px solid var(--warning);font-size:13px;color:var(--text-primary)}
+.trk-orden{font-size:13px;color:var(--text-secondary);margin:-6px 0 8px}
+.trk-op.sug{border-style:dashed;border-color:var(--accent)}
+.trk-op .sug-t{display:block;font-size:10px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
+.tx-btn.trk-rapido{padding:4px 10px;font-size:12px;min-height:30px}
 .trk-ev.auto{opacity:.85}.trk-ev.hito .trk-ico{box-shadow:0 0 0 3px var(--accent-soft)}
 .trk-ico{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--bg-hover);font-size:17px}
 .trk-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.trk-info b{font-size:14px}.trk-info small{font-size:12px;color:var(--text-muted)}
@@ -171,7 +211,7 @@
     const m = document.createElement('div');
     m.className = 'tx-modal'; m.id = 'trk-modal';
     m.innerHTML = `<div class="tx-box ancho">
-      <h3 id="trk-titulo">Actualizar tracking</h3>
+      <h3 id="trk-titulo">Actualizar tracking</h3><div class="trk-orden" id="trk-orden"></div>
       <div class="tx-sec">Estatus</div><div class="trk-grid" id="trk-estatus"></div>
       <div class="tx-campo" style="margin-top:8px"><label for="trk-otro">…u otro estatus (escríbelo)</label><input class="tx-in" id="trk-otro" maxlength="60" placeholder="Ej: Esperando documentos"/></div>
       <div class="tx-sec">País donde va</div><div class="trk-grid" id="trk-paises"></div>
@@ -179,6 +219,7 @@
         <div class="tx-campo"><label for="trk-fecha">Fecha y hora</label><input type="datetime-local" class="tx-in" id="trk-fecha"/></div>
         <div class="tx-campo"><label for="trk-nota">Nota (opcional)</label><input class="tx-in" id="trk-nota" maxlength="300" placeholder="Ej: Km 45, lluvia, en fila de aduana"/></div>
       </div>
+      <div id="trk-aviso" class="trk-aviso" style="display:none"></div>
       <div class="tx-err" id="trk-error"></div>
       <div class="tx-pie"><button type="button" class="tx-btn" onclick="TXcerrar('trk-modal')">Cancelar</button><button type="button" class="tx-btn tx-btn-primary" id="trk-guardar">Guardar</button></div>
     </div>`;
@@ -204,7 +245,10 @@
     });
   }
   function pintarOpciones() {
-    $('trk-estatus').innerHTML = listaEstatus().map(e => `<button type="button" class="trk-op ${ST.sel.estatus === e.n ? 'on' : ''}" data-trk-est="${esc(e.n)}">${esc(e.ico)} ${esc(e.n)}${e.hito === 'inicio_carga' ? '<small>inicia conteo de días</small>' : e.hito === 'fin_descarga' ? '<small>termina conteo de días</small>' : ''}</button>`).join('');
+    const sug = ST.editando ? null : sugerido(ST.ordenId);
+    const lista = listaEstatus().slice().sort((a, b) => (b.n === sug) - (a.n === sug));
+    $('trk-estatus').innerHTML = lista.map(e => `<button type="button" class="trk-op ${ST.sel.estatus === e.n ? 'on' : ''} ${e.n === sug ? 'sug' : ''}" data-trk-est="${esc(e.n)}">${e.n === sug ? '<span class="sug-t">★ Siguiente</span>' : ''}${esc(e.ico)} ${esc(e.n)}${e.hito === 'inicio_carga' ? '<small>inicia conteo de días</small>' : e.hito === 'fin_descarga' ? '<small>termina conteo de días</small>' : ''}</button>`).join('');
+    $('trk-aviso').style.display = 'none'; ST.confirmado = false;
     const ps = listaPaises().slice(); if (ST.sel.pais && !ps.includes(ST.sel.pais)) ps.push(ST.sel.pais);
     $('trk-paises').innerHTML = ps.map(p => `<button type="button" class="trk-op ${ST.sel.pais === p ? 'on' : ''}" data-trk-pais="${esc(p)}">${esc(p)}</button>`).join('');
   }
@@ -214,11 +258,14 @@
     const f = filaId ? ST.filas.find(x => x.id === filaId) : null;
     ST.ordenId = ordenId; ST.editando = f;
     const prev = [...filasDe(ordenId)].reverse()[0];
-    ST.sel = { estatus: f ? (listaEstatus().some(e => e.n === f.estatus) ? f.estatus : null) : null, pais: f ? (f.pais || null) : (prev && prev.pais) || null };
+    // Nuevo: ya viene marcado el siguiente estatus lógico y el último país (2 toques: Actualizar → Guardar)
+    ST.sel = { estatus: f ? (listaEstatus().some(e => e.n === f.estatus) ? f.estatus : null) : (listaEstatus().some(e => e.n === sugerido(ordenId)) ? sugerido(ordenId) : null), pais: f ? (f.pais || null) : (prev && prev.pais) || null };
     $('trk-otro').value = f && !listaEstatus().some(e => e.n === f.estatus) ? f.estatus : '';
     $('trk-fecha').value = aLocal(f ? new Date(f.fecha_hora) : new Date());
     $('trk-nota').value = f ? (f.nota || '') : '';
     $('trk-titulo').textContent = f ? 'Corregir movimiento' : 'Actualizar tracking';
+    const o = (window.OT && OT.ordenes || []).find(x => x.id === ordenId);
+    $('trk-orden').textContent = o ? `${o.numero || ''} · ${o.cliente_nombre || ''} · ${o.origen || '—'} → ${o.destino || '—'}` : '';
     $('trk-error').textContent = '';
     pintarOpciones();
     TX.abrir('trk-modal');
@@ -235,6 +282,18 @@
     if (!o) return err('No se encontró la orden. Recarga la página.');
     if (o.estado === 'cancelada') return err('La orden está cancelada.');
     const hito = (listaEstatus().find(e => e.n.toLowerCase() === estatus.toLowerCase()) || {}).hito || null;
+    // Candados de coherencia para que los días libres nunca se calculen mal
+    const otras = filasDe(o.id).filter(f => !ST.editando || f.id !== ST.editando.id);
+    const iniEx = otras.filter(f => f.hito === 'inicio_carga').map(f => new Date(f.fecha_hora)).sort((a, b) => a - b)[0];
+    const finEx = otras.filter(f => f.hito === 'fin_descarga').map(f => new Date(f.fecha_hora)).sort((a, b) => a - b)[0];
+    if (hito === 'fin_descarga' && iniEx && fecha < iniEx) return err('“Descarga completa” no puede ser antes de “Cargando” (' + iniEx.toLocaleString('es-NI') + ').');
+    if (hito === 'inicio_carga' && finEx && fecha > finEx) return err('“Cargando” no puede ser después de “Descarga completa” (' + finEx.toLocaleString('es-NI') + ').');
+    const avisar = t => { const a = $('trk-aviso'); a.innerHTML = t + '<br><b>Toca Guardar otra vez para confirmar.</b>'; a.style.display = ''; ST.confirmado = true; };
+    if (!ST.confirmado) {
+      if (hito === 'inicio_carga' && iniEx) return avisar('⚠️ Esta orden ya tiene “Cargando”. Los días se cuentan desde el primero.');
+      if (hito === 'fin_descarga' && !iniEx) return avisar('⚠️ Aún no hay “Cargando” en esta orden, así que no se podrán contar los días libres. Puedes agregarlo después con su fecha real.');
+      if (hito === 'fin_descarga' && finEx) return avisar('⚠️ Esta orden ya tiene “Descarga completa”. Se usa la primera después de “Cargando”.');
+    }
     const p = { fecha_hora: fecha.toISOString(), estatus, hito, pais: ST.sel.pais || null, nota: $('trk-nota').value.trim() || null };
     const btn = $('trk-guardar'); btn.disabled = true;
     try {
