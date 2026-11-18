@@ -242,6 +242,7 @@ function acciones(o) {
   if (o.estado === 'en_ruta') a.push(b('tx-btn-ok', 'ot-entregar', '✅ Registrar entrega'));
   if (o.estado !== 'cancelada') a.push(`<a class="tx-btn" href="transporte-fronteras.html?orden=${id}">🛂 Fronteras y documentos</a>`);
   if (['en_ruta', 'entregada'].includes(o.estado)) a.push(`<a class="tx-btn" href="transporte-entregas.html?orden=${id}">📦 Prueba de entrega e incidencias</a>`);
+  { const c = demoraCobro(o); if (c && c.pendiente && c.terminado && !c.cobrado) a.push(b('tx-btn-borrar', 'ot-demora', `⏱ Cargar demora (${c.d.demoraFraccion} día${c.d.demoraFraccion === 1 ? '' : 's'})`)); }
   // Cobrar aquí mismo (pantalla de cobro de Transporte, con el motor de Ventas); si no está disponible, en Facturación.
   if (o.estado === 'entregada') a.push(!o.venta_id && window.TXCobro ? b('tx-btn-primary', 'ot-cobrar', '💳 Cobrar este viaje')
     : `<a class="tx-btn" href="transporte-facturacion.html">${o.venta_id ? '🧾 Cobrado · ver cobranza' : '🧾 Facturar este viaje'}</a>`);
@@ -265,7 +266,7 @@ function renderDetalle() {
     </div>
     ${pasos(o)}${acciones(o)}
     <div class="tx-tabs">${tabs.map(([k, l]) => `<button type="button" class="tx-tab ${OT.tab === k ? 'on' : ''}" data-ot-tab="${k}">${l}</button>`).join('')}</div>
-    <div class="tx-panel on">${OT.tab === 'resumen' ? tabResumen(o) : OT.tab === 'despacho' ? tabDespacho(o) : (OT.tab === 'tracking' && window.TXTrack) ? TXTrack.tab(o) : tabCostos(o)}</div>`;
+    <div class="tx-panel on">${OT.tab === 'resumen' ? tabResumen(o) : OT.tab === 'despacho' ? tabDespacho(o) : (OT.tab === 'tracking' && window.TXTrack) ? bloqueDemora(o) + TXTrack.tab(o) : tabCostos(o)}</div>`;
 }
 function tabResumen(o) {
   const r = OT.rutas.find(x => x.id === o.ruta_id), cos = totalCostos(o.id), ut = utilidad(o), m = margen(Number(o.total), ut);
@@ -279,7 +280,7 @@ function tabResumen(o) {
   ${o.nota_entrega ? `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">📝 Entrega: ${esc(o.nota_entrega)}</div>` : ''}
   ${o.motivo_cancelacion ? `<div style="font-size:13px;color:var(--danger);margin-bottom:8px">⛔ Motivo: ${esc(o.motivo_cancelacion)}</div>` : ''}
   ${o.notas ? `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">📝 ${esc(o.notas)}</div>` : ''}
-  <div class="tx-sec">Cobro al cliente</div>
+  <div class="tx-sec">Cobro al cliente</div>${bloqueDemora(o, true)}
   <div class="tx-doc"><div class="tx-doc-info"><b>Flete: ${esc(money(o.flete))}</b><small>${esc(money(o.tarifa_precio))} por ${COBRO[o.tarifa_tipo] || 'viaje'} × ${esc(Number(o.cantidad_base))}</small></div></div>
   ${recs.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>+ ${esc(x.nombre || 'Recargo')}</b></div><b>${esc(money(x.monto))}</b></div>`).join('')}
   <div class="tx-kpis" style="margin-top:12px"><div class="tx-kpi"><span>Total a cobrar</span><b>${esc(money(o.total))}</b></div>
@@ -324,10 +325,14 @@ function llenarSelects() {
   $('ot-f-periodo').value = OT.filtro.periodo;
 }
 function recargosDOM() {
-  return [...document.querySelectorAll('#of-recargos .tx-rec')].map(r => ({ nombre: r.querySelector('.rn').value.trim(), monto: num(r.querySelector('.rm').value) || 0 }));
+  return [...document.querySelectorAll('#of-recargos .tx-rec')].map(r => {
+    const x = { nombre: r.querySelector('.rn').value.trim(), monto: num(r.querySelector('.rm').value) || 0 };
+    if (r.dataset.tipo) { x.tipo = r.dataset.tipo; if (r.dataset.dias) x.dias = Number(r.dataset.dias); if (r.dataset.tarifa) x.tarifa = Number(r.dataset.tarifa); }
+    return x;
+  });
 }
 function pintarRecargos(arr) {
-  $('of-recargos').innerHTML = arr.map((x, i) => `<div class="tx-rec"><input class="tx-in rn" placeholder="Concepto" maxlength="60" value="${esc(x.nombre)}" style="flex:2"/><input class="tx-in rm" placeholder="Monto" inputmode="decimal" value="${esc(x.monto || '')}" style="flex:1"/><button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-ot-rec-del="${i}" aria-label="Quitar">✕</button></div>`).join('');
+  $('of-recargos').innerHTML = arr.map((x, i) => `<div class="tx-rec"${x.tipo ? ` data-tipo="${esc(x.tipo)}" data-dias="${esc(x.dias ?? '')}" data-tarifa="${esc(x.tarifa ?? '')}"` : ''}><input class="tx-in rn" placeholder="Concepto" maxlength="60" value="${esc(x.nombre)}" style="flex:2"/><input class="tx-in rm" placeholder="Monto" inputmode="decimal" value="${esc(x.monto || '')}" style="flex:1"/><button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-ot-rec-del="${i}" aria-label="Quitar">✕</button></div>`).join('');
 }
 function recalcular() {
   const precio = num($('of-precio').value) || 0, cant = num($('of-cant').value) || 0;
@@ -368,6 +373,7 @@ function abrirForm(id) {
   v('of-carga', o?.carga_descripcion); v('of-ton', o?.peso_ton); v('of-m3', o?.volumen_m3); v('of-bultos', o?.bultos);
   $('of-tipo').value = o?.tarifa_tipo || 'viaje'; v('of-precio', o ? o.tarifa_precio : ''); v('of-cant', o ? o.cantidad_base : 1); v('of-notas', o?.notas);
   if ($('of-dias-libres')) v('of-dias-libres', o?.dias_libres);
+  if ($('of-demora-tarifa')) v('of-demora-tarifa', o?.demora_tarifa_dia);
   $('of-cli-nombre-wrap').style.display = $('of-cliente').value ? 'none' : '';
   pintarRecargos(Array.isArray(o?.recargos) ? o.recargos : []);
   $('of-cant-u').textContent = COBRO[$('of-tipo').value]; $('of-tarifa-info').textContent = o ? '' : 'Elige una ruta para que el precio se llene solo.';
@@ -396,12 +402,15 @@ async function guardarOrden() {
   const { flete, total } = recalcular();
   const dl = $('of-dias-libres') ? num($('of-dias-libres').value) : undefined;
   if (dl != null && (dl < 0 || dl > 365)) return err('Los días libres deben estar entre 0 y 365.');
+  const dt = $('of-demora-tarifa') ? num($('of-demora-tarifa').value) : undefined;
+  if (dt != null && (dt < 0 || dt > 100000000)) return err('El cobro por día de demora no es válido.');
   const p = {
     cliente_id: cid, cliente_nombre: cnom, ruta_id: $('of-ruta').value || null, origen, destino,
     fecha_programada: $('of-fecha').value || null, carga_descripcion: $('of-carga').value.trim() || null,
     peso_ton: num($('of-ton').value), volumen_m3: num($('of-m3').value), bultos: num($('of-bultos').value),
     tarifa_tipo: $('of-tipo').value, tarifa_precio: precio, cantidad_base: cant, flete, recargos: recs, total, notas: $('of-notas').value.trim() || null,
     ...(dl !== undefined ? { dias_libres: dl } : {}),
+    ...(dt !== undefined ? { demora_tarifa_dia: dt } : {}),
   };
   const btn = $('of-guardar'); btn.disabled = true;
   try {
@@ -416,8 +425,108 @@ async function guardarOrden() {
     }
     TX.cerrar('ot-modal-form'); TX.toast('Orden guardada'); renderTodo();
     if (OT.detalleId) TX.abrir('ot-modal-detalle');
-  } catch (e) { console.error(e); err('No se pudo guardar la orden. Intenta de nuevo.'); }
+  } catch (e) { console.error(e); err(/ya está cobrado/.test(e?.message || '') ? 'Este viaje ya está cobrado: su monto no se puede cambiar. Anula la venta primero si necesitas corregirlo.' : 'No se pudo guardar la orden. Intenta de nuevo.'); }
   finally { btn.disabled = false; }
+}
+/* ============================================================
+   COBRO DE LA DEMORA (tracking, fase 2)
+   - Se agrega como un recargo más de la orden ("Demora N días × tarifa"),
+     así entra solo en el cobro / factura del viaje con el motor de Ventas.
+   - Candados: solo con la descarga completa marcada, nunca en un viaje ya
+     cobrado (también lo bloquea la base), sin duplicar (reemplaza la
+     demora anterior) y guardando solo si la orden no cambió mientras tanto.
+   ============================================================ */
+const esDemora = x => !!x && x.tipo === 'demora';
+function demoraCobro(o) {
+  if (!window.TXTrack || !o || o.estado === 'cancelada') return null;
+  const d = TXTrack.demora(o), rec = (Array.isArray(o.recargos) ? o.recargos : []).find(esDemora) || null;
+  const hay = d.libres != null && d.excesoH > 0;
+  return { d, rec, hay, pendiente: hay && !rec, terminado: d.estado === 'terminado', cobrado: !!o.venta_id };
+}
+function bloqueDemora(o, corto) {
+  const c = demoraCobro(o); if (!c) return '';
+  const pl = n => `${n} día${n === 1 ? '' : 's'}`;
+  if (c.rec) return `<div class="tx-aviso-banda" style="border-color:var(--success);background:var(--success-soft)"><div style="font-size:20px">💵</div><div style="flex:1"><b>Demora cargada al cobro: ${esc(money(c.rec.monto))}</b>${esc(c.rec.nombre)}${c.cobrado ? ' · ya está cobrada con el viaje' : ' · se cobrará junto con el flete'}
+    ${!c.cobrado && !corto ? `<div class="tx-fila-chips" style="margin-top:8px"><button type="button" class="tx-btn tx-btn-sm" data-ot-demora="${esc(o.id)}">✏️ Cambiar</button><button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-ot-demora-quitar="${esc(o.id)}">Quitar del cobro</button></div>` : ''}</div></div>`;
+  if (!c.hay) return '';
+  if (c.cobrado) return corto ? '' : `<div class="tx-aviso-banda"><div style="font-size:20px">ℹ️</div><div><b>Este viaje ya se cobró sin la demora</b>Para no descuadrar, el monto de un viaje cobrado no se cambia. Si el cliente debe pagar la demora, hazle una venta aparte por ese concepto.</div></div>`;
+  if (!c.terminado) return corto ? '' : `<div class="tx-aviso-banda"><div style="font-size:20px">⏱</div><div><b>La demora sigue contando</b>Cuando marques “Descarga completa” se cierra el conteo y podrás cargar la demora al cobro del viaje.</div></div>`;
+  return `<div class="tx-aviso-banda rojo"><div style="font-size:20px">⏱</div><div style="flex:1"><b>Demora sin cobrar: ${esc(pl(c.d.demoraFraccion))} (día o fracción)</b>Se pasó ${esc(TXTrack.durTxt(c.d.excesoH))} de sus ${esc(pl(c.d.libres))} libres. Cárgala al cobro antes de cobrar el viaje.
+    <div style="margin-top:8px"><button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-ot-demora="${esc(o.id)}">💵 Cargar demora al cobro</button></div></div></div>`;
+}
+function asegurarModalDemora() {
+  if ($('ot-modal-demora')) return;
+  const m = document.createElement('div'); m.className = 'tx-modal'; m.id = 'ot-modal-demora';
+  m.innerHTML = `<div class="tx-box">
+    <h3>💵 Cobrar la demora</h3><div id="odm-info" style="font-size:13px;color:var(--text-secondary);margin:-4px 0 10px"></div>
+    <div class="tx-campo"><label>¿Cómo se cuentan los días?</label><div class="tx-fila-chips" id="odm-modos"></div></div>
+    <div class="tx-cols">
+      <div class="tx-campo"><label for="odm-dias">Días a cobrar</label><input class="tx-in" id="odm-dias" inputmode="numeric"/></div>
+      <div class="tx-campo"><label for="odm-tarifa">Cobro por día</label><input class="tx-in" id="odm-tarifa" inputmode="decimal" placeholder="Ej: 150"/></div>
+    </div>
+    <div class="tx-kpi" style="margin-top:6px"><span>Se suma al cobro del viaje</span><b id="odm-monto">—</b><small id="odm-total"></small></div>
+    <div class="tx-err" id="odm-error"></div>
+    <div class="tx-pie"><button type="button" class="tx-btn" onclick="TXcerrar('ot-modal-demora')">Cancelar</button><button type="button" class="tx-btn tx-btn-primary" id="odm-guardar">Cargar al cobro</button></div></div>`;
+  document.body.appendChild(m);
+  $('odm-dias').addEventListener('input', calcDemora); $('odm-tarifa').addEventListener('input', calcDemora);
+  $('odm-guardar').addEventListener('click', guardarDemora);
+  m.addEventListener('click', e => { const b = e.target.closest('[data-odm-dias]'); if (b) { $('odm-dias').value = b.dataset.odmDias; calcDemora(); } });
+}
+function calcDemora() {
+  const o = ord(OT.demoraId); if (!o) return null;
+  const c = demoraCobro(o), dias = num($('odm-dias').value), tarifa = num($('odm-tarifa').value);
+  document.querySelectorAll('#odm-modos [data-odm-dias]').forEach(b => b.classList.toggle('tx-btn-primary', String(dias) === b.dataset.odmDias));
+  const ok = dias != null && Number.isInteger(dias) && dias >= 1 && dias <= 365 && tarifa != null && tarifa > 0 && tarifa <= 100000000;
+  const monto = ok ? r2(dias * tarifa) : null, previo = c && c.rec ? Number(c.rec.monto) || 0 : 0;
+  $('odm-monto').textContent = ok ? money(monto) : '—';
+  if (ok) $('odm-error').textContent = '';
+  $('odm-total').textContent = ok ? `Total del viaje: ${money(o.total)} → ${money(r2(Number(o.total || 0) - previo + monto))}` : 'Escribe los días y el cobro por día';
+  return ok ? { dias, tarifa, monto, previo } : null;
+}
+function abrirDemora(id) {
+  const o = ord(id), c = demoraCobro(o); if (!o || !c) return;
+  if (c.cobrado) { TX.toast('Este viaje ya está cobrado: su monto no se cambia.', 'warning'); return; }
+  if (!c.terminado) { TX.toast('Primero marca “Descarga completa” en el tracking.', 'warning'); return; }
+  asegurarModalDemora(); OT.demoraId = id;
+  const fr = c.d.demoraFraccion, comp = c.d.demoraDias;
+  $('odm-info').textContent = `${o.numero} · ${nombreCliente(o)} · demora de ${TXTrack.durTxt(c.d.excesoH)} sobre ${c.d.libres} día(s) libres`;
+  $('odm-modos').innerHTML = `<button type="button" class="tx-btn tx-btn-sm" data-odm-dias="${fr}">Día o fracción · ${fr}</button>` + (comp !== fr && comp >= 1 ? `<button type="button" class="tx-btn tx-btn-sm" data-odm-dias="${comp}">Solo días completos · ${comp}</button>` : '');
+  const prev = !o.demora_tarifa_dia ? OT.ordenes.find(x => x.cliente_id && x.cliente_id === o.cliente_id && Number(x.demora_tarifa_dia) > 0 && x.id !== o.id) : null;
+  $('odm-dias').value = c.rec && c.rec.dias ? c.rec.dias : fr;
+  $('odm-tarifa').value = c.rec && c.rec.tarifa ? c.rec.tarifa : (Number(o.demora_tarifa_dia) > 0 ? o.demora_tarifa_dia : (prev ? prev.demora_tarifa_dia : ''));
+  $('odm-error').textContent = ''; calcDemora(); TX.abrir('ot-modal-demora');
+  setTimeout(() => { try { ($('odm-tarifa').value ? $('odm-guardar') : $('odm-tarifa')).focus(); } catch (_) {} }, 60);
+}
+// Guarda recargos + total solo si la orden sigue igual y sin venta (candado optimista)
+async function escribirRecargos(o, recs, total, extra) {
+  const { data, error } = await sb.from('transporte_ordenes').update({ recargos: recs, total, ...(extra || {}) })
+    .eq('id', o.id).eq('auth_user_id', TX.userId).eq('total', o.total).is('venta_id', null).select('id');
+  if (error) throw error;
+  if (!data || !data.length) throw new Error('CAMBIO');
+  Object.assign(o, { recargos: recs, total, ...(extra || {}) });
+}
+async function guardarDemora() {
+  const o = ord(OT.demoraId), v = calcDemora(), err = $('odm-error'); if (!o) return;
+  if (!v) { err.textContent = 'Días: número entero de 1 a 365. Cobro por día: mayor a 0.'; return; }
+  const btn = $('odm-guardar'); btn.disabled = true;
+  try {
+    const recs = (Array.isArray(o.recargos) ? o.recargos : []).filter(x => !esDemora(x));
+    recs.push({ nombre: `Demora ${v.dias} día${v.dias === 1 ? '' : 's'} × ${money(v.tarifa)}`.slice(0, 60), monto: v.monto, tipo: 'demora', dias: v.dias, tarifa: v.tarifa });
+    await escribirRecargos(o, recs, r2(Number(o.total || 0) - v.previo + v.monto), { demora_tarifa_dia: v.tarifa });
+    TX.cerrar('ot-modal-demora'); TX.toast(`Demora de ${money(v.monto)} cargada al cobro del viaje`); renderTodo();
+  } catch (e) {
+    console.error('demora:', e);
+    err.textContent = e.message === 'CAMBIO' || /ya está cobrado/.test(e.message || '') ? 'La orden cambió o ya fue cobrada. Cierra y vuelve a abrirla.' : 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.';
+    if (e.message === 'CAMBIO') { await cargarOrdenes(); renderTodo(); }
+  } finally { btn.disabled = false; }
+}
+async function quitarDemora(id) {
+  const o = ord(id), c = demoraCobro(o); if (!o || !c || !c.rec || c.cobrado) return;
+  if (!await TX.confirmar('¿Quitar la demora del cobro?', `Se quitará ${money(c.rec.monto)} del total del viaje. El tracking no cambia.`, 'Quitar')) return;
+  try {
+    await escribirRecargos(o, o.recargos.filter(x => !esDemora(x)), r2(Number(o.total || 0) - (Number(c.rec.monto) || 0)));
+    TX.toast('Demora quitada del cobro'); renderTodo();
+  } catch (e) { console.error(e); TX.toast('No se pudo quitar: la orden cambió o ya fue cobrada.', 'error'); await cargarOrdenes(); renderTodo(); }
 }
 async function eliminarOrden(id) {
   const o = ord(id); if (!o) return;
@@ -655,6 +764,8 @@ function enlazar() {
     $('of-cli-nombre-wrap').style.display = $('of-cliente').value ? 'none' : ''; aplicarTarifa(true);
     const dlIn = $('of-dias-libres'), cid = $('of-cliente').value;
     if (dlIn && !dlIn.value && cid) { const prev = OT.ordenes.find(x => x.cliente_id === cid && x.dias_libres != null && x.id !== OT.editando?.id); if (prev) dlIn.value = prev.dias_libres; }
+    const dtIn = $('of-demora-tarifa');
+    if (dtIn && !dtIn.value && cid) { const prev = OT.ordenes.find(x => x.cliente_id === cid && x.demora_tarifa_dia != null && x.id !== OT.editando?.id); if (prev) dtIn.value = prev.demora_tarifa_dia; }
   });
   $('of-ruta').addEventListener('change', () => { OT.cantManual = false; aplicarTarifa(true); });
   $('of-origen').addEventListener('input', e => { e.target.dataset.auto = ''; });
@@ -683,7 +794,7 @@ function enlazar() {
   $('oc2-caja').addEventListener('change', () => { $('oc2-metodo-wrap').style.display = $('oc2-caja').checked ? '' : 'none'; cambiaMetodo(); });
   $('oc2-metodo').addEventListener('change', cambiaMetodo);
   document.addEventListener('click', e => {
-    const t = e.target.closest('[data-ot-abrir],[data-ot-nueva],[data-ot-editar],[data-ot-vista],[data-ot-tab],[data-ot-asignar],[data-ot-iniciar],[data-ot-entregar],[data-ot-cancelar],[data-ot-borrar],[data-ot-costo-nuevo],[data-ot-costo-editar],[data-ot-costo-borrar],[data-ot-rec-del],[data-ot-cobrar]');
+    const t = e.target.closest('[data-ot-abrir],[data-ot-nueva],[data-ot-editar],[data-ot-vista],[data-ot-tab],[data-ot-asignar],[data-ot-iniciar],[data-ot-entregar],[data-ot-cancelar],[data-ot-borrar],[data-ot-costo-nuevo],[data-ot-costo-editar],[data-ot-costo-borrar],[data-ot-rec-del],[data-ot-cobrar],[data-ot-demora],[data-ot-demora-quitar]');
     if (!t) return; const d = t.dataset;
     if (e.target.closest('[data-trk-nuevo]')) return;   // botón rápido de tracking dentro de la tarjeta
     if (d.otAbrir) { e.preventDefault(); abrirDetalle(d.otAbrir, d.otAbrirTab); }
@@ -699,6 +810,8 @@ function enlazar() {
     else if (d.otCostoNuevo) abrirCosto(d.otCostoNuevo, null);
     else if (d.otCostoEditar) abrirCosto(OT.detalleId, d.otCostoEditar);
     else if (d.otCostoBorrar) borrarCosto(d.otCostoBorrar);
+    else if (d.otDemora) abrirDemora(d.otDemora);
+    else if (d.otDemoraQuitar) quitarDemora(d.otDemoraQuitar);
     else if (d.otCobrar) TXCobro.abrir(d.otCobrar, { alCerrar: async cobrado => { if (cobrado) { await cargarTodo(); renderTodo(); } } });
     else if (d.otRecDel != null) { const a = recargosDOM(); a.splice(Number(d.otRecDel), 1); pintarRecargos(a); recalcular(); }
   });
