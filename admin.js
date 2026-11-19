@@ -196,6 +196,7 @@ function navigate(section) {
   if (section === 'freelancers') window.AdminFL?.cargar();
   if (section === 'estadisticas-clientes') window.AdminEst?.cargar();
   if (section === 'salud-datos') window.AdminSalud?.cargar();
+  if (section === 'ingresos') window.AdminIngresos?.cargar();
   if (section === 'errores-vivo') window.AdminErrores?.cargar();
 }
 

@@ -48,3 +48,41 @@
   .sd-flecha { grid-column:3; grid-row:1; }
   .sd-det { padding:4px 12px 14px 12px; }
 }
+
+/* ===== Ingresos Negocio360 ===== */
+#page-ingresos { --in-barra: #2a78d6; --in-barra-actual: #1b5fb0; }
+[data-theme="dark"] #page-ingresos { --in-barra: #3987e5; --in-barra-actual: #6aa6ef; }
+.in-aviso { font-size:12.5px; color:var(--text-secondary); background:var(--info-light); border-radius:var(--radius-md); padding:9px 12px; margin-top:8px; line-height:1.5; }
+.in-grid4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+.in-k { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:var(--radius-lg); padding:16px 16px 14px; box-shadow:var(--shadow-sm); min-width:0; }
+.in-k-t { font-size:12.5px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.03em; }
+.in-k-v { font-size:24px; font-weight:800; color:var(--text-primary); margin:6px 0 4px; letter-spacing:-.01em; }
+.in-k-s { font-size:12.5px; color:var(--text-secondary); line-height:1.5; }
+.in-k.destacado { border-top:3px solid var(--accent); }
+.in-var { font-weight:600; }
+.in-var.sube { color:var(--success); } .in-var.baja { color:var(--danger); } .in-var.neutra { color:var(--text-muted); }
+.in-sec { font-size:14px; font-weight:700; color:var(--text-primary); margin:22px 0 10px; }
+.in-tabs { display:inline-flex; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:10px; padding:3px; flex-wrap:wrap; }
+.in-tabs button { border:0; background:transparent; color:var(--text-secondary); font:inherit; font-size:13px; font-weight:600; padding:7px 12px; border-radius:8px; cursor:pointer; min-height:34px; }
+.in-tabs button.activo { background:var(--accent); color:#fff; }
+.in-graf { width:100%; overflow:hidden; }
+.in-graf svg { display:block; }
+.in-graf .in-grid { stroke:var(--border-color); stroke-width:1; }
+.in-graf .in-base { stroke:var(--text-muted); stroke-width:1; }
+.in-graf .in-eje { fill:var(--text-secondary); font-size:11px; font-family:inherit; }
+.in-graf .in-valor { fill:var(--text-primary); font-size:11.5px; font-weight:700; font-family:inherit; }
+.in-graf .in-barra { fill:var(--in-barra); }
+.in-graf .in-barra.actual { fill:var(--in-barra-actual); }
+.in-graf .in-hit { fill:transparent; cursor:pointer; outline:none; }
+.in-graf .in-hit.in-hover { fill:var(--text-primary); fill-opacity:.05; }
+.in-tip { position:fixed; z-index:9999; display:none; pointer-events:none; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border-color); box-shadow:var(--shadow-lg); border-radius:10px; padding:9px 12px; font-size:12.5px; line-height:1.5; max-width:260px; }
+.in-tip-fila { display:flex; gap:10px; } .in-tip-fila b { margin-left:auto; }
+.in-vacio { text-align:center; color:var(--text-muted); padding:22px 12px; font-size:14px; }
+.in-total td { font-weight:800; background:var(--bg-tertiary); }
+.in-cab-card { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+@media (max-width: 1100px) { .in-grid4 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width: 520px) { .in-grid4 { grid-template-columns:1fr; } .in-k-v { font-size:22px; } }
+
+/* Panel completo: el área principal puede achicarse en el celular; las tablas
+   anchas se desplazan dentro de su propia caja (antes ensanchaban toda la página). */
+.main-content { min-width: 0; }

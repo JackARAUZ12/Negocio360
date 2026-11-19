@@ -30,7 +30,7 @@
   <link rel="stylesheet" href="admin.css" />
   <link rel="stylesheet" href="admin-freelancers.css?v=20261021b" />
   <link rel="stylesheet" href="admin-estadisticas.css?v=20261112a" />
-  <link rel="stylesheet" href="admin-salud.css?v=20261118a" />
+  <link rel="stylesheet" href="admin-salud.css?v=20261118c" />
 </head>
 <body>
 
@@ -75,6 +75,10 @@
         Dashboard Admin
       </button>
 
+      <button class="nav-item" data-section="ingresos">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Ingresos Negocio360
+      </button>
       <button class="nav-item" data-section="users">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -790,6 +794,53 @@
             </table>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ══════════ PÁGINA: INGRESOS NEGOCIO360 ══════════ -->
+    <section class="page-content" id="page-ingresos">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <div>
+          <h1>Ingresos Negocio360</h1>
+          <p>Lo que tú cobras por las suscripciones: semana, mes, mes pasado y año, lo que te deben y lo que falta cobrar.</p>
+          <div class="in-aviso" id="in-aviso">Cargando…</div>
+        </div>
+        <button type="button" class="btn-icon btn-ghost" id="in-actualizar">↻ Actualizar</button>
+      </div>
+      <div class="in-sec">Cobrado</div>
+      <div class="in-grid4">
+          <div class="in-k destacado"><div class="in-k-t">Esta semana</div><div class="in-k-v" id="in-k-semana">—</div><div class="in-k-s" id="in-k-semana-sub">&nbsp;</div></div>
+          <div class="in-k destacado"><div class="in-k-t">Este mes</div><div class="in-k-v" id="in-k-mes">—</div><div class="in-k-s" id="in-k-mes-sub">&nbsp;</div></div>
+          <div class="in-k "><div class="in-k-t">Mes pasado</div><div class="in-k-v" id="in-k-mespas">—</div><div class="in-k-s" id="in-k-mespas-sub">&nbsp;</div></div>
+          <div class="in-k "><div class="in-k-t">Este año</div><div class="in-k-v" id="in-k-anio">—</div><div class="in-k-s" id="in-k-anio-sub">&nbsp;</div></div>
+      </div>
+      <div class="in-sec">Tu cartera hoy</div>
+      <div class="in-grid4">
+          <div class="in-k "><div class="in-k-t">Ingreso mensual recurrente</div><div class="in-k-v" id="in-k-mrr">—</div><div class="in-k-s" id="in-k-mrr-sub">&nbsp;</div></div>
+          <div class="in-k "><div class="in-k-t">Te deben hoy</div><div class="in-k-v" id="in-k-deben">—</div><div class="in-k-s" id="in-k-deben-sub">&nbsp;</div></div>
+          <div class="in-k "><div class="in-k-t">Falta cobrar este mes</div><div class="in-k-v" id="in-k-falta">—</div><div class="in-k-s" id="in-k-falta-sub">&nbsp;</div></div>
+          <div class="in-k "><div class="in-k-t">Ingreso en pausa</div><div class="in-k-v" id="in-k-riesgo">—</div><div class="in-k-s" id="in-k-riesgo-sub">&nbsp;</div></div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div class="card-header in-cab-card">
+          <div><div class="card-title">Cobros en el tiempo</div><div class="card-subtitle">La barra más oscura es el período en curso. Pasa el dedo o el mouse sobre una barra para ver el detalle.</div></div>
+          <div class="in-tabs" role="group" aria-label="Agrupar por"><button type="button" data-in-vista="semanal" class="activo">Por semana</button><button type="button" data-in-vista="mensual">Por mes</button></div>
+        </div>
+        <div class="card-body"><div class="in-graf" id="in-grafico"></div></div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div class="card-header"><div><div class="card-title">Quién te debe hoy</div><div class="card-subtitle">Mismos clientes que "Pendientes de pago" y "Pago atrasado" del Dashboard</div></div></div>
+        <div class="card-body no-pad" id="in-deben"></div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div class="card-header in-cab-card">
+          <div><div class="card-title">Detalle de cobros</div><div class="card-subtitle">Cada pago marcado, con el cliente y el ciclo que pagó</div></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <div class="in-tabs" role="group" aria-label="Período"><button type="button" data-in-periodo="semana">Semana</button><button type="button" data-in-periodo="mes" class="activo">Este mes</button><button type="button" data-in-periodo="mespas">Mes pasado</button><button type="button" data-in-periodo="anio">Año</button></div>
+            <button type="button" class="btn-icon btn-ghost btn-sm" id="in-csv">⬇ Excel (CSV)</button>
+          </div>
+        </div>
+        <div class="card-body no-pad" id="in-tabla"></div>
       </div>
     </section>
 
@@ -2061,10 +2112,11 @@
     }
   });
 </script>
-<script src="admin.js?v=20261118a"></script>
+<script src="admin.js?v=20261118b"></script>
 <script src="admin-freelancers.js?v=20261021a"></script>
 <script src="admin-estadisticas.js?v=20261112a"></script>
 <script src="admin-salud.js?v=20261118a"></script>
+<script src="admin-ingresos.js?v=20261118a"></script>
 
 <script src="bienvenida-negocio360.js?v=14"></script>
 </body>
