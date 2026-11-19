@@ -138,7 +138,7 @@
     return SECUENCIA[Math.min(i + 1, SECUENCIA.length - 1)];
   }
   const ultimo = ordenId => [...filasDe(ordenId)].reverse()[0] || null;
-  const durTxt = h => { const d = Math.floor(h / 24), hr = Math.floor(h - d * 24); return `${d} día${d === 1 ? '' : 's'}${hr ? ` ${hr} h` : ''}`; };
+  const durTxt = h => { const d = Math.floor(h / 24), hr = Math.floor(h - d * 24); if (!d) return `${hr} h`; return `${d} día${d === 1 ? '' : 's'}${hr ? ` ${hr} h` : ''}`; };
   function demoraTexto(d) {
     const forma = d.modo === 'calendario' ? 'Se cuentan por fecha (días calendario)' : 'Se cuentan por horas (bloques de 24 h)';
     if (d.estado === 'sin_inicio') return { titulo: 'Aún no inicia la carga', det: `${forma} desde “Cargando” hasta “Descarga completa”.` };
