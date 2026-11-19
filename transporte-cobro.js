@@ -20,11 +20,13 @@ const TXCobro = (() => {
   const f = n => { try { const m = motor(); if (m) return m.fmt(n); } catch (_) {} return TX.fmtMoneda(n); };
   const NOMBRE_SERVICIO = 'Flete de transporte';
 
+  // z-index 9500: por encima de las ventanas de Transporte (.tx-modal = 9000), porque el cobro se abre
+  // desde el detalle de la orden; con 3000 quedaba escondido detrás de ese detalle (19-nov-2026).
   function estilos() {
     if (document.getElementById('txc-estilos')) return;
     const st = document.createElement('style'); st.id = 'txc-estilos';
     st.textContent = `
-#txc-cobro{position:fixed;inset:0;z-index:3000;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:12px}
+#txc-cobro{position:fixed;inset:0;z-index:9500;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:12px}
 #txc-cobro .txc-caja{background:var(--bg-surface,var(--bg-card,#fff));color:var(--text-primary,#111827);width:100%;max-width:560px;max-height:94vh;border-radius:16px;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden}
 #txc-cobro .txc-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border,#e5e7eb)}
 #txc-cobro .txc-tit{font-weight:800;font-size:16px;min-width:0;overflow-wrap:anywhere}
