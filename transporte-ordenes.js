@@ -286,7 +286,7 @@ function tabResumen(o) {
   <div class="tx-kpis" style="margin-top:12px"><div class="tx-kpi"><span>Total a cobrar</span><b>${esc(money(o.total))}</b></div>
     <div class="tx-kpi"><span>Costos del viaje</span><b>${esc(money(cos))}</b><small>${costosDe(o.id).length} registro(s)</small></div>
     <div class="tx-kpi ${ut < 0 ? 'alerta' : ''}"><span>Utilidad del viaje</span><b>${esc(money(ut))}</b><small>${m == null ? '' : m + '% de margen'}</small></div></div>
-  <div class="tx-ayuda">El cobro se factura desde Ventas o Créditos; el cobro automático de órdenes llegará en una fase posterior.</div>
+  <div class="tx-ayuda">${o.venta_id ? '✅ Este viaje ya tiene su venta: está en Ventas y en Caja (o en Créditos si fue a crédito), y de ahí pasa a Contabilidad.' : 'Cuando el viaje esté entregado, cóbralo con <b>💳 Cobrar este viaje</b>: queda como una venta normal en Ventas y en Caja (o en Créditos si es a crédito), y de ahí pasa a Contabilidad.'}</div>
   <div class="tx-pie" style="justify-content:space-between">${['pendiente', 'cancelada'].includes(o.estado) ? `<button type="button" class="tx-btn tx-btn-borrar" data-ot-borrar="${esc(o.id)}">🗑 Eliminar orden</button>` : '<span></span>'}</div>`;
 }
 function tabDespacho(o) {
