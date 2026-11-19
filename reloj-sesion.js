@@ -33,6 +33,24 @@
     };
   }
 
+  // Registro de errores para soporte (errores-cliente.js): comparte los clientes de
+  // Supabase de la página y guarda los primeros errores mientras ese archivo carga.
+  try {
+    window.__n360SbClientes = clientes;
+    var colaErr = window.__n360ErrQ = window.__n360ErrQ || [];
+    window.addEventListener('error', function (e) {
+      if (!window.__n360Errores && colaErr.length < 20 && e && e.message)
+        colaErr.push(['js', e.message, ((e.filename || '').split('/').pop() + ':' + (e.lineno || 0)) + (e.error && e.error.stack ? '\n' + e.error.stack : '')]);
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e && e.reason;
+      if (!window.__n360Errores && colaErr.length < 20) colaErr.push(['promesa', (r && r.message) || String(r), r && r.stack]);
+    });
+    var sErr = document.createElement('script');
+    sErr.src = 'errores-cliente.js?v=20261118a'; sErr.async = true;
+    (document.head || document.documentElement).appendChild(sErr);
+  } catch (e) {}
+
   // Si la hora del equipo cambia, la diferencia medida ya no sirve: se olvida y la
   // sesión se marca para renovarse (al renovarla se vuelve a medir con la hora nueva).
   function olvidarDesfase() {

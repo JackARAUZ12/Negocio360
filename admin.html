@@ -15,7 +15,7 @@
   <!-- Supabase SDK -->
   <script src="ver-como.js?v=20261023b"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="reloj-sesion.js?v=20261028b"></script>
+  <script src="reloj-sesion.js?v=20261118a"></script>
   <script src="descargas-app.js?v=20261112a"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261116a"></script>
@@ -30,6 +30,7 @@
   <link rel="stylesheet" href="admin.css" />
   <link rel="stylesheet" href="admin-freelancers.css?v=20261021b" />
   <link rel="stylesheet" href="admin-estadisticas.css?v=20261112a" />
+  <link rel="stylesheet" href="admin-salud.css?v=20261118a" />
 </head>
 <body>
 
@@ -190,6 +191,16 @@
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
         </svg>
         Auditoría Global
+      </button>
+
+      <button class="nav-item" data-section="salud-datos">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Salud de los datos
+      </button>
+
+      <button class="nav-item" data-section="errores-vivo">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Errores en vivo
       </button>
 
       <div class="nav-divider"></div>
@@ -779,6 +790,72 @@
             </table>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ══════════ PÁGINA: SALUD DE LOS DATOS ══════════ -->
+    <section class="page-content" id="page-salud-datos">
+      <div class="page-header">
+        <h1>Salud de los datos</h1>
+        <p>Revisa que el dinero de cada negocio cuadre: ventas contra Caja, anulaciones, créditos, abonos, fiados, gastos y fichas de clientes. Se revisa sola cada noche y solo lee datos: nunca cambia nada de los negocios.</p>
+        <div class="sd-ultima" id="sd-ultima">—</div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card cancelled"><div class="stat-value" id="sd-stat-rojo">—</div><div class="stat-label">Negocios con descuadre de dinero</div></div>
+        <div class="stat-card suspended"><div class="stat-value" id="sd-stat-amarillo">—</div><div class="stat-label">Negocios solo con avisos (sin dinero)</div></div>
+        <div class="stat-card total"><div class="stat-value" id="sd-stat-nuevos">—</div><div class="stat-label">Hallazgos nuevos desde la revisión anterior</div></div>
+        <div class="stat-card active"><div class="stat-value" id="sd-stat-monto" style="font-size:20px">—</div><div class="stat-label">Dinero involucrado (en la moneda de cada negocio)</div></div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Negocios con algo por revisar</div>
+            <div class="card-subtitle">🔴 dinero que no cuadra · 🟡 datos a revisar que no mueven dinero. Toca un negocio para ver el detalle.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn-icon btn-ghost" id="sd-actualizar">Actualizar</button>
+            <button type="button" class="btn-icon btn-primary" id="sd-revisar">↻ Revisar ahora</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="sd-barra">
+            <select id="sd-nivel" class="form-control"><option value="">Todo</option><option value="rojo">Solo dinero (🔴)</option><option value="amarillo">Solo avisos (🟡)</option></select>
+            <label class="sd-check"><input type="checkbox" id="sd-nuevos"/> Solo lo nuevo</label>
+            <input type="search" id="sd-buscar" class="form-control" placeholder="Buscar negocio, venta, crédito o cliente…" autocomplete="off"/>
+          </div>
+        </div>
+        <div class="card-body no-pad" id="sd-lista"><div class="sd-vacio">Cargando…</div></div>
+      </div>
+    </section>
+
+    <!-- ══════════ PÁGINA: ERRORES EN VIVO ══════════ -->
+    <section class="page-content" id="page-errores-vivo">
+      <div class="page-header">
+        <h1>Errores en vivo</h1>
+        <p>Lo que les falla a tus clientes en pantalla (errores de la página y avisos rojos de “No se pudo…”), para arreglarlo antes de que te llamen. El mismo error se agrupa aunque le pase a varios negocios. Se guardan 30 días.</p>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card cancelled"><div class="stat-value" id="er-stat-hoy">—</div><div class="stat-label">Errores hoy</div></div>
+        <div class="stat-card suspended"><div class="stat-value" id="er-stat-cuentas">—</div><div class="stat-label">Negocios afectados hoy</div></div>
+        <div class="stat-card total"><div class="stat-value" id="er-stat-abiertos">—</div><div class="stat-label">Errores distintos sin resolver</div></div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Errores agrupados</div>
+            <div class="card-subtitle">Primero los que afectan a más negocios. Toca uno para ver el detalle técnico.</div>
+          </div>
+          <button type="button" class="btn-icon btn-ghost" id="er-actualizar">Actualizar</button>
+        </div>
+        <div class="card-body">
+          <div class="sd-barra">
+            <select id="er-rango" class="form-control"><option value="1">Hoy</option><option value="7" selected>Últimos 7 días</option><option value="30">Últimos 30 días</option></select>
+            <select id="er-tipo" class="form-control"><option value="">Todos los tipos</option><option value="js">Errores de la página</option><option value="promesa">Errores al procesar</option><option value="aviso">Avisos rojos al usuario</option></select>
+            <label class="sd-check"><input type="checkbox" id="er-resueltos"/> Ver también resueltos</label>
+            <input type="search" id="er-buscar" class="form-control" placeholder="Buscar mensaje, página o negocio…" autocomplete="off"/>
+          </div>
+        </div>
+        <div class="card-body no-pad" id="er-lista"><div class="sd-vacio">Cargando…</div></div>
       </div>
     </section>
 
@@ -1984,9 +2061,10 @@
     }
   });
 </script>
-<script src="admin.js?v=20261116a"></script>
+<script src="admin.js?v=20261118a"></script>
 <script src="admin-freelancers.js?v=20261021a"></script>
 <script src="admin-estadisticas.js?v=20261112a"></script>
+<script src="admin-salud.js?v=20261118a"></script>
 
 <script src="bienvenida-negocio360.js?v=14"></script>
 </body>
