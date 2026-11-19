@@ -256,7 +256,7 @@ async function cargarKpis() {
   });
   // Tracking: viajes en demora y viajes en ruta sin actualizar (solo avisos; solo lee)
   const trk = window.TXTrack ? await intentar(async () => {
-    const { data: os, error: e1 } = await sb.from('transporte_ordenes').select('id,numero,estado,dias_libres,salida_real,cliente_nombre').eq('auth_user_id', TP.userId).in('estado', ['asignada', 'en_ruta']);
+    const { data: os, error: e1 } = await sb.from('transporte_ordenes').select('id,numero,estado,dias_libres,libres_horas,conteo_dias,salida_real,cliente_nombre').eq('auth_user_id', TP.userId).in('estado', ['asignada', 'en_ruta']);
     if (e1) throw e1;
     if (!(os || []).length) return { demoras: [], sinAct: [] };
     const { data: fs, error: e2 } = await sb.from('transporte_tracking').select('orden_id,fecha_hora,hito').eq('auth_user_id', TP.userId).in('orden_id', os.map(o => o.id));

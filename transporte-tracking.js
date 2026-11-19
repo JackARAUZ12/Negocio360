@@ -6,8 +6,11 @@
    - Se llena sola con lo que ya existe (orden creada, salida, cruces de
      frontera, entrega) y con las actualizaciones a mano: fecha y hora,
      estatus (lista + personalizados), país y nota.
-   - Días libres vs. días usados (bloques de 24 h) desde "Cargando"
-     hasta "Descarga completa" → demora.
+   - Días libres vs. días usados desde "Cargando" hasta "Descarga completa"
+     → demora. Dos formas de contar (por orden, con un valor por defecto en ⚙️):
+       · Días calendario: cada fecha nueva es un día nuevo (carga el 19 a las
+         7 p. m. → el 20 ya es el día 2). Cuenta el día de carga y el de descarga.
+       · Por horas: bloques de 24 h; los libres pueden ser días u horas (24 h, 36 h…).
    - Reporte "Tracking de la unidad" en PDF y Excel.
 
    Escribe SOLO en transporte_tracking (y dias_libres de la orden desde
@@ -41,7 +44,8 @@
     const m = (window.TX && TX.empresaConfig && TX.empresaConfig.metadata) || {};
     const c = (m && typeof m === 'object' && m.transporteTracking) || {};
     return { estatus: Array.isArray(c.estatus) ? c.estatus.filter(x => typeof x === 'string' && x.trim()) : [],
-             paises: Array.isArray(c.paises) ? c.paises.filter(x => typeof x === 'string' && x.trim()) : null };
+             paises: Array.isArray(c.paises) ? c.paises.filter(x => typeof x === 'string' && x.trim()) : null,
+             conteo: c.conteo === 'calendario' ? 'calendario' : 'horas' };
   }
   function listaEstatus() {
     const extra = cfg().estatus.filter(n => !ESTATUS_BASE.some(b => b.n.toLowerCase() === n.toLowerCase()));
@@ -76,25 +80,47 @@
   }
 
   /* ---------------- días libres y demora (bloques de 24 h) ---------------- */
+  // Fecha calendario en Nicaragua (Centroamérica tiene la misma hora: UTC-6)
+  const diaKey = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/Managua' });
+  const difDias = (a, b) => { const [y1, m1, d1] = a.split('-').map(Number), [y2, m2, d2] = b.split('-').map(Number); return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000); };
+  const pl = (n, u) => `${n} ${u}${n === 1 ? '' : (u === 'día' ? 's' : '')}`;
+  // Forma de contar de la orden: la suya, o la de la cuenta (⚙️). Las órdenes viejas quedaron en 'horas'.
+  function modoConteo(o) { return o && (o.conteo_dias === 'calendario' || o.conteo_dias === 'horas') ? o.conteo_dias : cfg().conteo; }
+
   function demora(o, ahora, filasOrden) {
     const fs = filasOrden || filasDe(o.id);
     const ini = fs.filter(f => f.hito === 'inicio_carga').map(f => new Date(f.fecha_hora)).sort((a, b) => a - b)[0] || null;
     const fin = ini ? (fs.filter(f => f.hito === 'fin_descarga' && new Date(f.fecha_hora) >= ini).map(f => new Date(f.fecha_hora)).sort((a, b) => a - b)[0] || null) : null;
-    const libres = o.dias_libres == null || o.dias_libres === '' ? null : Number(o.dias_libres);
-    const r = { ini, fin, libres, horas: 0, excesoH: 0, demoraDias: 0, demoraFraccion: 0, estado: 'sin_inicio', clase: 'gris' };
+    const modo = modoConteo(o);
+    const libDias = o.dias_libres == null || o.dias_libres === '' ? null : Number(o.dias_libres);
+    const libH = modo === 'horas' && o.libres_horas != null && o.libres_horas !== '' ? Number(o.libres_horas) : (libDias == null ? null : libDias * 24);
+    const enHoras = modo === 'horas' && o.libres_horas != null && o.libres_horas !== '';
+    const libres = libH == null ? null : (enHoras ? Math.round(libH / 24 * 100) / 100 : libDias);
+    const r = { ini, fin, modo, libres, libresH: libH, libresTxt: libH == null ? '' : (enHoras ? `${libH} h` : pl(libDias, 'día')),
+                horas: 0, diasUsados: 0, excesoH: 0, demoraDias: 0, demoraFraccion: 0, estado: 'sin_inicio', clase: 'gris' };
     if (!ini) return r;
     const hasta = fin || (['cancelada'].includes(o.estado) ? ini : (ahora || new Date()));
     r.horas = Math.max(0, (hasta - ini) / H);
+    r.diasUsados = Math.max(1, difDias(diaKey(ini), diaKey(hasta)) + 1);   // calendario: cuenta el día de carga y el de hoy/descarga
     r.estado = fin ? 'terminado' : 'en_curso';
     if (libres == null) { r.clase = 'azul'; return r; }
-    r.excesoH = r.horas - libres * 24;
+    if (modo === 'calendario') {
+      const exc = r.diasUsados - libDias;
+      if (exc > 0) { r.demoraDias = r.demoraFraccion = exc; r.excesoH = exc * 24; r.clase = 'rojo'; }
+      else r.clase = exc === 0 ? 'naranja' : 'verde';          // naranja = hoy es su último día libre
+      return r;
+    }
+    r.excesoH = r.horas - libH;
     if (r.excesoH > 0) {
       r.demoraDias = Math.floor(r.excesoH / 24);                // días completos de demora
       r.demoraFraccion = Math.ceil(r.excesoH / 24 - 1e-9);      // contando día o fracción
       r.clase = 'rojo';
-    } else r.clase = (libres * 24 - r.horas) <= 24 ? 'naranja' : 'verde';
+    } else r.clase = (libH - r.horas) <= 24 ? 'naranja' : 'verde';
     return r;
   }
+  // Textos según la forma de contar
+  const usadoTxt = d => d.modo === 'calendario' ? `${pl(d.diasUsados, 'día')} calendario` : durTxt(d.horas);
+  const cobroTxt = d => d.modo === 'calendario' ? 'en días calendario' : 'contando día o fracción';
   const haceTxt = iso => {
     const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
     if (m < 1) return 'ahora mismo'; if (m < 60) return `hace ${m} min`;
@@ -114,13 +140,21 @@
   const ultimo = ordenId => [...filasDe(ordenId)].reverse()[0] || null;
   const durTxt = h => { const d = Math.floor(h / 24), hr = Math.floor(h - d * 24); return `${d} día${d === 1 ? '' : 's'}${hr ? ` ${hr} h` : ''}`; };
   function demoraTexto(d) {
-    if (d.estado === 'sin_inicio') return { titulo: 'Aún no inicia la carga', det: 'Los días se cuentan desde el estatus “Cargando” hasta “Descarga completa”.' };
-    const usados = durTxt(d.horas);
+    const forma = d.modo === 'calendario' ? 'Se cuentan por fecha (días calendario)' : 'Se cuentan por horas (bloques de 24 h)';
+    if (d.estado === 'sin_inicio') return { titulo: 'Aún no inicia la carga', det: `${forma} desde “Cargando” hasta “Descarga completa”.` };
+    const usados = usadoTxt(d);
     if (d.libres == null) return { titulo: `${d.estado === 'terminado' ? 'Usó' : 'Lleva'} ${usados}`, det: 'Pon los días libres en la orden (✏️ Editar) para calcular la demora.' };
-    if (d.excesoH > 0) return { titulo: `Demora: ${durTxt(d.excesoH)}`, det: `Usados ${usados} de ${d.libres} día${d.libres === 1 ? '' : 's'} libre${d.libres === 1 ? '' : 's'} · ${d.demoraFraccion} día${d.demoraFraccion === 1 ? '' : 's'} de demora contando día o fracción` };
+    if (d.excesoH > 0) return { titulo: `Demora: ${durTxt(d.excesoH)}`, det: `Usados ${usados} de ${d.libresTxt} libres · ${pl(d.demoraFraccion, 'día')} de demora ${cobroTxt(d)}` };
+    if (d.modo === 'calendario') {
+      const quedan = d.libres - d.diasUsados;
+      return { titulo: d.estado === 'terminado' ? `Sin demora · usó ${usados}` : `Día ${d.diasUsados} de ${d.libresTxt} libres`,
+               det: d.estado === 'terminado' ? 'Terminó dentro de sus días libres (días calendario).' : (quedan === 0 ? 'Hoy es su último día libre (días calendario).' : `Le queda${quedan === 1 ? '' : 'n'} ${pl(quedan, 'día')} libre${quedan === 1 ? '' : 's'} después de hoy (días calendario).`) };
+    }
+    if (String(d.libresTxt).endsWith(' h')) return { titulo: d.estado === 'terminado' ? `Sin demora · usó ${usados}` : `Lleva ${usados} de ${d.libresTxt} libres`,
+      det: `${d.estado === 'terminado' ? 'Terminó' : 'Le quedan'} ${durTxt(Math.max(0, d.libresH - d.horas))} ${d.estado === 'terminado' ? 'antes de agotar las horas libres' : 'de horas libres'}` };
     const dia = Math.min(d.libres, Math.floor(d.horas / 24) + 1);
     return { titulo: d.estado === 'terminado' ? `Sin demora · usó ${usados}` : `Día ${dia} de ${d.libres} libre${d.libres === 1 ? '' : 's'}`,
-             det: `${d.estado === 'terminado' ? 'Terminó' : 'Le quedan'} ${durTxt(Math.max(0, d.libres * 24 - d.horas))} ${d.estado === 'terminado' ? 'antes de agotar los días libres' : 'de días libres'}` };
+             det: `${d.estado === 'terminado' ? 'Terminó' : 'Le quedan'} ${durTxt(Math.max(0, d.libresH - d.horas))} ${d.estado === 'terminado' ? 'antes de agotar los días libres' : 'de días libres'}` };
   }
   // Chip para las tarjetas del tablero
   function chip(o) {
@@ -131,24 +165,29 @@
   }
   function chipDemora(o) {
     const d = demora(o); if (d.estado === 'sin_inicio') return '';
-    if (d.libres == null) return d.estado === 'en_curso' ? `<span class="tx-chip azul">⏱ ${esc(durTxt(d.horas))}</span>` : '';
+    if (d.libres == null) return d.estado === 'en_curso' ? `<span class="tx-chip azul">⏱ ${esc(usadoTxt(d))}</span>` : '';
     if (d.excesoH > 0) return `<span class="tx-chip rojo">⏱ Demora ${esc(durTxt(d.excesoH))}</span>`;
     if (d.estado === 'terminado') return `<span class="tx-chip verde">⏱ Sin demora</span>`;
+    if (d.modo === 'calendario') return `<span class="tx-chip ${d.clase}" title="Días calendario">⏱ Día ${d.diasUsados}/${esc(d.libres)}</span>`;
+    if (String(d.libresTxt).endsWith(' h')) return `<span class="tx-chip ${d.clase}">⏱ ${Math.floor(d.horas)} h/${esc(d.libresTxt)}</span>`;
     return `<span class="tx-chip ${d.clase}">⏱ Día ${Math.min(d.libres, Math.floor(d.horas / 24) + 1)}/${esc(d.libres)}</span>`;
   }
 
   /* ---------------- pestaña ---------------- */
   const fh = iso => { const d = new Date(iso); return { f: d.toLocaleDateString('es-NI', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }), h: d.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) }; };
   function tab(o) {
+    asegurarModal();   // carga los estilos del tracking aunque no se haya abierto "Actualizar" todavía
     const ev = eventos(o), d = demora(o), dt = demoraTexto(d), puede = o.estado !== 'cancelada';
     const ult = [...ev].reverse().find(e => e.manual);
     return `
     <div class="trk-cab">
       <div class="trk-dem ${d.clase}"><b>⏱ ${esc(dt.titulo)}</b><small>${esc(dt.det)}</small>
         ${d.ini && d.libres != null && d.libres > 0 ? (() => {
-          const tot = Math.max(d.libres * 24, d.horas), dentro = Math.min(d.horas, d.libres * 24), marca = d.libres * 24 / tot * 100;
-          return `<div class="trk-barra" title="Tiempo usado (la raya marca el fin de los días libres)"><i style="width:${(dentro / tot * 100).toFixed(1)}%"></i>${d.excesoH > 0 ? `<em style="width:${(d.excesoH / tot * 100).toFixed(1)}%"></em>` : ''}<s style="left:${marca.toFixed(1)}%"></s></div>
-          <div class="trk-barra-l"><span>Inicio de carga</span><span style="position:absolute;left:${Math.min(marca, 82).toFixed(1)}%;transform:translateX(-50%)">${esc(d.libres)} día${d.libres === 1 ? '' : 's'} libre${d.libres === 1 ? '' : 's'}</span><span>${d.excesoH > 0 ? 'Demora' : ''}</span></div>`;
+          const cal = d.modo === 'calendario';
+          const usado = cal ? d.diasUsados : d.horas, libre = cal ? d.libres : d.libresH, exc = cal ? d.demoraDias : Math.max(0, d.excesoH);
+          const tot = Math.max(libre, usado), dentro = Math.min(usado, libre), marca = libre / tot * 100;
+          return `<div class="trk-barra" title="Tiempo usado (la raya marca el fin de los libres)"><i style="width:${(dentro / tot * 100).toFixed(1)}%"></i>${exc > 0 ? `<em style="width:${(exc / tot * 100).toFixed(1)}%"></em>` : ''}<s style="left:${marca.toFixed(1)}%"></s></div>
+          <div class="trk-barra-l"><span>Inicio de carga</span><span style="position:absolute;left:${Math.min(marca, 82).toFixed(1)}%;transform:translateX(-50%)">${esc(d.libresTxt)} libre${d.libresTxt === '1 día' ? '' : 's'}</span><span>${d.excesoH > 0 ? 'Demora' : ''}</span></div>`;
         })() : ''}
         ${d.ini ? `<small>Inicio de carga: ${esc(fh(d.ini).f)} ${esc(fh(d.ini).h)}${d.fin ? ` · Fin de descarga: ${esc(fh(d.fin).f)} ${esc(fh(d.fin).h)}` : ''}</small>` : ''}</div>
       <div class="trk-acc">
@@ -176,6 +215,7 @@
     st.textContent = `
 .trk-cab{display:flex;gap:12px;align-items:stretch;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px}
 .trk-dem{flex:1 1 280px;display:flex;flex-direction:column;gap:3px;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--bg-surface)}
+.tx-chip-opc{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:13.5px;min-height:42px;background:var(--bg-surface);color:var(--text-primary)}.tx-chip-opc:has(input:checked){border-color:var(--accent);background:var(--accent-soft);font-weight:700}
 .trk-dem b{font-size:16px}.trk-dem small{font-size:12px;color:var(--text-secondary)}
 .trk-dem.verde{border-color:var(--success);background:var(--success-soft)}.trk-dem.verde b{color:var(--success)}
 .trk-dem.naranja{border-color:var(--warning);background:var(--warning-soft)}.trk-dem.naranja b{color:var(--warning)}
@@ -227,10 +267,16 @@
     const c = document.createElement('div');
     c.className = 'tx-modal'; c.id = 'trk-modal-config';
     c.innerHTML = `<div class="tx-box">
-      <h3>Tracking · estatus y países propios</h3>
+      <h3>Tracking · configuración</h3>
       <div class="tx-ayuda">Los estatus base siempre están (“Cargando” y “Descarga completa” marcan el conteo de días). Aquí agregas los tuyos, uno por línea.</div>
       <div class="tx-campo"><label for="trk-cfg-estatus">Estatus propios</label><textarea class="tx-in" id="trk-cfg-estatus" rows="4" placeholder="Esperando documentos&#10;En báscula"></textarea></div>
       <div class="tx-campo"><label for="trk-cfg-paises">Países (uno por línea)</label><textarea class="tx-in" id="trk-cfg-paises" rows="6"></textarea></div>
+      <div class="tx-campo"><label>Cómo contar los días libres (para las órdenes nuevas)</label>
+        <div class="tx-fila-chips" role="radiogroup">
+          <label class="tx-chip-opc"><input type="radio" name="trk-cfg-conteo" value="calendario"/> 📅 Días calendario</label>
+          <label class="tx-chip-opc"><input type="radio" name="trk-cfg-conteo" value="horas"/> ⏱ Por horas (24 h)</label>
+        </div>
+        <div class="tx-ayuda" style="margin-top:6px"><b>Días calendario:</b> cada fecha nueva es un día nuevo (carga el 19 a las 7 p. m. → el 20 ya es el día 2). <b>Por horas:</b> bloques de 24 h, para clientes con “24 h libres”. En cada orden se puede cambiar.</div></div>
       <div class="tx-err" id="trk-cfg-error"></div>
       <div class="tx-pie"><button type="button" class="tx-btn" onclick="TXcerrar('trk-modal-config')">Cancelar</button><button type="button" class="tx-btn tx-btn-primary" id="trk-cfg-guardar">Guardar</button></div></div>`;
     document.body.appendChild(c);
@@ -328,6 +374,7 @@
     const c = cfg();
     $('trk-cfg-estatus').value = c.estatus.join('\n');
     $('trk-cfg-paises').value = (c.paises || PAISES_BASE).join('\n');
+    document.querySelectorAll('input[name="trk-cfg-conteo"]').forEach(r => { r.checked = r.value === c.conteo; });
     $('trk-cfg-error').textContent = '';
     TX.abrir('trk-modal-config');
   }
@@ -342,11 +389,13 @@
       const { data, error: e1 } = await TX.sb.from('configuracion_empresa').select('metadata').eq('auth_user_id', TX.userId).maybeSingle();
       if (e1) throw e1;
       const meta = (data && data.metadata && typeof data.metadata === 'object') ? data.metadata : {};
-      const nueva = { ...meta, transporteTracking: { estatus, paises } };
+      const conteo = document.querySelector('input[name="trk-cfg-conteo"]:checked')?.value === 'calendario' ? 'calendario' : 'horas';
+      const prev = (meta.transporteTracking && typeof meta.transporteTracking === 'object') ? meta.transporteTracking : {};
+      const nueva = { ...meta, transporteTracking: { ...prev, estatus, paises, conteo } };
       const { error } = await TX.sb.from('configuracion_empresa').update({ metadata: nueva }).eq('auth_user_id', TX.userId);
       if (error) throw error;
       TX.empresaConfig = { ...(TX.empresaConfig || {}), metadata: nueva };
-      TX.cerrar('trk-modal-config'); TX.toast('Listo: estatus y países guardados');
+      TX.cerrar('trk-modal-config'); TX.toast('Listo: configuración del tracking guardada');
       if (typeof api.alCambiar === 'function') api.alCambiar();
     } catch (e) { console.error(e); $('trk-cfg-error').textContent = 'No se pudo guardar. Intenta de nuevo.'; }
     finally { btn.disabled = false; }
@@ -373,8 +422,8 @@
     ];
     const res = [
       ['Inicio de carga', d.ini ? `${fh(d.ini).f} ${fh(d.ini).h}` : '—'], ['Fin de descarga', d.fin ? `${fh(d.fin).f} ${fh(d.fin).h}` : (d.ini ? 'En curso' : '—')],
-      ['Días libres', d.libres == null ? 'No indicados' : String(d.libres)], ['Tiempo usado', d.ini ? durTxt(d.horas) : '—'],
-      ['Demora', d.libres == null || !d.ini ? '—' : (d.excesoH > 0 ? `${durTxt(d.excesoH)} (${d.demoraFraccion} día${d.demoraFraccion === 1 ? '' : 's'} contando día o fracción)` : 'Sin demora')],
+      ['Libres', d.libres == null ? 'No indicados' : `${d.libresTxt} (${d.modo === 'calendario' ? 'días calendario' : 'por horas'})`], ['Tiempo usado', d.ini ? usadoTxt(d) : '—'],
+      ['Demora', d.libres == null || !d.ini ? '—' : (d.excesoH > 0 ? `${durTxt(d.excesoH)} (${pl(d.demoraFraccion, 'día')} ${cobroTxt(d)})` : 'Sin demora')],
     ];
     return { cab, res, filas, titulo: `Tracking de la unidad · ${o.numero || ''}`, resumen: dt.titulo };
   }
@@ -447,6 +496,6 @@
     ST.filas.push(data); ST.filas.sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora));
     return data;
   }
-  const api = { cargar, alertas, agregar, ultimo, durTxt, eventos, demora, demoraTexto, chip, tab, abrirNuevo, abrirConfig, pdf, excel, cuantos: o => filasDe(o.id).length, _st: ST, alCambiar: null };
+  const api = { cargar, alertas, agregar, ultimo, durTxt, usadoTxt, cobroTxt, modoConteo, conteoDefecto: () => cfg().conteo, eventos, demora, demoraTexto, chip, tab, abrirNuevo, abrirConfig, pdf, excel, cuantos: o => filasDe(o.id).length, _st: ST, alCambiar: null };
   window.TXTrack = api;
 })();

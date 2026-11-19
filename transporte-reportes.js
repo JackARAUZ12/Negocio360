@@ -146,7 +146,7 @@ function vistaDemoras(d) {
   const ff = x => x ? x.toLocaleDateString('es-NI', { day: '2-digit', month: 'short' }) + ' ' + x.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : '';
   const filas = viajes.map(({ o, dm }) => ({
     n: o.numero || '', cli: o.cliente_nombre || 'Sin cliente', uni: unidad(o), ini: ff(dm.ini), fin: dm.fin ? ff(dm.fin) : 'En curso',
-    lib: dm.libres == null ? '—' : dm.libres, uso: h1(dm.horas / 24),
+    lib: dm.libres == null ? '—' : dm.libresTxt, cont: dm.modo === 'calendario' ? 'Calendario' : 'Por horas', uso: dm.modo === 'calendario' ? dm.diasUsados : h1(dm.horas / 24),
     dem: dm.libres == null ? '—' : (dm.excesoH > 0 ? TXTrack.durTxt(dm.excesoH) : 'Sin demora'),
     dfr: dm.libres == null ? '—' : dm.demoraFraccion, cob: cobDem(o), _ex: dm.libres == null ? 0 : Math.max(0, dm.excesoH),
   })).sort((a, b) => b._ex - a._ex);
@@ -154,17 +154,17 @@ function vistaDemoras(d) {
   const totFr = conDem.reduce((s, x) => s + x.dm.demoraFraccion, 0), totH = conDem.reduce((s, x) => s + x.dm.excesoH, 0);
   const grupo = (clave) => { const m = new Map(); viajes.forEach(({ o, dm }) => { const k = clave(o); const g = m.get(k) || { n: k, v: 0, dem: 0, dfr: 0, h: 0 }; g.v++; if (dm.libres != null && dm.excesoH > 0) { g.dem++; g.dfr += dm.demoraFraccion; g.h += dm.excesoH; } m.set(k, g); });
     return [...m.values()].map(g => ({ ...g, hd: g.h > 0 ? TXTrack.durTxt(g.h) : '—' })).sort((a, b) => b.h - a.h); };
-  const colsG = n => [{ k: 'n', n }, { k: 'v', n: 'Viajes', t: 'num' }, { k: 'dem', n: 'Con demora', t: 'num' }, { k: 'hd', n: 'Demora total' }, { k: 'dfr', n: 'Días a cobrar (día o fracción)', t: 'num' }];
+  const colsG = n => [{ k: 'n', n }, { k: 'v', n: 'Viajes', t: 'num' }, { k: 'dem', n: 'Con demora', t: 'num' }, { k: 'hd', n: 'Demora total' }, { k: 'dfr', n: 'Días de demora a cobrar', t: 'num' }];
   const kp = `<div class="tx-kpis" style="margin-bottom:10px">
       <div class="tx-kpi"><span>Viajes con tracking</span><b>${viajes.length}</b><small>“Cargando” dentro del periodo</small></div>
       <div class="tx-kpi ${conDem.length ? 'alerta' : ''}"><span>Viajes con demora</span><b>${conDem.length}</b><small>de ${conLib.length} con días libres</small></div>
-      <div class="tx-kpi"><span>Demora acumulada</span><b>${conDem.length ? esc(TXTrack.durTxt(totH)) : '—'}</b><small>${totFr} día(s) contando día o fracción</small></div>
+      <div class="tx-kpi"><span>Demora acumulada</span><b>${conDem.length ? esc(TXTrack.durTxt(totH)) : '—'}</b><small>${totFr} día(s) de demora a cobrar</small></div>
       <div class="tx-kpi"><span>Demora cargada al cobro</span><b>${esc(money(r2(viajes.reduce((s, x) => s + cobDem(x.o), 0))))}</b><small>${conDem.filter(x => !cobDem(x.o)).length} viaje(s) con demora sin cargar</small></div></div>
-    <div class="tx-ayuda" style="margin-bottom:8px">Días en bloques de 24 h, de “Cargando” a “Descarga completa”; los viajes en curso se cuentan hasta ahora. ${viajes.length - conLib.length ? `${viajes.length - conLib.length} viaje(s) no tienen días libres y no suman demora.` : ''}</div>`;
+    <div class="tx-ayuda" style="margin-bottom:8px">Días de “Cargando” a “Descarga completa”, según cómo se cuente cada viaje (📅 días calendario o ⏱ por horas, día o fracción); los viajes en curso se cuentan hasta ahora. ${viajes.length - conLib.length ? `${viajes.length - conLib.length} viaje(s) no tienen días libres y no suman demora.` : ''}</div>`;
   if (!viajes.length) { RP.tabla = null; return kp + '<div class="tx-vacio"><div class="tx-vacio-i">⏱</div><b>Sin viajes con tracking en este periodo</b><p>Registra “Cargando” en la pestaña 📍 Tracking de cada orden.</p></div>'; }
   const gCli = tabla('Demoras por cliente', colsG('Cliente'), grupo(o => o.cliente_nombre || 'Sin cliente'));
   const gUni = tabla('Demoras por unidad', colsG('Unidad'), grupo(unidad));
-  const det = tabla('Demoras por viaje', [{ k: 'n', n: 'Orden' }, { k: 'cli', n: 'Cliente' }, { k: 'uni', n: 'Unidad' }, { k: 'ini', n: 'Inicio de carga' }, { k: 'fin', n: 'Fin de descarga' }, { k: 'lib', n: 'Días libres' }, { k: 'uso', n: 'Días usados', t: 'num', d: 1 }, { k: 'dem', n: 'Demora' }, { k: 'dfr', n: 'Días a cobrar (día o fracción)' }, { k: 'cob', n: 'Demora cargada al cobro', t: 'money' }], filas);
+  const det = tabla('Demoras por viaje', [{ k: 'n', n: 'Orden' }, { k: 'cli', n: 'Cliente' }, { k: 'uni', n: 'Unidad' }, { k: 'ini', n: 'Inicio de carga' }, { k: 'fin', n: 'Fin de descarga' }, { k: 'cont', n: 'Conteo' }, { k: 'lib', n: 'Libres' }, { k: 'uso', n: 'Días usados', t: 'num', d: 1 }, { k: 'dem', n: 'Demora' }, { k: 'dfr', n: 'Días de demora a cobrar' }, { k: 'cob', n: 'Demora cargada al cobro', t: 'money' }], filas);
   return `${kp}<div class="tx-sec">Por cliente</div>${gCli}<div class="tx-sec">Por unidad</div>${gUni}<div class="tx-sec">Detalle por viaje <small style="font-weight:500;color:var(--text-muted)">(es la tabla que se exporta)</small></div>${det}`;
 }
 function render() {

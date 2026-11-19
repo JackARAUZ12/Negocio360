@@ -211,7 +211,7 @@ async function tpnCargarInicio() {
   // Tracking: viajes en demora y viajes en ruta sin actualizar (solo lectura)
   try {
     if (window.TXTrack) {
-      const { data: os } = await sb.from('transporte_ordenes').select('id,numero,estado,dias_libres,salida_real').eq('auth_user_id', uid).in('estado', ['asignada', 'en_ruta']);
+      const { data: os } = await sb.from('transporte_ordenes').select('id,numero,estado,dias_libres,libres_horas,conteo_dias,salida_real').eq('auth_user_id', uid).in('estado', ['asignada', 'en_ruta']);
       if ((os || []).length) {
         const { data: fs } = await sb.from('transporte_tracking').select('orden_id,fecha_hora,hito').eq('auth_user_id', uid).in('orden_id', os.map(o => o.id));
         TPN.datos.trk = TXTrack.alertas(os, fs || []);

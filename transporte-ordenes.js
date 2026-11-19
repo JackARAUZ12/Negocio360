@@ -141,7 +141,7 @@ function renderAvisos() {
   if (window.TXTrack) {
     const al = TXTrack.alertas(OT.ordenes);
     const lista = (arr, f) => arr.slice(0, 4).map(x => `<div><a href="#" data-ot-abrir="${esc(x.o.id)}" data-ot-abrir-tab="tracking" style="color:inherit;font-weight:700">${esc(x.o.numero)}</a> · ${esc(nombreCliente(x.o))} · ${f(x)}</div>`).join('') + (arr.length > 4 ? `<div style="color:var(--text-secondary)">…y ${arr.length - 4} más</div>` : '');
-    if (al.demoras.length) $('ot-avisos').innerHTML += `<div class="tx-aviso-banda" style="border-color:var(--danger);background:var(--danger-soft)"><div style="font-size:22px">🔴</div><div><b>${al.demoras.length} viaje(s) en demora</b>${lista(al.demoras, x => `demora ${esc(x.texto)} (${esc(x.d.libres)} día(s) libres)`)}</div></div>`;
+    if (al.demoras.length) $('ot-avisos').innerHTML += `<div class="tx-aviso-banda" style="border-color:var(--danger);background:var(--danger-soft)"><div style="font-size:22px">🔴</div><div><b>${al.demoras.length} viaje(s) en demora</b>${lista(al.demoras, x => `demora ${esc(x.texto)} (${esc(x.d.libresTxt)} libres)`)}</div></div>`;
     if (al.sinAct.length) $('ot-avisos').innerHTML += `<div class="tx-aviso-banda"><div style="font-size:22px">🕑</div><div><b>${al.sinAct.length} viaje(s) en ruta sin actualizar hace más de 12 h</b>${lista(al.sinAct, x => `último movimiento ${esc(x.texto)}`)}</div></div>`;
   }
 }
@@ -275,7 +275,7 @@ function tabResumen(o) {
   return `<div class="tx-datos">
     ${d('Cliente', nombreCliente(o))}${d('Ruta', r?.nombre)}${d('Fecha programada', o.fecha_programada ? fmtFecha(o.fecha_programada) : '')}
     ${d('Carga', o.carga_descripcion)}${d('Peso', o.peso_ton != null ? o.peso_ton + ' t' : '')}${d('Volumen', o.volumen_m3 != null ? o.volumen_m3 + ' m³' : '')}${d('Bultos', o.bultos != null ? String(o.bultos) : '')}
-    ${d('Días libres', o.dias_libres != null ? String(o.dias_libres) : '')}${d('Salida real', o.salida_real ? fmtHora(o.salida_real) : '')}${d('Entrega real', o.entrega_real ? fmtHora(o.entrega_real) : '')}${d('Recibió', o.receptor)}
+    ${d('Días libres', o.dias_libres != null ? (window.TXTrack ? (() => { const x = TXTrack.demora(o); return `${x.libresTxt} · ${x.modo === 'calendario' ? 'días calendario' : 'por horas'}`; })() : String(o.dias_libres)) : '')}${d('Salida real', o.salida_real ? fmtHora(o.salida_real) : '')}${d('Entrega real', o.entrega_real ? fmtHora(o.entrega_real) : '')}${d('Recibió', o.receptor)}
   </div>
   ${o.nota_entrega ? `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">📝 Entrega: ${esc(o.nota_entrega)}</div>` : ''}
   ${o.motivo_cancelacion ? `<div style="font-size:13px;color:var(--danger);margin-bottom:8px">⛔ Motivo: ${esc(o.motivo_cancelacion)}</div>` : ''}
@@ -372,7 +372,12 @@ function abrirForm(id) {
   $('of-origen').dataset.auto = ''; $('of-destino').dataset.auto = '';
   v('of-carga', o?.carga_descripcion); v('of-ton', o?.peso_ton); v('of-m3', o?.volumen_m3); v('of-bultos', o?.bultos);
   $('of-tipo').value = o?.tarifa_tipo || 'viaje'; v('of-precio', o ? o.tarifa_precio : ''); v('of-cant', o ? o.cantidad_base : 1); v('of-notas', o?.notas);
-  if ($('of-dias-libres')) v('of-dias-libres', o?.dias_libres);
+  if ($('of-dias-libres')) {
+    // Forma de contar: la de la orden; las órdenes nuevas toman la de ⚙️ Tracking
+    const modo = o?.conteo_dias || (o && o.dias_libres != null ? 'horas' : (window.TXTrack ? TXTrack.conteoDefecto() : 'horas'));
+    const enHoras = modo === 'horas' && o?.libres_horas != null;
+    ponerConteo(modo, enHoras ? o.libres_horas : o?.dias_libres, enHoras ? 'horas' : 'dias');
+  }
   if ($('of-demora-tarifa')) v('of-demora-tarifa', o?.demora_tarifa_dia);
   $('of-cli-nombre-wrap').style.display = $('of-cliente').value ? 'none' : '';
   pintarRecargos(Array.isArray(o?.recargos) ? o.recargos : []);
@@ -400,8 +405,13 @@ async function guardarOrden() {
   const recs = recargosDOM().filter(x => x.nombre || x.monto);
   if (recs.some(x => !x.nombre || x.monto <= 0)) return err('Cada recargo necesita concepto y un monto mayor a 0.');
   const { flete, total } = recalcular();
-  const dl = $('of-dias-libres') ? num($('of-dias-libres').value) : undefined;
-  if (dl != null && (dl < 0 || dl > 365)) return err('Los días libres deben estar entre 0 y 365.');
+  const conteo = leerConteo();
+  const libN = $('of-dias-libres') ? num($('of-dias-libres').value) : undefined;
+  const libEnHoras = conteo === 'horas' && $('of-libres-unidad')?.value === 'horas';
+  if (libN != null && libEnHoras && (libN < 0 || libN > 8760)) return err('Las horas libres deben estar entre 0 y 8760.');
+  if (libN != null && !libEnHoras && (libN < 0 || libN > 365)) return err('Los días libres deben estar entre 0 y 365.');
+  if (libN != null && conteo === 'calendario' && !Number.isInteger(libN)) return err('En días calendario, los días libres deben ser un número entero.');
+  const dl = libN === undefined ? undefined : (libN == null ? null : (libEnHoras ? Math.round(libN / 24 * 100) / 100 : libN));
   const dt = $('of-demora-tarifa') ? num($('of-demora-tarifa').value) : undefined;
   if (dt != null && (dt < 0 || dt > 100000000)) return err('El cobro por día de demora no es válido.');
   const p = {
@@ -409,7 +419,7 @@ async function guardarOrden() {
     fecha_programada: $('of-fecha').value || null, carga_descripcion: $('of-carga').value.trim() || null,
     peso_ton: num($('of-ton').value), volumen_m3: num($('of-m3').value), bultos: num($('of-bultos').value),
     tarifa_tipo: $('of-tipo').value, tarifa_precio: precio, cantidad_base: cant, flete, recargos: recs, total, notas: $('of-notas').value.trim() || null,
-    ...(dl !== undefined ? { dias_libres: dl } : {}),
+    ...(dl !== undefined ? { dias_libres: dl, libres_horas: libEnHoras && libN != null ? libN : null, conteo_dias: conteo } : {}),
     ...(dt !== undefined ? { demora_tarifa_dia: dt } : {}),
   };
   const btn = $('of-guardar'); btn.disabled = true;
@@ -451,7 +461,7 @@ function bloqueDemora(o, corto) {
   if (!c.hay) return '';
   if (c.cobrado) return corto ? '' : `<div class="tx-aviso-banda"><div style="font-size:20px">ℹ️</div><div><b>Este viaje ya se cobró sin la demora</b>Para no descuadrar, el monto de un viaje cobrado no se cambia. Si el cliente debe pagar la demora, hazle una venta aparte por ese concepto.</div></div>`;
   if (!c.terminado) return corto ? '' : `<div class="tx-aviso-banda"><div style="font-size:20px">⏱</div><div><b>La demora sigue contando</b>Cuando marques “Descarga completa” se cierra el conteo y podrás cargar la demora al cobro del viaje.</div></div>`;
-  return `<div class="tx-aviso-banda rojo"><div style="font-size:20px">⏱</div><div style="flex:1"><b>Demora sin cobrar: ${esc(pl(c.d.demoraFraccion))} (día o fracción)</b>Se pasó ${esc(TXTrack.durTxt(c.d.excesoH))} de sus ${esc(pl(c.d.libres))} libres. Cárgala al cobro antes de cobrar el viaje.
+  return `<div class="tx-aviso-banda rojo"><div style="font-size:20px">⏱</div><div style="flex:1"><b>Demora sin cobrar: ${esc(pl(c.d.demoraFraccion))} (${c.d.modo === 'calendario' ? 'días calendario' : 'día o fracción'})</b>Se pasó ${esc(TXTrack.durTxt(c.d.excesoH))} de sus ${esc(c.d.libresTxt)} libres. Cárgala al cobro antes de cobrar el viaje.
     <div style="margin-top:8px"><button type="button" class="tx-btn tx-btn-primary tx-btn-sm" data-ot-demora="${esc(o.id)}">💵 Cargar demora al cobro</button></div></div></div>`;
 }
 function asegurarModalDemora() {
@@ -489,8 +499,10 @@ function abrirDemora(id) {
   if (!c.terminado) { TX.toast('Primero marca “Descarga completa” en el tracking.', 'warning'); return; }
   asegurarModalDemora(); OT.demoraId = id;
   const fr = c.d.demoraFraccion, comp = c.d.demoraDias;
-  $('odm-info').textContent = `${o.numero} · ${nombreCliente(o)} · demora de ${TXTrack.durTxt(c.d.excesoH)} sobre ${c.d.libres} día(s) libres`;
-  $('odm-modos').innerHTML = `<button type="button" class="tx-btn tx-btn-sm" data-odm-dias="${fr}">Día o fracción · ${fr}</button>` + (comp !== fr && comp >= 1 ? `<button type="button" class="tx-btn tx-btn-sm" data-odm-dias="${comp}">Solo días completos · ${comp}</button>` : '');
+  $('odm-info').textContent = `${o.numero} · ${nombreCliente(o)} · demora de ${TXTrack.durTxt(c.d.excesoH)} sobre ${c.d.libresTxt} libres`;
+  $('odm-modos').innerHTML = c.d.modo === 'calendario'
+    ? `<button type="button" class="tx-btn tx-btn-sm" data-odm-dias="${fr}">📅 Días calendario · ${fr}</button>`
+    : `<button type="button" class="tx-btn tx-btn-sm" data-odm-dias="${fr}">Día o fracción · ${fr}</button>` + (comp !== fr && comp >= 1 ? `<button type="button" class="tx-btn tx-btn-sm" data-odm-dias="${comp}">Solo días completos · ${comp}</button>` : '');
   const prev = !o.demora_tarifa_dia ? OT.ordenes.find(x => x.cliente_id && x.cliente_id === o.cliente_id && Number(x.demora_tarifa_dia) > 0 && x.id !== o.id) : null;
   $('odm-dias').value = c.rec && c.rec.dias ? c.rec.dias : fr;
   $('odm-tarifa').value = c.rec && c.rec.tarifa ? c.rec.tarifa : (Number(o.demora_tarifa_dia) > 0 ? o.demora_tarifa_dia : (prev ? prev.demora_tarifa_dia : ''));
@@ -755,7 +767,28 @@ async function borrarCosto(id) {
 /* ============================================================
    EVENTOS
    ============================================================ */
+/* ---------- Cómo se cuentan los días libres (formulario) ---------- */
+function leerConteo() { return document.querySelector('input[name="of-conteo"]:checked')?.value === 'calendario' ? 'calendario' : 'horas'; }
+function ponerConteo(modo, valor, unidad) {
+  document.querySelectorAll('input[name="of-conteo"]').forEach(r => { r.checked = r.value === (modo === 'calendario' ? 'calendario' : 'horas'); });
+  if ($('of-libres-unidad')) $('of-libres-unidad').value = unidad === 'horas' ? 'horas' : 'dias';
+  if ($('of-dias-libres')) $('of-dias-libres').value = valor == null || valor === '' ? '' : valor;
+  pintarConteo();
+}
+function pintarConteo() {
+  const cal = leerConteo() === 'calendario', u = $('of-libres-unidad'); if (!u) return;
+  if (cal) u.value = 'dias';
+  u.style.display = cal ? 'none' : '';
+  $('of-libres-lbl').textContent = cal ? 'Días libres (opcional)' : 'Libres (opcional)';
+  $('of-dias-libres').placeholder = cal ? 'Ej: 3' : (u.value === 'horas' ? 'Ej: 24' : 'Ej: 2');
+  $('of-conteo-ayuda').innerHTML = cal
+    ? '📅 <b>Días calendario:</b> cada fecha nueva es un día nuevo. Si carga el 19 a las 7 p. m., el 20 ya es el día 2. Cuenta el día de carga y el de descarga.'
+    : '⏱ <b>Por horas:</b> bloques de 24 h desde “Cargando”. Puedes poner los libres en días o en horas (ej. 24 h).';
+}
+
 function enlazar() {
+  document.querySelectorAll('input[name="of-conteo"]').forEach(r => r.addEventListener('change', pintarConteo));
+  $('of-libres-unidad')?.addEventListener('change', pintarConteo);
   TX.alCambiarComprobantes = async () => { OT.comp = await TX.cargarComprobantes(); renderTodo(); };
   $('ot-buscar').addEventListener('input', e => { OT.filtro.q = e.target.value; renderVista(); });
   $('ot-f-estado').addEventListener('change', e => { OT.filtro.estado = e.target.value; renderVista(); });
@@ -763,7 +796,11 @@ function enlazar() {
   $('of-cliente').addEventListener('change', () => {
     $('of-cli-nombre-wrap').style.display = $('of-cliente').value ? 'none' : ''; aplicarTarifa(true);
     const dlIn = $('of-dias-libres'), cid = $('of-cliente').value;
-    if (dlIn && !dlIn.value && cid) { const prev = OT.ordenes.find(x => x.cliente_id === cid && x.dias_libres != null && x.id !== OT.editando?.id); if (prev) dlIn.value = prev.dias_libres; }
+    // Lo del último viaje de ese cliente: días libres y cómo se cuentan
+    if (dlIn && !dlIn.value && cid) {
+      const prev = OT.ordenes.find(x => x.cliente_id === cid && x.dias_libres != null && x.id !== OT.editando?.id);
+      if (prev) { const m = prev.conteo_dias || 'horas', h = m === 'horas' && prev.libres_horas != null; ponerConteo(m, h ? prev.libres_horas : prev.dias_libres, h ? 'horas' : 'dias'); }
+    }
     const dtIn = $('of-demora-tarifa');
     if (dtIn && !dtIn.value && cid) { const prev = OT.ordenes.find(x => x.cliente_id === cid && x.demora_tarifa_dia != null && x.id !== OT.editando?.id); if (prev) dtIn.value = prev.demora_tarifa_dia; }
   });
