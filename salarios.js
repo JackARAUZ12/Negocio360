@@ -260,6 +260,46 @@ function abrirEditarEmpleado(id) {
    cero cada vez. Plantilla base — el negocio puede ajustarla a sus
    necesidades específicas o revisarla con un abogado si hace falta.
 ===================================================== */
+/* Boleta formal para pagos que no son de salario (comisión de freelancer, bono anual).
+   Mismo diseño que la boleta de salario; solo imprime los montos ya guardados. */
+function generarBoletaSimple(b) {
+  const bizName = STATE.empresaConfig?.nombre_comercial || STATE.currentUser?.nombre_negocio || 'Mi Negocio';
+  const bizRuc = STATE.empresaConfig?.ruc || '';
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const W = doc.internal.pageSize.getWidth(), M = 18; let y = 20;
+  doc.setFontSize(13); doc.setFont(undefined,'bold'); doc.text(bizName, M, y);
+  if (bizRuc) { doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.text(`RUC: ${bizRuc}`, M, y+5); }
+  doc.setFontSize(12); doc.setFont(undefined,'bold'); doc.text(b.titulo || 'BOLETA DE PAGO', W-M, y, { align:'right' });
+  doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.text(`N.º ${b.numero || '—'}`, W-M, y+5, { align:'right' });
+  y += 14; doc.setDrawColor(200); doc.line(M, y, W-M, y); y += 8;
+  doc.setFontSize(10);
+  const filaDato = (label, valor) => { doc.setFont(undefined,'bold'); doc.text(label, M, y); doc.setFont(undefined,'normal'); doc.text(String(valor), M+45, y); y += 6; };
+  filaDato('Nombre:', b.persona || '—');
+  filaDato('Cargo:', b.cargo || '—');
+  if (b.cedula) filaDato('Cédula:', b.cedula);
+  filaDato('Fecha de pago:', fmtDate(b.fecha));
+  if (b.periodo) filaDato('Período:', b.periodo);
+  filaDato('Método de pago:', b.metodo || '—');
+  y += 4;
+  doc.autoTable({
+    startY: y, head: [['Concepto', 'Monto']], theme: 'plain',
+    body: (b.filas || []).map(([k, v]) => [k, fmt(v)]),
+    styles: { fontSize: 9.5, cellPadding: 2.5 }, columnStyles: { 1: { halign:'right' } }, margin: { left:M, right:M },
+  });
+  y = doc.lastAutoTable.finalY + 6; doc.setDrawColor(200); doc.line(M, y, W-M, y); y += 8;
+  doc.setFontSize(13); doc.setFont(undefined,'bold');
+  doc.text('NETO PAGADO:', M, y); doc.text(fmt(b.neto), W-M, y, { align:'right' }); y += 8;
+  if (b.observaciones) { doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.text(doc.splitTextToSize('Observaciones: ' + b.observaciones, W-2*M), M, y); y += 8; }
+  y += 12; doc.setFontSize(9); doc.setFont(undefined,'normal');
+  doc.text('_____________________________', M, y); doc.text('_____________________________', W-M-70, y); y += 5;
+  doc.text('Firma del empleador', M, y); doc.text('Firma de quien recibe', W-M-70, y);
+  doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+  doc.text('Este documento certifica el pago realizado según los registros del negocio.', M, doc.internal.pageSize.getHeight() - 10);
+  doc.save(`Boleta_${String(b.numero||'').replace(/[^\w-]/g,'')}_${String(b.persona||'pago').replace(/[^\w]/g,'_')}_${b.fecha}.pdf`);
+  showToast('Boleta generada');
+}
+
 /* =====================================================
    BOLETA DE PAGO INDIVIDUAL — a diferencia de la planilla completa
    (todos los empleados juntos), esto es el recibo de UN pago ya
@@ -1079,6 +1119,7 @@ async function confirmarPagoSal() {
       titulo: 'Pago de salario', numero: comprobanteNumero, empleado: emp.nombre, cargo: emp.cargo || '—',
       fecha, base, bonos: totalBonos, deducciones: totalDeducciones, adelantos: totalAdelantos, total,
       observaciones, usuario: STATE.currentUser?.nombre || STATE.userEmail,
+      boleta: () => generarBoletaPago(pago),   // la boleta formal usa el pago YA guardado
     });
     await Promise.allSettled([loadEmpleados(), loadKPIsSal()]);
   } catch (e) {
@@ -1125,19 +1166,70 @@ function mostrarComprobanteSal(c) {
       <div class="tp-row"><span>Cargo:</span><b>${esc(c.cargo)}</b></div>
       <div class="tp-row"><span>Fecha:</span><b>${fmtDate(c.fecha)}</b></div>
       <hr/>
-      <div class="tp-row"><span>Salario base:</span><b>${fmt(c.base)}</b></div>
-      <div class="tp-row"><span>Bonificaciones:</span><b>${fmt(c.bonos)}</b></div>
-      <div class="tp-row"><span>Deducciones:</span><b>-${fmt(c.deducciones)}</b></div>
-      <div class="tp-row"><span>Adelantos descontados:</span><b>-${fmt(c.adelantos)}</b></div>
+      ${filasComprobanteSal(c).map(([k, v]) => `<div class="tp-row"><span>${esc(k)}:</span><b>${esc(v)}</b></div>`).join('')}
       <hr/>
       <div class="tp-row"><span>Total pagado:</span><b>${fmt(c.total)}</b></div>
       ${c.observaciones ? `<div class="tp-row"><span>Observaciones:</span><b>${esc(c.observaciones)}</b></div>` : ''}
     </div>`;
+  const bBol = document.getElementById('btn-boleta-sal');
+  if (bBol) bBol.style.display = typeof c.boleta === 'function' ? '' : 'none';
   openModal('modal-comprobante-sal');
 }
+// Filas del comprobante (las mismas en pantalla, impresión y PDF del ticket).
+function filasComprobanteSal(c) {
+  if (Array.isArray(c.filas)) return c.filas.map(([k, v]) => [k, fmt(v)]);
+  return [['Salario base', fmt(c.base)], ['Bonificaciones', fmt(c.bonos)],
+    ['Deducciones', '-' + fmt(c.deducciones)], ['Adelantos descontados', '-' + fmt(c.adelantos)]];
+}
+function descargarBoletaComprobanteSal() {
+  const c = STATE.ultimoComprobante;
+  if (!c || typeof c.boleta !== 'function') return;
+  try { c.boleta(); } catch (e) { console.error('Boleta:', e); showToast('No se pudo generar la boleta', 'error'); }
+}
+// Celular o app: la ventana de impresión del navegador suele bloquearse o quedar en blanco.
+function esCelularSal() {
+  return !!(window.N360DescargasApp && window.N360DescargasApp.activo) ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+// Ticket del comprobante en PDF (ancho 80 mm) para imprimir o compartir desde el celular.
+function ticketComprobanteSalPDF(c) {
+  const { jsPDF } = window.jspdf;
+  const filas = filasComprobanteSal(c);
+  const alto = 70 + filas.length * 5 + (c.observaciones ? 10 : 0);
+  const doc = new jsPDF({ unit: 'mm', format: [80, Math.max(100, alto)] });
+  const W = 80, M = 5; let y = 8;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  doc.text(String(STATE.empresaConfig?.nombre_comercial || 'Negocio360'), W / 2, y, { align: 'center' }); y += 5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  doc.text(String(c.titulo || 'Comprobante de pago'), W / 2, y, { align: 'center' }); y += 4;
+  const linea = () => { doc.setLineDashPattern([1, 1], 0); doc.line(M, y, W - M, y); y += 5; };
+  const fila = (k, v, neg) => { doc.setFont('helvetica', neg ? 'bold' : 'normal'); doc.text(String(k), M, y);
+    doc.text(String(v), W - M, y, { align: 'right' }); y += 5; };
+  linea();
+  fila('N° comprobante:', c.numero || '—'); fila('Empleado:', String(c.empleado || '—').slice(0, 30));
+  fila('Cargo:', String(c.cargo || '—').slice(0, 30)); fila('Fecha:', fmtDate(c.fecha));
+  linea();
+  filas.forEach(([k, v]) => fila(String(k).slice(0, 32) + ':', v));
+  linea();
+  doc.setFontSize(10.5); fila('Total pagado:', fmt(c.total), true); doc.setFontSize(9);
+  if (c.observaciones) { doc.setFont('helvetica', 'normal'); doc.text(doc.splitTextToSize('Obs.: ' + c.observaciones, W - 2 * M).slice(0, 2), M, y); y += 9; }
+  y += 8; doc.text('______________________', W / 2, y, { align: 'center' }); y += 4;
+  doc.text('Firma de quien recibe', W / 2, y, { align: 'center' });
+  doc.save(`Comprobante_${String(c.numero || 'pago').replace(/[^\w-]/g, '_')}.pdf`);
+}
 function imprimirComprobanteSal() {
+  const c = STATE.ultimoComprobante;
+  // En el celular se entrega el ticket en PDF (se imprime o comparte desde ahí).
+  if (c && esCelularSal()) {
+    try { ticketComprobanteSalPDF(c); showToast('Comprobante listo para imprimir'); return; }
+    catch (e) { console.warn('Ticket PDF:', e); }
+  }
   const html = document.getElementById('comprobante-sal-body').innerHTML;
   const w = window.open('', '_blank', 'width=380,height=600');
+  if (!w) {   // el navegador bloqueó la ventana: se entrega en PDF
+    try { if (c) { ticketComprobanteSalPDF(c); showToast('Comprobante listo para imprimir'); } } catch (e) { showToast('No se pudo imprimir el comprobante', 'error'); }
+    return;
+  }
   w.document.write(`<html><head><meta charset="UTF-8"><title>Comprobante</title>
     <style>body{font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:16px}.tp-row{display:flex;justify-content:space-between;gap:10px}hr{border:none;border-top:1px dashed #999;margin:8px 0}</style>
     </head><body>${html}<script>window.print();</script></body></html>`);
@@ -1974,6 +2066,21 @@ async function confirmarPagoFreelancer() {
 
     showToast('Comisión pagada correctamente');
     closeModal('modal-pagar-freelancer');
+    // Comprobante + boleta: solo muestran lo que se acaba de guardar (no recalculan nada).
+    try {
+      const periodo = (periodoInicio && periodoFin) ? `${fmtDate(periodoInicio)} al ${fmtDate(periodoFin)}` : null;
+      const filas = esFijo ? [['Pago acordado', monto]] : [
+        ['Ventas del período (base de cálculo)', baseCalculo, true],
+        [`Comisión${pctAplicado != null ? ' ' + Number(pctAplicado) + '%' : ''}`, monto]].filter(r => r[1] != null);
+      const numero = pago.comprobante_numero || ('COM-' + String(pago.id || Date.now()).replace(/-/g, '').slice(-8).toUpperCase());
+      mostrarComprobanteSal({
+        titulo: 'Pago de comisión', numero, empleado: f.nombre, cargo: 'Freelancer / comisionista', fecha,
+        filas, total: monto, observaciones,
+        boleta: () => generarBoletaSimple({ titulo: 'BOLETA DE PAGO DE COMISIÓN', numero, persona: f.nombre,
+          cargo: 'Freelancer / comisionista', cedula: f.cedula || '', fecha, periodo, metodo: metodoNombre,
+          filas, neto: monto, observaciones }),
+      });
+    } catch (eC) { console.warn('Comprobante de comisión:', eC); }
     STATE._calculoFreelancerActual = null;
     STATE._seleccionManualFreelancer = null;
   } catch (e) {
@@ -2295,6 +2402,20 @@ async function confirmarPagoBonoAnual() {
 
     showToast(`${STATE.bonoAnualConfig?.nombre || 'Bono'} pagado a ${emp.nombre} y descontado de Caja`);
     closeModal('modal-pagar-bono');
+    // Comprobante + boleta del bono: solo muestran lo que se acaba de guardar.
+    try {
+      const nomBono = STATE.bonoAnualConfig?.nombre || 'Bono anual';
+      const periodo = (desde && hasta) ? `${fmtDate(desde)} al ${fmtDate(hasta)}` : null;
+      const filas = [[`${nomBono}${cuotaNumero ? ' (cuota ' + cuotaNumero + ')' : ''}`, monto]];
+      const obs = bonoRow.observaciones || null;
+      mostrarComprobanteSal({
+        titulo: `Pago de ${nomBono}`, numero: bonoRow.comprobante_numero, empleado: emp.nombre, cargo: emp.cargo || '—', fecha,
+        filas, total: monto, observaciones: obs,
+        boleta: () => generarBoletaSimple({ titulo: `BOLETA DE PAGO · ${nomBono.toUpperCase()}`, numero: bonoRow.comprobante_numero,
+          persona: emp.nombre, cargo: emp.cargo || '—', cedula: emp.cedula || '', fecha, periodo, metodo: metodoNombre,
+          filas, neto: monto, observaciones: obs }),
+      });
+    } catch (eC) { console.warn('Comprobante de bono:', eC); }
   } catch (e) {
     errEl.textContent = 'Error al registrar: ' + (e.message||'');
   } finally {

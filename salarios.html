@@ -2140,9 +2140,10 @@
       <button class="modal-close" onclick="closeModal('modal-comprobante-sal')">&times;</button>
     </div>
     <div class="modal-body" id="comprobante-sal-body">—</div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap">
       <button class="btn-ghost" onclick="closeModal('modal-comprobante-sal')">Cerrar</button>
-      <button class="btn-primary" onclick="imprimirComprobanteSal()">Imprimir</button>
+      <button class="btn-secondary" id="btn-boleta-sal" onclick="descargarBoletaComprobanteSal()" style="display:none">📄 Boleta (PDF con firmas)</button>
+      <button class="btn-primary" onclick="imprimirComprobanteSal()">🖨️ Imprimir</button>
     </div>
   </div>
 </div>
@@ -2152,7 +2153,7 @@
 ===================================================== -->
 <script src="cajaAPI.js?v=20261007a"></script>
 <script src="paginar-lectura.js?v=20261029d"></script>
-<script src="salarios.js?v=20261110a"></script>
+<script src="salarios.js?v=20261120a"></script>
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="perfiles-guard.js?v=20261117a"></script>
