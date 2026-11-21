@@ -67,7 +67,7 @@
 
   /* ---------------- línea de tiempo (manual + automático) ---------------- */
   function eventos(o) {
-    const ev = filasDe(o.id).map(f => ({ id: f.id, t: f.fecha_hora, estatus: f.estatus, ico: infoEstatus(f.estatus).ico, pais: f.pais || '', nota: f.nota || '', hito: f.hito || null, por: f.creado_por_nombre || '', manual: true }));
+    const ev = filasDe(o.id).map(f => ({ id: f.id, t: f.fecha_hora, estatus: f.estatus, ico: infoEstatus(f.estatus).ico, pais: f.pais || '', nota: f.nota || '', vis: !!f.visible_cliente, hito: f.hito || null, por: f.creado_por_nombre || '', manual: true }));
     const auto = (t, estatus, ico, nota, pais) => { if (t) ev.push({ t, estatus, ico, nota: nota || '', pais: pais || '', manual: false }); };
     auto(o.created_at, 'Orden creada', '📋', '');
     auto(o.salida_real, 'Salida — inicio del viaje', '🚦', o.odometro_salida != null ? `Km ${Number(o.odometro_salida).toLocaleString('es-NI')}` : '');
@@ -203,7 +203,7 @@
         <div class="trk-ico">${esc(e.ico)}</div>
         <div class="trk-info"><b>${esc(e.estatus)}${e.pais ? ` <span class="tx-chip">${esc(e.pais)}</span>` : ''}${e.hito === 'inicio_carga' ? ' <span class="tx-chip azul">inicia el conteo</span>' : e.hito === 'fin_descarga' ? ' <span class="tx-chip azul">termina el conteo</span>' : ''}</b>
           <small>${esc(fh(e.t).f)} · ${esc(fh(e.t).h)}${e.manual ? (e.por ? ' · ' + esc(e.por) : '') : ' · automático'}</small>
-          ${e.nota ? `<small class="trk-nota">📝 ${esc(e.nota)}</small>` : ''}</div>
+          ${e.nota ? `<small class="trk-nota">📝 ${esc(e.nota)}${e.vis ? ' <span class="tx-chip azul" title="Tu cliente ve esta nota en su portal">👁 la ve el cliente</span>' : ''}</small>` : ''}</div>
         ${e.manual && puede ? `<div class="tx-doc-acc"><button type="button" class="tx-btn tx-btn-sm" data-trk-editar="${esc(e.id)}" aria-label="Editar">✏️</button><button type="button" class="tx-btn tx-btn-sm tx-btn-borrar" data-trk-borrar="${esc(e.id)}" aria-label="Borrar">🗑</button></div>` : ''}
       </div>`).join('') : '<div class="tx-vacio" style="padding:24px 12px"><div class="tx-vacio-i">📍</div><b>Sin movimientos todavía</b><p>Toca “Actualizar tracking” para anotar el estatus de la unidad.</p></div>'}</div>`;
   }
@@ -242,6 +242,8 @@
 .trk-ico{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--bg-hover);font-size:17px}
 .trk-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.trk-info b{font-size:14px}.trk-info small{font-size:12px;color:var(--text-muted)}
 .trk-nota{color:var(--text-secondary)!important}
+.trk-vis{display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--text-primary)}
+.trk-vis input{width:18px;height:18px;margin-top:1px;accent-color:var(--accent);flex:none}.trk-vis small{display:block;font-weight:500;font-size:12px;color:var(--text-secondary);margin-top:2px}
 .trk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
 .trk-op{min-height:44px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-surface);color:var(--text-primary);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 8px;text-align:left}
 .trk-op.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
@@ -259,6 +261,7 @@
         <div class="tx-campo"><label for="trk-fecha">Fecha y hora</label><input type="datetime-local" class="tx-in" id="trk-fecha"/></div>
         <div class="tx-campo"><label for="trk-nota">Nota (opcional)</label><input class="tx-in" id="trk-nota" maxlength="300" placeholder="Ej: Km 45, lluvia, en fila de aduana"/></div>
       </div>
+      <label class="trk-vis"><input type="checkbox" id="trk-visible"> <span>👁 Mostrar esta nota a mi cliente en su portal <small>Si no lo marcas, la nota queda solo para tu equipo. El estatus, la hora y el país sí los ve.</small></span></label>
       <div id="trk-aviso" class="trk-aviso" style="display:none"></div>
       <div class="tx-err" id="trk-error"></div>
       <div class="tx-pie"><button type="button" class="tx-btn" onclick="TXcerrar('trk-modal')">Cancelar</button><button type="button" class="tx-btn tx-btn-primary" id="trk-guardar">Guardar</button></div>
@@ -309,6 +312,7 @@
     $('trk-otro').value = f && !listaEstatus().some(e => e.n === f.estatus) ? f.estatus : '';
     $('trk-fecha').value = aLocal(f ? new Date(f.fecha_hora) : new Date());
     $('trk-nota').value = f ? (f.nota || '') : '';
+    if ($('trk-visible')) $('trk-visible').checked = !!(f && f.visible_cliente);
     $('trk-titulo').textContent = f ? 'Corregir movimiento' : 'Actualizar tracking';
     const o = (window.OT && OT.ordenes || []).find(x => x.id === ordenId);
     $('trk-orden').textContent = o ? `${o.numero || ''} · ${o.cliente_nombre || ''} · ${o.origen || '—'} → ${o.destino || '—'}` : '';
@@ -341,6 +345,7 @@
       if (hito === 'fin_descarga' && finEx) return avisar('⚠️ Esta orden ya tiene “Descarga completa”. Se usa la primera después de “Cargando”.');
     }
     const p = { fecha_hora: fecha.toISOString(), estatus, hito, pais: ST.sel.pais || null, nota: $('trk-nota').value.trim() || null };
+    if ($('trk-visible')) p.visible_cliente = !!(p.nota && $('trk-visible').checked);   // nota interna salvo que se marque
     const btn = $('trk-guardar'); btn.disabled = true;
     try {
       if (ST.editando) {

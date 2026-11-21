@@ -302,6 +302,7 @@ const ACCESOS = [
   { key: 'transporte_ordenes',     href: 'transporte-ordenes.html', ico: '📋', t: 'Órdenes de transporte', d: 'Tablero de despacho, costos y utilidad de cada viaje.' },
   { key: 'transporte_liquidaciones', href: 'transporte-liquidaciones.html', ico: '💵', t: 'Liquidación de conductores', d: 'Paga a tus conductores por viaje, km o comisión, con anticipos.' },
   { key: 'transporte_subcontratistas', href: 'transporte-subcontratistas.html', ico: '🤝', t: 'Subcontratistas', d: 'Transportistas externos: costo del flete, pago de contado o a crédito.' },
+  { key: 'transporte_portal', href: 'transporte-portal.html', ico: '👥', t: 'Portal de clientes', d: 'Tus clientes ven sus viajes en vivo con enlace, PIN y QR.' },
   { key: 'transporte_facturacion', href: 'transporte-facturacion.html', ico: '🧾', t: 'Facturación y cobranza', d: 'Factura los viajes entregados y sigue lo que te deben.' },
   { key: 'transporte_fronteras', href: 'transporte-fronteras.html', ico: '🛂', t: 'Fronteras y documentos', d: 'Cruces, trámites aduaneros, carta de porte y papeles de cada orden.' },
   { key: 'transporte_mantenimiento', href: 'transporte-mantenimiento.html', ico: '🔧', t: 'Mantenimiento y llantas', d: 'Servicios preventivos, órdenes del taller y control de llantas.' },

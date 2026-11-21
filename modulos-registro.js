@@ -206,6 +206,9 @@
     'transporte-subcontratistas.html': { key: 'transporte_subcontratistas', label: 'Transporte · Subcontratistas', icon: '🤝', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Transportistas externos: subcontrata viajes y paga de contado o a crédito (Cuentas por Pagar).' },
 
+    'transporte-portal.html': { key: 'transporte_portal', label: 'Transporte · Portal de clientes', icon: '👥', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
+                       desc: 'Tus clientes ven el seguimiento de sus viajes con enlace privado, PIN y código QR (solo lectura).' },
+
     'transporte-facturacion.html': { key: 'transporte_facturacion', label: 'Transporte · Facturación y cobranza', icon: '🧾', obligatorio: false, flagPropio: 'usa_modulo_transporte', enPanel: 'transporte.html',
                        desc: 'Convierte los viajes entregados en venta (contado o crédito) y da seguimiento al cobro.' },
 

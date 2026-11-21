@@ -15,7 +15,7 @@
   <script src="descargas-app.js?v=20261112a"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261116a"></script>
-  <script src="modulos-registro.js?v=20261111a"></script>
+  <script src="modulos-registro.js?v=20261121a"></script>
   <script src="auditoria-guard.js"></script>
   <script src="tutorial-motor.js?v=20261106a"></script>
   <!-- Lucide Icons -->
@@ -599,6 +599,10 @@
       .tp-hero{padding:20px 18px}.tp-hero h1{font-size:20px}.tp-hero::after{font-size:84px}
       .tp-fase{flex-wrap:wrap}.tp-estado{margin-left:44px;order:3}
     }
+      /* Aviso del Portal de clientes en el detalle de la orden */
+    .ot-portal{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);background:var(--bg-surface-2);border:1px dashed var(--border);border-radius:12px;padding:10px 12px;margin:4px 0 10px}
+    .ot-portal span{flex:1;min-width:200px}.ot-portal b{color:var(--text-primary)}.ot-portal .tx-btn{text-decoration:none}
+    .ot-portal.on{background:var(--accent-soft);border-style:solid;border-color:transparent}
   </style>
   <link rel="stylesheet" href="transporte-comun.css?v=20261119a" />
   <link rel="stylesheet" href="perfiles-guard.css" />
@@ -839,6 +843,7 @@
   </div>
   <div class="tx-sec">Carga</div>
   <div class="tx-campo"><label for="of-carga">¿Qué se transporta?</label><input class="tx-in" id="of-carga" maxlength="200" placeholder="Ej: Granos básicos en sacos, contenedor 40', maquinaria…"/></div>
+  <div class="tx-campo"><label for="of-ref">Referencia del cliente <small style="font-weight:500;color:var(--text-muted)">— opcional</small></label><input class="tx-in" id="of-ref" maxlength="80" placeholder="Su orden de compra, BL, pedido…"/><div class="tx-ayuda">Tu cliente la ve en su portal y puede buscar sus viajes con ella.</div></div>
   <div class="tx-cols">
     <div class="tx-campo"><label for="of-ton">Peso (toneladas)</label><input class="tx-in" id="of-ton" inputmode="decimal"/></div>
     <div class="tx-campo"><label for="of-m3">Volumen (m³)</label><input class="tx-in" id="of-m3" inputmode="decimal"/></div>
@@ -936,8 +941,8 @@
 <script src="transporte-comun.js?v=20261014a"></script>
 <script src="select-buscable.js?v=20261025e"></script>
 <script src="transporte-cobro.js?v=20261119a"></script>
-<script src="transporte-tracking.js?v=20261119b"></script>
-<script src="transporte-ordenes.js?v=20261119b"></script>
+<script src="transporte-tracking.js?v=20261121a"></script>
+<script src="transporte-ordenes.js?v=20261121a"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261117a"></script>
 <script src="modulos-guard.js?v=20261111a"></script>

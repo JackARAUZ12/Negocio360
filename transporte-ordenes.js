@@ -68,6 +68,8 @@ async function cargarTodo() {
   OT.rutas = rutas; OT.tarifas = tarifas; OT.unidades = unidades; OT.conductores = conductores;
   OT.docsU = TX.agruparDocs(docsU); OT.docsC = TX.agruparDocs(docsC);
   try { const { data } = await sb.from('clientes').select('id,nombre').eq('auth_user_id', TX.userId).eq('activo', true).order('nombre'); OT.clientes = data || []; } catch (_) { OT.clientes = []; }
+  // Portal de clientes: solo para mostrar si el cliente ve este viaje (si falla, no afecta nada)
+  try { const { data } = await sb.rpc('tx_portal_lista'); OT.portal = data && data.ok ? (data.accesos || []) : []; } catch (_) { OT.portal = []; }
   try { const { data } = await sb.from('metodos_pago').select('*').eq('auth_user_id', TX.userId).eq('activo', true).order('orden'); OT.metodos = data || []; } catch (_) { OT.metodos = []; }
   try { const { data } = await sb.from('bancos').select('id,nombre').eq('auth_user_id', TX.userId).eq('activo', true).order('nombre'); OT.bancos = data || []; } catch (_) { OT.bancos = []; }
 }
@@ -116,7 +118,7 @@ function filtradas() {
     if (!enPeriodo(o, OT.filtro.periodo)) return false;
     if (q) {
       const u = unidadDe(o.unidad_id);
-      if (!TX.quitarTildes([o.numero, nombreCliente(o), o.origen, o.destino, o.carga_descripcion, u?.placa, u?.nombre].join(' ')).includes(q)) return false;
+      if (!TX.quitarTildes([o.numero, o.ref_cliente, nombreCliente(o), o.origen, o.destino, o.carga_descripcion, u?.placa, u?.nombre].join(' ')).includes(q)) return false;
     }
     return true;
   });
@@ -268,18 +270,27 @@ function renderDetalle() {
     <div class="tx-tabs">${tabs.map(([k, l]) => `<button type="button" class="tx-tab ${OT.tab === k ? 'on' : ''}" data-ot-tab="${k}">${l}</button>`).join('')}</div>
     <div class="tx-panel on">${OT.tab === 'resumen' ? tabResumen(o) : OT.tab === 'despacho' ? tabDespacho(o) : (OT.tab === 'tracking' && window.TXTrack) ? bloqueDemora(o) + TXTrack.tab(o) : tabCostos(o)}</div>`;
 }
+// Aviso del Portal de clientes en el detalle de la orden
+function portalHtml(o) {
+  if (!o.cliente_id || o.estado === 'cancelada') return '';
+  const a = (OT.portal || []).find(x => x.cliente_id === o.cliente_id);
+  const ir = `transporte-portal.html?cliente=${encodeURIComponent(o.cliente_id)}`;
+  if (a && a.activo) return `<div class="ot-portal on">👁 <span><b>Tu cliente ve este viaje en su portal</b> en vivo, con el tracking.</span><a class="tx-btn tx-btn-sm" href="${ir}">📲 Reenviar acceso</a></div>`;
+  return `<div class="ot-portal">👥 <span><b>¿Tu cliente quiere seguir su viaje?</b> Dale acceso a su portal: enlace + PIN + QR.</span><a class="tx-btn tx-btn-sm tx-btn-primary" href="${ir}">🔗 Dar acceso</a></div>`;
+}
 function tabResumen(o) {
   const r = OT.rutas.find(x => x.id === o.ruta_id), cos = totalCostos(o.id), ut = utilidad(o), m = margen(Number(o.total), ut);
   const d = (l, v) => v ? `<div class="tx-dato"><span>${l}</span><b>${esc(v)}</b></div>` : '';
   const recs = Array.isArray(o.recargos) ? o.recargos : [];
   return `<div class="tx-datos">
-    ${d('Cliente', nombreCliente(o))}${d('Ruta', r?.nombre)}${d('Fecha programada', o.fecha_programada ? fmtFecha(o.fecha_programada) : '')}
+    ${d('Cliente', nombreCliente(o))}${d('Ref. del cliente', o.ref_cliente)}${d('Ruta', r?.nombre)}${d('Fecha programada', o.fecha_programada ? fmtFecha(o.fecha_programada) : '')}
     ${d('Carga', o.carga_descripcion)}${d('Peso', o.peso_ton != null ? o.peso_ton + ' t' : '')}${d('Volumen', o.volumen_m3 != null ? o.volumen_m3 + ' m³' : '')}${d('Bultos', o.bultos != null ? String(o.bultos) : '')}
     ${d('Días libres', o.dias_libres != null ? (window.TXTrack ? (() => { const x = TXTrack.demora(o); return `${x.libresTxt} · ${x.modo === 'calendario' ? 'días calendario' : 'por horas'}`; })() : String(o.dias_libres)) : '')}${d('Salida real', o.salida_real ? fmtHora(o.salida_real) : '')}${d('Entrega real', o.entrega_real ? fmtHora(o.entrega_real) : '')}${d('Recibió', o.receptor)}
   </div>
   ${o.nota_entrega ? `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">📝 Entrega: ${esc(o.nota_entrega)}</div>` : ''}
   ${o.motivo_cancelacion ? `<div style="font-size:13px;color:var(--danger);margin-bottom:8px">⛔ Motivo: ${esc(o.motivo_cancelacion)}</div>` : ''}
   ${o.notas ? `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">📝 ${esc(o.notas)}</div>` : ''}
+  ${portalHtml(o)}
   <div class="tx-sec">Cobro al cliente</div>${bloqueDemora(o, true)}
   <div class="tx-doc"><div class="tx-doc-info"><b>Flete: ${esc(money(o.flete))}</b><small>${esc(money(o.tarifa_precio))} por ${COBRO[o.tarifa_tipo] || 'viaje'} × ${esc(Number(o.cantidad_base))}</small></div></div>
   ${recs.map(x => `<div class="tx-doc"><div class="tx-doc-info"><b>+ ${esc(x.nombre || 'Recargo')}</b></div><b>${esc(money(x.monto))}</b></div>`).join('')}
@@ -370,7 +381,7 @@ function abrirForm(id) {
   $('of-cliente').value = o?.cliente_id || ''; v('of-cli-nombre', o?.cliente_nombre); $('of-ruta').value = o?.ruta_id || '';
   v('of-fecha', o?.fecha_programada || TX.hoyISO()); v('of-origen', o?.origen); v('of-destino', o?.destino);
   $('of-origen').dataset.auto = ''; $('of-destino').dataset.auto = '';
-  v('of-carga', o?.carga_descripcion); v('of-ton', o?.peso_ton); v('of-m3', o?.volumen_m3); v('of-bultos', o?.bultos);
+  v('of-carga', o?.carga_descripcion); if ($('of-ref')) v('of-ref', o?.ref_cliente); v('of-ton', o?.peso_ton); v('of-m3', o?.volumen_m3); v('of-bultos', o?.bultos);
   $('of-tipo').value = o?.tarifa_tipo || 'viaje'; v('of-precio', o ? o.tarifa_precio : ''); v('of-cant', o ? o.cantidad_base : 1); v('of-notas', o?.notas);
   if ($('of-dias-libres')) {
     // Forma de contar: la de la orden; las órdenes nuevas toman la de ⚙️ Tracking
@@ -417,6 +428,7 @@ async function guardarOrden() {
   const p = {
     cliente_id: cid, cliente_nombre: cnom, ruta_id: $('of-ruta').value || null, origen, destino,
     fecha_programada: $('of-fecha').value || null, carga_descripcion: $('of-carga').value.trim() || null,
+    ...($('of-ref') ? { ref_cliente: $('of-ref').value.trim() || null } : {}),
     peso_ton: num($('of-ton').value), volumen_m3: num($('of-m3').value), bultos: num($('of-bultos').value),
     tarifa_tipo: $('of-tipo').value, tarifa_precio: precio, cantidad_base: cant, flete, recargos: recs, total, notas: $('of-notas').value.trim() || null,
     ...(dl !== undefined ? { dias_libres: dl, libres_horas: libEnHoras && libN != null ? libN : null, conteo_dias: conteo } : {}),
