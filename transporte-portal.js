@@ -3,7 +3,7 @@
    El dueño da acceso a cada cliente con UN toque: el sistema crea solo
    el enlace privado, el PIN de 6 dígitos y el código QR.
    - Todo pasa por funciones del servidor (tx_portal_lista / tx_portal_gestionar).
-   - El PIN se guarda cifrado: solo se muestra al crearlo o cambiarlo.
+   - El PIN se guarda cifrado en el servidor; el dueño lo ve siempre (para reenviarlo).
    - SOLO acceso de lectura para el cliente. No toca órdenes, cobros ni Caja.
    ============================================================ */
 'use strict';
@@ -98,7 +98,7 @@ function renderLista() {
       <div class="pc-av" aria-hidden="true">${esc(nombreCli(c).slice(0, 1).toUpperCase())}</div>
       <div class="pc-info"><b>${esc(nombreCli(c))}</b>
         <small>${v ? `${cur ? `<b class="pc-cur">${cur} en curso</b> · ` : ''}${v} viaje${v === 1 ? '' : 's'} en total` : 'Sin viajes todavía'}</small>
-        <div class="pc-est">${estadoHtml(a)}</div></div>
+        <div class="pc-est">${estadoHtml(a)}${a && a.pin ? ` <span class="pc-pin" title="PIN de este cliente">🔑 PIN <b>${esc(a.pin)}</b></span>` : ''}</div></div>
       <div class="pc-acc">${acciones}</div></div>`;
   };
   if (!l.length) {
@@ -119,7 +119,7 @@ function mensaje(c, tok, pin) {
 function mostrarAcceso(clienteId, tok, pin, titulo) {
   const c = PC.clientes.find(x => x.id === clienteId) || {}, url = urlPortal(tok), tel = telDigitos(c.whatsapp || c.telefono);
   if (pin) PC.pinRecien[clienteId] = pin;
-  const pinMostrar = pin || PC.pinRecien[clienteId] || '';
+  const pinMostrar = pin || accesoDe(clienteId)?.pin || PC.pinRecien[clienteId] || '';
   const msg = mensaje(c, tok, pinMostrar);
   PC.ultimo = { c, tok, pin: pinMostrar, msg, url };
   $('pa-titulo').textContent = titulo || `Acceso de ${nombreCli(c)}`;
@@ -128,11 +128,11 @@ function mostrarAcceso(clienteId, tok, pin, titulo) {
       <div class="pa-qr">${qrSvg(url, 5)}</div>
       <div class="pa-datos">
         <small>Cliente</small><b>${esc(nombreCli(c))}</b>
-        <small>PIN</small>${pinMostrar ? `<div class="pa-pin">${esc(pinMostrar)}</div>` : `<div class="pa-sinpin">🔒 Guardado en secreto<br><button type="button" class="tx-btn tx-btn-sm" data-pc-pin="${esc(clienteId)}">🔑 Crear PIN nuevo</button></div>`}
+        <small>PIN</small>${pinMostrar ? `<div class="pa-pin">${esc(pinMostrar)}</div>` : `<div class="pa-sinpin">Sin PIN guardado<br><button type="button" class="tx-btn tx-btn-sm" data-pc-pin="${esc(clienteId)}">🔑 Crear PIN nuevo</button></div>`}
         <small>Enlace</small><div class="pa-url">${esc(url)}</div>
       </div>
     </div>
-    ${pin ? '<div class="pa-aviso">⚠️ Envíalo ahora: por seguridad el PIN no se vuelve a mostrar. Si se pierde, crea uno nuevo con un toque.</div>' : ''}
+    <div class="pa-aviso">🔒 El enlace y el PIN son la llave de tu cliente: envíaselo solo a él. Siempre puedes volver a verlos aquí.</div>
     <div class="pa-botones">
       ${tel ? `<a class="tx-btn tx-btn-ok pa-wa" href="https://wa.me/${tel}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">📲 Enviar por WhatsApp</a>`
             : `<a class="tx-btn tx-btn-ok pa-wa" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">📲 Elegir chat de WhatsApp</a>`}
@@ -249,7 +249,8 @@ function enlazar() {
   .pc-av{width:42px;height:42px;border-radius:12px;background:var(--accent-soft);color:var(--accent);font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;flex:none}
   .pc-info{flex:1;min-width:0}.pc-info>b{display:block;font-size:14.5px;color:var(--text-primary);overflow-wrap:anywhere}
   .pc-info>small{display:block;font-size:12.5px;color:var(--text-secondary)}.pc-cur{color:var(--accent);font-weight:700}
-  .pc-est{margin-top:5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.pc-ult{font-size:12px;color:var(--text-muted)}
+  .pc-est{margin-top:5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .pc-pin{font-size:12px;color:var(--text-secondary);background:var(--bg-hover);border-radius:999px;padding:2px 9px}.pc-pin b{letter-spacing:.12em;color:var(--text-primary);font-variant-numeric:tabular-nums}.pc-ult{font-size:12px;color:var(--text-muted)}
   .pc-acc{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
   .pc-otros{margin-top:14px}.pc-otros summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--text-secondary);padding:8px 2px;margin-bottom:8px}
   .pa-tarjeta{display:flex;gap:16px;align-items:center;background:var(--bg-surface-2);border:1px solid var(--border);border-radius:16px;padding:14px}
