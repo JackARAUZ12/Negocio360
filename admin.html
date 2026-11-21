@@ -802,7 +802,7 @@
       <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
         <div>
           <h1>Ingresos Negocio360</h1>
-          <p>Lo que tú cobras por las suscripciones: semana, mes, mes pasado y año, lo que te deben y lo que falta cobrar.</p>
+          <p>Lo que tú cobras por las suscripciones: semana, mes, mes pasado, año y por período (del 20 al 19), lo que te deben y lo que falta cobrar.</p>
           <div class="in-aviso" id="in-aviso">Cargando…</div>
         </div>
         <button type="button" class="btn-icon btn-ghost" id="in-actualizar">↻ Actualizar</button>
@@ -814,6 +814,11 @@
           <div class="in-k "><div class="in-k-t">Mes pasado</div><div class="in-k-v" id="in-k-mespas">—</div><div class="in-k-s" id="in-k-mespas-sub">&nbsp;</div></div>
           <div class="in-k "><div class="in-k-t">Este año</div><div class="in-k-v" id="in-k-anio">—</div><div class="in-k-s" id="in-k-anio-sub">&nbsp;</div></div>
       </div>
+      <div class="in-sec">Por período (del 20 de un mes al 19 del siguiente)</div>
+      <div class="in-grid4">
+          <div class="in-k destacado"><div class="in-k-t" id="in-k-per-t">Período actual</div><div class="in-k-v" id="in-k-per">—</div><div class="in-k-s" id="in-k-per-sub">&nbsp;</div></div>
+          <div class="in-k "><div class="in-k-t" id="in-k-perpas-t">Período anterior</div><div class="in-k-v" id="in-k-perpas">—</div><div class="in-k-s" id="in-k-perpas-sub">&nbsp;</div></div>
+      </div>
       <div class="in-sec">Tu cartera hoy</div>
       <div class="in-grid4">
           <div class="in-k "><div class="in-k-t">Ingreso mensual recurrente</div><div class="in-k-v" id="in-k-mrr">—</div><div class="in-k-s" id="in-k-mrr-sub">&nbsp;</div></div>
@@ -824,7 +829,7 @@
       <div class="card" style="margin-top:20px">
         <div class="card-header in-cab-card">
           <div><div class="card-title">Cobros en el tiempo</div><div class="card-subtitle">La barra más oscura es el período en curso. Pasa el dedo o el mouse sobre una barra para ver el detalle.</div></div>
-          <div class="in-tabs" role="group" aria-label="Agrupar por"><button type="button" data-in-vista="semanal" class="activo">Por semana</button><button type="button" data-in-vista="mensual">Por mes</button></div>
+          <div class="in-tabs" role="group" aria-label="Agrupar por"><button type="button" data-in-vista="semanal" class="activo">Por semana</button><button type="button" data-in-vista="mensual">Por mes</button><button type="button" data-in-vista="periodo">Por período</button></div>
         </div>
         <div class="card-body"><div class="in-graf" id="in-grafico"></div></div>
       </div>
@@ -836,7 +841,7 @@
         <div class="card-header in-cab-card">
           <div><div class="card-title">Detalle de cobros</div><div class="card-subtitle">Cada pago marcado, con el cliente y el ciclo que pagó</div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <div class="in-tabs" role="group" aria-label="Período"><button type="button" data-in-periodo="semana">Semana</button><button type="button" data-in-periodo="mes" class="activo">Este mes</button><button type="button" data-in-periodo="mespas">Mes pasado</button><button type="button" data-in-periodo="anio">Año</button></div>
+            <div class="in-tabs" role="group" aria-label="Período"><button type="button" data-in-periodo="semana">Semana</button><button type="button" data-in-periodo="mes" class="activo">Este mes</button><button type="button" data-in-periodo="mespas">Mes pasado</button><button type="button" data-in-periodo="anio">Año</button><button type="button" data-in-periodo="per">Período actual</button><button type="button" data-in-periodo="perpas">Período anterior</button></div>
             <button type="button" class="btn-icon btn-ghost btn-sm" id="in-csv">⬇ Excel (CSV)</button>
           </div>
         </div>
@@ -1197,12 +1202,12 @@
     </section>
 
     <!-- ══════════════════════════════════
-         PÁGINA: CLIENTES POR PERÍODO (19-19)
+         PÁGINA: CLIENTES POR PERÍODO (20 al 19)
          ══════════════════════════════════ -->
     <section class="page-content" id="page-clientes-periodo">
       <div class="page-header">
         <h1>Clientes por Período</h1>
-        <p>Cuentas activas agrupadas en períodos del 19 al 19 de cada mes, según su fecha de registro. Por defecto solo cuenta las activas; usa los interruptores para incluir también las suspendidas y las canceladas.</p>
+        <p>Cuentas activas agrupadas en períodos del 20 de un mes al 19 del siguiente, según su fecha de registro. Por defecto solo cuenta las activas; usa los interruptores para incluir también las suspendidas y las canceladas.</p>
       </div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
@@ -1229,7 +1234,7 @@
         <div class="card-header">
           <div>
             <div class="card-title" id="cp-tabla-titulo">Clientes activos por período</div>
-            <div class="card-subtitle">Cada período va del 19 de un mes al 19 del siguiente</div>
+            <div class="card-subtitle">Cada período va del 20 de un mes al 19 del siguiente (ambos días incluidos)</div>
           </div>
         </div>
         <div class="card-body no-pad">
@@ -2112,11 +2117,11 @@
     }
   });
 </script>
-<script src="admin.js?v=20261118b"></script>
+<script src="admin.js?v=20261120a"></script>
 <script src="admin-freelancers.js?v=20261021a"></script>
 <script src="admin-estadisticas.js?v=20261112a"></script>
 <script src="admin-salud.js?v=20261118a"></script>
-<script src="admin-ingresos.js?v=20261118a"></script>
+<script src="admin-ingresos.js?v=20261120a"></script>
 
 <script src="bienvenida-negocio360.js?v=14"></script>
 </body>

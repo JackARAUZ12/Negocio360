@@ -62,6 +62,16 @@
     return { total: r2(l.reduce((s, p) => s + p.monto, 0)), n: l.length, lista: l };
   };
 
+  // Período del negocio: del día 20 de un mes al 19 del siguiente (ambos incluidos).
+  // off = 0 → el período que contiene "hoy"; 1 → el anterior; etc.
+  function periodo(hoy, off) {
+    const d = aFecha(hoy), m0 = d.getMonth() - (d.getDate() >= 20 ? 0 : 1) - off;
+    const ini = new Date(d.getFullYear(), m0, 20), fin = new Date(d.getFullYear(), m0 + 1, 19);
+    return [iso(ini), iso(fin)];
+  }
+  const diasEntre = (a, b) => Math.round((aFecha(b) - aFecha(a)) / 864e5);
+  const etPeriodo = ([a, b]) => `${fechaCorta(a)} – ${fechaCorta(b)}`;
+
   function rangos() {
     const hoy = diaLocal(Date.now()), d = aFecha(hoy);
     const lun = lunesDe(hoy), diasSemana = (d.getDay() + 6) % 7; // 0 = lunes
@@ -74,6 +84,8 @@
       semana: [lun, hoy], semanaPas: [sumarDias(lun, -7), sumarDias(lun, diasSemana - 7)],
       mes: [iniMes, hoy], mesPasMismo: [iniMesPas, finMesPasMismoDia], mesPas: [iniMesPas, finMesPas],
       anio: [`${d.getFullYear()}-01-01`, hoy],
+      per: [periodo(hoy, 0)[0], hoy], perCompleto: periodo(hoy, 0), perPas: periodo(hoy, 1),
+      perPasMismo: (() => { const p = periodo(hoy, 1), f = sumarDias(p[0], diasEntre(periodo(hoy, 0)[0], hoy)); return [p[0], f < p[1] ? f : p[1]]; })(),
       nombreMes: MES[d.getMonth()], nombreMesPas: MES[(d.getMonth() + 11) % 12], anioN: d.getFullYear(),
     };
   }
@@ -122,6 +134,7 @@
     const sem = suma(...R.semana), semP = suma(...R.semanaPas);
     const mes = suma(...R.mes), mesPM = suma(...R.mesPasMismo), mesP = suma(...R.mesPas);
     const anio = suma(...R.anio);
+    const per = suma(...R.per), perP = suma(...R.perPas), perPM = suma(...R.perPasMismo);
     const mesesConCobro = new Set(anio.lista.map(p => p.dia.slice(0, 7))).size;
     const C = cartera(R);
     const primer = I.pagos.length ? I.pagos.reduce((m, p) => p.dia < m ? p.dia : m, I.pagos[0].dia) : null;
@@ -138,6 +151,13 @@
     $('in-k-mespas-sub').innerHTML = `${mesP.n} pago${mesP.n === 1 ? '' : 's'} en todo ${R.nombreMesPas}`;
     $('in-k-anio').textContent = usd(anio.total);
     $('in-k-anio-sub').innerHTML = `${anio.n} pagos en ${R.anioN}${mesesConCobro ? `<br>Promedio ${usd(anio.total / mesesConCobro)} por mes con cobros` : ''}`;
+
+    $('in-k-per-t').textContent = `Período actual · ${etPeriodo(R.perCompleto)}`;
+    $('in-k-per').textContent = usd(per.total);
+    $('in-k-per-sub').innerHTML = `${per.n} pago${per.n === 1 ? '' : 's'} del ${fechaCorta(R.per[0])} a hoy (cierra el ${fechaCorta(R.perCompleto[1])})<br>${variacion(per.total, perPM.total, 'mismos días del período anterior')}`;
+    $('in-k-perpas-t').textContent = `Período anterior · ${etPeriodo(R.perPas)}`;
+    $('in-k-perpas').textContent = usd(perP.total);
+    $('in-k-perpas-sub').innerHTML = `${perP.n} pago${perP.n === 1 ? '' : 's'} en todo el período`;
 
     $('in-k-mrr').textContent = usd(C.mrr);
     $('in-k-mrr-sub').innerHTML = `${C.activos} cliente${C.activos === 1 ? '' : 's'} activo${C.activos === 1 ? '' : 's'} pagando (los anuales cuentan su precio ÷ 12)`;
@@ -161,6 +181,15 @@
         const ini = sumarDias(lun, -7 * i), fin = sumarDias(ini, 6);
         const s = suma(ini, fin < R.hoy ? fin : R.hoy);
         out.push({ et: fechaCorta(ini), largo: `Semana del ${fechaCorta(ini)} al ${fechaCorta(fin)}`, v: s.total, n: s.n, actual: i === 0 });
+      }
+      return out;
+    }
+    if (I.vista === 'periodo') {
+      const out = [];
+      for (let i = 11; i >= 0; i--) {
+        const [ini, fin] = periodo(R.hoy, i);
+        const s = suma(ini, fin < R.hoy ? fin : R.hoy);
+        out.push({ et: fechaCorta(ini), largo: `Período ${fechaCorta(ini)} ${aFecha(ini).getFullYear()} – ${fechaCorta(fin)} ${aFecha(fin).getFullYear()}`, v: s.total, n: s.n, actual: i === 0 });
       }
       return out;
     }
@@ -205,7 +234,7 @@
       if (i % cada === (datos.length - 1) % cada) b += `<text x="${cx}" y="${H - 10}" class="in-eje" text-anchor="middle">${esc(x.et)}</text>`;
       b += `<rect x="${padL + col * i}" y="${padT}" width="${col}" height="${ih}" class="in-hit" data-i="${i}" tabindex="0"/>`;
     });
-    el.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="Cobros por ${I.vista === 'semanal' ? 'semana' : 'mes'}">${g}<line x1="${padL}" x2="${W - padR}" y1="${padT + ih}" y2="${padT + ih}" class="in-base"/>${b}</svg>`;
+    el.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="Cobros por ${I.vista === 'semanal' ? 'semana' : I.vista === 'periodo' ? 'período' : 'mes'}">${g}<line x1="${padL}" x2="${W - padR}" y1="${padT + ih}" y2="${padT + ih}" class="in-base"/>${b}</svg>`;
     if (!tip) { tip = document.createElement('div'); tip.className = 'in-tip'; document.body.appendChild(tip); }
     el.querySelectorAll('.in-hit').forEach(h => {
       const x = datos[+h.dataset.i];
@@ -242,7 +271,7 @@
   function pintarTabla(R) {
     const el = $('in-tabla'); if (!el) return;
     document.querySelectorAll('[data-in-periodo]').forEach(b => b.classList.toggle('activo', b.dataset.inPeriodo === I.periodo));
-    const r = { semana: R.semana, mes: R.mes, mespas: R.mesPas, anio: R.anio }[I.periodo];
+    const r = { semana: R.semana, mes: R.mes, mespas: R.mesPas, anio: R.anio, per: R.per, perpas: R.perPas }[I.periodo];
     const s = suma(...r);
     if (!s.lista.length) { el.innerHTML = '<div class="in-vacio">No hay cobros en este período.</div>'; return; }
     const l = s.lista.slice().sort((a, b) => b.created_at.localeCompare(a.created_at));

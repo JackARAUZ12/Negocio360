@@ -2837,21 +2837,22 @@ async function loadClientesC360() {
 }
 
 // ============================================================
-// SECCIÓN 3-D — CLIENTES POR PERÍODO (19-19)
+// SECCIÓN 3-D — CLIENTES POR PERÍODO (del 20 al 19)
 // ============================================================
 let CP_PERIODOS_CACHE = [];
 let CP_USUARIOS_CACHE = [];      // lista ya filtrada segun los interruptores
 let CP_USUARIOS_TODOS = [];      // todas las cuentas reales (activas, suspendidas y canceladas)
 
-// Genera N períodos consecutivos del 19 de un mes al 19 del siguiente,
-// empezando por el período que contiene la fecha de hoy y yendo hacia
-// atrás. Ej: si hoy es 6 de septiembre, el período actual es
-// "19 ago - 19 sep" (todavía no llega al día 19 de este mes).
+// Genera N períodos consecutivos: del día 20 de un mes al día 19 del
+// siguiente (ambos incluidos), empezando por el período que contiene la
+// fecha de hoy y yendo hacia atrás. Ej: si hoy es 6 de septiembre, el
+// período actual es "20 ago - 19 sep"; si hoy es 20 de septiembre, ya es
+// "20 sep - 19 oct". (Antes contaba del 19 al 19 — corregido 20-nov-2026.)
 function generarPeriodos19_19(cantidad = 12) {
   const hoy = new Date();
   let mesAncla = hoy.getMonth();
   let anioAncla = hoy.getFullYear();
-  if (hoy.getDate() < 19) {
+  if (hoy.getDate() < 20) {
     mesAncla -= 1;
     if (mesAncla < 0) { mesAncla = 11; anioAncla -= 1; }
   }
@@ -2865,11 +2866,12 @@ function generarPeriodos19_19(cantidad = 12) {
     let mesFin = mesInicio + 1, anioFin = anioInicio;
     if (mesFin > 11) { mesFin = 0; anioFin += 1; }
 
-    const inicio = new Date(anioInicio, mesInicio, 19, 0, 0, 0);
-    const fin = new Date(anioFin, mesFin, 19, 0, 0, 0);
+    // fin = día 20 a las 00:00 (exclusivo) → el día 19 cuenta completo.
+    const inicio = new Date(anioInicio, mesInicio, 20, 0, 0, 0);
+    const fin = new Date(anioFin, mesFin, 20, 0, 0, 0);
     periodos.push({
       inicio, fin,
-      etiqueta: `19 ${nombresMes[mesInicio]} — 19 ${nombresMes[mesFin]} ${anioFin}`,
+      etiqueta: `20 ${nombresMes[mesInicio]} — 19 ${nombresMes[mesFin]} ${anioFin}`,
       esActual: i === 0,
     });
   }
