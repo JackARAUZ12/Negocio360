@@ -180,6 +180,7 @@ async function cargarBancosDisponiblesDelivery() {
 // Se activa/oculta el bloque de método de pago según si el monto de
 // costo o cobro pasó de 0 a un valor real (o viceversa).
 function onCambioMontoEnvio(tipo) {
+  if (tipo === 'cobro' && STATE.modoVentaPedido === 'nueva') { refrescarEnvioEnVentaDelivery(); try { renderCarritoDelivery(); } catch (_) {} return; }
   const monto = parseFloat(document.getElementById(`np-${tipo}-envio`).value) || 0;
   const wrap = document.getElementById(`np-${tipo}-metodo-wrap`);
   wrap.style.display = monto > 0 ? '' : 'none';
@@ -416,6 +417,8 @@ function cambiarModoVentaPedido(modo) {
   document.querySelectorAll('.modo-venta-btn').forEach(b => b.classList.toggle('active', b.dataset.modo === modo));
   document.getElementById('np-venta-existente-wrap').style.display = modo === 'existente' ? '' : 'none';
   document.getElementById('np-venta-nueva-wrap').style.display = modo === 'nueva' ? '' : 'none';
+  refrescarEnvioEnVentaDelivery();
+  try { renderCarritoDelivery(); } catch (_) {}
 }
 
 function cambiarTipoPagoVenta(tipo) {
@@ -532,13 +535,39 @@ function quitarDelCarritoDelivery(idx) {
 function totalCarritoDelivery() {
   return round2(STATE.carritoVentaDelivery.reduce((s, i) => s + i.precio * i.cantidad, 0));
 }
+// "Crear venta aquí": el cobro del envío va DENTRO de la venta (sale en la factura como
+// "Envío a domicilio" y entra a Caja con la venta, no aparte).
+function envioEnVentaDelivery() {
+  if (STATE.modoVentaPedido !== 'nueva') return 0;
+  const n = round2(parseFloat(document.getElementById('np-cobro-envio')?.value) || 0);
+  return n > 0 ? n : 0;
+}
+function totalFacturaDelivery() { return round2(totalCarritoDelivery() + envioEnVentaDelivery()); }
+// Avisa y oculta el método de pago aparte del cobro cuando el envío va dentro de la venta.
+function refrescarEnvioEnVentaDelivery() {
+  const enVenta = STATE.modoVentaPedido === 'nueva';
+  const input = document.getElementById('np-cobro-envio');
+  let nota = document.getElementById('np-nota-envio-venta');
+  if (input && !nota) {
+    nota = document.createElement('div'); nota.id = 'np-nota-envio-venta';
+    nota.style.cssText = 'display:none;margin-top:4px;font-size:11.5px;color:var(--text-muted)';
+    nota.textContent = 'Se cobra dentro de la venta: sale en la factura como "Envío a domicilio".';
+    input.parentElement.appendChild(nota);
+  }
+  if (nota) nota.style.display = enVenta ? '' : 'none';
+  const wrap = document.getElementById('np-cobro-metodo-wrap');
+  if (wrap) {
+    if (enVenta) { wrap.style.display = 'none'; _bancoElegido.cobro = null; _montoBancoConvertido.cobro = null; }
+    else wrap.style.display = (parseFloat(input?.value) || 0) > 0 ? '' : 'none';
+  }
+}
 
 function renderCarritoDelivery() {
   const cont = document.getElementById('np-carrito-lista');
   const totalEl = document.getElementById('np-carrito-total');
   if (!STATE.carritoVentaDelivery.length) {
     cont.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Agrega productos con el buscador de arriba.</p>';
-    totalEl.textContent = 'Total: —';
+    totalEl.textContent = envioEnVentaDelivery() > 0 ? `Envío a domicilio: ${fmt(envioEnVentaDelivery())} — agrega los productos` : 'Total: —';
     actualizarSaldoRestanteTexto();
     return;
   }
@@ -549,7 +578,8 @@ function renderCarritoDelivery() {
       <span style="font-size:12.5px;width:80px;text-align:right">${fmt(it.precio * it.cantidad)}</span>
       <button type="button" class="btn-icon" onclick="quitarDelCarritoDelivery(${idx})">✕</button>
     </div>`).join('');
-  totalEl.textContent = `Total: ${fmt(totalCarritoDelivery())}`;
+  const envD = envioEnVentaDelivery();
+  totalEl.textContent = envD > 0 ? `Productos ${fmt(totalCarritoDelivery())} + Envío a domicilio ${fmt(envD)} = Total: ${fmt(totalFacturaDelivery())}` : `Total: ${fmt(totalCarritoDelivery())}`;
   actualizarSaldoRestanteTexto();
 }
 
@@ -557,7 +587,7 @@ function actualizarSaldoRestanteTexto() {
   const el = document.getElementById('np-saldo-restante-texto');
   if (!el) return;
   if (STATE.tipoPagoVentaPedido !== 'parcial') { el.textContent = ''; return; }
-  const total = totalCarritoDelivery();
+  const total = totalFacturaDelivery();
   const anticipo = parseFloat(document.getElementById('np-monto-anticipo')?.value) || 0;
   const saldo = round2(total - anticipo);
   el.textContent = total > 0 ? `Total: ${fmt(total)} — Saldo que falta después del anticipo: ${fmt(Math.max(0,saldo))}` : '';
@@ -592,7 +622,7 @@ function elegirBancoDeliveryVenta(bancoId, bancoNombre, monedaBanco) {
 
   const monedaBase = STATE.empresaConfig?.moneda === 'USD' ? 'USD' : 'NIO';
   const esOtraMoneda = (monedaBanco||'NIO') !== monedaBase;
-  const monto = STATE.tipoPagoVentaPedido === 'parcial' ? (parseFloat(document.getElementById('np-monto-anticipo').value)||0) : totalCarritoDelivery();
+  const monto = STATE.tipoPagoVentaPedido === 'parcial' ? (parseFloat(document.getElementById('np-monto-anticipo').value)||0) : totalFacturaDelivery();
   const elNombre = document.getElementById('np-venta-banco-elegido-nombre');
 
   if (esOtraMoneda) {
@@ -651,6 +681,21 @@ async function avisoEnvioYaFacturado(ventaId) {
   } catch (e) { console.warn('avisoEnvioYaFacturado:', e); }
 }
 
+/* Servicio "Envío a domicilio" del catálogo (se crea una sola vez, sin inventario). */
+async function servicioEnvioDelivery() {
+  const { data, error } = await sb.from('productos').select('id,activo').eq('auth_user_id', STATE.userId)
+    .eq('tipo', 'servicio').eq('nombre', 'Envío a domicilio').limit(1);
+  if (error) throw error;
+  if (data && data.length) {
+    if (data[0].activo === false) { const u = await sb.from('productos').update({ activo: true }).eq('id', data[0].id).eq('auth_user_id', STATE.userId); if (u.error) throw u.error; }
+    return data[0].id;
+  }
+  const { data: nuevo, error: e2 } = await sb.from('productos').insert({ auth_user_id: STATE.userId, tipo: 'servicio', nombre: 'Envío a domicilio',
+    precio: 0, costo: 0, activo: true, descripcion: 'Cargo de envío (delivery). Se agrega desde Delivery o el cobro del restaurante.' }).select('id').single();
+  if (e2) throw e2;
+  return nuevo.id;
+}
+
 /* Crea la venta real (visible en Ventas, con su stock descontado)
    desde el carrito armado aqui en Delivery. Devuelve los datos que
    guardarNuevoPedido() necesita para completar el pedido. Si algo
@@ -658,7 +703,9 @@ async function avisoEnvioYaFacturado(ventaId) {
    una venta a medias sin que el usuario se entere. */
 async function crearVentaDesdeDelivery(numeroPedido) {
   const items = STATE.carritoVentaDelivery;
-  const total = totalCarritoDelivery();
+  const envio = envioEnVentaDelivery();
+  const envioProdId = envio > 0 ? await servicioEnvioDelivery() : null;   // antes de crear nada
+  const total = round2(totalCarritoDelivery() + envio);
   const esParcial = STATE.tipoPagoVentaPedido === 'parcial';
   const metodoSel = document.getElementById('np-venta-metodo');
   const metodoId = metodoSel?.value || null;
@@ -688,6 +735,12 @@ async function crearVentaDesdeDelivery(numeroPedido) {
     subtotal: round2(i.precio*i.cantidad), ganancia: round2((i.precio-i.costo)*i.cantidad),
     escala_id: i.escala_id || null, escala_nombre: i.escala_nombre || null,
   }));
+  if (envio > 0) detallesPayload.push({
+    auth_user_id: STATE.userId, venta_id: venta.id, producto_id: envioProdId,
+    producto_nombre: 'Envío a domicilio', tipo_item: 'servicio', cantidad: 1,
+    precio: envio, costo: 0, descuento: 0, subtotal: envio, ganancia: envio,
+    escala_id: null, escala_nombre: null,
+  });
   const { error: errDet } = await sb.from('venta_detalles').insert(detallesPayload);
   if (errDet) {
     // La venta se creó pero sus productos no: se anula (nunca se borra)
@@ -762,7 +815,7 @@ async function guardarNuevoPedido() {
     if (!STATE.carritoVentaDelivery.length) { errEl.textContent = 'Agrega al menos un producto a la venta.'; return; }
     if (STATE.tipoPagoVentaPedido === 'parcial') {
       const anticipo = parseFloat(document.getElementById('np-monto-anticipo').value) || 0;
-      const total = totalCarritoDelivery();
+      const total = totalFacturaDelivery();
       if (anticipo <= 0) { errEl.textContent = 'Indica cuánto paga el cliente ahora.'; return; }
       if (anticipo >= total) { errEl.textContent = 'El anticipo no puede ser igual o mayor al total — si paga todo, elige "Pago completo".'; return; }
     }
@@ -782,8 +835,9 @@ async function guardarNuevoPedido() {
   // Validar cada transacción (costo y cobro) por separado: si el
   // banco elegido es en otra moneda, hace falta la tasa; si es un
   // egreso (costo), el banco elegido debe tener saldo suficiente.
+  const envioDentroDeVenta = STATE.modoVentaPedido === 'nueva' && cobroEnvio > 0;
   for (const tipo of ['costo', 'cobro']) {
-    const monto = tipo === 'costo' ? costoEnvio : cobroEnvio;
+    const monto = tipo === 'costo' ? costoEnvio : (envioDentroDeVenta ? 0 : cobroEnvio);
     if (monto <= 0) continue;
     const bancoId = _bancoElegido[tipo];
     if (!bancoId) continue;
@@ -824,7 +878,8 @@ async function guardarNuevoPedido() {
     // para poder vincular el pedido a esos movimientos reales.
     let movimientoCostoId = null, movimientoCobroId = null;
     if (costoEnvio > 0) movimientoCostoId = await registrarMovimientoDelivery('costo', costoEnvio, numero);
-    if (cobroEnvio > 0) movimientoCobroId = await registrarMovimientoDelivery('cobro', cobroEnvio, numero);
+    // Con "Crear venta aquí" el cobro del envío ya entró a Caja dentro de la venta: no se registra aparte.
+    if (cobroEnvio > 0 && !envioDentroDeVenta) movimientoCobroId = await registrarMovimientoDelivery('cobro', cobroEnvio, numero);
 
     const { error } = await sb.from('delivery_pedidos').insert({
       auth_user_id: STATE.userId, venta_id: ventaIdFinal, numero: numero || `D-${Date.now()}`,
