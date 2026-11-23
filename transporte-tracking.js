@@ -418,12 +418,21 @@
     const rem = o.remolque_id && window.OT ? OT.unidades.find(x => x.id === o.remolque_id) : null;
     const c = o.conductor_id && window.OT ? OT.conductores.find(x => x.id === o.conductor_id) : null;
     const ruta = o.ruta_id && window.OT ? OT.rutas.find(x => x.id === o.ruta_id) : null;
+    // Viaje subcontratado: placas y conductor vienen de la subcontratación (no hace falta flota propia).
+    // No se pone el nombre del transportista: el PDF se puede compartir con el cliente.
+    const subs = (window.OT && OT.subOrd) || (window.RP && RP.subOrd) || [];
+    const sc = o.subcontratada ? subs.find(x => x.orden_id === o.id && x.estado === 'activa') : null;
+    const tipoT = k => ((TX.TIPOS_UNIDAD || {})[k] || {}).t ? TX.TIPOS_UNIDAD[k].t.split(' /')[0] : '';
+    const uTxt = u ? `${u.nombre}${u.placa ? ' · ' + u.placa : ''}` : (sc && sc.placa ? `${tipoT(sc.tipo_unidad) || 'Unidad'} · ${sc.placa}` : '—');
+    const rTxt = rem ? `${rem.nombre}${rem.placa ? ' · ' + rem.placa : ''}` : (sc && sc.placa_furgon ? `${tipoT(sc.tipo_furgon) || 'Furgón'} · ${sc.placa_furgon}` : '—');
+    const cTxt = c ? c.nombre : (sc && sc.conductor_nombre ? sc.conductor_nombre : '—');
     const d = demora(o), dt = demoraTexto(d);
-    const filas = eventos(o).map(e => { const x = fh(e.t); return [x.f, x.h, `${e.estatus}${e.manual ? '' : ' (automático)'}`, e.pais || '', e.nota || '']; });
+    // Sin "Orden creada": confunde cuando el tracking se anota con fechas anteriores a la orden.
+    const filas = eventos(o).filter(e => e.estatus !== 'Orden creada').map(e => { const x = fh(e.t); return [x.f, x.h, e.estatus, e.pais || '', e.nota || '']; });
     const cab = [
       ['Orden', o.numero || ''], ['Cliente', o.cliente_nombre || ''], ['Ruta', ruta ? ruta.nombre : `${o.origen || ''} → ${o.destino || ''}`],
-      ['Unidad', u ? `${u.nombre}${u.placa ? ' · ' + u.placa : ''}` : '—'], ['Remolque / furgón', rem ? `${rem.nombre}${rem.placa ? ' · ' + rem.placa : ''}` : '—'],
-      ['Conductor', c ? c.nombre : '—'], ['Carga', o.carga_descripcion || '—'],
+      ['Unidad', uTxt], ['Remolque / furgón', rTxt],
+      ['Conductor', cTxt], ['Carga', o.carga_descripcion || '—'], ...(o.ref_cliente ? [['Ref. del cliente', o.ref_cliente]] : []),
     ];
     const res = [
       ['Inicio de carga', d.ini ? `${fh(d.ini).f} ${fh(d.ini).h}` : '—'], ['Fin de descarga', d.fin ? `${fh(d.fin).f} ${fh(d.fin).h}` : (d.ini ? 'En curso' : '—')],
@@ -444,7 +453,8 @@
       R.cab = R.cab.map(r => r.map(pdfTxt)); R.filas = R.filas.map(r => r.map(pdfTxt)); R.res = R.res.map(r => r.map(pdfTxt));
       doc.autoTable({ startY: 76, body: R.cab, theme: 'plain', styles: { fontSize: 10, cellPadding: 3 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 120 } } });
       doc.autoTable({ startY: doc.lastAutoTable.finalY + 10, head: [['Fecha', 'Hora', 'Estatus', 'País', 'Nota']], body: R.filas.length ? R.filas : [['—', '', 'Sin movimientos', '', '']],
-        styles: { fontSize: 9.5, cellPadding: 4 }, headStyles: { fillColor: [90, 90, 244] }, columnStyles: { 0: { cellWidth: 96 }, 1: { cellWidth: 66 }, 3: { cellWidth: 80 } } });
+        styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' }, headStyles: { fillColor: [90, 90, 244] }, margin: { left: 40, right: 40 }, tableWidth: 532,
+        columnStyles: { 0: { cellWidth: 84 }, 1: { cellWidth: 56 }, 2: { cellWidth: 150 }, 3: { cellWidth: 72 }, 4: { cellWidth: 170 } } });
       doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Días libres y demora', 40, doc.lastAutoTable.finalY + 24);
       doc.autoTable({ startY: doc.lastAutoTable.finalY + 30, body: R.res, theme: 'grid', styles: { fontSize: 10, cellPadding: 4 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 140 } } });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(120);

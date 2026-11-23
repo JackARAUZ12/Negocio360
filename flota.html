@@ -599,7 +599,10 @@
       .tp-hero{padding:20px 18px}.tp-hero h1{font-size:20px}.tp-hero::after{font-size:84px}
       .tp-fase{flex-wrap:wrap}.tp-estado{margin-left:44px;order:3}
     }
-  </style>
+    .fu-arr{border:1px dashed var(--border);border-radius:12px;padding:10px 12px;margin:4px 0 10px}
+  .fu-arr-chk{display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:13.5px}.fu-arr-chk input{width:18px;height:18px;margin-top:1px;accent-color:var(--accent);flex:none}
+  .fu-arr-chk small{display:block;font-size:12px;color:var(--text-secondary);font-weight:500}.fu-arr #fu-arr-campos{margin-top:10px}
+</style>
   <link rel="stylesheet" href="transporte-comun.css?v=20261010c" />
   <link rel="stylesheet" href="perfiles-guard.css" />
 </head>
@@ -827,8 +830,16 @@
   <div class="tx-cols">
     <div class="tx-campo"><label for="fu-nombre">Nombre de la unidad *</label><input class="tx-in" id="fu-nombre" maxlength="80" placeholder="Ej: Cabezal 01"/></div>
     <div class="tx-campo"><label for="fu-tipo">Tipo de unidad</label><select class="tx-in" id="fu-tipo"></select></div>
-    <div class="tx-campo"><label for="fu-placa">Placa</label><input class="tx-in" id="fu-placa" maxlength="20" placeholder="M 123456" style="text-transform:uppercase"/></div>
+    <div class="tx-campo"><label for="fu-placa">Placa</label><input class="tx-in" id="fu-placa" maxlength="20" placeholder="M 123456" style="text-transform:uppercase"/>
+      <div class="tx-ayuda">Una placa por unidad: el cabezal y el furgón son dos unidades (así un cabezal puede jalar distintos furgones).</div></div>
     <div class="tx-campo"><label for="fu-propiedad">¿De quién es?</label><select class="tx-in" id="fu-propiedad"></select></div>
+  </div>
+  <div id="fu-bloque-arrastre" class="fu-arr" style="display:none">
+    <label class="fu-arr-chk"><input type="checkbox" id="fu-arr-si"> <span><b>¿Viene con su furgón o plataforma?</b><small>Lo registramos de una vez como otra unidad, con su propia placa.</small></span></label>
+    <div class="tx-cols" id="fu-arr-campos" style="display:none">
+      <div class="tx-campo"><label for="fu-arr-tipo">Tipo</label><select class="tx-in" id="fu-arr-tipo"></select></div>
+      <div class="tx-campo"><label for="fu-arr-placa">Placa del furgón / plataforma</label><input class="tx-in" id="fu-arr-placa" maxlength="20" placeholder="RE 6276" style="text-transform:uppercase"/></div>
+    </div>
   </div>
   <div id="fu-bloque-dueno" class="tx-cols" style="display:none">
     <div class="tx-campo"><label for="fu-prop-nombre">Dueño o transportista</label><input class="tx-in" id="fu-prop-nombre" maxlength="100"/></div>
@@ -864,7 +875,7 @@
 
 <script src="moneda-visualizacion.js?v=1"></script>
 <script src="transporte-comun.js?v=20261014a"></script>
-<script src="flota.js?v=20261010a"></script>
+<script src="flota.js?v=20261122a"></script>
 <script src="moneda-visualizacion-boton.js?v=20261014c"></script>
 <script src="perfiles-guard.js?v=20261117a"></script>
 <script src="modulos-guard.js?v=20261111a"></script>

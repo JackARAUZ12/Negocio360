@@ -211,6 +211,11 @@ async function abrirForm(id) {
   set('fu-propiedad', u?.propiedad || 'propia'); set('fu-prop-nombre', u?.propietario_nombre); set('fu-prop-tel', u?.propietario_telefono); set('fu-notas', u?.notas);
   renderSelectActivos(u?.activo_id || '');
   actualizarPropiedad();
+  // Solo al crear un cabezal: opción de registrar su furgón/plataforma en el mismo paso
+  document.getElementById('fu-arr-tipo').innerHTML = Object.entries(TX.TIPOS_UNIDAD).filter(([, v]) => v.rol === 'arrastre').map(([k, v]) => `<option value="${k}">${v.ico} ${esc(v.t)}</option>`).join('');
+  document.getElementById('fu-arr-tipo').value = 'furgon';
+  document.getElementById('fu-arr-si').checked = false; document.getElementById('fu-arr-placa').value = '';
+  actualizarArrastre();
   FL.fotosForm = u ? fotosDe(u).map(url => ({ url, nuevo: false })) : [];
   renderFotosForm();
   document.getElementById('fu-error').textContent = '';
@@ -222,6 +227,11 @@ function renderSelectActivos(sel) {
   const s = document.getElementById('fu-activo');
   s.innerHTML = '<option value="">Sin vincular</option>' + FL.activos.map(a => `<option value="${esc(a.id)}">${esc(a.nombre)}${a.placa ? ' · ' + esc(a.placa) : ''} (${esc(a.categoria || 'activo')})</option>`).join('');
   s.value = sel || '';
+}
+function actualizarArrastre() {
+  const nuevoCabezal = !FL.editando && document.getElementById('fu-tipo').value === 'cabezal';
+  document.getElementById('fu-bloque-arrastre').style.display = nuevoCabezal ? '' : 'none';
+  document.getElementById('fu-arr-campos').style.display = nuevoCabezal && document.getElementById('fu-arr-si').checked ? '' : 'none';
 }
 function actualizarPropiedad() {
   document.getElementById('fu-bloque-dueno').style.display = document.getElementById('fu-propiedad').value === 'propia' ? 'none' : '';
@@ -253,6 +263,9 @@ async function guardarForm() {
   const nums = { ejes: num(document.getElementById('fu-ejes').value), capacidad_ton: num(document.getElementById('fu-ton').value), capacidad_m3: num(document.getElementById('fu-m3').value), odometro_km: num(document.getElementById('fu-odo').value) };
   if (Object.values(nums).some(v => v != null && v < 0)) { err.textContent = 'Los números no pueden ser negativos.'; return; }
   const tipo = document.getElementById('fu-tipo').value;
+  const conArrastre = !FL.editando && tipo === 'cabezal' && document.getElementById('fu-arr-si').checked;
+  const arrPlaca = document.getElementById('fu-arr-placa').value.trim().toUpperCase();
+  if (conArrastre && !arrPlaca) { err.textContent = 'Escribe la placa del furgón o plataforma (o desmarca la casilla).'; return; }
   const btn = document.getElementById('fu-guardar'); btn.disabled = true;
   const subidas = [];
   try {
@@ -284,6 +297,16 @@ async function guardarForm() {
       const maxN = FL.unidades.reduce((m, u) => Math.max(m, Number(String(u.codigo || '').replace(/\D/g, '')) || 0), 0);
       const { data, error: e2 } = await sb.from('transporte_unidades').insert({ ...fila, estado: 'disponible', auth_user_id: TX.userId, codigo: 'U-' + String(maxN + 1).padStart(3, '0') }).select('id').single();
       error = e2; id = data?.id;
+      // Su furgón/plataforma: otra unidad con su placa y el mismo dueño (sin fotos ni datos técnicos)
+      if (!error && conArrastre) {
+        const at = document.getElementById('fu-arr-tipo').value || 'furgon';
+        const arr = { nombre: `${(TX.TIPOS_UNIDAD[at] || {}).t?.split(' /')[0] || 'Furgón'} de ${nombre}`.slice(0, 80), tipo: at, rol: 'arrastre', placa: arrPlaca,
+          propiedad: fila.propiedad, propietario_nombre: fila.propietario_nombre, propietario_telefono: fila.propietario_telefono,
+          fotos: [], foto_url: null, updated_at: new Date().toISOString(), estado: 'disponible', auth_user_id: TX.userId, codigo: 'U-' + String(maxN + 2).padStart(3, '0') };
+        const { error: e3 } = await sb.from('transporte_unidades').insert(arr);
+        if (e3) { console.error('furgón:', e3); TX.toast('El cabezal se guardó, pero no su furgón. Agrégalo como otra unidad.', 'error'); }
+        else FL.arrastreCreado = true;
+      }
     }
     if (error) throw error;
     // Borrar del almacenamiento las fotos que se quitaron
@@ -292,7 +315,7 @@ async function guardarForm() {
       for (const url of fotosDe(FL.editando)) if (!quedan.has(url)) await TX.borrarArchivo(url);
     }
     TX.cerrar('fl-modal-form');
-    TX.toast(FL.editando ? 'Unidad actualizada' : 'Unidad agregada a tu flota');
+    TX.toast(FL.editando ? 'Unidad actualizada' : (FL.arrastreCreado ? 'Cabezal y su furgón agregados a tu flota (2 unidades)' : 'Unidad agregada a tu flota')); FL.arrastreCreado = false;
     await cargarTodo(); renderTodo();
     abrirDetalle(id, FL.editando ? 'resumen' : 'docs');
   } catch (e) {
@@ -329,6 +352,8 @@ function enlazar() {
   document.getElementById('fl-f-tipo').addEventListener('change', e => { f.tipo = e.target.value; renderLista(); });
   document.getElementById('fl-f-prop').addEventListener('change', e => { f.propiedad = e.target.value; renderLista(); });
   document.getElementById('fu-propiedad').addEventListener('change', actualizarPropiedad);
+  document.getElementById('fu-tipo').addEventListener('change', actualizarArrastre);
+  document.getElementById('fu-arr-si').addEventListener('change', actualizarArrastre);
   document.getElementById('fu-activo').addEventListener('change', e => {
     const a = FL.activos.find(x => x.id === e.target.value);
     if (a && a.placa && !document.getElementById('fu-placa').value.trim()) document.getElementById('fu-placa').value = a.placa;

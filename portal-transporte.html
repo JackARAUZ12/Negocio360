@@ -83,7 +83,7 @@
   .tl .tx{min-width:0;padding-top:4px}.tl b{display:block;font-size:14.5px}.tl small{display:block;color:var(--mu);font-size:13px}
   .tl em{display:block;font-style:normal;font-size:13.5px;margin-top:3px;background:var(--bg);border-radius:10px;padding:6px 9px;overflow-wrap:anywhere}
   .pais{display:inline-block;font-size:12px;font-weight:700;background:var(--az-s);color:var(--az);border-radius:99px;padding:1px 8px;margin-left:4px;vertical-align:1px}
-  .wa-v{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;width:100%;border:1px solid var(--bd);background:var(--card);border-radius:14px;padding:12px;font-weight:700;color:var(--tx);text-decoration:none}
+  .wa-v{cursor:pointer;font:inherit;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;width:100%;border:1px solid var(--bd);background:var(--card);border-radius:14px;padding:12px;font-weight:700;color:var(--tx);text-decoration:none}
   .vacio{text-align:center;padding:40px 16px;color:var(--mu);background:var(--card);border:1px dashed var(--bd);border-radius:20px}
   .vacio .i{font-size:40px}
   .wa-f{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:8px;background:#16a34a;color:#fff;text-decoration:none;font-weight:800;border-radius:99px;padding:13px 18px;box-shadow:0 8px 24px rgba(22,163,74,.35);z-index:5}
@@ -143,21 +143,25 @@ function paso(v) {
   if (ev.some(e => e.hito === 'inicio_carga') || tiene(/^carga/i)) return 1;
   return 0;
 }
+// El estado que ve el cliente es el más avanzado entre la orden y el tracking
+// (si la empresa anotó "En tránsito" sin tocar "Iniciar viaje", el cliente igual ve "En camino").
 function pill(v) {
-  if (v.estado === 'entregada') return ['p-ok', '✅ Entregado'];
-  if (v.estado === 'en_ruta') return ['p-az', '🚚 En camino'];
+  const p = paso(v);
+  if (p === 4) return ['p-ok', '✅ Entregado'];
+  if (p === 3) return ['p-az', '📍 En destino'];
+  if (p === 2) return ['p-az', '🚚 En camino'];
+  if (p === 1) return ['p-na', '📦 Cargando'];
   if (v.estado === 'asignada') return ['p-na', '🧑‍✈️ Unidad asignada'];
   return ['p-gr', '📅 Programado'];
 }
 // Línea de tiempo completa: lo anotado por la empresa + lo automático del viaje
 function eventos(v) {
   const ev = (v.eventos || []).map(e => ({ ...e }));
-  if (v.creada) ev.push({ t: v.creada, estatus: 'Orden registrada', ic: '📋' });
   if (v.salida) ev.push({ t: v.salida, estatus: 'Salió hacia ' + (v.destino || 'su destino'), ic: '🚦' });
   if (v.entrega) ev.push({ t: v.entrega, estatus: 'Entregado', ic: '✅', nota: v.recibio ? 'Recibió: ' + v.recibio : null });
   return ev.filter(e => e.t).sort((a, b) => new Date(a.t) - new Date(b.t));
 }
-const grupo = v => v.estado === 'entregada' ? 'entregados' : (v.estado === 'en_ruta' ? 'camino' : 'programados');
+const grupo = v => { const p = paso(v); return p === 4 ? 'entregados' : (p >= 1 ? 'camino' : 'programados'); };
 
 /* ---------------- pantallas ---------------- */
 function pantallaInvalida() {
@@ -247,6 +251,7 @@ function tarjeta(v) {
       </div>
       <ol class="tl">${evs.slice().reverse().map((e, i) => `<li class="${i === 0 ? 'ult-ev' : ''}"><span class="pt">${e.ic || ico(e)}</span><div class="tx">
         <b>${esc(e.estatus)}${e.pais ? `<span class="pais">${esc(e.pais)}</span>` : ''}</b><small>${esc(fechaHora(e.t))}</small>${e.nota ? `<em>${esc(e.nota)}</em>` : ''}</div></li>`).join('')}</ol>
+      <button type="button" class="wa-v" data-pdf="${esc(id)}">📄 Descargar PDF del viaje</button>
       ${telWa ? `<a class="wa-v" href="https://wa.me/${telWa}?text=${encodeURIComponent(waTxt)}" target="_blank" rel="noopener">💬 Preguntar por este viaje</a>` : ''}
     </div>
   </article>`;
@@ -257,12 +262,12 @@ function pintar() {
   const n = g => vs.filter(v => grupo(v) === g).length;
   const lista = filtrados();
   const tel = String(d.whatsapp || '').replace(/\D/g, ''), telWa = tel.length === 8 ? '505' + tel : tel;
-  const titulo = P.q.trim() ? 'Resultados de la búsqueda' : { activos: 'Viajes en curso', camino: 'En camino', programados: 'Programados', entregados: 'Entregados', todos: 'Todos sus viajes' }[P.filtro];
+  const titulo = P.q.trim() ? 'Resultados de la búsqueda' : { activos: 'Viajes activos', camino: 'En curso', programados: 'Programados', entregados: 'Entregados', todos: 'Todos sus viajes' }[P.filtro];
   app.innerHTML = `<div class="wrap">
     <header class="top">${logoHtml(d)}<div style="min-width:0"><h1>${esc(d.negocio)}</h1><p>${esc(d.cliente || '')}</p></div><span class="sp"></span>
       <button type="button" class="ib" id="b-act" title="Actualizar">↻ <span>Actualizar</span></button></header>
     <section class="res" aria-label="Resumen">
-      <button type="button" class="rk ${P.filtro === 'camino' ? 'on' : ''}" data-f="camino"><b>${n('camino')}</b><span>🚚 En camino</span></button>
+      <button type="button" class="rk ${P.filtro === 'camino' ? 'on' : ''}" data-f="camino"><b>${n('camino')}</b><span>🚚 En curso</span></button>
       <button type="button" class="rk ${P.filtro === 'programados' ? 'on' : ''}" data-f="programados"><b>${n('programados')}</b><span>📅 Programados</span></button>
       <button type="button" class="rk ${P.filtro === 'entregados' ? 'on' : ''}" data-f="entregados"><b>${n('entregados')}</b><span>✅ Entregados</span></button>
     </section>
@@ -275,6 +280,38 @@ function pintar() {
     <div class="pie">Actualizado ${esc(fechaHora(d.ahora || new Date()))} · <button type="button" class="ib" id="b-salir" style="min-height:30px;padding:0 10px">Salir</button><br>Seguimiento en línea con Negocio360</div>
   </div>
   ${telWa ? `<a class="wa-f" href="https://wa.me/${telWa}?text=${encodeURIComponent('Hola, consulto por mis viajes.')}" target="_blank" rel="noopener" aria-label="Escribir por WhatsApp">💬 <span>WhatsApp</span></a>` : ''}`;
+}
+
+/* ---------------- PDF del viaje (lo mismo que ve en pantalla) ---------------- */
+function cargarJs(src, listo) {
+  return new Promise((ok, no) => { if (listo()) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('No cargó ' + src)); document.head.appendChild(s); });
+}
+async function pdfViaje(id, btn) {
+  const v = (P.d.viajes || []).find(x => x.numero === id); if (!v) return;
+  const txt0 = btn.textContent; btn.disabled = true; btn.textContent = 'Preparando PDF…';
+  try {
+    await cargarJs('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', () => !!window.jspdf);
+    await cargarJs('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.7.1/dist/jspdf.plugin.autotable.min.js', () => !!(window.jspdf && window.jspdf.jsPDF.API.autoTable));
+    const t = x => String(x == null ? '' : x).replace(/→/g, '-').replace(/[—–]/g, '-').replace(/[^\x00-\xFF]/g, '').trim();   // la fuente del PDF no tiene emojis
+    const f = d => d ? new Date(d).toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '';
+    const h = d => d ? new Date(d).toLocaleTimeString('es', { hour: 'numeric', minute: '2-digit' }) : '';
+    const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text(t(`Seguimiento del viaje · ${v.numero}`), 40, 46);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(110);
+    doc.text(t(`${P.d.negocio} · ${P.d.cliente || ''} · generado ${new Date().toLocaleString('es')}`), 40, 62); doc.setTextColor(0);
+    const cab = [['Viaje', v.numero], ['Su referencia', v.ref], ['Ruta', `${v.origen || ''} - ${v.destino || ''}`], ['Estado', pill(v)[1]], ['Carga', v.carga],
+      ['Bultos', v.bultos != null ? String(v.bultos) : ''], ['Peso', v.peso != null ? v.peso + ' t' : ''], ['Fecha programada', fecha(v.programada)],
+      ['Salida', v.salida ? `${f(v.salida)} ${h(v.salida)}` : ''], ['Entrega', v.entrega ? `${f(v.entrega)} ${h(v.entrega)}` : ''], ['Recibió', v.recibio],
+      ['Placa', [v.placa, v.remolque].filter(Boolean).join(' + ')], ['Conductor', v.conductor]].filter(r => r[1]).map(r => r.map(t));
+    doc.autoTable({ startY: 76, body: cab, theme: 'plain', styles: { fontSize: 10, cellPadding: 3 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 120 } } });
+    const filas = eventos(v).map(e => [f(e.t), h(e.t), e.estatus, e.pais || '', e.nota || ''].map(t));
+    doc.autoTable({ startY: doc.lastAutoTable.finalY + 12, head: [['Fecha', 'Hora', 'Estatus', 'País', 'Nota']], body: filas.length ? filas : [['-', '', 'Sin novedades todavía', '', '']],
+      styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' }, headStyles: { fillColor: (/^#[0-9a-f]{6}$/i.test(getComputedStyle(document.documentElement).getPropertyValue('--ac').trim()) ? (c => [1, 3, 5].map(i => parseInt(c.substr(i, 2), 16)))(getComputedStyle(document.documentElement).getPropertyValue('--ac').trim()) : [37, 99, 235]) }, margin: { left: 40, right: 40 }, tableWidth: 532,
+      columnStyles: { 0: { cellWidth: 84 }, 1: { cellWidth: 56 }, 2: { cellWidth: 150 }, 3: { cellWidth: 72 }, 4: { cellWidth: 170 } } });
+    doc.setFontSize(8.5); doc.setTextColor(120); doc.text('Seguimiento en línea con Negocio360', 40, doc.lastAutoTable.finalY + 18);
+    doc.save(`Seguimiento_${String(v.numero).replace(/[^\w-]/g, '_')}.pdf`);
+  } catch (e) { console.warn(e); alert('No se pudo generar el PDF. Revise su conexión e intente de nuevo.'); }
+  finally { btn.disabled = false; btn.textContent = txt0; }
 }
 
 async function refrescar(manual) {
@@ -294,7 +331,8 @@ function programarRefresco() {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && P.d && P.d.ahora && Date.now() - new Date(P.d.ahora) > 60000) refrescar(false); });
 
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-abrir],[data-f],#b-act,#b-salir'); if (!t) return;
+  const t = e.target.closest('[data-abrir],[data-f],[data-pdf],#b-act,#b-salir'); if (!t) return;
+  if (t.dataset.pdf) return pdfViaje(t.dataset.pdf, t);
   if (t.dataset.abrir) { const id = t.dataset.abrir; P.abiertos.has(id) ? P.abiertos.delete(id) : P.abiertos.add(id); const v = (P.d.viajes || []).find(x => x.numero === id);
     const el = t.closest('.v'); if (v && el) { el.outerHTML = tarjeta(v); } return; }
   if (t.dataset.f) { P.filtro = P.filtro === t.dataset.f && ['camino', 'programados', 'entregados'].includes(t.dataset.f) ? 'activos' : t.dataset.f; pintar(); return; }

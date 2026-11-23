@@ -303,6 +303,15 @@ function tabResumen(o) {
 function tabDespacho(o) {
   const km = o.odometro_salida != null && o.odometro_llegada != null ? Number(o.odometro_llegada) - Number(o.odometro_salida) : null;
   const bloque = (t, id, tipo) => `<div class="tx-dato"><span>${t}</span>${id ? persona(id, tipo) : '<b style="color:var(--text-muted)">Sin asignar</b>'}</div>`;
+  // Viaje subcontratado: los datos del transportista externo (no hace falta asignar flota propia)
+  const sc = o.subcontratada ? subDe(o.id)[0] : null;
+  const tipoT = k => ((TX.TIPOS_UNIDAD || {})[k] || {}).t ? TX.TIPOS_UNIDAD[k].t.split(' /')[0] : '';
+  if (sc && !o.unidad_id && !o.conductor_id) return `<div class="ot-sub">🤝 <span><b>Viaje subcontratado a ${esc(sc.subcontratista_nombre || 'un transportista')}.</b> No necesitas asignar unidad ni conductor propios: estos datos salen en el tracking, el PDF y el portal del cliente.</span></div>
+    <div class="tx-datos" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="tx-dato"><span>${esc(tipoT(sc.tipo_unidad) || 'Unidad')}</span><b>${esc(sc.placa || '—')}</b></div>
+      <div class="tx-dato"><span>${esc(tipoT(sc.tipo_furgon) || 'Furgón')}</span><b>${esc(sc.placa_furgon || '—')}</b></div>
+      <div class="tx-dato"><span>Conductor</span><b>${esc(sc.conductor_nombre || '—')}</b></div></div>
+    <div class="tx-datos"><div class="tx-dato"><span>Salida</span><b>${esc(fmtHora(o.salida_real))}</b></div><div class="tx-dato"><span>Entrega</span><b>${esc(fmtHora(o.entrega_real))}</b></div></div>`;
   return `<div class="tx-datos" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       ${bloque('Unidad motriz', o.unidad_id, 'unidad')}${bloque('Remolque / furgón', o.remolque_id, 'unidad')}${bloque('Conductor', o.conductor_id, 'conductor')}${bloque('Ayudante', o.ayudante_id, 'conductor')}</div>
     <div class="tx-datos"><div class="tx-dato"><span>Salida</span><b>${esc(fmtHora(o.salida_real))}</b></div><div class="tx-dato"><span>Entrega</span><b>${esc(fmtHora(o.entrega_real))}</b></div>
