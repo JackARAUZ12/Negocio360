@@ -376,7 +376,7 @@
           <div class="stat-card-value" id="statServicios">—</div>
           <div class="stat-card-sub">Disponibles</div>
         </div>
-        <div class="stat-card stat-green">
+        <div class="stat-card stat-green n360-costo">
           <div class="stat-card-header">
             <span class="stat-card-label">Valor del inventario</span>
             <div class="stat-card-icon">💵</div>
@@ -468,8 +468,8 @@
                 <th id="thModelo" style="display:none">Modelo</th>
                 <th>Categoría</th>
                 <th>Precio</th>
-                <th>Costo</th>
-                <th>Margen</th>
+                <th class="n360-costo">Costo</th>
+                <th class="n360-costo">Margen</th>
                 <th>Stock</th>
                 <th>Estado</th>
                 <th>Creado</th>
@@ -482,8 +482,8 @@
                 <th>Nombre / SKU</th>
                 <th>Categoría</th>
                 <th>Precio</th>
-                <th>Costo</th>
-                <th>Margen</th>
+                <th class="n360-costo">Costo</th>
+                <th class="n360-costo">Margen</th>
                 <th>Estado</th>
                 <th>Creado</th>
                 <th>Actualizado</th>
@@ -495,7 +495,7 @@
                 <th>Nombre / SKU</th>
                 <th>Categoría</th>
                 <th>Proveedor</th>
-                <th>Costo</th>
+                <th class="n360-costo">Costo</th>
                 <th>Stock</th>
                 <th>Stock mínimo</th>
                 <th>Estado</th>
@@ -564,7 +564,7 @@
                 <th>Combo</th>
                 <th>SKU / Código de barras</th>
                 <th>Componentes</th>
-                <th>Costo</th>
+                <th class="n360-costo">Costo</th>
                 <th>Precio</th>
                 <th>Estado</th>
                 <th>Acciones</th>
@@ -1284,7 +1284,7 @@
       </div>
       <div id="comboItemsBody" style="margin-bottom:10px"></div>
       <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;color:var(--text-secondary);margin-bottom:18px">
-        Costo total del combo (suma de sus componentes): <strong id="comboCostoTotalPreview" style="color:var(--text-primary)">—</strong>
+        <span class="n360-costo">Costo total del combo (suma de sus componentes): </span><strong class="n360-costo" id="comboCostoTotalPreview" style="color:var(--text-primary)">—</strong>
       </div>
 
       <div class="form-section-title">Precio de venta</div>
@@ -1584,7 +1584,7 @@
 <script src="cache-productos.js?v=20261106b"></script>
 <script src="series-proveedor.js?v=20261031a"></script>
 <script src="agro-bodega.js?v=20261112a"></script>
-<script src="productos.js?v=20261114a"></script>
+<script src="productos.js?v=20261123a"></script>
 <script src="productos-importar.js?v=20261021a"></script>
 <script src="productos-traslados.js?v=20261012a"></script>
 <script src="productos-permisos.js?v=20261021a"></script>

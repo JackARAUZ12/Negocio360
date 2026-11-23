@@ -980,7 +980,7 @@ function renderTablaCombos() {
         <td style="font-weight:600">📦 ${escHtml(c.nombre)}</td>
         <td style="font-size:12.5px;color:var(--text-muted)">${escHtml(c.sku || c.codigo_barras || '—')}</td>
         <td>${items.length} producto${items.length === 1 ? '' : 's'}</td>
-        <td>${fmtMoney(costo)}</td>
+        <td class="n360-costo">${fmtMoney(costo)}</td>
         <td>${escHtml(precioLabelCombo(c))}${c.tipo_precio === 'escala' ? ' <span class="tipo-badge tipo-servicio" style="font-size:10px">📊 escala</span>' : ''}</td>
         <td><span class="status-badge ${c.activo ? 'status-activo' : 'status-inactivo'}">${c.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td>
@@ -1126,7 +1126,7 @@ function buscarProductoParaCombo(q) {
     ${resultados.map(p => `
       <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border)" onclick="agregarProductoACombo('${p.id}')" onmouseover="this.style.background='var(--bg-app)'" onmouseout="this.style.background=''">
         <div style="font-weight:600;font-size:13px">${escHtml(p.nombre)}</div>
-        <div style="font-size:11.5px;color:var(--text-muted)">${p.sku ? 'SKU: ' + escHtml(p.sku) + ' · ' : ''}Costo: ${fmtMoney(p.costo)} · Stock: ${fmtNum(p.stock_actual)}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${p.sku ? 'SKU: ' + escHtml(p.sku) + ' · ' : ''}<span class="n360-costo">Costo: ${fmtMoney(p.costo)} · </span>Stock: ${fmtNum(p.stock_actual)}</div>
       </div>`).join('')}
   </div>`;
 }
@@ -1226,11 +1226,11 @@ function renderComboItemsBody() {
       <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--bg-app);border-radius:var(--radius-sm);margin-bottom:6px">
         <div style="flex:1">
           <div style="font-size:13px;font-weight:500">${escHtml(it.nombre)}</div>
-          <div style="font-size:11px;color:var(--text-muted)">Costo: ${fmtMoney(it.costo)} c/u · Precio: ${fmtMoney(it.precio)} c/u${it.escalaNombre ? ` <span style="color:var(--accent)">(${escHtml(it.escalaNombre)})</span>` : ''}</div>
+          <div style="font-size:11px;color:var(--text-muted)"><span class="n360-costo">Costo: ${fmtMoney(it.costo)} c/u · </span>Precio: ${fmtMoney(it.precio)} c/u${it.escalaNombre ? ` <span style="color:var(--accent)">(${escHtml(it.escalaNombre)})</span>` : ''}</div>
         </div>
         <input type="number" inputmode="decimal" class="form-input" style="width:80px" min="0.001" step="any" value="${it.cantidad}"
                oninput="actualizarCantidadComboItem(${i}, this.value)" onchange="normalizarCantidadComboItem(${i}, this.value)" />
-        <div id="comboItemSub${i}" style="font-size:12.5px;font-weight:600;min-width:70px;text-align:right">${fmtMoney(it.costo * it.cantidad)}</div>
+        <div id="comboItemSub${i}" class="n360-costo" style="font-size:12.5px;font-weight:600;min-width:70px;text-align:right">${fmtMoney(it.costo * it.cantidad)}</div>
         <button type="button" class="row-action-btn" title="Quitar" onclick="eliminarComboItem(${i})" style="opacity:1;color:var(--danger)">✕</button>
       </div>`).join('');
   }
@@ -1349,18 +1349,18 @@ function verDetalleCombo(id) {
     </div>
     <div class="form-section-title">Productos incluidos</div>
     <table class="data-table" style="width:100%;margin-bottom:16px">
-      <thead><tr><th>Producto</th><th>Cantidad</th><th>Costo unitario</th><th>Precio venta individual</th><th>Subtotal costo</th></tr></thead>
+      <thead><tr><th>Producto</th><th>Cantidad</th><th class="n360-costo">Costo unitario</th><th>Precio venta individual</th><th class="n360-costo">Subtotal costo</th></tr></thead>
       <tbody>
         ${items.map(it => `<tr>
           <td>${escHtml(it.productos?.nombre || 'Producto eliminado')}</td>
           <td>${fmtNum(it.cantidad)}</td>
-          <td>${fmtMoney(it.productos?.costo)}</td>
+          <td class="n360-costo">${fmtMoney(it.productos?.costo)}</td>
           <td>${fmtMoney(it.precio_unitario)}${it.escala_nombre ? ` <span style="font-size:11px;color:var(--accent)">(${escHtml(it.escala_nombre)})</span>` : ''}</td>
-          <td>${fmtMoney((Number(it.cantidad)||0) * Number(it.productos?.costo || 0))}</td>
+          <td class="n360-costo">${fmtMoney((Number(it.cantidad)||0) * Number(it.productos?.costo || 0))}</td>
         </tr>`).join('') || '<tr><td colspan="5">Sin productos</td></tr>'}
       </tbody>
     </table>
-    <div style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;margin-bottom:12px">
+    <div class="n360-costo" style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px 14px;font-size:13px;margin-bottom:12px">
       Costo total del combo: <strong>${fmtMoney(costo)}</strong>
     </div>
     <div class="form-section-title">Precio de venta</div>
@@ -1613,6 +1613,9 @@ async function exportarInventarioExcel() {
       f.producto, f.tipo, f.sku, f.categoria, f.stock, f.costo, f.precioFijo,
       f.escala1, f.escala2, f.escala3, f.escala4, f.escala5, f.estado,
     ]);
+    // Usuario sin permiso de "Ver costos": el archivo sale sin la columna Costo
+    const sinCostosXls = typeof window.N360PuedeVerCostos === 'function' && !window.N360PuedeVerCostos();
+    if (sinCostosXls) { headers.splice(5, 1); filasArr.forEach(r => r.splice(5, 1)); }
 
     const wb = XLSX.utils.book_new();
     const aoa = [headers, ...filasArr];
@@ -1621,7 +1624,7 @@ async function exportarInventarioExcel() {
     // Formato numérico en columnas de costo/precio fijo/stock (cuando son
     // números reales; "-" o texto se dejan tal cual, sin forzar formato).
     filasArr.forEach((row, ri) => {
-      [4, 5, 6].forEach(ci => {
+      (sinCostosXls ? [4, 5] : [4, 5, 6]).forEach(ci => {
         const ref = XLSX.utils.encode_cell({ r: ri + 1, c: ci });
         if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = '#,##0.00';
       });
@@ -1681,6 +1684,9 @@ async function exportarInventarioPDF() {
       typeof f.precioFijo === 'number' ? fmtMoney(f.precioFijo).replace(cm,'') : f.precioFijo,
       f.escala1||'', f.escala2||'', f.escala3||'', f.escala4||'', f.escala5||'', f.estado,
     ]);
+    // Usuario sin permiso de "Ver costos": el PDF sale sin la columna Costo
+    const sinCostosPdf = typeof window.N360PuedeVerCostos === 'function' && !window.N360PuedeVerCostos();
+    if (sinCostosPdf) { head[0].splice(5, 1); body.forEach(r => r.splice(5, 1)); }
 
     doc.autoTable({
       startY: 28,
@@ -1689,7 +1695,7 @@ async function exportarInventarioPDF() {
       headStyles: { fillColor: [108,99,255], fontSize: 8 },
       styles: { fontSize: 7.3, cellPadding: 2.2, overflow: 'linebreak' },
       columnStyles: {
-        4: { halign:'right' }, 5: { halign:'right' }, 6: { halign:'right' },
+        ...(sinCostosPdf ? { 4: { halign:'right' }, 5: { halign:'right' } } : { 4: { halign:'right' }, 5: { halign:'right' }, 6: { halign:'right' } }),
       },
       margin: { left: 10, right: 10 },
       didDrawPage: () => {
@@ -2087,8 +2093,8 @@ const COLUMNAS_PRODUCTOS_DISPONIBLES = {
   ubicacion:   { label: 'Ubicación', th: () => '<th>Ubicación</th>', td: p => `<td>${p.ubicacion_fisica ? escHtml(p.ubicacion_fisica) : '<span style="color:var(--text-muted)">—</span>'}</td>` },
   categoria:   { label: 'Categoría', th: () => '<th>Categoría</th>', td: p => `<td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}${p.proveedor_nombre ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">🏷️ ${escHtml(p.proveedor_nombre)}</div>` : ''}</td>` },
   precio:      { label: 'Precio', th: () => '<th>Precio</th>', td: p => `<td class="td-money">${p.tipo_precio === 'escala' ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>` : fmtMoney(p.precio)}</td>` },
-  costo:       { label: 'Costo', th: () => '<th>Costo</th>', td: p => `<td class="td-money">${fmtMoney(p.costo)}</td>` },
-  margen:      { label: 'Margen', th: () => '<th>Margen</th>', td: p => `<td>${renderMargen(p.precio, p.costo)}</td>` },
+  costo:       { label: 'Costo', th: () => '<th class="n360-costo">Costo</th>', td: p => `<td class="td-money n360-costo">${fmtMoney(p.costo)}</td>` },
+  margen:      { label: 'Margen', th: () => '<th class="n360-costo">Margen</th>', td: p => `<td class="n360-costo">${renderMargen(p.precio, p.costo)}</td>` },
   stock:       { label: 'Stock', th: () => '<th>Stock</th>', td: p => { const bajo = esStockBajo(p); return `<td><div class="td-stock"><span>${fmtNum(p.stock_actual)}${(p.unidad_codigo && p.unidad_codigo !== 'unidad' && window.N360Unidades?.porCodigo(p.unidad_codigo)) ? ' <small style="color:var(--text-muted)">' + escHtml(window.N360Unidades.porCodigo(p.unidad_codigo).abreviatura) + '</small>' : ''}</span>${bajo ? '<span class="stock-warn">⚠ Bajo</span>' : ''}</div></td>`; } },
   estado:      { label: 'Estado', th: () => '<th>Estado</th>', td: p => `<td><span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">${p.activo ? 'Activo' : 'Inactivo'}</span></td>` },
   creado:      { label: 'Creado', th: () => '<th>Creado</th>', td: p => `<td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtFechaCorta(p.created_at)}</td>` },
@@ -2208,8 +2214,8 @@ function renderTablaProductos(tbody) {
             ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>`
             : fmtMoney(p.precio)}
         </td>
-        <td class="td-money">${fmtMoney(p.costo)}</td>
-        <td>${renderMargen(p.precio, p.costo)}</td>
+        <td class="td-money n360-costo">${fmtMoney(p.costo)}</td>
+        <td class="n360-costo">${renderMargen(p.precio, p.costo)}</td>
         <td>${stockHtml}</td>
         <td>
           <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
@@ -2276,8 +2282,8 @@ function renderTablaServicios(tbody) {
           ? `<span class="tipo-badge tipo-servicio" title="Escala de precios">📊 ${escHtml(fmtRangoEscala(STATE.escalasPorProducto[p.id]))}</span>`
           : fmtMoney(p.precio)}
       </td>
-      <td class="td-money">${fmtMoney(p.costo)}</td>
-      <td>${renderMargen(p.precio, p.costo)}</td>
+      <td class="td-money n360-costo">${fmtMoney(p.costo)}</td>
+      <td class="n360-costo">${renderMargen(p.precio, p.costo)}</td>
       <td>
         <span class="status-badge ${p.activo ? 'status-activo' : 'status-inactivo'}">
           ${p.activo ? 'Activo' : 'Inactivo'}
@@ -2357,7 +2363,7 @@ function renderTablaMateriaPrima(tbody) {
         </td>
         <td>${p.categoria ? escHtml(p.categoria) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td>${p.proveedor_nombre ? escHtml(p.proveedor_nombre) : '<span style="color:var(--text-muted)">—</span>'}</td>
-        <td class="td-money">${fmtMoney(p.costo)}</td>
+        <td class="td-money n360-costo">${fmtMoney(p.costo)}</td>
         <td>
           <div class="td-stock">
             <span>${fmtNum(p.stock_actual)}</span>
@@ -4253,7 +4259,7 @@ function abrirDetalle(id) {
         <div class="detail-value" style="font-family:var(--font-mono)">${p.codigo_barras || '—'}</div>
       </div>
       <div class="detail-divider"></div>
-      <div class="detail-item">
+      <div class="detail-item n360-costo">
         <div class="detail-label">Costo</div>
         <div class="detail-value detail-money" style="color:var(--text-secondary)">${fmtMoney(p.costo)}</div>
       </div>
@@ -4273,7 +4279,7 @@ function abrirDetalle(id) {
         <div class="detail-label">Precio de Venta</div>
         <div class="detail-value detail-money" style="color:var(--accent)">${fmtMoney(p.precio)}</div>
       </div>
-      <div class="detail-item">
+      <div class="detail-item n360-costo">
         <div class="detail-label">Margen</div>
         <div class="detail-value">${margenHtml}</div>
       </div>
