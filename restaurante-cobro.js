@@ -13,6 +13,9 @@
    elegido y la mesa se cierra sola cuando todo está pagado.
    La propina va APARTE de la venta (Caja · otro ingreso, para
    el personal), anotada una sola vez.
+   Envío a domicilio (delivery): si se escribe un cargo de envío,
+   entra DENTRO de la venta como el servicio "Envío a domicilio"
+   (sale en la factura y en el total; entra a Caja con la venta).
    Requiere de la página: sb, STATE, showToast y CajaAPI.
 ===================================================== */
 const RCobro = (() => {
@@ -100,7 +103,7 @@ const RCobro = (() => {
   async function abrir(comanda, { alCerrar } = {}) {
     if (E.abierto) return;
     const m = modal();
-    Object.assign(E, { abierto: true, comanda, alCerrar: alCerrar || null, items: [], sel: {}, modo: 'todo', propinaPct: 10, propinaOtro: '', personas: 1,
+    Object.assign(E, { abierto: true, comanda, alCerrar: alCerrar || null, items: [], sel: {}, modo: 'todo', propinaPct: 10, propinaOtro: '', personas: 1, envioVer: false, envio: '',
       clienteId: null, clienteNombre: '', cobroId: null, lineas: [], estado: null, metodo: null, banco: null, bancos: [], cobrando: false, ventaId: null, venta: null, propinaHecha: false, cerrada: false });
     m.classList.remove('rc-avanzado');
     document.getElementById('rc-tit').textContent = `💰 Cobrar — Mesa ${comanda.restaurante_mesas?.numero || ''}`;
@@ -123,9 +126,10 @@ const RCobro = (() => {
   }
   const subtotalSel = () => r2(E.items.reduce((s, i) => s + r2((E.sel[i.id] || 0) * Number(i.precio_unitario)), 0));
   const propinaDe = sub => E.propinaPct === 'otro' ? Math.max(0, r2(E.propinaOtro)) : r2(sub * Number(E.propinaPct) / 100);
+  const envioMonto = () => { const n = r2(E.envio); return n > 0 ? n : 0; };
   function pintarElegir() {
     const todo = E.modo === 'todo';
-    const sub = subtotalSel(), prop = propinaDe(sub), total = r2(sub + prop);
+    const sub = subtotalSel(), prop = propinaDe(sub), env = envioMonto(), total = r2(sub + env + prop);
     const quedan = E.items.filter(i => (E.sel[i.id] || 0) < Number(i.cantidad)).length;
     document.getElementById('rc-cuerpo').innerHTML = `
       <div class="rc-sec">¿Qué se cobra?</div>
@@ -142,14 +146,19 @@ const RCobro = (() => {
       <div class="rc-chips">${[0, 5, 10, 15].map(p => `<button type="button" class="rc-chip ${E.propinaPct === p ? 'activo' : ''}" data-prop="${p}">${p ? p + ' %' : 'Sin propina'}</button>`).join('')}
         <button type="button" class="rc-chip ${E.propinaPct === 'otro' ? 'activo' : ''}" data-prop="otro">Otro monto</button></div>
       ${E.propinaPct === 'otro' ? `<input class="rc-in" id="rc-prop-otro" type="number" inputmode="decimal" min="0" step="any" placeholder="Monto de la propina" value="${esc(E.propinaOtro)}" style="margin-top:8px"/>` : ''}
+      <div class="rc-sec">🛵 Envío a domicilio (delivery)</div>
+      ${E.envioVer || env > 0 ? `<input class="rc-in" id="rc-envio" type="number" inputmode="decimal" min="0" step="any" placeholder="Cargo del envío (vacío = sin envío)" value="${esc(E.envio)}"/>
+        <div class="rc-ayuda">Sale en la factura como "Envío a domicilio" y se suma al total de la venta.</div>`
+        : `<button type="button" class="rc-link" id="rc-envio-ver">+ Agregar cargo de envío</button>`}
       <div class="rc-sec">Cliente</div>
       <div id="rc-cli">${E.clienteId ? `<div class="rc-chips"><span class="rc-chip activo">👤 ${esc(E.clienteNombre)}</span><button type="button" class="rc-link" id="rc-cli-quitar">Quitar</button></div>`
         : `<input class="rc-in" id="rc-cli-buscar" placeholder="Consumidor final (o busca un cliente para la factura)" autocomplete="off"/><div class="rc-res" id="rc-cli-res" style="display:none"></div>`}</div>
       <div class="rc-tot">
         <div><span>Consumo</span><span>${esc(f(sub))}</span></div>
+        ${env > 0 ? `<div><span>Envío a domicilio</span><span>${esc(f(env))}</span></div>` : ''}
         <div><span>Propina</span><span>${esc(f(prop))}</span></div>
         <div class="rc-grande"><span>Total</span><span>${esc(f(total))}</span></div>
-        <div class="rc-ayuda">Si tu negocio cobra IVA, se agrega al consumo en el siguiente paso, igual que en Ventas.</div>
+        <div class="rc-ayuda">Si tu negocio cobra IVA, se agrega en el siguiente paso, igual que en Ventas.</div>
       </div>
       <div class="rc-sec">Dividir en partes iguales (referencia)</div>
       <div class="rc-fila" style="align-items:center"><div><input class="rc-in" id="rc-personas" type="number" min="1" max="50" value="${esc(String(E.personas))}" aria-label="Personas"/></div>
@@ -168,6 +177,10 @@ const RCobro = (() => {
     c.querySelectorAll('[data-prop]').forEach(b => b.addEventListener('click', () => { E.propinaPct = b.dataset.prop === 'otro' ? 'otro' : Number(b.dataset.prop); pintarElegir(); }));
     const po = document.getElementById('rc-prop-otro');
     if (po) { po.addEventListener('change', () => { E.propinaOtro = po.value; pintarElegir(); }); }
+    const ev0 = document.getElementById('rc-envio-ver');
+    if (ev0) ev0.addEventListener('click', () => { E.envioVer = true; pintarElegir(); setTimeout(() => { try { document.getElementById('rc-envio').focus(); } catch (_) {} }, 0); });
+    const en = document.getElementById('rc-envio');
+    if (en) en.addEventListener('change', () => { E.envio = en.value; pintarElegir(); });
     document.getElementById('rc-personas').addEventListener('change', ev => { E.personas = Math.min(50, Math.max(1, parseInt(ev.target.value, 10) || 1)); pintarElegir(); });
     const q = document.getElementById('rc-cli-quitar'); if (q) q.addEventListener('click', () => { E.clienteId = null; E.clienteNombre = ''; pintarElegir(); });
     const bc = document.getElementById('rc-cli-buscar'); if (bc) bc.addEventListener('input', () => buscarCliente(bc.value));
@@ -191,9 +204,31 @@ const RCobro = (() => {
   }
 
   /* ---------- 2) Reservar en el servidor y preparar la venta ---------- */
+  // Servicio "Envío a domicilio" del catálogo (se crea una sola vez, sin inventario): así el envío
+  // entra a la venta por el camino normal de Ventas y sale en la factura.
+  async function servicioEnvio() {
+    const { data, error } = await sb.from('productos').select('id,activo').eq('auth_user_id', STATE.userId)
+      .eq('tipo', 'servicio').eq('nombre', 'Envío a domicilio').limit(1);
+    if (error) throw error;
+    if (data && data.length) {
+      if (data[0].activo === false) { const u = await sb.from('productos').update({ activo: true }).eq('id', data[0].id).eq('auth_user_id', STATE.userId); if (u.error) throw u.error; }
+      return data[0].id;
+    }
+    const { data: nuevo, error: e2 } = await sb.from('productos').insert({ auth_user_id: STATE.userId, tipo: 'servicio', nombre: 'Envío a domicilio',
+      precio: 0, costo: 0, activo: true, descripcion: 'Cargo de envío (delivery). Se agrega desde el cobro del restaurante.' }).select('id').single();
+    if (e2) throw e2;
+    return nuevo.id;
+  }
+
   async function continuar(ev, reintento) {
     const err = document.getElementById('rc-err'); err.textContent = '';
     const btn = document.getElementById('rc-seguir'); btn.disabled = true; btn.textContent = 'Preparando…';
+    const env = envioMonto();
+    let envioProdId = null;
+    if (env > 0) {
+      try { envioProdId = await servicioEnvio(); }
+      catch (e) { console.error('servicio envío:', e); btn.disabled = false; btn.textContent = 'Continuar al pago'; err.textContent = 'No se pudo preparar el cargo de envío. Revisa tu conexión e intenta de nuevo.'; return; }
+    }
     const pedido = E.modo === 'todo' ? null : E.items.filter(i => (E.sel[i.id] || 0) > 0).map(i => ({ item_id: i.id, cantidad: E.sel[i.id] }));
     let quien = ''; try { quien = JSON.parse(sessionStorage.getItem('n360_perfil_activo') || 'null')?.nombre || STATE.currentUser?.nombre || ''; } catch (_) {}
     let r;
@@ -214,7 +249,8 @@ const RCobro = (() => {
       return;
     }
     E.cobroId = r.cobro_id; E.lineas = r.lineas || []; E.subtotal = Number(r.subtotal) || 0; E.propina = propinaDe(E.subtotal);
-    try { sessionStorage.setItem('n360_rest_cobro', JSON.stringify({ cobroId: E.cobroId, lineas: E.lineas, clienteId: E.clienteId })); } catch (_) {}
+    E.envioCobro = env > 0 ? { productoId: envioProdId, monto: env } : null;
+    try { sessionStorage.setItem('n360_rest_cobro', JSON.stringify({ cobroId: E.cobroId, lineas: E.lineas, clienteId: E.clienteId, envio: E.envioCobro })); } catch (_) {}
     document.getElementById('rc-cuerpo').innerHTML = '<div class="rc-cargando">Preparando la venta…</div>'; document.getElementById('rc-pie').innerHTML = '';
     cargarMotor();
   }

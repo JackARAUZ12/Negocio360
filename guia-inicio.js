@@ -395,7 +395,7 @@
     if (!paso || paso === 'listo' || ev.target.closest('#gi-tip, #gi-modal')) return;
     const dest = destinoDe(ev.target);
     if (!dest || dest === archivo || dest === 'login.html' || dest === 'index.html') return;
-    if (dest === PAGINA[paso] || dest === 'dashboard.html') return;
+    if (dest === PAGINA[paso] || dest === 'dashboard.html' || dest === 'tutoriales.html') return;
     ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
     sacudir();
   }
@@ -498,6 +498,10 @@
       if (!p || p.tipo !== 'admin') return;
     }
     if (window.N360VerComo && window.N360VerComo.activo) return;
+
+    // Tutoriales se puede ver SIEMPRE, en cualquier paso: ahí la guía no se muestra
+    // ni bloquea nada. Al volver a otro módulo, la guía sigue donde iba.
+    if (archivo === 'tutoriales.html' && paso !== 'tutoriales') return;
 
     // 2) Página no permitida en este paso -> al inicio (ahí la guía señala el camino)
     if (!PERMITIDAS[paso].includes(archivo)) { location.replace('dashboard.html'); return; }

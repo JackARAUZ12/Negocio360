@@ -624,8 +624,32 @@ document.addEventListener('DOMContentLoaded', () => {
   if (selVenta) selVenta.addEventListener('change', () => {
     const venta = STATE.ventasDisponibles.find(v => v.id === selVenta.value);
     if (venta) document.getElementById('np-cliente').value = venta.cliente_nombre || '';
+    avisoEnvioYaFacturado(venta ? venta.id : null);
   });
 });
+
+/* Si la venta elegida ya trae "Envío a domicilio" en su factura (p. ej. cobrada en el
+   Restaurante), se avisa para no cobrar el envío dos veces. Solo avisa: no cambia nada guardado. */
+async function avisoEnvioYaFacturado(ventaId) {
+  const input = document.getElementById('np-cobro-envio');
+  if (!input) return;
+  let aviso = document.getElementById('np-aviso-envio-facturado');
+  if (!aviso) {
+    aviso = document.createElement('div'); aviso.id = 'np-aviso-envio-facturado';
+    aviso.style.cssText = 'display:none;margin-top:6px;padding:8px 10px;border-radius:8px;font-size:12.5px;background:rgba(245,158,11,.12);color:var(--text-primary);border:1px solid rgba(245,158,11,.45)';
+    input.parentElement.appendChild(aviso);
+  }
+  aviso.style.display = 'none';
+  if (!ventaId) return;
+  try {
+    const { data } = await sb.from('venta_detalles').select('subtotal').eq('venta_id', ventaId).eq('auth_user_id', STATE.userId).eq('producto_nombre', 'Envío a domicilio');
+    const monto = round2((data || []).reduce((t, d) => t + (Number(d.subtotal) || 0), 0));
+    if (!(monto > 0)) return;
+    aviso.textContent = `Esta venta ya cobró ${fmt(monto)} de envío a domicilio en su factura. Deja "Cobro del envío" en 0 para no cobrarlo dos veces.`;
+    aviso.style.display = '';
+    if (!(parseFloat(input.value) > 0)) input.value = '0';
+  } catch (e) { console.warn('avisoEnvioYaFacturado:', e); }
+}
 
 /* Crea la venta real (visible en Ventas, con su stock descontado)
    desde el carrito armado aqui en Delivery. Devuelve los datos que

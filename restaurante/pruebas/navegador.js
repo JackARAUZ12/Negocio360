@@ -290,6 +290,52 @@ async function pruebaApagado(browser, base) {
   await ctx.close();
 }
 
+// Envío a domicilio (delivery) cobrado en la mesa: entra DENTRO de la venta y sale en la factura.
+async function pruebaEnvio(browser, base) {
+  console.log('\n▶ Envío a domicilio en el cobro');
+  const { ctx, page } = await nuevaPagina(browser, base, 1280, 900);
+  await page.goto(base + '/restaurante-comandas.html'); await esperarListo(page);
+  await page.waitForSelector('#com-grid .hab-card');
+  await page.locator('#com-grid .hab-card', { hasText: 'Mesa 1' }).locator('text=💰 Cobrar').click();
+  await page.waitForSelector('#rc-envio-ver');
+  verificar(!(await page.isVisible('#rc-envio')), 'envío: por defecto no hay cargo de envío (botón "+ Agregar cargo de envío")');
+  await page.click('[data-prop="0"]');
+  verificar((await page.textContent('#rc-pie')).includes('810.00'), 'envío: sin envío la cuenta sigue en 810');
+  await page.click('#rc-envio-ver');
+  await page.fill('#rc-envio', '50'); await page.dispatchEvent('#rc-envio', 'change');
+  const cuerpo = await page.textContent('#rc-cuerpo');
+  verificar(cuerpo.includes('Envío a domicilio') && (await page.textContent('#rc-pie')).includes('860.00'), 'envío: 810 + envío 50 = 860');
+  await page.click('#rc-seguir'); await esperarPago(page);
+  const pago = await page.textContent('#rc-cuerpo');
+  verificar(pago.includes('Envío a domicilio') && pago.includes('860.00'), 'envío: la venta trae la línea "Envío a domicilio" y total 860');
+  await cobrarCon(page, 'Efectivo', 1000);
+  verificar(await page.isVisible('#rc-cobro .rc-ok'), `envío: cobrado (${await page.textContent('#rc-err').catch(() => '')})`);
+  let d = await db(page), l = await log(page);
+  const v = (d.ventas || [])[0];
+  const serv = (d.productos || []).filter(p => p.nombre === 'Envío a domicilio');
+  verificar(serv.length === 1 && serv[0].tipo === 'servicio', 'envío: se creó el servicio "Envío a domicilio" (sin inventario)');
+  verificar(d.ventas.length === 1 && Number(v.total) === 860, 'envío: UNA venta por 860 (consumo 810 + envío 50)');
+  const reg = l.filter(x => x.op === 'rpc' && x.tabla === 'venta_registrar_atomica'); const a = reg[0]?.datos || {};
+  const lin = (a.p_detalles || []).find(x => x.producto_id === serv[0].id);
+  verificar(lin && Number(lin.cantidad) === 1 && Number(lin.precio) === 50 && lin.producto_nombre === 'Envío a domicilio', 'envío: la factura lleva la línea "Envío a domicilio" 1 × 50');
+  verificar((a.p_caja || []).reduce((s, c) => s + Number(c.monto), 0) === 860, 'envío: Caja recibe 860 por el camino de la venta (nada aparte)');
+  verificar(!(a.p_stock || []).some(x => x.producto_id === serv[0].id), 'envío: el envío no descuenta inventario');
+  verificar(!(d.movimientos_financieros || []).some(m => /env[ií]o/i.test(m.concepto || '')), 'envío: no se registra un ingreso aparte por el envío (no se cobra dos veces)');
+  const com = d.restaurante_comandas.find(c => c.id === 'com-1');
+  verificar(com.estado === 'cerrada' && Number(com.total_cobrado) === 860, 'envío: la mesa se cierra con 860 cobrados');
+  verificar(!(d.restaurante_comanda_items || []).some(i => /Env[ií]o/.test(i.nombre_producto || '')), 'envío: no se manda a cocina (no es un platillo de la comanda)');
+  // Segundo cobro con envío: usa el MISMO servicio (no lo duplica)
+  await page.click('#rc-listo');
+  await page.locator('#com-grid .hab-card', { hasText: 'Mesa 2' }).locator('text=💰 Cobrar').click();
+  await page.waitForSelector('#rc-envio-ver'); await page.click('#rc-envio-ver');
+  await page.fill('#rc-envio', '35'); await page.dispatchEvent('#rc-envio', 'change');
+  await page.click('#rc-seguir'); await esperarPago(page); await cobrarCon(page, 'Efectivo');
+  d = await db(page);
+  verificar((d.productos || []).filter(p => p.nombre === 'Envío a domicilio').length === 1, 'envío: el segundo cobro usa el mismo servicio (no lo duplica)');
+  verificar(page.__errores.length === 0, `envío: sin errores de JavaScript (${page.__errores.join(' | ')})`);
+  await ctx.close();
+}
+
 (async () => {
   const srv = servidor(); const base = `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch();
@@ -301,6 +347,7 @@ async function pruebaApagado(browser, base) {
     await pruebaCuadre(browser, base);
     await pruebaApagado(browser, base);
     await pruebaMesero(browser, base);
+    await pruebaEnvio(browser, base);
   } catch (e) { fallas.push('EXCEPCIÓN: ' + (e.stack || e)); console.error(e); }
   await browser.close(); srv.close();
   console.log(`\n${oks.length} verificaciones correctas, ${fallas.length} fallas`);

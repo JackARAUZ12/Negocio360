@@ -3424,8 +3424,22 @@ async function aplicarCobroRestaurante() {
     else { linea.cantidad = cant; linea.precio = precio; }
     recalcItem(linea);
   }
+  // Envío a domicilio (delivery) escrito en el cobro del restaurante: va dentro de la venta como servicio.
+  let envioFalla = false;
+  const envMonto = Math.round((Number(d.envio?.monto) || 0) * 100) / 100;
+  if (envMonto > 0) {
+    const prodEnv = (S.productosCache || []).find(p => p.id === d.envio.productoId);
+    if (!prodEnv) envioFalla = true;
+    else {
+      await agregarAlCarritoConPrecio(prodEnv.id, 'servicio', null);
+      const le = S.carrito.find(x => x.id === prodEnv.id);
+      if (!le) envioFalla = true;
+      else { le.cantidad = 1; le.precio = envMonto; le.nombre = 'Envío a domicilio'; recalcItem(le); }
+    }
+  }
   renderCarrito('servicio'); renderCarrito('producto'); calcularResumen();
   if (noAgregados) { S._restCobro = null; showToast(`${noAgregados} platillo(s) ya no están en tu catálogo o no tienen existencia. Revísalos antes de cobrar.`, 'error'); return; }
+  if (envioFalla) { S._restCobro = null; showToast('No se pudo agregar el envío a domicilio a la venta. Cierra y vuelve a abrir el cobro.', 'error'); return; }
   S._restCobro = { id: d.cobroId };
 }
 

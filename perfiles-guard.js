@@ -1900,7 +1900,7 @@
   try {
     if (!document.querySelector('script[src^="guia-inicio.js"]')) {
       const gi = document.createElement('script');
-      gi.src = 'guia-inicio.js?v=20261106c';
+      gi.src = 'guia-inicio.js?v=20261123a';
       gi.defer = true;
       (document.head || document.documentElement).appendChild(gi);
     }
