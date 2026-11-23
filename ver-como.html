@@ -11,7 +11,7 @@
   <script src="descargas-app.js?v=20261112a"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261116a"></script>
-  <script src="ver-como.js?v=20261023b"></script>
+  <script src="ver-como.js?v=20261123a"></script>
   <style>
     body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f4f0;color:#111;font-family:system-ui,-apple-system,sans-serif}
     .caja{max-width:420px;padding:28px;text-align:center}
@@ -37,9 +37,14 @@
   }
   var h = new URLSearchParams((location.hash || '').replace(/^#/, ''));
   var th = h.get('th'), negocio = h.get('n') || '', email = h.get('e') || '';
+  var completo = h.get('m') === 'c';
+  if (completo) {
+    document.title = 'Abriendo cuenta (acceso completo) — Negocio360';
+    document.getElementById('detalle').textContent = 'Se abre con acceso completo: puedes ver y guardar cambios en esta cuenta.';
+  }
   try { history.replaceState(null, '', location.pathname); } catch (e) {}
   if (!th) return falla('El enlace no es válido. Vuelve al panel y presiona el botón otra vez.');
-  if (!window.N360VerComo || !window.N360VerComo.activar({ negocio: negocio, email: email })) {
+  if (!window.N360VerComo || !window.N360VerComo.activar({ negocio: negocio, email: email, modo: completo ? 'completo' : 'lectura' })) {
     return falla('Este navegador no permite abrir la vista de forma segura. Prueba con Chrome o Edge.');
   }
   try {

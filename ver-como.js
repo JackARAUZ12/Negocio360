@@ -15,6 +15,11 @@
       y unas pocas consultas (RPC) que únicamente leen.
    3) Muestra una barra visible "Solo lectura" con botón Salir.
 
+   Modo "acceso completo" (modo: 'completo'): solo para las cuentas que el
+   dueño del sistema autorizó (tabla admin_acceso_completo, lo valida la
+   función admin-entrar-completo). Usa el mismo aislamiento de la pestaña,
+   pero NO bloquea la escritura. Barra verde "Acceso completo".
+
    Si la pestaña NO está en modo ver-como, este archivo no hace NADA
    (no cambia ningún comportamiento de la app).
    ============================================================ */
@@ -26,6 +31,8 @@
   var FLAG = 'n360_ver_como';
   var PREFIJO = 'vc:';
   var HORAS_MAX = 4;                       // la vista se cierra sola a las 4 h
+  var HORAS_MAX_COMPLETO = 12;             // acceso completo: 12 h
+  function esCompleto(info) { return !!(info && info.modo === 'completo'); }
   var SS = null;
   try { SS = window.sessionStorage; } catch (e) { SS = null; }
 
@@ -183,21 +190,21 @@
     barra = document.createElement('div');
     barra.id = 'n360-vc-barra';
     barra.style.cssText = 'position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:2147483646;' +
-      'background:#7c2d12;color:#fff;padding:8px 10px 8px 14px;border-radius:999px;display:flex;align-items:center;' +
+      'background:' + (esCompleto(info) ? '#14532d' : '#7c2d12') + ';color:#fff;padding:8px 10px 8px 14px;border-radius:999px;display:flex;align-items:center;' +
       'gap:10px;font:13px/1.2 system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35);max-width:94vw;';
     var t = document.createElement('span');
-    t.textContent = 'Solo lectura · ' + (info.negocio || info.email || 'cliente');
+    t.textContent = (esCompleto(info) ? 'Acceso completo · ' : 'Solo lectura · ') + (info.negocio || info.email || 'cliente');
     spanContador = document.createElement('span');
     spanContador.style.opacity = '.8';
     var b = document.createElement('button');
     b.type = 'button';
     b.textContent = 'Salir';
-    b.style.cssText = 'border:0;border-radius:999px;background:#fff;color:#7c2d12;font:600 12px system-ui,sans-serif;' +
+    b.style.cssText = 'border:0;border-radius:999px;background:#fff;color:' + (esCompleto(info) ? '#14532d' : '#7c2d12') + ';font:600 12px system-ui,sans-serif;' +
       'padding:6px 12px;cursor:pointer;';
     b.onclick = function () { api.salir(); };
     barra.appendChild(t); barra.appendChild(spanContador); barra.appendChild(b);
     document.body.appendChild(barra);
-    try { document.title = '👁 ' + (info.negocio || 'Cliente') + ' (solo lectura)'; } catch (e) {}
+    try { document.title = esCompleto(info) ? ('🔑 ' + (info.negocio || info.email || 'Cuenta') + ' (acceso completo)') : ('👁 ' + (info.negocio || 'Cliente') + ' (solo lectura)'); } catch (e) {}
     actualizarBarra();
   }
 
@@ -214,9 +221,13 @@
       window.localStorage.removeItem('__vc_prueba');
       if (!ok) return false;
     } catch (e) { return false; }
-    instalarGuardias();
+    if (!esCompleto(info)) instalarGuardias();
     instalado = true;
-    api.activo = true;
+    // "activo" significa vista de SOLO LECTURA (otras partes de la app lo usan para
+    // saltarse el selector de usuario, el PIN, etc.). Con acceso completo la app se
+    // comporta igual que si se hubiera entrado con el correo de la cuenta.
+    api.activo = !esCompleto(info);
+    api.modoCompleto = esCompleto(info);
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function () { crearBarra(info); });
     } else { crearBarra(info); }
@@ -226,11 +237,13 @@
   var almacen = null;
   var api = {
     activo: false,
+    modoCompleto: false,
     // Lo llama ver-como.html antes de iniciar la sesión del cliente.
     activar: function (info) {
       if (!SS) return false;
       try { SS.clear(); } catch (e) {}
-      info = { negocio: (info && info.negocio) || '', email: (info && info.email) || '', ts: Date.now() };
+      info = { negocio: (info && info.negocio) || '', email: (info && info.email) || '', ts: Date.now(),
+               modo: (info && info.modo === 'completo') ? 'completo' : 'lectura' };
       try { SS.setItem(FLAG, JSON.stringify(info)); } catch (e) { return false; }
       almacen = almacen || crearAlmacen();
       if (!instalar(info)) { try { SS.removeItem(FLAG); } catch (e) {} return false; }
@@ -242,14 +255,15 @@
       try { window.close(); } catch (e) {}
       setTimeout(function () { window.location.href = 'admin.html'; }, 300);
     },
-    bloqueos: function () { return avisos.total; }
+    bloqueos: function () { return avisos.total; },
+    completo: function () { return esCompleto(leerInfo()); }
   };
   window.N360VerComo = api;
 
   // Pestaña ya en modo ver-como (cada página nueva de la misma pestaña lo retoma).
   var info = leerInfo();
   if (info) {
-    if (Date.now() - (info.ts || 0) > HORAS_MAX * 3600 * 1000) {
+    if (Date.now() - (info.ts || 0) > (esCompleto(info) ? HORAS_MAX_COMPLETO : HORAS_MAX) * 3600 * 1000) {
       try { SS.clear(); } catch (e) {}
     } else {
       almacen = crearAlmacen();

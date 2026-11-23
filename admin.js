@@ -884,6 +884,11 @@ async function loadUsers() {
     const idsShadow = await obtenerIdsSucursalesShadow();
     const idsIndependientesC360 = await obtenerIdsClientesC360Independientes();
     allUsers = (data || []).filter(u => !idsShadow.has(u.auth_user_id) && !idsIndependientesC360.has(u.auth_user_id));
+    // Cuentas propias con "acceso completo" habilitado (si falla, solo no aparece el botón).
+    try {
+      const { data: ac } = await sb.from('admin_acceso_completo').select('auth_user_id');
+      CUENTAS_ACCESO_COMPLETO = new Set((ac || []).map(x => x.auth_user_id));
+    } catch (e) { CUENTAS_ACCESO_COMPLETO = new Set(); }
     // Negocios adicionales ("Mis negocios"): se muestran como una cuenta más, con el nombre del dueño
     // y del negocio, y el correo del dueño (no el correo interno). No entran en cobros ni estadísticas:
     // el pago es de la cuenta principal.
@@ -966,6 +971,10 @@ function renderUsersTable(users) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             Entrar (solo lectura)
           </button>
+          ${CUENTAS_ACCESO_COMPLETO.has(u.auth_user_id) ? `<button class="btn-icon btn-ghost btn-sm" onclick="entrarAccesoCompleto('${u.auth_user_id}')" title="Cuenta propia: abrirla en otra pestaña con acceso completo (puedes guardar cambios)" style="color:#15803d;font-weight:600">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+            Entrar (acceso completo)
+          </button>` : ''}
           <button class="btn-icon btn-ghost btn-sm" onclick="verSucursalesCliente('${u.auth_user_id}')" title="Ver las bodegas y sucursales de este cliente (solo lectura)">
             Bodegas / sucursales
           </button>
@@ -1009,6 +1018,36 @@ function renderUsersTable(users) {
       </td>
     </tr>
   `).join('');
+}
+
+// ── ACCESO COMPLETO (solo cuentas propias autorizadas) ────
+// Las cuentas están en la tabla admin_acceso_completo. La función
+// admin-entrar-completo vuelve a verificar que seas administrador y que la
+// cuenta esté autorizada, y deja constancia en la bitácora.
+let CUENTAS_ACCESO_COMPLETO = new Set();
+async function entrarAccesoCompleto(authUserId) {
+  const u = (allUsers || []).find(x => x.auth_user_id === authUserId) || {};
+  const nombre = u.nombre_negocio || u.email || 'esta cuenta';
+  if (!confirm('Vas a abrir "' + nombre + '" en otra pestaña con ACCESO COMPLETO.\n\nLo que guardes ahí queda guardado en esa cuenta. Tu sesión de administrador no se cierra. Queda registrado en la bitácora.\n\n¿Continuar?')) return;
+  const w = window.open('about:blank', '_blank');
+  if (!w) { toast('Pestaña bloqueada', 'Permite las ventanas emergentes de este sitio e intenta de nuevo', 'error'); return; }
+  try { w.document.write('<p style="font-family:system-ui;padding:24px">Abriendo la cuenta…</p>'); } catch (e) {}
+  try {
+    const { data, error } = await sb.functions.invoke('admin-entrar-completo', { body: { auth_user_id: authUserId } });
+    if (error || !data || !data.ok) {
+      let msg = (data && data.error) || (error && error.message) || 'No se pudo abrir la cuenta';
+      try { if (error && error.context && error.context.json) { const j = await error.context.json(); if (j && j.error) msg = j.error; } } catch (e) {}
+      try { w.close(); } catch (e) {}
+      toast('No se pudo abrir', msg, 'error');
+      return;
+    }
+    w.location.href = 'ver-como.html#th=' + encodeURIComponent(data.token_hash)
+      + '&n=' + encodeURIComponent(data.negocio || nombre)
+      + '&e=' + encodeURIComponent(data.email || '') + '&m=c';
+  } catch (e) {
+    try { w.close(); } catch (e2) {}
+    toast('No se pudo abrir', e.message || 'Error inesperado', 'error');
+  }
 }
 
 // ── VER COMO CLIENTE (solo lectura) ───────────────────────
