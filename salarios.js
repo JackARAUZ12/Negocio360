@@ -765,9 +765,10 @@ async function verHistorialEmpleado(id) {
 
       <div class="nc-paso-title" style="margin-top:16px">Historial de pagos</div>
       <div class="table-wrap"><table><thead><tr>
-        <th>Fecha</th><th class="th-right">Base</th><th class="th-right">Bonos</th><th class="th-right">Deducciones</th><th class="th-right">Adelantos</th><th class="th-right">Total</th><th>Método</th><th>Estado</th><th></th>
+        <th>Boleta</th><th>Fecha</th><th class="th-right">Base</th><th class="th-right">Bonos</th><th class="th-right">Deducciones</th><th class="th-right">Adelantos</th><th class="th-right">Total</th><th>Método</th><th>Estado</th>
       </tr></thead><tbody>
       ${(pagos||[]).map(p => `<tr${p.estado==='anulado' ? ' class="mov-anulado" title="Este pago se anuló en Caja: no cuenta en los totales"' : ''}>
+        <td>${p.estado==='pagado' ? `<button class="btn-secondary btn-sm" style="white-space:nowrap" title="Descargar la boleta de pago (PDF) para imprimir" onclick='generarBoletaPago(${JSON.stringify(p).replace(/'/g,"&apos;")})'>📄 Boleta</button>` : ''}</td>
         <td>${fmtDate(p.fecha)}</td>
         <td class="td-right td-money">${fmt(p.salario_base)}</td>
         <td class="td-right td-money">${fmt(p.bonificaciones)}</td>
@@ -776,7 +777,6 @@ async function verHistorialEmpleado(id) {
         <td class="td-right td-money" style="font-weight:700">${fmt(p.total_pagado)}</td>
         <td>${esc(p.metodo_pago_nombre||'—')}</td>
         <td>${p.estado==='anulado' ? '<span class="status-badge badge-cancelado">Anulado</span>' : `<span class="status-badge badge-${p.estado==='pagado'?'pagado':'pendiente'}">${p.estado==='pagado'?'Pagado':'Pendiente'}</span>`}</td>
-        <td>${p.estado==='pagado' ? `<button class="btn-icon" title="Descargar boleta de pago" onclick='generarBoletaPago(${JSON.stringify(p).replace(/'/g,"&apos;")})'>📄</button>` : ''}</td>
       </tr>`).join('') || '<tr><td colspan="9" class="empty-cell">Sin pagos registrados todavía</td></tr>'}
       </tbody></table></div>
 
