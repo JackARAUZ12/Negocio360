@@ -3066,7 +3066,8 @@
     // Hora de la factura: la de registro, si es del mismo día que la fecha del crédito
     const creado = c.created_at ? new Date(c.created_at) : null;
     const hora = creado && !isNaN(creado) && String(c.created_at).slice(0, 10) === d.fechaCredito ? ' ' + creado.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' }) : '';
-    const fila = (a, b, extra = '') => `<div class="tp-row"${extra}><span>${a}</span><b>${b}</b></div>`;
+    // La etiqueta (corta) no se encoge; el valor largo (p. ej. un nombre de cliente largo) baja de línea a la derecha.
+    const fila = (a, b, extra = '') => `<div class="tp-row"${extra}><span style="flex:none;white-space:nowrap">${a}</span><b style="flex:1 1 auto;min-width:0;white-space:normal;text-align:right;overflow-wrap:anywhere">${b}</b></div>`;
     const filasItems = d.items.map(i => {
       const [nombreReal, ...detalle] = String(i.nombre || i.producto_nombre || 'Ítem').split('\n');
       const sub = i.subtotal != null ? Number(i.subtotal) : round2(Number(i.cantidad) * Number(i.precio));

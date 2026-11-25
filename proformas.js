@@ -1735,10 +1735,10 @@ function mostrarComprobanteProforma(v) {
       ${c?.direccion_ticket ? `<div style="text-align:center;font-size:11px;color:var(--text-muted)">${esc(c.direccion_ticket)}</div>` : ''}
       <div style="text-align:center;color:var(--text-muted);margin-bottom:8px">Comprobante de venta ${v.origenProforma ? '(desde proforma ' + esc(v.origenProforma) + ')' : ''}</div>
       <hr/>
-      <div class="tp-row"><span>N° venta:</span><b>${esc(v.numero)}</b></div>
-      <div class="tp-row"><span>Cliente:</span><b>${esc(v.cliente)}</b></div>
+      <div class="tp-row"><span style="flex:none;white-space:nowrap">N° venta:</span><b style="flex:1 1 auto;min-width:0;white-space:normal;text-align:right;overflow-wrap:anywhere">${esc(v.numero)}</b></div>
+      <div class="tp-row"><span style="flex:none;white-space:nowrap">Cliente:</span><b style="flex:1 1 auto;min-width:0;white-space:normal;text-align:right;overflow-wrap:anywhere">${esc(v.cliente)}</b></div>
       <div class="tp-row"><span>Fecha:</span><b>${esc(fmtFecha(v.fecha))}</b></div>
-      <div class="tp-row"><span>Usuario:</span><b>${esc(v.usuario)}</b></div>
+      <div class="tp-row"><span style="flex:none;white-space:nowrap">Usuario:</span><b style="flex:1 1 auto;min-width:0;white-space:normal;text-align:right;overflow-wrap:anywhere">${esc(v.usuario)}</b></div>
       <hr/>
       ${filasItems}
       <hr/>
