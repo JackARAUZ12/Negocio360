@@ -107,8 +107,17 @@ function detectarEscalasParcial(encabezados) {
   if (!('Costo' in idx)) aviso.push('no tiene la columna Costo: se asumió costo 0');
   return { tipo: 'ESCALA', idx, aviso };
 }
+// Columnas OPCIONALES de la plantilla de escalas: Escala1Cantidad..Escala5Cantidad (cantidad que se
+// pone sola en la venta al elegir ese precio). Si el archivo no las trae, todo funciona como antes.
+function indicesCantidadEscalas(encabezados) {
+  const mapa = indicePorEncabezados(encabezados || []);
+  const idxC = {};
+  for (let n = 1; n <= IMPORT_MAX_ESCALAS; n++) { const k = normEncabezadoPlantilla('Escala' + n + 'Cantidad'); if (k in mapa) idxC['Escala' + n + 'Cantidad'] = mapa[k]; }
+  return idxC;
+}
 function filasDesdeHoja(filasArray, columnas, idx, defectos) {
   const filas = [];
+  const idxCant = indicesCantidadEscalas(filasArray[0] || []);
   for (let r = 1; r < filasArray.length; r++) {
     const arr = filasArray[r];
     const vacio = !arr || arr.every(v => v === '' || v === null || v === undefined);
@@ -118,6 +127,7 @@ function filasDesdeHoja(filasArray, columnas, idx, defectos) {
       const i = idx[col];
       obj[col] = (i !== undefined && arr[i] !== undefined) ? arr[i] : ((defectos && defectos[col] !== undefined) ? defectos[col] : '');
     });
+    Object.keys(idxCant).forEach(c => { obj[c] = arr[idxCant[c]] !== undefined ? arr[idxCant[c]] : ''; });
     filas.push(obj);
   }
   return filas;
@@ -141,18 +151,11 @@ function leerArchivoExcel(file) {
           if (sheet) {
             const filasArray = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
             const encabezado = (filasArray[0] || []).map(h => String(h).trim());
-            const encabezadoOk = plantilla.columnas.every((col, i) => encabezado[i] === col);
+            const mapaEnc = indicePorEncabezados(encabezado);
+            const encabezadoOk = plantilla.columnas.every(col => normEncabezadoPlantilla(col) in mapaEnc);
             if (encabezadoOk) {
-              const filas = [];
-              for (let r = 1; r < filasArray.length; r++) {
-                const arr = filasArray[r];
-                const vacio = !arr || arr.every(v => v === '' || v === null || v === undefined);
-                if (vacio) continue;
-                const obj = { _filaExcel: r + 1 };
-                plantilla.columnas.forEach((col, i) => { obj[col] = arr[i] !== undefined ? arr[i] : ''; });
-                filas.push(obj);
-              }
-              resolve({ tipoPlantilla, filas });
+              const idxFirma = Object.fromEntries(plantilla.columnas.map(c => [c, mapaEnc[normEncabezadoPlantilla(c)]]));
+              resolve({ tipoPlantilla, filas: filasDesdeHoja(filasArray, plantilla.columnas, idxFirma) });
               return;
             }
           }
@@ -376,9 +379,20 @@ function validarFilas(filas, tipoPlantilla) {
           agregarError('Escala' + n + 'Precio', 'Escala ' + n + ': el precio debe ser un número ≥ 0');
           continue;
         }
+        // Cantidad opcional (ej. Mayorista = 12): se pone sola al elegir este precio en la venta.
+        const cantRaw = row['Escala' + n + 'Cantidad'];
+        let cantidad = null;
+        if (!esVacio(cantRaw) && String(cantRaw).trim() !== '') {
+          if (!numeroValido(cantRaw) || parseFloat(cantRaw) <= 0) {
+            agregarError('Escala' + n + 'Cantidad', 'Escala ' + n + ': la cantidad debe ser un número mayor que 0 (o déjala vacía)');
+            continue;
+          }
+          cantidad = parseFloat(cantRaw);
+        }
         escalas.push({
           nombre: String(nomRaw).trim(),
           precio: parseFloat(precRaw),
+          cantidad,
           orden: n - 1,
         });
       }

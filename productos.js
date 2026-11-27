@@ -544,7 +544,7 @@ async function cargarEscalas() {
   try {
     const { data, error } = await N360Leer.todo(() => supabaseClient
       .from('precios_escala')
-      .select('id,producto_id,nombre,precio,orden')
+      .select('id,producto_id,nombre,precio,orden,cantidad_minima')
       .eq('auth_user_id', STATE.user.id)
       .order('orden'), 'escalas de precio');
     if (error) throw error;
@@ -661,7 +661,13 @@ function setTipoPrecio(tipo) {
 function renderEscalasEditor() {
   const cont = $('escalasEditorBody');
   if (!cont) return;
-  cont.innerHTML = STATE.formEscalas.map((fila, i) => `
+  const cab = STATE.formEscalas.length ? `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;font-size:11.5px;color:var(--text-muted);font-weight:600">
+      <span style="flex:2">Nombre del precio</span><span style="flex:1">Precio por unidad</span>
+      <span style="flex:1" title="Opcional. Al elegir este precio en una venta, se pone esta cantidad automáticamente (se puede cambiar). Déjalo vacío si el precio no depende de la cantidad.">Cantidad (opcional)</span>
+      <span style="width:32px"></span>
+    </div>` : '';
+  cont.innerHTML = cab + STATE.formEscalas.map((fila, i) => `
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
       <input type="text" class="form-input" style="flex:2" placeholder="Ej: Mayorista"
              value="${escHtml(fila.nombre || '')}"
@@ -669,6 +675,10 @@ function renderEscalasEditor() {
       <input type="number" class="form-input" style="flex:1" placeholder="0.00" min="0" step="0.01"
              value="${fila.precio ?? ''}"
              oninput="actualizarFilaEscala(${i}, 'precio', this.value)" />
+      <input type="number" class="form-input" style="flex:1" placeholder="Ej: 12" min="1" step="any"
+             title="Opcional: cantidad que se pone sola al elegir este precio en una venta"
+             value="${fila.cantidad ?? ''}"
+             oninput="actualizarFilaEscala(${i}, 'cantidad', this.value)" />
       <button type="button" class="row-action-btn" title="Eliminar precio"
               onclick="eliminarFilaEscala(${i})" style="opacity:1;color:var(--danger)">🗑️</button>
     </div>
@@ -676,7 +686,7 @@ function renderEscalasEditor() {
 }
 
 function agregarFilaEscala() {
-  STATE.formEscalas.push({ nombre: '', precio: '' });
+  STATE.formEscalas.push({ nombre: '', precio: '', cantidad: '' });
   renderEscalasEditor();
 }
 function actualizarFilaEscala(i, campo, valor) {
@@ -820,6 +830,7 @@ async function sincronizarEscalas(productoId, filas) {
       producto_id:  productoId,
       nombre:       f.nombre.trim(),
       precio:       isNaN(parseFloat(f.precio)) ? 0 : parseFloat(f.precio),
+      cantidad_minima: (parseFloat(f.cantidad) > 0) ? parseFloat(f.cantidad) : null,   // opcional
       orden:        i,
     }));
 
@@ -3727,7 +3738,7 @@ function cargarFormulario(p) {
 
   // Tipo de precio + escalas (si el producto ya tiene alguna configurada)
   const escalasExistentes = STATE.escalasPorProducto[p.id] || [];
-  STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio }));
+  STATE.formEscalas = escalasExistentes.map(e => ({ nombre: e.nombre, precio: e.precio, cantidad: e.cantidad_minima ?? '' }));
   setTipoPrecio(p.tipo_precio === 'escala' ? 'escala' : 'fijo');
   renderEscalasEditor();
   STATE.formEscalasCosto = (STATE.escalasCostoPorProducto[p.id] || []).map(e => ({ nombre: e.nombre, costo: e.costo }));

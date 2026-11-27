@@ -1373,7 +1373,7 @@ function esPreparadoAlVender(id) { return !!S.productosCache?.find(p => p.id ===
 
 async function loadEscalasCache() {
   try {
-    const { data } = await N360Leer.todo(() => sb.from('precios_escala').select('id,producto_id,nombre,precio,orden')
+    const { data } = await N360Leer.todo(() => sb.from('precios_escala').select('id,producto_id,nombre,precio,orden,cantidad_minima')
       .eq('auth_user_id', S.userId).order('orden'), 'escalas de precio');
     const map = {};
     (data || []).forEach(e => {
@@ -3149,7 +3149,7 @@ function abrirSelectorEscala(productoId, tipo, modo='normal') {
   document.getElementById('esc-precio-lista').innerHTML = escalas.map((e, i) => `
     <label class="esc-precio-opcion">
       <input type="radio" name="esc-precio-radio" value="${e.id}" ${i===0 ? 'checked' : ''} />
-      <span class="esc-precio-nombre">${esc(e.nombre)}</span>
+      <span class="esc-precio-nombre">${esc(e.nombre)}${Number(e.cantidad_minima) > 0 ? ` <small style="color:var(--text-muted);font-weight:500">(${Number(e.cantidad_minima)} u.)</small>` : ''}</span>
       <span class="esc-precio-valor">${fmt(e.precio)}</span>
     </label>
   `).join('');
@@ -3525,26 +3525,35 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
   const existente = S.carrito.find(c => c.id===productoId && (c.escalaId || null) === (escalaElegida?.id || null) && (c.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
   if (existente) {
     // Aumentar cantidad (validando stock si es producto)
-    if (tipo==='producto' && existente.cantidad >= stockReal) {
+    // Si la escala trae cantidad (ej. Mayorista = 12), se suma esa cantidad; si no, 1 (como siempre).
+    const incEsc = Number(escalaElegida?.cantidad_minima) > 0 ? Number(escalaElegida.cantidad_minima) : 1;
+    if (tipo==='producto' && (incEsc > 1 ? existente.cantidad + incEsc > stockReal : existente.cantidad >= stockReal)) {
       if (!S.venderSinStockActivo) {
         showToast(`Stock insuficiente. Máximo: ${stockReal}`, 'error'); return;
       }
       existente.sinStock = true; // se vendió por encima de lo disponible — queda marcado
     }
-    existente.cantidad++;
+    existente.cantidad += incEsc;
     recalcItem(existente);
   } else {
+    // Cantidad inicial: si la escala elegida trae cantidad (ej. Blíster = 10), se pone sola
+    // (editable). Sin cantidad en la escala: 1, igual que siempre. Con el stock limitado, no pasa del disponible.
+    let cantIni = Number(escalaElegida?.cantidad_minima) > 0 ? Number(escalaElegida.cantidad_minima) : 1;
+    if (cantIni > 1 && tipo==='producto' && !S.venderSinStockActivo && isFinite(stockReal) && cantIni > stockReal) {
+      cantIni = Math.max(1, Math.floor(stockReal));
+      showToast(`Solo hay ${stockReal} en stock; se agregó ${cantIni}.`, 'warning');
+    }
     const item = {
       id:       prod.id,
       nombre:   prod.nombre,
       sku:      prod.sku || '',
       tipo:     prod.tipo,
-      cantidad: 1,
+      cantidad: cantIni,
       precio:   precioUsar,
       costo:    parseFloat(prod.costo||0),
       descuento:0,
-      subtotal: precioUsar,
-      ganancia: precioUsar - parseFloat(prod.costo||0),
+      subtotal: precioUsar * cantIni,
+      ganancia: (precioUsar - parseFloat(prod.costo||0)) * cantIni,
       // Con el interruptor apagado, se comporta exactamente igual que
       // siempre (tope real en el stock disponible). Con el interruptor
       // activo, no se topa la cantidad, pero se guarda cuál era el
@@ -3582,6 +3591,7 @@ async function agregarAlCarritoConPrecio(productoId, tipo, escalaElegida) {
       loteVencimiento: loteFEFO?.fecha_vencimiento || null,
     };
     S.carrito.push(item);
+    if (cantIni > 1) { try { recalcItem(item); } catch (_) {} }
   }
 
   // Cerrar resultados
@@ -3610,20 +3620,26 @@ function agregarAlCarritoVRConEscala(productoId, escalaElegida) {
   const precioUsar = parseFloat(escalaElegida.precio || 0);
   const existente   = VR.carrito.find(i => i.id === productoId && (i.escalaId || null) === escalaElegida.id && (i.origenStockId || null) === (esRemoto ? origen.sucursalId : null));
 
+  // Cantidad de la escala (ej. Mayorista = 12): se pone sola, editable. Sin cantidad en la escala: 1, como siempre.
+  let cantEsc = Number(escalaElegida.cantidad_minima) > 0 ? Number(escalaElegida.cantidad_minima) : 1;
   if (existente) {
-    if (prod.tipo === 'producto' && existente.cantidad + 1 > stockReal) {
+    if (prod.tipo === 'producto' && existente.cantidad + cantEsc > stockReal) {
       showToast(`⚠️ No hay más stock de "${prod.nombre}"`, 'error');
       return;
     }
-    existente.cantidad += 1; existente.cantidadPedida = null; existente.unidadPedida = null;
+    existente.cantidad += cantEsc; existente.cantidadPedida = null; existente.unidadPedida = null;
   } else {
+    if (cantEsc > 1 && prod.tipo === 'producto' && isFinite(stockReal) && cantEsc > stockReal) {
+      cantEsc = Math.max(1, Math.floor(stockReal));
+      showToast(`Solo hay ${stockReal} en stock; se agregó ${cantEsc}.`, 'warning');
+    }
     VR.carrito.push({
       id:              prod.id,
       nombre:          prod.nombre,
       sku:             prod.sku || null,
       codigo_barras:   prod.codigo_barras || null,
       tipo:            prod.tipo,
-      cantidad:        1,
+      cantidad:        cantEsc,
       precio:          precioUsar,
       costo:           Number(prod.costo) || 0,
       stockDisponible: stockReal,
