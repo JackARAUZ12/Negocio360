@@ -33,17 +33,23 @@ const N360_UNIFICADO = (() => {
   try { return /\/general\.html$/.test(location.pathname) && new URLSearchParams(location.search).get('unificado') === '1'; }
   catch (e) { return false; }
 })();
+// Reporte General (general.html, con o sin ?unificado=1): lee TODO el grupo por páginas
+// (sin el tope de 1000 filas del servidor) y sin quedarse solo con la cuenta principal.
+// En las demás páginas que usan este archivo, todo sigue exactamente igual que antes.
+const N360_REPORTE_GENERAL = (() => {
+  try { return /\/general\.html$/.test(location.pathname); } catch (e) { return false; }
+})();
 // Avance de lectura (para la barra de carga): N360ProgresoGrupo(tabla, filasLeidas, terminado)
 function _avisarProgresoGrupo(tabla, filas, fin) {
   try { if (typeof window.N360ProgresoGrupo === 'function') window.N360ProgresoGrupo(tabla, filas, fin); } catch (e) {}
 }
-async function _leerTablaUnificada(clienteReal, tabla) {
+async function _leerTablaUnificada(clienteReal, tabla, unificado = true) {
   const PAG = 1000, filas = [];
   for (let desde = 0; desde < 5000000; desde += PAG) {
     let pagina = null, ultimo = null;
     for (let intento = 0; intento < 3 && pagina === null; intento++) {
       if (intento) await new Promise(r => setTimeout(r, intento * 700));
-      const { data, error } = await clienteReal.rpc('obtener_datos_grupo_pag', { p_tabla: tabla, p_unificado: true, p_offset: desde, p_limit: PAG });
+      const { data, error } = await clienteReal.rpc('obtener_datos_grupo_pag', { p_tabla: tabla, p_unificado: !!unificado, p_offset: desde, p_limit: PAG });
       if (error) ultimo = error; else pagina = data || [];
     }
     if (pagina === null) throw (ultimo || new Error('Lectura incompleta'));   // nunca datos a medias
@@ -92,9 +98,9 @@ class GrupoQueryBuilder {
   }
   select() { return this; } // siempre se trae la fila completa
   eq(col, val)  {
-    // Reporte unificado: el servidor ya entregó SOLO las cuentas permitidas; el filtro
-    // "auth_user_id = mi cuenta" de las consultas se ignora para que entren todas.
-    if (N360_UNIFICADO && col === 'auth_user_id') return this;
+    // Reporte General / unificado: el servidor ya entregó SOLO las cuentas del grupo; el
+    // filtro "auth_user_id = mi cuenta" se ignora para que entren TODAS las cuentas.
+    if (N360_REPORTE_GENERAL && col === 'auth_user_id') return this;
     this._filtros.push(r => r[col] === val); return this;
   }
   neq(col, val) { this._filtros.push(r => r[col] !== val); return this; }
@@ -111,12 +117,12 @@ class GrupoQueryBuilder {
 
   async _traer() {
     if (!this._cache[this._tabla]) {
-      this._cache[this._tabla] = N360_UNIFICADO
-        ? _leerTablaUnificada(this._real, this._tabla)
+      this._cache[this._tabla] = N360_REPORTE_GENERAL
+        ? _leerTablaUnificada(this._real, this._tabla, N360_UNIFICADO)
         : this._real.rpc('obtener_datos_grupo', { p_tabla: this._tabla })
             .then(({ data, error }) => { if (error) throw error; return data || []; });
       // Si falla, se borra del caché para que el siguiente intento vuelva a leer (no queda un error pegado).
-      if (N360_UNIFICADO) { const t = this._tabla, c = this._cache, pr = c[t]; pr.catch(() => { if (c[t] === pr) delete c[t]; }); }
+      if (N360_REPORTE_GENERAL) { const t = this._tabla, c = this._cache, pr = c[t]; pr.catch(() => { if (c[t] === pr) delete c[t]; }); }
     }
     return this._cache[this._tabla];
   }

@@ -767,6 +767,21 @@ function esStockBajo(p) {
 
 /* ---- CAJA (desde movimientos_financieros — misma lógica que caja.js) ---- */
 async function fetchCapital() {
+  // Reporte General (todo el grupo / unificado): la caja disponible es la SUMA de la caja de
+  // cada cuenta (último saldo de cada una), no el último movimiento de una sola cuenta.
+  if (typeof N360_REPORTE_GENERAL !== 'undefined' && N360_REPORTE_GENERAL) {
+    const { data: movs } = await sb.from('movimientos_financieros')
+      .select('auth_user_id,saldo_resultante,created_at').eq('estado','completado');
+    const ultimo = {};
+    (movs || []).forEach(m => {
+      const u = ultimo[m.auth_user_id];
+      if (!u || String(m.created_at || '') > String(u.created_at || '')) ultimo[m.auth_user_id] = m;
+    });
+    let total = Object.values(ultimo).reduce((t, m) => t + Number(m.saldo_resultante || 0), 0);
+    const { data: caps } = await sb.from('capital_negocio').select('auth_user_id,monto,is_current').eq('is_current', true);
+    (caps || []).forEach(c => { if (!ultimo[c.auth_user_id]) total += Number(c.monto || 0); });
+    return total;
+  }
   const { data } = await sb.from('movimientos_financieros')
     .select('saldo_resultante')
     .eq('auth_user_id', R.userId)
