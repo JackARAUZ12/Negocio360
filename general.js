@@ -2194,13 +2194,18 @@ async function exportar(tipo, formato) {
 
 async function ejecutarExportacion(tipo, formato, clienteId, clienteNombre) {
   const ext = formato === 'xlsx' ? 'xlsx' : 'pdf';
-  showToast(`Generando ${tipo}.${ext}…`, 'info');
+  const nomArchivo = ext === 'xlsx' ? 'Excel' : 'PDF';
+  BarraCarga.abrir(`Preparando tu ${nomArchivo}…`);
   try {
     await ensureCaches();
+    BarraCarga.fase(`Armando el ${nomArchivo}…`, 90);
+    await new Promise(r => setTimeout(r, 30)); // deja pintar la barra antes del trabajo pesado
     if (ext === 'xlsx') await exportarExcel(tipo, clienteId, clienteNombre);
     else                await exportarPDF(tipo, clienteId, clienteNombre);
+    BarraCarga.cerrar();
     showToast(`✅ ${tipo}.${ext} descargado`, 'success');
   } catch(e) {
+    BarraCarga.cerrar();
     console.error('exportar:', e);
     showToast('Error al generar el archivo', 'error');
   }
@@ -2357,6 +2362,11 @@ async function abrirComparacionSucursales() {
 // se obtiene una sola vez, en solo lectura, para poder separar los
 // datos ya combinados de vuelta por cuenta.
 async function mapearCuentasGrupo() {
+  if (esUnificado()) {
+    const mapa = {};
+    (R.unif.cuentas || []).forEach(c => { mapa[c.id] = c.auth_user_id; });
+    return mapa;
+  }
   const { data } = await sbReal.from('sucursales')
     .select('id, auth_user_id_central, auth_user_id_sucursal, es_central')
     .or(`auth_user_id_central.eq.${R.userId},auth_user_id_sucursal.eq.${R.userId}`);
@@ -2691,13 +2701,18 @@ function colActiva(tipoReporte, key) {
 }
 
 function columnasActivas(tipoReporte) {
-  return (COLUMNAS_REPORTES[tipoReporte]||[]).filter(c => colActiva(tipoReporte, c.key));
+  const cols = (COLUMNAS_REPORTES[tipoReporte]||[]).filter(c => colActiva(tipoReporte, c.key));
+  // Reporte unificado: cada fila dice de qué negocio (y bodega/sucursal) es.
+  if (esUnificado() && ['ventas','compras','clientes','inventario','gastos'].includes(tipoReporte) && cols.length)
+    return [{ key:'negocio', label:'Negocio', tipo:'texto' }, ...cols];
+  return cols;
 }
 
 // ---- Construcción de filas (independiente del formato de salida) ----
 function filaVenta(v, detMap) {
   const info = detMap[v.id];
   return {
+    negocio: negocioDe(v),
     numero: v.numero_venta, fecha: fmtFecha(v.fecha), _iso: { fecha: v.fecha },
     cliente: v.cliente_nombre||'Consumidor Final', metodo: v.metodo_pago_nombre||'—',
     productos: fmtProductosVenta(info), servicios: fmtServiciosVenta(info),
@@ -2706,18 +2721,18 @@ function filaVenta(v, detMap) {
   };
 }
 function filaCompra(c) {
-  return { numero:c.numero, fecha:fmtFecha(c.fecha), _iso:{ fecha:c.fecha }, proveedor:c.proveedor_nombre||'—', total:Number(c.total||0), estado:c.estado||'' };
+  return { negocio:negocioDe(c), numero:c.numero, fecha:fmtFecha(c.fecha), _iso:{ fecha:c.fecha }, proveedor:c.proveedor_nombre||'—', total:Number(c.total||0), estado:c.estado||'' };
 }
 function filaCliente(c) {
-  return { nombre:c.nombre||'', telefono:c.telefono||'—', email:c.correo||'—', compras:Number(c.num_compras||0), totalGastado:Number(c.total_compras||0), ultimaCompra:fmtFecha(c.ultima_compra), _iso:{ ultimaCompra:c.ultima_compra } };
+  return { negocio:negocioDe(c), nombre:c.nombre||'', telefono:c.telefono||'—', email:c.correo||'—', compras:Number(c.num_compras||0), totalGastado:Number(c.total_compras||0), ultimaCompra:fmtFecha(c.ultima_compra), _iso:{ ultimaCompra:c.ultima_compra } };
 }
 function filaProducto(p) {
-  return { producto:p.nombre||'', sku:p.sku||'—', categoria:p.categoria||'—', marca:p.proveedor_nombre||'—',
+  return { negocio:negocioDe(p), producto:p.nombre||'', sku:p.sku||'—', categoria:p.categoria||'—', marca:p.proveedor_nombre||'—',
     stock:Number(p.stock_actual||0), costo:Number(p.costo||0), precio:Number(p.precio||0),
     valorTotal:Number(p.stock_actual||0)*Number(p.costo||0) };
 }
 function filaGasto(g) {
-  return { concepto:g.concepto||'', categoria:g.categoria||'—', fecha:fmtFecha(g.fecha), _iso:{ fecha:g.fecha }, monto:Number(g.monto||0), tipo:g.tipo||'' };
+  return { negocio:negocioDe(g), concepto:g.concepto||'', categoria:g.categoria||'—', fecha:fmtFecha(g.fecha), _iso:{ fecha:g.fecha }, monto:Number(g.monto||0), tipo:g.tipo||'' };
 }
 function filaCreditoPago(f) {
   return {
@@ -2933,7 +2948,8 @@ async function cargarLogoParaPDF() {
 
 function docHeader(tipo) {
   // FIX: priorizar nombre_comercial (campo real guardado por personalizacion.html)
-  const biz    = R.empresaConfig?.nombre_comercial || R.empresaConfig?.nombre_negocio || 'Mi Negocio';
+  const biz    = esUnificado() ? (R.unif.nombre || nombresNegociosUnif().join(' + '))
+               : (R.empresaConfig?.nombre_comercial || R.empresaConfig?.nombre_negocio || 'Mi Negocio');
   const moneda = sym();
   const { from, to } = getDateRange();
   const periodo = from===to ? fmtFecha(from) : `${fmtFecha(from)} — ${fmtFecha(to)}`;
@@ -2973,9 +2989,15 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     }
     doc.setTextColor(255,255,255);
     doc.setFontSize(14); doc.setFont(undefined,'bold');
-    doc.text(`${h.biz} — Reporte ${esGeneral ? 'General (Completo)' : `de ${tituloTipo(tipo)}`}`, textoX, 13);
+    doc.text(`${h.biz} — Reporte ${esGeneral ? (esUnificado() ? 'Unificado (Completo)' : 'General (Completo)') : `de ${tituloTipo(tipo)}${esUnificado() ? ' (unificado)' : ''}`}`, textoX, esUnificado() ? 10.5 : 13);
     doc.setFontSize(9); doc.setFont(undefined,'normal');
-    doc.text(`Período: ${h.periodo} | Moneda: ${h.moneda} | Generado: ${h.ahora}`, W-10, 13, { align:'right' });
+    if (esUnificado()) {
+      // El título del unificado es largo: el período va en una segunda línea para no encimarse.
+      doc.setFontSize(8);
+      doc.text(`Período: ${h.periodo} | Moneda: ${h.moneda} | Generado: ${h.ahora} | Incluye: ${nombresNegociosUnif().join(' + ')}`, textoX, 18);
+    } else {
+      doc.text(`Período: ${h.periodo} | Moneda: ${h.moneda} | Generado: ${h.ahora}`, W-10, 13, { align:'right' });
+    }
   }
 
   pintarCabecera();
@@ -3001,6 +3023,17 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
     doc.autoTable({ startY, head:[['Concepto','Monto']], body:finRows, theme:'striped',
       headStyles:{fillColor:[90,90,244]}, margin:{left:10,right:10}, styles:{fontSize:9} });
     startY = doc.lastAutoTable.finalY + 10;
+    if (esUnificado()) {
+      const { filas, tot } = resumenPorNegocio();
+      tituloSeccion('Resumen por negocio');
+      doc.autoTable({ startY, head:[COLS_RESUMEN_NEGOCIO.map(c => c.label)],
+        body: filas.map(f => filaAPDF(f, COLS_RESUMEN_NEGOCIO)),
+        foot: [filaAPDF(tot, COLS_RESUMEN_NEGOCIO)], theme:'striped',
+        headStyles:{fillColor:[90,90,244]}, footStyles:{fillColor:[235,235,250], textColor:[30,30,40], fontStyle:'bold'},
+        margin:{left:10,right:10}, styles:{fontSize:8.5},
+        columnStyles: Object.fromEntries(COLS_RESUMEN_NEGOCIO.map((c, i) => [i, c.tipo === 'texto' ? {} : { halign:'right' }])) });
+      startY = doc.lastAutoTable.finalY + 10;
+    }
   }
 
   // ---- VENTAS ----
@@ -3166,7 +3199,7 @@ async function exportarPDF(tipo, clienteId, clienteNombre) {
   }
 
   const sufijoCliente = tipo === 'creditos' ? `_${slugify(clienteNombre)}` : '';
-  doc.save(`negocio360_${tipo}${sufijoCliente}_${todayISO()}.pdf`);
+  doc.save(`negocio360_${esUnificado() ? 'unificado_' : ''}${tipo}${sufijoCliente}_${todayISO()}.pdf`);
 }
 
 /* ---- EXCEL (.xlsx) ---- */
@@ -3329,6 +3362,7 @@ async function exportarExcel(tipo, clienteId, clienteNombre) {
   const esGeneral = tipo === 'general';
 
   if (esGeneral) hojaResumenXLSX(wb);
+  if (esGeneral && esUnificado()) hojaPorNegocioXLSX(wb);
   if (tipo==='ventas'     || esGeneral) hojaVentasXLSX(wb);
   if (tipo==='compras'    || esGeneral) hojaComprasXLSX(wb);
   if (tipo==='clientes'   || esGeneral) hojaClientesXLSX(wb);
@@ -3338,7 +3372,13 @@ async function exportarExcel(tipo, clienteId, clienteNombre) {
   if (esGeneral)          hojaCreditosResumenXLSX(wb);
 
   const sufijoCliente = tipo === 'creditos' ? `_${slugify(clienteNombre)}` : '';
-  XLSX.writeFile(wb, `negocio360_${tipo}${sufijoCliente}_${todayISO()}.xlsx`);
+  XLSX.writeFile(wb, `negocio360_${esUnificado() ? 'unificado_' : ''}${tipo}${sufijoCliente}_${todayISO()}.xlsx`);
+}
+function hojaPorNegocioXLSX(wb) {
+  const { filas, tot } = resumenPorNegocio();
+  const rows = filas.map(f => filaAXLSX(f, COLS_RESUMEN_NEGOCIO));
+  rows.push(filaAXLSX(tot, COLS_RESUMEN_NEGOCIO));
+  appendSheetXLSX(wb, 'Por negocio', headersXLSX(COLS_RESUMEN_NEGOCIO), rows, formatosXLSX(COLS_RESUMEN_NEGOCIO));
 }
 
 function tituloTipo(tipo) {
@@ -3389,6 +3429,92 @@ window.ReportesAPI = {
 /* ============================================================
    INIT PRINCIPAL
    ============================================================ */
+/* ============================================================
+   REPORTE UNIFICADO — títulos, columna "Negocio", resumen por negocio
+   y barra de carga. Todo lo de esta sección solo actúa con
+   general.html?unificado=1 (R.unif con datos); si no, no cambia nada.
+   ============================================================ */
+function esUnificado() { return !!(R.unif && typeof N360_UNIFICADO !== 'undefined' && N360_UNIFICADO); }
+function negocioDe(fila) { return esUnificado() && fila ? nombreCuentaUnificada(R.unif, fila.auth_user_id) : ''; }
+function nombresNegociosUnif() { return ((R.unif && R.unif.negocios) || []).map(n => n.etiqueta).filter(Boolean); }
+function aplicarTitulosUnificado() {
+  const nombres = nombresNegociosUnif().join(' + ');
+  const ht = document.querySelector('.header-title');
+  if (ht) ht.textContent = '📊 Reporte Unificado — ' + (R.unif.nombre || nombres);
+  const h1 = document.querySelector('.greeting-text h1');
+  if (h1) { const svg = h1.querySelector('svg'); h1.textContent = ' Reporte Unificado — ' + (R.unif.nombre || 'todos tus negocios'); if (svg) h1.prepend(svg); }
+  const p = document.querySelector('.greeting-text p');
+  if (p) p.innerHTML = 'Los reportes de siempre, sumando <strong>' + esc(nombres) + '</strong> (con sus sucursales y bodegas) en un solo lugar.';
+  document.title = 'Reporte Unificado — Negocio360';
+}
+// Resumen por negocio / cuenta con lo ya cargado en caché (mismo período del reporte).
+function resumenPorNegocio() {
+  const cuentas = (R.unif && R.unif.cuentas) || [];
+  const suma = (arr, id, campo) => (arr || []).filter(x => x.auth_user_id === id).reduce((t, x) => t + Number(x[campo] || 0), 0);
+  const cuenta = (arr, id) => (arr || []).filter(x => x.auth_user_id === id).length;
+  const filas = cuentas.map(c => ({
+    negocio: c.negocio, cuenta: c.es_central ? 'Principal' : `${c.tipo === 'bodega' ? 'Bodega' : 'Sucursal'}: ${c.nombre}`,
+    ventas: suma(R.cache.ventas, c.auth_user_id, 'total'), numVentas: cuenta(R.cache.ventas, c.auth_user_id),
+    ganancia: suma(R.cache.ventas, c.auth_user_id, 'ganancia'), compras: suma(R.cache.compras, c.auth_user_id, 'total'),
+    gastos: suma(R.cache.gastos, c.auth_user_id, 'monto'),
+    inventario: (R.cache.productos || []).filter(p => p.auth_user_id === c.auth_user_id).reduce((t, p) => t + Number(p.stock_actual || 0) * Number(p.costo || 0), 0),
+    clientes: cuenta(R.cache.clientes, c.auth_user_id),
+  }));
+  const tot = { negocio: 'TOTAL', cuenta: '', ventas: 0, numVentas: 0, ganancia: 0, compras: 0, gastos: 0, inventario: 0, clientes: 0 };
+  filas.forEach(f => ['ventas', 'numVentas', 'ganancia', 'compras', 'gastos', 'inventario', 'clientes'].forEach(k => { tot[k] += f[k]; }));
+  return { filas, tot };
+}
+const COLS_RESUMEN_NEGOCIO = [
+  { key: 'negocio', label: 'Negocio', tipo: 'texto' }, { key: 'cuenta', label: 'Cuenta', tipo: 'texto' },
+  { key: 'ventas', label: 'Ventas', tipo: 'moneda' }, { key: 'numVentas', label: '# Ventas', tipo: 'entero' },
+  { key: 'ganancia', label: 'Ganancia', tipo: 'moneda' }, { key: 'compras', label: 'Compras', tipo: 'moneda' },
+  { key: 'gastos', label: 'Gastos', tipo: 'moneda' }, { key: 'inventario', label: 'Valor inventario', tipo: 'moneda' },
+  { key: 'clientes', label: 'Clientes', tipo: 'entero' },
+];
+
+// ---- Barra de carga (PDF/Excel y lectura del reporte unificado) ----
+const BarraCarga = (() => {
+  let el = null, tablas = {}, fase = '', pct = 0, oculto = null;
+  function crear() {
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'n360-barra-carga';
+    el.innerHTML = `<div class="bc-caja"><div class="bc-tit">Preparando…</div><div class="bc-pista"><div class="bc-relleno"></div></div><div class="bc-det"></div></div>`;
+    const st = document.createElement('style');
+    st.textContent = `#n360-barra-carga{position:fixed;inset:0;z-index:100000;display:none;align-items:center;justify-content:center;background:rgba(15,18,40,.45);backdrop-filter:blur(2px)}
+      #n360-barra-carga.ver{display:flex}
+      #n360-barra-carga .bc-caja{width:min(440px,90vw);background:var(--bg-surface,#fff);color:var(--text-primary,#111);border-radius:16px;padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+      #n360-barra-carga .bc-tit{font-weight:800;font-size:16px;margin-bottom:14px}
+      #n360-barra-carga .bc-pista{height:12px;border-radius:999px;background:var(--bg-app,#eef);overflow:hidden}
+      #n360-barra-carga .bc-relleno{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--accent,#5a5af4),#8b7cf6);transition:width .25s ease}
+      #n360-barra-carga .bc-det{margin-top:10px;font-size:12.5px;color:var(--text-muted,#667);min-height:18px}`;
+    document.head.appendChild(st); document.body.appendChild(el);
+    return el;
+  }
+  function pintar(det) {
+    crear();
+    el.querySelector('.bc-tit').textContent = fase;
+    el.querySelector('.bc-relleno').style.width = Math.max(3, Math.min(100, pct)) + '%';
+    el.querySelector('.bc-det').textContent = det || '';
+  }
+  const NOM = { ventas:'ventas', venta_detalles:'detalle de ventas', productos:'productos', gastos:'gastos', compras:'compras', detalle_compras:'detalle de compras',
+    clientes:'clientes', creditos:'créditos', creditos_cuotas:'cuotas de créditos', movimientos_financieros:'movimientos de caja', empleados_pagos:'pagos de salario',
+    capital_negocio:'capital', movimientos_inventario:'movimientos de inventario', movimientos_impuestos:'impuestos', gastos_programados:'gastos programados' };
+  return {
+    abrir(titulo) { clearTimeout(oculto); tablas = {}; fase = titulo; pct = 2; pintar('Leyendo datos…'); el.classList.add('ver'); },
+    fase(titulo, p) { fase = titulo; if (p != null) pct = Math.max(pct, p); pintar(el && el.querySelector('.bc-det').textContent); },
+    progreso(tabla, filas, fin) {
+      if (!el || !el.classList.contains('ver')) return;
+      tablas[tabla] = fin ? 'ok' : 'leyendo';
+      const n = Object.keys(tablas).length, listas = Object.values(tablas).filter(v => v === 'ok').length;
+      pct = Math.max(pct, Math.min(85, 5 + (listas / Math.max(n, 6)) * 80));
+      pintar(`${fin ? '✓' : 'Leyendo'} ${NOM[tabla] || tabla.replace(/_/g, ' ')}: ${Number(filas).toLocaleString('es-NI')} registro(s)`);
+    },
+    cerrar() { if (!el) return; pct = 100; pintar('Listo'); oculto = setTimeout(() => el.classList.remove('ver'), 350); },
+  };
+})();
+window.N360ProgresoGrupo = (tabla, filas, fin) => BarraCarga.progreso(tabla, filas, fin);
+
 async function initReportes() {
   // Tema
   applyTheme(localStorage.getItem('n360_theme')||'light');
@@ -3409,6 +3535,18 @@ async function initReportes() {
     if (user.email) checkAdminAccess(user.email);
 
     await loadEmpresaConfig(user.id);
+    // Reporte UNIFICADO (general.html?unificado=1): varios negocios del mismo dueño.
+    if (typeof N360_UNIFICADO !== 'undefined' && N360_UNIFICADO) {
+      try { R.unif = await infoGrupoUnificado(sbReal); } catch (e) { console.error('grupo_unificado_info:', e); R.unif = null; }
+      if (!R.unif) {
+        document.getElementById('loader').classList.add('hidden');
+        document.getElementById('app').style.display = 'flex';
+        const c = document.getElementById('content');
+        if (c) c.innerHTML = '<div style="max-width:560px;margin:60px auto;text-align:center;padding:24px;border:1px solid var(--border);border-radius:14px;background:var(--bg-surface)"><h2 style="margin-bottom:8px">Reporte unificado no disponible</h2><p style="color:var(--text-muted)">Esta cuenta no tiene negocios unidos para el reporte unificado.</p><button class="btn-primary" style="margin-top:16px" onclick="location.href=\'reportes.html\'">Volver a Reportes</button></div>';
+        return;
+      }
+      aplicarTitulosUnificado();
+    }
     const profile = await loadUserProfile(user.id);
     if (profile) renderUserInfo(profile, user.email);
     else {

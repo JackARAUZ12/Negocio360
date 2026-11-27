@@ -4331,6 +4331,19 @@ async function activarBotonReporteGeneralSiAplica() {
     // mostrar un reporte combinado incompleto o roto).
   }
 }
+// "REPORTE UNIFICADO": solo aparece si esta cuenta pertenece a un grupo unificado
+// (varios negocios del mismo dueño, configurado por el administrador del sistema).
+async function activarBotonReporteUnificadoSiAplica() {
+  const btn = document.getElementById('btnReporteUnificado');
+  if (!btn) return;
+  try {
+    const { data, error } = await sb.rpc('grupo_unificado_info');
+    if (error || !data) return;
+    const nombres = (data.negocios || []).map(n => n.etiqueta).filter(Boolean);
+    btn.title = 'Reporte de ' + (nombres.length ? nombres.join(' + ') : 'todos tus negocios') + ' juntos';
+    btn.style.display = '';
+  } catch (e) { console.warn('activarBotonReporteUnificadoSiAplica:', e); }
+}
 function irAReporteGeneral() {
   window.location.href = 'general.html';
 }
@@ -4357,6 +4370,7 @@ async function initReportes() {
     if (user.email) checkAdminAccess(user.email);
 
     activarBotonReporteGeneralSiAplica();
+    activarBotonReporteUnificadoSiAplica();
 
     await loadEmpresaConfig(user.id);
     const profile = await loadUserProfile(user.id);

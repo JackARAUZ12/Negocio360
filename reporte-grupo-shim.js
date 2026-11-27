@@ -23,6 +23,63 @@ const TABLAS_REPORTE_GRUPO = [
   'impuestos','capital_negocio','precios_escala',
 ];
 
+// ── REPORTE UNIFICADO (general.html?unificado=1) ─────────────────────
+// Junta varios grupos del mismo dueño (ej. ALL PLASTIC Comercial + Mayorista).
+// Solo se activa en general.html con ?unificado=1; en cualquier otra página
+// o sin ese parámetro, este archivo se comporta EXACTAMENTE igual que antes.
+// El servidor (obtener_datos_grupo_pag) decide qué cuentas entran: solo las
+// del grupo unificado de quien consulta. Lee por páginas de 1000 filas.
+const N360_UNIFICADO = (() => {
+  try { return /\/general\.html$/.test(location.pathname) && new URLSearchParams(location.search).get('unificado') === '1'; }
+  catch (e) { return false; }
+})();
+// Avance de lectura (para la barra de carga): N360ProgresoGrupo(tabla, filasLeidas, terminado)
+function _avisarProgresoGrupo(tabla, filas, fin) {
+  try { if (typeof window.N360ProgresoGrupo === 'function') window.N360ProgresoGrupo(tabla, filas, fin); } catch (e) {}
+}
+async function _leerTablaUnificada(clienteReal, tabla) {
+  const PAG = 1000, filas = [];
+  for (let desde = 0; desde < 5000000; desde += PAG) {
+    let pagina = null, ultimo = null;
+    for (let intento = 0; intento < 3 && pagina === null; intento++) {
+      if (intento) await new Promise(r => setTimeout(r, intento * 700));
+      const { data, error } = await clienteReal.rpc('obtener_datos_grupo_pag', { p_tabla: tabla, p_unificado: true, p_offset: desde, p_limit: PAG });
+      if (error) ultimo = error; else pagina = data || [];
+    }
+    if (pagina === null) throw (ultimo || new Error('Lectura incompleta'));   // nunca datos a medias
+    for (let i = 0; i < pagina.length; i++) filas.push(pagina[i]);
+    _avisarProgresoGrupo(tabla, filas.length, false);
+    if (pagina.length < PAG) break;
+  }
+  _avisarProgresoGrupo(tabla, filas.length, true);
+  return filas;
+}
+let _infoUnificadoPromesa = null;
+function infoGrupoUnificado(clienteReal) {
+  if (!_infoUnificadoPromesa) {
+    _infoUnificadoPromesa = clienteReal.rpc('grupo_unificado_info').then(({ data, error }) => {
+      if (error) throw error;
+      if (!data) return null;
+      // Lista plana de cuentas (con el negocio al que pertenece cada una)
+      const cuentas = [];
+      (data.negocios || []).forEach(n => {
+        const lista = Array.isArray(n.cuentas) ? n.cuentas : [];
+        if (!lista.some(c => c.auth_user_id === n.central)) lista.unshift({ id: n.central, auth_user_id: n.central, nombre: n.etiqueta, tipo: 'sucursal', es_central: true, activa: true });
+        lista.forEach(c => cuentas.push(Object.assign({}, c, { negocio: n.etiqueta, central: n.central })));
+      });
+      data.cuentas = cuentas;
+      return data;
+    });
+  }
+  return _infoUnificadoPromesa;
+}
+// Nombre legible de la cuenta dueña de una fila: "NEGOCIO" o "NEGOCIO · Bodega X"
+function nombreCuentaUnificada(info, authUserId) {
+  const c = info && info.cuentas && info.cuentas.find(x => x.auth_user_id === authUserId);
+  if (!c) return '';
+  return c.es_central ? c.negocio : `${c.negocio} · ${c.nombre}`;
+}
+
 class GrupoQueryBuilder {
   constructor(cache, clienteReal, tabla) {
     this._cache = cache;
@@ -34,7 +91,12 @@ class GrupoQueryBuilder {
     this._modo = 'lista'; // 'lista' | 'single' | 'maybeSingle'
   }
   select() { return this; } // siempre se trae la fila completa
-  eq(col, val)  { this._filtros.push(r => r[col] === val); return this; }
+  eq(col, val)  {
+    // Reporte unificado: el servidor ya entregó SOLO las cuentas permitidas; el filtro
+    // "auth_user_id = mi cuenta" de las consultas se ignora para que entren todas.
+    if (N360_UNIFICADO && col === 'auth_user_id') return this;
+    this._filtros.push(r => r[col] === val); return this;
+  }
   neq(col, val) { this._filtros.push(r => r[col] !== val); return this; }
   gt(col, val)  { this._filtros.push(r => r[col] > val); return this; }
   gte(col, val) { this._filtros.push(r => r[col] >= val); return this; }
@@ -49,8 +111,12 @@ class GrupoQueryBuilder {
 
   async _traer() {
     if (!this._cache[this._tabla]) {
-      this._cache[this._tabla] = this._real.rpc('obtener_datos_grupo', { p_tabla: this._tabla })
-        .then(({ data, error }) => { if (error) throw error; return data || []; });
+      this._cache[this._tabla] = N360_UNIFICADO
+        ? _leerTablaUnificada(this._real, this._tabla)
+        : this._real.rpc('obtener_datos_grupo', { p_tabla: this._tabla })
+            .then(({ data, error }) => { if (error) throw error; return data || []; });
+      // Si falla, se borra del caché para que el siguiente intento vuelva a leer (no queda un error pegado).
+      if (N360_UNIFICADO) { const t = this._tabla, c = this._cache, pr = c[t]; pr.catch(() => { if (c[t] === pr) delete c[t]; }); }
     }
     return this._cache[this._tabla];
   }
@@ -100,6 +166,14 @@ function crearClienteGrupo(clienteReal) {
       return clienteReal.from(tabla);
     },
     auth: clienteReal.auth,
-    rpc: (...args) => clienteReal.rpc(...args),
+    rpc: (...args) => {
+      // Reporte unificado: la lista de cuentas incluye las de todos los negocios del grupo unificado.
+      if (N360_UNIFICADO && args[0] === 'listar_sucursales_grupo') {
+        return infoGrupoUnificado(clienteReal)
+          .then(info => ({ data: info ? info.cuentas : [], error: null }))
+          .catch(error => ({ data: null, error }));
+      }
+      return clienteReal.rpc(...args);
+    },
   };
 }
