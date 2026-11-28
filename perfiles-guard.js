@@ -229,6 +229,48 @@
     });
   }
 
+  // ------------------------------------------------------------
+  // Suspensión / cancelación / reactivación EN VIVO.
+  // Revisa solo UNA fila pequeña (usuarios.estado_cuenta) cada 15 s
+  // mientras la pestaña está a la vista, y al volver a la pestaña.
+  //  - activa -> suspendida/cancelada: aparece el bloqueo de inmediato.
+  //  - suspendida/cancelada -> activa: se recarga la página sola.
+  // Si hay un fallo de red, no hace nada (nunca bloquea por error).
+  // ------------------------------------------------------------
+  const PG_ESTADO_POLL_MS = 15000;
+  function vigilarEstadoCuenta(estadoInicial) {
+    if (PG._vigiaEstado) return;
+    PG._vigiaEstado = true;
+    PG._estadoVisto = estadoInicial;
+    let enCurso = false;
+    async function revisar() {
+      if (enCurso || !PG.client || !PG.authUserId) return;
+      enCurso = true;
+      try {
+        const { data, error } = await PG.client.from('usuarios')
+          .select('estado_cuenta').eq('auth_user_id', PG.authUserId).maybeSingle();
+        if (error || !data) return;
+        const nuevo = data.estado_cuenta || 'activa';
+        const antes = PG._estadoVisto;
+        if (nuevo === antes) return;
+        PG._estadoVisto = nuevo;
+        const bloqueada = nuevo === 'suspendida' || nuevo === 'cancelada';
+        const habiaBloqueo = antes === 'suspendida' || antes === 'cancelada';
+        if (bloqueada) {
+          const previo = document.getElementById('pg-bloqueo-cuenta');
+          if (previo) previo.remove();
+          mostrarBloqueoCuenta(nuevo);
+        } else if (habiaBloqueo) {
+          location.reload();
+        }
+      } catch (e) { /* sin red: no se toca nada */ }
+      finally { enCurso = false; }
+    }
+    setInterval(() => { if (document.visibilityState === 'visible') revisar(); }, PG_ESTADO_POLL_MS);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') revisar(); });
+    window.addEventListener('online', revisar);
+  }
+
   function showOverlay() {
     const ov = ensureOverlay();
     requestAnimationFrame(() => ov.classList.add('pg-visible'));
@@ -1782,6 +1824,9 @@
       .from('usuarios').select('estado_cuenta, limite_perfiles').eq('auth_user_id', PG.authUserId).maybeSingle();
     const estado = cuentaEstado?.estado_cuenta || 'activa';
     PG.limitePerfiles = cuentaEstado?.limite_perfiles || 5;
+    // EN VIVO: desde aquí se revisa cada pocos segundos si el administrador
+    // suspendió, canceló o reactivó la cuenta, sin que el cliente recargue.
+    vigilarEstadoCuenta(estado);
     if (estado === 'suspendida' || estado === 'cancelada') {
       mostrarBloqueoCuenta(estado);
       return;
