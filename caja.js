@@ -2840,7 +2840,10 @@ function renderEstadoCajaChica() {
             <div style="font-size:12px;color:var(--text-muted)">🟢 Caja Chica abierta desde las ${new Date(s.abierta_en).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'})}${s.abierta_por ? ' · '+esc(s.abierta_por) : ''}</div>
             <div style="font-size:22px;font-weight:800;margin-top:2px">${fmt(s.monto_apertura)} <span style="font-size:12px;color:var(--text-muted);font-weight:400">de apertura</span></div>
           </div>
-          <button class="btn-primary" style="background:var(--danger)" onclick="abrirModalConteo('cierre')">Cerrar Caja Chica</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-secondary" onclick="abrirModalConteo('correccion')" title="Si contaste mal al abrir: cuenta de nuevo y el sistema corrige el monto de apertura, sin cerrar la caja">✏️ Corregir apertura</button>
+            <button class="btn-primary" style="background:var(--danger)" onclick="abrirModalConteo('cierre')">Cerrar Caja Chica</button>
+          </div>
         </div>
         <div id="cc-resumen-vivo" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text-muted)">Calculando el resumen de hoy…</div>
       </div>`;
@@ -3035,7 +3038,9 @@ async function abrirCajaChicaConMontoAnterior() {
 
 function abrirModalConteo(modo) {
   CC.modoConteo = modo;
-  document.getElementById('cc-conteo-titulo').textContent = modo === 'apertura' ? 'Contar dinero para abrir Caja Chica' : 'Contar dinero para cerrar Caja Chica';
+  document.getElementById('cc-conteo-titulo').textContent = modo === 'apertura' ? 'Contar dinero para abrir Caja Chica' : (modo === 'correccion' ? 'Corregir el monto de apertura' : 'Contar dinero para cerrar Caja Chica');
+  const _aviso = document.getElementById('cc-correccion-aviso'); if (_aviso) _aviso.style.display = modo === 'correccion' ? '' : 'none';
+  const _obs = document.getElementById('cc-conteo-observaciones'); if (_obs) _obs.placeholder = modo === 'correccion' ? 'Motivo de la corrección (obligatorio). Ej: me equivoqué al contar' : 'Ej: falta el cambio de monedas de 1';
   document.getElementById('cc-conteo-observaciones').value = '';
   const grid = document.getElementById('cc-denominaciones-grid');
   const base = monedaBaseNegocio();
@@ -3114,6 +3119,23 @@ async function confirmarConteoBilletes() {
       });
       if (error) throw error;
       showToast('Caja Chica abierta con ' + fmt(total));
+    } else if (CC.modoConteo === 'correccion') {
+      // Corrige SOLO el monto de apertura de la caja de HOY que sigue abierta.
+      // No toca ventas, movimientos ni contabilidad (la contabilidad solo lee cajas cerradas):
+      // lo "que debería haber" se recalcula solo con el nuevo monto.
+      const motivo = obs;
+      if (!motivo) { showToast('Escribe el motivo de la corrección.', 'error'); return; }
+      const antes = Number(CC.sesionHoy?.monto_apertura || 0);
+      if (Math.abs(total - antes) < 0.005) { showToast('El monto contado es igual al de apertura actual. No hay nada que corregir.', 'error'); return; }
+      const nota = `Apertura corregida de ${fmt(antes)} a ${fmt(total)} por ${nombreUsuario}: ${motivo}`;
+      const previa = CC.sesionHoy?.observaciones;
+      const { data: filas, error } = await sbClient.from('caja_chica_sesiones').update({
+        monto_apertura: total, denominacion_apertura: detalle,
+        observaciones: previa ? previa + ' | ' + nota : nota, updated_at: new Date().toISOString(),
+      }).eq('id', CC.sesionHoy.id).eq('auth_user_id', STATE.userId).eq('estado', 'abierta').eq('fecha', todayISO()).select('id');
+      if (error) throw error;
+      if (!filas || !filas.length) { showToast('La caja ya no está abierta; no se pudo corregir.', 'error'); closeModal('modal-conteo-billetes'); await loadCajaChica(); return; }
+      showToast('Apertura corregida: ' + fmt(antes) + ' → ' + fmt(total));
     } else {
       // Cierre: se calcula lo TEÓRICO (solo efectivo) contra los
       // movimientos de hoy, y se compara con lo contado en la mano.
