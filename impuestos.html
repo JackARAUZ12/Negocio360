@@ -853,6 +853,11 @@ function fmt(n) {
 }
 function fmtFecha(iso) {
   if (!iso) return '—';
+  // Fecha sin hora (AAAA-MM-DD): se muestra ese mismo día (antes salía el día anterior a las 6 p. m. por la zona horaria).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) {
+    const [y, m, dd] = String(iso).split('-').map(Number);
+    return new Date(y, m - 1, dd).toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric' });
+  }
   const d = new Date(iso);
   return d.toLocaleDateString('es-NI', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
