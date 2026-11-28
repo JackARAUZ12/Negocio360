@@ -132,6 +132,11 @@
       } catch (_) { cfg._flagsPropios.usa_modulo_microfinanciera = false; }
       // Agroservicio: mismo criterio (apagado por defecto).
       try { cfg._flagsPropios.usa_modulo_agro = fila?.usa_modulo_agro === true; } catch (_) { cfg._flagsPropios.usa_modulo_agro = false; }
+      // Agua (mensualidades): mismo criterio. "Menú solo del panel" (opcional) se guarda en agua_config.
+      try {
+        cfg._flagsPropios.usa_modulo_agua = fila?.usa_modulo_agua === true;
+        cfg._aguaMenuExclusivo = fila?.usa_modulo_agua === true && fila?.agua_config && fila.agua_config.menu_exclusivo === true;
+      } catch (_) { cfg._flagsPropios.usa_modulo_agua = false; cfg._aguaMenuExclusivo = false; }
       // Panadería: consulta aparte, mismo criterio.
       try {
         const pa = fila;
@@ -699,6 +704,24 @@
     setInterval(ciclo, INTERVALO);
   }
 
+  // Panel Agua con "menú solo del panel" (lo enciende el dueño en Ajustes del panel): el menú muestra solo el panel
+  // y lo general. Solo esconde enlaces del menú (no bloquea ninguna página ni toca datos); se apaga desde el mismo panel.
+  const MENU_AGUA = new Set(['agua.html', 'dashboard.html', 'reportes.html', 'estadisticas.html', 'sucursales.html', 'configuracion.html',
+    'chat.html', 'tutoriales.html', 'notificaciones.html', 'general.html']);
+  function menuSoloAgua() {
+    const nav = document.querySelector('.sidebar-nav'); if (!nav) return;
+    nav.querySelectorAll('[onclick*="navigate("], a[href$=".html"], a[href*=".html?"]').forEach(el => {
+      let href = el.getAttribute('href');
+      if (!href) { const m = (el.getAttribute('onclick') || '').match(/navigate\(['"]([^'"?]+)/); href = m ? m[1] : null; }
+      if (!href) return;
+      const file = href.split('?')[0].split('/').pop();
+      if (MENU_AGUA.has(file)) return;
+      const item = el.closest('.nav-item, .sidebar-item') || el;
+      item.style.display = 'none'; item.classList.add('mg-oculto-modulo');
+    });
+    recalcularTitulosSidebar();
+  }
+
   async function init() {
     try { inyectarEstiloEncabezadoMovil(); } catch (e) { /* solo estetico */ }
     if (!window.supabase) return; // la página no cargó el SDK de Supabase
@@ -714,6 +737,7 @@
     try { inyectarCalculadoraEnSidebar(cfg, 'etiquetas-precio.html', 'calculadora-precio.html'); } catch (e) { console.warn('modulos-guard etiquetas:', e); }
     asegurarChatEnSidebar();
     try { asegurarTutorialesEnSidebar(); } catch (e) { console.warn("modulos-guard tutoriales:", e); }
+    try { if (cfg._aguaMenuExclusivo) menuSoloAgua(); } catch (e) { console.warn('modulos-guard menu agua:', e); }
     inyectarBotonTutorial(client).catch(e => console.warn("modulos-guard boton tutorial:", e));
     inyectarBuscadorSidebar();
     try { iniciarContabilidadEnFondo(client, session.user.id); } catch (e) { console.warn('modulos-guard conta fondo:', e); }

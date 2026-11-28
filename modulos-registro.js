@@ -180,6 +180,9 @@
     // Agroservicio: panel único (productores, crédito a cosecha, restringidos e IPSA, vencimientos). Apagado por defecto.
     'agroservicio.html': { key: 'agroservicio', label: 'Agroservicio · Panel', icon: '🌾', obligatorio: false, flagPropio: 'usa_modulo_agro',
                        desc: 'Todo el agroservicio en un solo lugar: productores con su finca, cultivos y límite de crédito, cobros de cosecha, venta de productos restringidos con cédula y receta (bitácora para IPSA) y vencimientos. Usa Ventas, Fiados, Caja e Inventario de siempre.' },
+    // Agua (venta de agua de pozo por mensualidad, 29-nov-2026): abonados con código, cobro del mes, cartera, arreglos, cortes. Apagado por defecto.
+    'agua.html': { key: 'agua', label: 'Agua · Panel', icon: '💧', obligatorio: false, flagPropio: 'usa_modulo_agua',
+                       desc: 'Venta de agua por mensualidad: abonados con código, cobro del mes en un clic, cartera (al día, por vencer, atrasados, parciales, en arreglo, cortados), arreglos de pago, mora, cortes y reconexión. Cobra con Ventas y Caja de siempre.' },
     // Panadería: plan de horneado (usa Producción), cierre del día con merma. Apagado por defecto.
     'panaderia.html': { key: 'panaderia', label: 'Panadería · Panel', icon: '🥖', obligatorio: false, flagPropio: 'usa_modulo_panaderia',
                        desc: 'Qué hornear hoy y cuánto (según la vitrina y lo que se vende), los ingredientes que se van a usar, y el cierre del día con lo que sobró, se botó o faltó. Usa tus recetas de Producción; no toca Caja.' },

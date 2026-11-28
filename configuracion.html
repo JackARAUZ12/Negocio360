@@ -22,7 +22,7 @@
   <script src="descargas-app.js?v=20261112a"></script>
 <script src="cr-modo.js?v=20261101d"></script>
   <script src="demo-salir.js?v=20261116a"></script>
-<script src="modulos-registro.js?v=20261121a"></script>
+<script src="modulos-registro.js?v=20261129a"></script>
   <script src="periodo-mes.js?v=20261024a"></script>
 <script src="auditoria-guard.js"></script>
 <!-- Lucide Icons -->
@@ -1779,6 +1779,27 @@
             </div>
           </div>
           <div class="cfg-status" id="agro-status"></div>
+        </div>
+
+        <div class="cfg-card fade-in stagger-1" id="agua-card">
+          <div class="cfg-card-header">
+            <div class="cfg-card-icon">💧</div>
+            <div>
+              <div class="cfg-card-title">Panel Agua (mensualidades)</div>
+              <div class="cfg-card-desc">Para quien vende agua de pozo (u otro servicio) por mensualidad: abonados con código, cobro del mes en un clic, cartera (al día, por vencer, atrasados, parciales, en arreglo, cortados), arreglos de pago, mora, cortes y reconexión. Cobra con Ventas y Caja de siempre (mismo ticket).</div>
+            </div>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <div class="cfg-row-label">Activar Panel Agua</div>
+              <div class="cfg-row-sub" id="agua-row-sub">Cargando estado actual…</div>
+            </div>
+            <label class="cfg-switch">
+              <input type="checkbox" id="agua-toggle" disabled />
+              <span class="cfg-switch-track" onclick="onToggleAguaClick(event)"></span>
+            </label>
+          </div>
+          <div class="cfg-status" id="agua-status"></div>
         </div>
 
         <div class="cfg-card fade-in stagger-1" id="panaderia-card">
@@ -3756,6 +3777,43 @@ async function guardarModuloMicrofinanciera(activo) {
   } finally { toggle.disabled = false; }
 }
 
+// Panel Agua (mensualidades): se activa/desactiva desde aqui. Apagado por defecto. Al apagarlo no se borra nada.
+async function cargarModuloAgua() {
+  const toggle = document.getElementById('agua-toggle');
+  const sub = document.getElementById('agua-row-sub');
+  if (!toggle || !sub) return;
+  try {
+    const { data, error } = await sbClient.from('configuracion_empresa').select('usa_modulo_agua').eq('auth_user_id', currentAuthUserId).maybeSingle();
+    if (error) throw error;
+    const activo = data?.usa_modulo_agua === true;
+    toggle.checked = activo;
+    sub.textContent = activo ? 'Activado — el Panel Agua aparece en el menú.' : 'Desactivado — el Panel Agua no aparece en ningún lado.';
+    toggle.disabled = false;
+  } catch (e) { console.error('cargarModuloAgua:', e); sub.textContent = 'No se pudo cargar el estado. Intenta recargar la página.'; }
+}
+function onToggleAguaClick(evt) {
+  const toggle = document.getElementById('agua-toggle');
+  if (toggle.disabled) { evt.preventDefault(); return; }
+  toggle.checked = !toggle.checked;
+  guardarModuloAgua(toggle.checked);
+}
+async function guardarModuloAgua(activo) {
+  const toggle = document.getElementById('agua-toggle');
+  const sub = document.getElementById('agua-row-sub');
+  const statusEl = document.getElementById('agua-status');
+  toggle.disabled = true;
+  try {
+    const { error } = await sbClient.from('configuracion_empresa').update({ usa_modulo_agua: activo }).eq('auth_user_id', currentAuthUserId);
+    if (error) throw error;
+    sub.textContent = activo ? 'Activado — el Panel Agua aparece en el menú.' : 'Desactivado — el Panel Agua no aparece en ningún lado.';
+    setStatus(statusEl, activo ? 'Panel Agua activado. Recarga la página para verlo en el menú.' : 'Panel Agua desactivado (tus abonados y cobros se conservan).', true);
+  } catch (e) {
+    console.error('guardarModuloAgua:', e);
+    toggle.checked = !activo;
+    setStatus(statusEl, 'No se pudo guardar el cambio. Intenta de nuevo.', false);
+  } finally { toggle.disabled = false; }
+}
+
 // Modulo de Agroservicio: se activa/desactiva desde aqui. Apagado por defecto.
 async function cargarModuloAgro() {
   const toggle = document.getElementById('agro-toggle');
@@ -4604,6 +4662,7 @@ async function initConfiguracion() {
       cargarModuloTaller();
       cargarModuloMensajeria();
       cargarModuloAgro();
+      cargarModuloAgua();
       cargarModuloPanaderia();
       cargarModuloMicrofinanciera();
       cargarModuloVendedores();
@@ -4641,7 +4700,7 @@ document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.
 </script>
 <script src="clinica-comun.js?v=20261029b"></script>
 <script src="perfiles-guard.js?v=20261128a"></script>
-<script src="modulos-guard.js?v=20261111a"></script>
+<script src="modulos-guard.js?v=20261129a"></script>
 <script src="contraste-acento.js?v=20261029a"></script>
 <script src="menu-garantias-proveedor.js?v=20261029a"></script>
 </body>

@@ -1994,6 +1994,7 @@ async function abrirNuevaVenta() {
   S._agendaCitaId = null;
   S._clinicaCobro = null;
   S._restCobro = null;
+  S._aguaCobro = null;
   S.certificado = null;          // certificado de regalo aplicado a esta venta (certificados-venta.js)
   S._certEmisionId = null;       // esta venta COBRA un certificado (modo "venta")
   S._recompensas  = undefined;
@@ -3308,6 +3309,42 @@ async function aplicarCobroTransporte() {
     }
   }
   showToast(`Flete de la orden ${d.numero || ''} cargado en la venta.`);
+}
+
+// Cobro de una mensualidad del Panel Agua (29-nov-2026; solo si el módulo está activo): la venta se arma con el
+// cliente del abonado y el servicio "Servicio de agua" por lo que se cobra (sin IVA; el IVA, si lo lleva, lo suma
+// Ventas como siempre). Al confirmar, el servidor aplica el pago a los meses del abonado (agua_confirmar_cobro).
+async function aplicarCobroAgua() {
+  if (S.empresaConfig?.usa_modulo_agua !== true) return;
+  const raw = sessionStorage.getItem('n360_agua_cobro');
+  if (!raw) return;
+  sessionStorage.removeItem('n360_agua_cobro');         // una sola vez
+  let d;
+  try { d = JSON.parse(raw); }
+  catch (e) { console.error('aplicarCobroAgua, dato corrupto:', e); return; }
+  S._aguaCobro = null;
+  await abrirNuevaVenta();
+  if (d.clienteId && (S.clientesCache || []).some(c => c.id === d.clienteId)) { selectClienteOpcion('existente'); seleccionarCliente(d.clienteId); }
+  else { showToast('No se encontró el cliente del abonado. Cierra y vuelve a abrir el cobro.', 'error'); return; }
+  const prod = (S.productosCache || []).find(p => p.id === d.productoId);
+  if (!prod) { showToast('No se encontró el servicio "Servicio de agua".', 'error'); return; }
+  await agregarAlCarritoConPrecio(prod.id, 'servicio', null);
+  const it = S.carrito.find(x => x.id === prod.id);
+  if (!it) { showToast('No se pudo cargar la mensualidad en la venta.', 'error'); return; }
+  it.precio = Math.round((Number(d.base) || 0) * 100) / 100; it.cantidad = 1; if (d.concepto) it.nombre = String(d.concepto).slice(0, 240);
+  recalcItem(it); renderCarrito('servicio');
+  // IVA: solo si los meses que se cobran lo llevan (abonado con IVA)
+  S.ivaActivo = Number(d.ivaPct) > 0; S.ivaModo = 'unica';
+  if (S.ivaActivo) S.ivaPorcentaje = Number(d.ivaPct);
+  { const sw = document.getElementById('iva-switch'), inp = document.getElementById('iva-porcentaje');
+    if (sw) sw.classList.toggle('on', S.ivaActivo); if (inp) { inp.disabled = !S.ivaActivo; if (S.ivaActivo) inp.value = S.ivaPorcentaje; } }
+  calcularResumen();
+  S._aguaCobro = { id: d.cobroId, monto: Number(d.monto) || 0 };
+  if (d.auto) {
+    const ob = document.getElementById('venta-observaciones');
+    if (ob && !ob.value.trim() && d.observaciones) ob.value = String(d.observaciones).slice(0, 1000);
+    for (let i = 0; S.clienteId && i < 6 && S.paso < 5; i++) { const antes = S.paso; pasoSiguiente(); if (S.paso === antes) break; }
+  }
 }
 
 // Cobro de una cita de la Agenda (23-oct-2026): abre la venta con el cliente y los
@@ -6494,6 +6531,17 @@ async function _confirmarVentaInterno(conImpresion) {
     }
   }
 
+  // Panel Agua: el cobro preparado debe seguir pendiente (no cobrado en otra pestaña) y el total debe cuadrar.
+  if (S._aguaCobro?.id) {
+    try {
+      const { data: ac } = await sb.from('agua_cobros').select('estado, monto').eq('id', S._aguaCobro.id).eq('auth_user_id', S.userId).maybeSingle();
+      if (!ac || ac.estado !== 'pendiente') { showToast('Este cobro de agua ya no está pendiente (se cobró o se reemplazó). Ciérralo y vuelve a cobrar desde el Panel Agua.', 'error'); return; }
+      calcularResumen();
+      const totAgua = Number(S._resumen?.total) || 0;
+      if (Math.abs(totAgua - Number(ac.monto)) > 0.05) { showToast(`El total de la venta (${fmt(totAgua)}) no cuadra con lo que se cobra al abonado (${fmt(ac.monto)}). No cambies el precio ni el IVA en este cobro.`, 'error'); return; }
+    } catch (eAg) { console.warn('Revisar cobro de agua:', eAg); showToast('No se pudo revisar el cobro de agua. Revisa tu conexión.', 'error'); return; }
+  }
+
   // Viaje de Transporte: candado para no facturar dos veces la misma orden
   // (otra pestaña o la misma orden abierta dos veces). Si no hay orden, no hace nada.
   if (S._txOrdenId) {
@@ -6929,6 +6977,16 @@ async function _confirmarVentaInterno(conImpresion) {
       }
       S._restCobro = null;
     } catch (eRc) { console.warn('Vincular cobro del restaurante:', eRc); }
+
+    // Panel Agua: el pago se aplica a los meses del abonado (en el servidor, se puede repetir sin duplicar). Aislado.
+    try {
+      if (S._aguaCobro?.id) {
+        const { data: ra, error: eAg } = await sb.rpc('agua_confirmar_cobro', { p_cobro_id: S._aguaCobro.id, p_venta_id: ventaId });
+        if (eAg || !ra?.ok) console.warn('Aplicar cobro de agua:', eAg || ra);
+        S._aguaCobroHecho = { cobroId: S._aguaCobro.id, ventaId, ok: !eAg && !!ra?.ok };
+      }
+      S._aguaCobro = null;
+    } catch (eAg2) { console.warn('Aplicar cobro de agua:', eAg2); }
 
     // Facturacion de un viaje de Transporte: la orden queda ligada a la venta. Aislado.
     try {
@@ -9116,6 +9174,7 @@ async function initVentas() {
     await aplicarCobroVeterinaria();
     await aplicarRecomendacionAgro();
     await aplicarCobroTransporte();
+    await aplicarCobroAgua();
     await aplicarCobroAgenda();
     await aplicarCobroClinica();
     await aplicarCobroRestaurante();
@@ -9147,6 +9206,8 @@ async function initVentas() {
     if (params.get('rest_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_restaurante === true && window.self !== window.top) instalarMotorClinica();
     // Cobro de un viaje de Transporte: el mismo motor (la pantalla de cobro es la de Transporte).
     if (params.get('tx_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_transporte === true && window.self !== window.top) instalarMotorClinica();
+    // Cobro de mensualidades del Panel Agua: el mismo motor (la pantalla de cobro es la del panel).
+    if (params.get('agua_cobro') === '1' && params.get('motor') === '1' && S.empresaConfig?.usa_modulo_agua === true && window.self !== window.top) instalarMotorClinica();
     // Deep link desde el módulo de Rutas ("Vender aquí") — abre Nueva
     // Venta con ese cliente ya elegido, mismo flujo de siempre.
     const rutaClienteId = params.get('ruta_cliente');
