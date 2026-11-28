@@ -628,6 +628,12 @@
             <div class="acum-sub">Crédito contra tu anticipo mensual (1%) y tu IR anual. Guarda las constancias.</div>
             <button class="btn-secondary" id="ret-btn-acreditar" onclick="acreditarRetencionesFavor()" style="margin-top:8px">Marcar como acreditadas</button>
           </div>
+          <div class="acum-card" id="imi-card" style="margin:0;display:none">
+            <div class="acum-nombre">Me retuvo la alcaldía (IMI) — a favor</div>
+            <div class="acum-valor" id="imi-favor-total">C$0.00</div>
+            <div class="acum-sub">Lo retuvieron tus clientes al pagarte créditos. Se acredita en tu declaración de la alcaldía con la constancia.</div>
+            <button class="btn-secondary" id="imi-btn-acreditar" onclick="acreditarRetencionesIMI()" style="margin-top:8px">Marcar como acreditadas</button>
+          </div>
         </div>
         <div class="table-wrap">
           <table>
@@ -1391,7 +1397,19 @@ async function cargarRetenciones() {
     if (error) throw error;
     S.retenciones = data || [];
     const vivas = S.retenciones.filter(r => r.estado !== 'anulada');
-    if (!S.retenciones.length) { panel.style.display = 'none'; return; }
+    // Retenciones de la alcaldía (IMI) que te hicieron tus clientes al pagar créditos (aparte del IR)
+    let imi = [];
+    try {
+      const { data: dImi } = await sb.from('retenciones_municipales').select('*').eq('auth_user_id', S.userId).order('fecha', { ascending:false }).limit(500);
+      imi = dImi || [];
+    } catch (_) { imi = []; }
+    S.retImi = imi;
+    S.imiFavor = round2(imi.filter(r => r.estado === 'pendiente').reduce((a,r) => a + Number(r.monto), 0));
+    const imiCard = document.getElementById('imi-card');
+    if (imiCard) imiCard.style.display = imi.length ? '' : 'none';
+    if (document.getElementById('imi-favor-total')) document.getElementById('imi-favor-total').textContent = fmt(S.imiFavor);
+    if (document.getElementById('imi-btn-acreditar')) document.getElementById('imi-btn-acreditar').disabled = !(S.imiFavor > 0);
+    if (!S.retenciones.length && !imi.length) { panel.style.display = 'none'; return; }
     panel.style.display = '';
     const sum = (lado) => round2(vivas.filter(r => r.lado === lado && r.estado === 'pendiente').reduce((a,r) => a + Number(r.monto), 0));
     S.retPagar = sum('por_pagar'); S.retFavor = sum('a_favor');
@@ -1399,9 +1417,11 @@ async function cargarRetenciones() {
     document.getElementById('ret-favor-total').textContent = fmt(S.retFavor);
     document.getElementById('ret-btn-pagar').disabled = !(S.retPagar > 0);
     document.getElementById('ret-btn-acreditar').disabled = !(S.retFavor > 0);
-    const origenTxt = { venta:'Venta', compra:'Compra', cxp_pago:'Pago a proveedor', gasto:'Gasto', manual:'Manual' };
-    document.getElementById('ret-tbody').innerHTML = S.retenciones.slice(0, 100).map(r => `<tr>
-      <td>${fmtFecha(r.fecha)}</td><td>${r.lado === 'a_favor' ? 'A favor' : 'Por pagar'}</td><td>${esc(r.contraparte_nombre || '—')}</td>
+    const origenTxt = { venta:'Venta', compra:'Compra', cxp_pago:'Pago a proveedor', gasto:'Gasto', manual:'Manual', credito:'Pago de crédito' };
+    const filasRet = S.retenciones.map(r => ({ ...r, _imi: false })).concat(imi.map(r => ({ ...r, lado: 'a_favor', _imi: true })))
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(b.created_at).localeCompare(String(a.created_at)));
+    document.getElementById('ret-tbody').innerHTML = filasRet.slice(0, 100).map(r => `<tr>
+      <td>${fmtFecha(r.fecha)}</td><td>${r._imi ? 'A favor · Alcaldía' : r.lado === 'a_favor' ? 'A favor · IR' : 'Por pagar'}</td><td>${esc(r.contraparte_nombre || '—')}</td>
       <td>${origenTxt[r.origen] || r.origen}</td><td>${fmt(r.base)}</td><td>${Number(r.porcentaje)}%</td><td><strong>${fmt(r.monto)}</strong></td>
       <td>${r.estado === 'pendiente' ? 'Pendiente' : r.estado === 'pagada' ? 'Pagada a DGI' : r.estado === 'acreditada' ? 'Acreditada' : 'Anulada'}</td></tr>`).join('');
   } catch (e) { console.warn('cargarRetenciones:', e); panel.style.display = 'none'; }
@@ -1452,6 +1472,18 @@ async function acreditarRetencionesFavor() {
     await cargarRetenciones();
   } catch (e) { showToast('No se pudo actualizar: ' + (e.message || ''), 'error'); }
 }
+async function acreditarRetencionesIMI() {
+  if (!(S.imiFavor > 0)) return;
+  if (!confirm(`¿Marcar ${fmt(S.imiFavor)} de retenciones de la alcaldía (IMI) como acreditadas en tu declaración municipal?\n\nEsto no mueve Caja.`)) return;
+  try {
+    const { error } = await sb.from('retenciones_municipales').update({ estado: 'acreditada' })
+      .eq('auth_user_id', S.userId).eq('estado', 'pendiente');
+    if (error) throw error;
+    showToast('Retenciones de la alcaldía marcadas como acreditadas.', 'success');
+    await cargarRetenciones();
+  } catch (e) { showToast('No se pudo actualizar: ' + (e.message || ''), 'error'); }
+}
+window.acreditarRetencionesIMI = acreditarRetencionesIMI;
 window.abrirPagoRetenciones = abrirPagoRetenciones;
 window.acreditarRetencionesFavor = acreditarRetencionesFavor;
 window.cargarRetenciones = cargarRetenciones;

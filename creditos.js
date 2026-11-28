@@ -1853,6 +1853,7 @@
     ocultar('rp-banco-elegido-wrap');
     // ➗ Pago separado: cada vez que se abre, empieza apagado (un solo método, como siempre)
     if (window.N360PSCred) { try { N360PSCred.usarBancos(cargarBancosDisponiblesCred); N360PSCred.reset(); N360PSCred.montar(); } catch (_) {} }
+    if (window.N360RetCred) { try { N360RetCred.reset(); } catch (_) {} }
     openModal('modal-registrar-pago');
     if (creditoId) {
       const credito = CS.creditos.find(c => c.id === creditoId) || (await _sb.from('creditos').select('*').eq('id', creditoId).maybeSingle()).data;
@@ -1898,6 +1899,7 @@
     document.getElementById('rp-monto').value = prox ? round2(prox.monto_total - prox.monto_pagado) : '';
     if (window.N360MonedaAlterna) N360MonedaAlterna.reset('rp-monto');
     refrescarTextoBancoCred();
+    if (window.N360RetCred) { try { await N360RetCred.cargarCredito(credito); } catch (_) {} }
   }
   window.cargarResumenCredito = cargarResumenCredito;
 
@@ -2344,7 +2346,29 @@
     const observaciones = [obsEscrita, notaOtraMoneda].filter(Boolean).join(' · ') || null;
 
     if (!creditoId) { showToast('Selecciona un crédito', 'error'); CS.registrandoPago = false; return; }
-    if (monto <= 0) { showToast('El monto debe ser mayor a cero', 'error'); CS.registrandoPago = false; return; }
+    // 🧾 Retención del cliente (IR / alcaldía): no entra a Caja, baja el saldo (credito-retencion.js)
+    const retCli = window.N360RetCred ? N360RetCred.datos() : { activo: false, total: 0 };
+    const soloRetencion = retCli.activo && retCli.total > 0 && monto <= 0;
+    if (monto < 0 || (monto === 0 && !soloRetencion)) { showToast('El monto debe ser mayor a cero', 'error'); CS.registrandoPago = false; return; }
+    if (retCli.activo) {
+      const { data: credVal } = await _sb.from('creditos').select('saldo_pendiente').eq('id', creditoId).maybeSingle();
+      const msgRet = N360RetCred.validar(monto, Number(credVal?.saldo_pendiente) || 0);
+      if (msgRet) { showToast(msgRet, 'error'); CS.registrandoPago = false; return; }
+    }
+    if (soloRetencion) {
+      // Solo se registra lo retenido: no hay dinero, no se toca Caja ni se crea un pago.
+      btn.disabled = true; btn.textContent = 'Registrando…';
+      try {
+        const res = await N360RetCred.aplicar(creditoId, observaciones);
+        showToast(`Retención de ${fmt(res.monto_total)} registrada. Saldo: ${fmt(res.saldo_nuevo)}. No se tocó Caja.`, 'success');
+        closeModal('modal-registrar-pago');
+        await refrescarTodo();
+      } catch (e) {
+        console.error('retención:', e);
+        showToast('No se pudo registrar la retención: ' + (e.message || e), 'error');
+      } finally { btn.disabled = false; btn.textContent = 'Registrar pago'; CS.registrandoPago = false; }
+      return;
+    }
 
     // ➗ Pago separado (opcional): las líneas deben sumar EXACTO el monto del abono.
     let psLineas = null;
@@ -2498,7 +2522,19 @@
       await registrarHistorial(creditoId, 'pago', `Pago de ${fmt(monto)} registrado`, { monto, saldoNuevo });
       if (nuevoEstadoCredito === 'cancelado') await registrarHistorial(creditoId, 'cancelado', 'Crédito cancelado — saldo en cero', {});
 
-      showToast('Pago registrado correctamente', 'success');
+      // 🧾 Lo retenido por el cliente se aplica DESPUÉS del pago (en el servidor, todo o nada).
+      let retAplicada = null, saldoFinal = saldoNuevo, estadoFinal = nuevoEstadoCredito;
+      if (retCli.activo && retCli.total > 0) {
+        try {
+          retAplicada = await N360RetCred.aplicar(creditoId, observaciones);
+          saldoFinal = Number(retAplicada.saldo_nuevo); estadoFinal = retAplicada.estado || estadoFinal;
+        } catch (eRet) {
+          console.error('retención:', eRet);
+          showToast('El pago SÍ se registró, pero la retención no: ' + (eRet.message || eRet) + '. Regístrala sola (monto recibido 0).', 'warning');
+        }
+      }
+
+      showToast(retAplicada ? `Pago registrado. Retención de ${fmt(retAplicada.monto_total)} aplicada (no entra a Caja).` : 'Pago registrado correctamente', 'success');
       closeModal('modal-registrar-pago');
 
       // Si esta pantalla se abrió incrustada desde Rutas (iframe), se
@@ -2520,9 +2556,10 @@
         clienteId: cliente?.id || null,
         cliente: cliente ? `${cliente.nombre} ${cliente.apellido||''}` : '—', fecha: todayISO(),
         usuario: CS.currentUser?.nombre || CS.userEmail, monto, metodo: metodoNombreFinal,
-        saldoAnterior, saldoNuevo, proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
-        fechaLimite: await fechaLimiteComprobante(credito, proximaCuota, saldoNuevo),
-        estado: LABEL_ESTADO[nuevoEstadoCredito] || nuevoEstadoCredito,
+        retenido: retAplicada ? Number(retAplicada.monto_total) : 0,
+        saldoAnterior, saldoNuevo: saldoFinal, proximaCuota: proximaCuota ? `${fmtDate(proximaCuota.fecha_vencimiento)} · ${fmt(proximaCuota.monto_total)}` : 'Sin cuotas pendientes',
+        fechaLimite: await fechaLimiteComprobante(credito, proximaCuota, saldoFinal),
+        estado: LABEL_ESTADO[estadoFinal] || estadoFinal,
         productos: productosComprobante,
       });
 
@@ -2746,6 +2783,7 @@
         <hr/>
         <div class="tp-row"><span>Monto pagado:</span><b>${fmt(c.monto)}</b></div>
         <div class="tp-row"><span>Método de pago:</span><b>${esc(c.metodo)}</b></div>
+        ${Number(c.retenido) > 0 ? `<div class="tp-row"><span>Retención del cliente:</span><b>${fmt(c.retenido)}</b></div>` : ''}
         <div class="tp-row"><span>Saldo anterior:</span><b>${fmt(c.saldoAnterior)}</b></div>
         <div class="tp-row"><span>Saldo nuevo:</span><b>${fmt(c.saldoNuevo)}</b></div>
         <hr/>
@@ -3247,6 +3285,7 @@
     const { data: cuotas } = await _sb.from('creditos_cuotas').select('*').eq('credito_id', creditoId).order('numero');
     const { data: historial } = await _sb.from('creditos_historial').select('*').eq('credito_id', creditoId).order('created_at', { ascending:false });
     const { data: pagos } = await _sb.from('creditos_pagos').select('*').eq('credito_id', creditoId).eq('estado','completado').order('created_at', { ascending:false });
+    const tieneRetencion = window.N360RetCred ? await N360RetCred.tieneActivas(creditoId) : false;
 
     // Productos financiados — se leen de la venta que originó el
     // crédito (creditos NUNCA guarda productos directamente). Si el
@@ -3260,19 +3299,21 @@
 
     // Guardado para que abrirAnularCredito() no tenga que volver a
     // consultar todo -- ya tenemos el credito, sus pagos y su venta_id.
-    window._creditoDetalleData = { credito, pagos: pagos || [], productosFinanciados };
+    window._creditoDetalleData = { credito, pagos: pagos || [], productosFinanciados, tieneRetencion };
 
     const btnAnular = document.getElementById('btn-anular-credito');
     const avisoAnular = document.getElementById('det-credito-aviso-anular');
     if (btnAnular) {
       const tienePagos = (pagos || []).length > 0;
       const yaAnulado = credito.estado === 'cancelado';
-      const bloqueado = tienePagos || yaAnulado;
+      const bloqueado = tienePagos || yaAnulado || tieneRetencion;
       const razon = yaAnulado
         ? 'Este crédito ya está anulado.'
         : tienePagos
           ? '🔒 No se puede anular: este crédito tiene pagos registrados. Anula cada pago primero desde el historial de abajo — cuando el saldo quede completo, podrás anular el crédito.'
-          : '';
+          : tieneRetencion
+            ? '🔒 No se puede anular: este crédito tiene una retención del cliente registrada. Anúlala primero desde "Retenciones del cliente".'
+            : '';
 
       // IMPORTANTE: el boton se deja SIEMPRE clicable (no se usa
       // disabled=true) -- un boton con disabled nativo nunca dispara
@@ -3377,6 +3418,7 @@
       <ul class="timeline">
         ${(historial||[]).map(h => `<li><span class="t-dot"></span><div><b>${esc(h.descripcion||h.tipo_evento)}</b><br><span style="color:var(--text-muted);font-size:11.5px">${new Date(h.created_at).toLocaleString('es-NI')}</span></div></li>`).join('') || '<li>Sin eventos</li>'}
       </ul>`;
+    if (window.N360RetCred) await N360RetCred.pintarEnDetalle(creditoId);
   }
   window.abrirDetalleCredito = abrirDetalleCredito;
 
@@ -3399,6 +3441,10 @@
     const info = window._creditoDetalleData;
     if (!info) return;
     const { credito, pagos } = info;
+    if (info.tieneRetencion) {
+      showToast('🔒 No se puede anular: tiene una retención del cliente registrada. Anúlala primero desde "Retenciones del cliente".', 'error');
+      return;
+    }
     if ((pagos || []).length > 0) {
       showToast('🔒 No se puede anular: tiene pagos registrados. Anula cada pago primero desde el historial.', 'error');
       return;
@@ -4128,6 +4174,9 @@
     await Promise.all([loadKpis(), loadCreditos(), refrescarProductosCredito()]);
     if (CS.activeSection === 'pagos') await loadPagosRecientes();
   }
+  // Para el módulo de retención del cliente (credito-retencion.js)
+  window.N360CredHelpers = { fmt, fmtDate, todayISO, showToast: (m, t) => showToast(m, t), refrescarTodo,
+    usuario: () => CS.currentUser?.nombre || CS.userEmail || null };
 
   /* ===================================================
      MODAL HELPERS / TOAST
